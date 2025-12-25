@@ -21,13 +21,11 @@
 ## Getting Started
 
 ### Installation
-```bash
-g++ -std=c++11 ez.cpp -o ez
-```
+download the ez.exe file and add in the path through environmnet variables
 
 ### Running a Program
 ```bash
-./ez program.ez
+ez hello.ez
 ```
 
 ---

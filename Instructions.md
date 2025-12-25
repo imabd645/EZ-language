@@ -127,7 +127,7 @@ out fullName  // John Doe
 | Operator | Word Form | Description | Example |
 |----------|-----------|-------------|---------|
 | `==` | `equal` | Equal to | `x equal 5` |
-| `!=` | | Not equal to | `x != 5` |
+| `!=` |`notequal` | Not equal to | `x != 5` |
 | `<` | `less` | Less than | `x less 10` |
 | `>` | `greater` | Greater than | `x greater 5` |
 | `<=` | `lessthen` | Less than or equal | `x lessthen 10` |

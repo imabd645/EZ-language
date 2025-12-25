@@ -26,11 +26,3 @@ This project demonstrates **compiler/interpreter fundamentals**, including lexic
 - 🛑 **Error handling with line numbers**
 
 ---
-
-## 🧠 Language Syntax Overview
-
-### Variables
-```ez
-x = 10
-name = "EZ"
-flag = yes

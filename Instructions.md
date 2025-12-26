@@ -1,100 +1,173 @@
-# EZ Programming Language Documentation
+# EZ Language - Complete Documentation
 
-**EZ Interpreter v2.1** - A simple, readable programming language with natural syntax.
+A comprehensive guide to learning and using EZ Language.
+
+---
 
 ## Table of Contents
-- [Getting Started](#getting-started)
-- [Basic Syntax](#basic-syntax)
-- [Variables](#variables)
-- [Data Types](#data-types)
-- [Operators](#operators)
-- [Control Flow](#control-flow)
-- [Loops](#loops)
-- [Functions](#functions)
-- [Arrays](#arrays)
-- [Input/Output](#inputoutput)
-- [Comments](#comments)
-- [Complete Examples](#complete-examples)
+
+1. [Introduction](#introduction)
+2. [Installation](#installation)
+3. [Getting Started](#getting-started)
+4. [Language Basics](#language-basics)
+5. [Variables & Data Types](#variables--data-types)
+6. [Operators](#operators)
+7. [Control Flow](#control-flow)
+8. [Loops](#loops)
+9. [Functions](#functions)
+10. [Arrays](#arrays)
+11. [Built-in Functions](#built-in-functions)
+12. [VS Code Extension](#vs-code-extension)
+13. [Examples](#examples)
+14. [Troubleshooting](#troubleshooting)
+
+---
+
+## Introduction
+
+EZ Language is a beginner-friendly programming language designed to make learning to code as easy as possible. It uses intuitive, human-readable keywords that feel natural to write and read.
+
+### Why EZ?
+
+- **Natural Syntax**: Keywords like `when`, `repeat`, and `task` read like English
+- **No Semicolons**: Focus on your logic, not punctuation
+- **Readable Booleans**: Use `yes` and `no` instead of cryptic `true/false`
+- **Quick Learning Curve**: Start coding in minutes, not hours
+
+---
+
+## Installation
+
+### Step 1: Download EZ Interpreter
+
+Download `ez.exe` from the official website or GitHub releases.
+
+### Step 2: Create Installation Folder
+
+Create a folder for EZ Language:
+```
+C:\EZ
+```
+
+Move `ez.exe` to this folder.
+
+### Step 3: Add to System PATH
+
+Adding EZ to your PATH allows you to run it from any location.
+
+1. Press `Win + R` to open Run dialog
+2. Type `sysdm.cpl` and press Enter
+3. Click the **Advanced** tab
+4. Click **Environment Variables**
+5. Under **System variables**, find **Path** and click **Edit**
+6. Click **New**
+7. Type: `C:\EZ`
+8. Click **OK** on all dialogs
+
+### Step 4: Verify Installation
+
+Open a new Command Prompt and type:
+```bash
+ez --version
+```
+
+If installed correctly, you'll see the version number.
 
 ---
 
 ## Getting Started
 
-### Installation
-download the ez.exe file and add in the path through environmnet variables
+### Your First Program
 
-### Running a Program
+Create a file named `hello.ez`:
+
+```
+out "Hello, World!"
+```
+
+Run it:
 ```bash
 ez hello.ez
 ```
 
----
+Output:
+```
+Hello, World!
+```
 
-## Basic Syntax
+### Program Structure
 
-EZ uses simple, English-like keywords to make programming intuitive.
+EZ programs are executed from top to bottom. No main function is required.
 
-### Hello World
-```ez
-out "Hello, World!"
+```
+// This is a comment
+out "This runs first"
+out "This runs second"
 ```
 
 ---
 
-## Variables
+## Language Basics
 
-Variables are created automatically when you assign a value to them.
+### Comments
 
-```ez
-x = 10
-name = "Alice"
-isActive = yes
+```
+// This is a single-line comment
 ```
 
-### Variable Rules
-- No declaration needed
-- Variable names can contain letters, numbers, and underscores
-- Case-sensitive
-- Cannot start with a number
+### Output
+
+Use `out` to print to the console:
+
+```
+out "Hello!"
+out 42
+out "The answer is: " + 42
+```
+
+### Input
+
+Use `in` to get user input:
+
+```
+out "What is your name?"
+in name
+out "Hello, " + name + "!"
+```
 
 ---
 
-## Data Types
+## Variables & Data Types
 
-### 1. Numbers
-```ez
+### Declaring Variables
+
+Variables are created by assignment:
+
+```
+name = "Abdullah"
 age = 25
 pi = 3.14159
-negative = -42
+isStudent = yes
 ```
 
-### 2. Strings
-```ez
-greeting = "Hello"
-message = "Welcome to EZ!"
+### Data Types
+
+| Type | Example | Description |
+|------|---------|-------------|
+| String | `"Hello"` | Text in quotes |
+| Number | `42`, `3.14` | Integers and decimals |
+| Boolean | `yes`, `no` | True/false values |
+| Array | `[1, 2, 3]` | Collection of values |
+
+### String Operations
+
 ```
+firstName = "Abdullah"
+lastName = "Masood"
 
-**Escape Sequences:**
-- `\n` - Newline
-- `\t` - Tab
-- `\\` - Backslash
-- `\"` - Quote
-
-```ez
-text = "Line 1\nLine 2"
-```
-
-### 3. Booleans
-```ez
-isTrue = yes
-isFalse = no
-```
-
-### 4. Arrays
-```ez
-numbers = [1, 2, 3, 4, 5]
-names = ["Alice", "Bob", "Charlie"]
-mixed = [1, "text", yes, 3.14]
+// Concatenation
+fullName = firstName + " " + lastName
+out fullName  // Abdullah Masood
 ```
 
 ---
@@ -102,112 +175,73 @@ mixed = [1, "text", yes, 3.14]
 ## Operators
 
 ### Arithmetic Operators
+
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `+` | Addition / Concatenation | `5 + 3` → `8` |
+| `+` | Addition | `5 + 3` → `8` |
 | `-` | Subtraction | `5 - 3` → `2` |
 | `*` | Multiplication | `5 * 3` → `15` |
-| `/` | Division | `10 / 2` → `5` |
-| `%` | Modulo | `10 % 3` → `1` |
-
-```ez
-sum = 5 + 3
-product = 4 * 2
-```
-
-### String Concatenation
-```ez
-firstName = "John"
-lastName = "Doe"
-fullName = firstName + " " + lastName
-out fullName  // John Doe
-```
+| `/` | Division | `6 / 3` → `2` |
+| `%` | Modulo | `5 % 3` → `2` |
 
 ### Comparison Operators
-| Operator | Word Form | Description | Example |
-|----------|-----------|-------------|---------|
-| `==` | `equal` | Equal to | `x equal 5` |
-| `!=` |`notequal` | Not equal to | `x != 5` |
-| `<` | `less` | Less than | `x less 10` |
-| `>` | `greater` | Greater than | `x greater 5` |
-| `<=` | `lessthen` | Less than or equal | `x lessthen 10` |
-| `>=` | `greaterthen` | Greater than or equal | `x greaterthen 5` |
 
-```ez
-when x equal 10 {
-    out "x is 10"
-}
-
-when age greater 18 {
-    out "Adult"
-}
-```
+| EZ Operator | Symbol | Description |
+|-------------|--------|-------------|
+| `equal` | `==` | Equal to |
+| `notequal` | `!=` | Not equal to |
+| `greater` | `>` | Greater than |
+| `less` | `<` | Less than |
+| `greaterthen` | `>=` | Greater than or equal |
+| `lessthen` | `<=` | Less than or equal |
 
 ### Logical Operators
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `and` | Logical AND | `x > 0 and x < 10` |
-| `or` | Logical OR | `x equal 5 or x equal 10` |
-| `not` | Logical NOT | `not isActive` |
 
-```ez
-when age greater 18 and hasLicense equal yes {
-    out "Can drive"
-}
-```
-
-**Note:** EZ uses short-circuit evaluation - the right side of `and`/`or` is only evaluated if necessary.
-
-### Increment/Decrement
-```ez
-x = 5
-x++     // x becomes 6
-x--     // x becomes 5
-```
+| EZ Operator | Symbol | Description |
+|-------------|--------|-------------|
+| `and` | `&&` | Both must be true |
+| `or` | `\|\|` | At least one true |
+| `not` | `!` | Negation |
 
 ---
 
 ## Control Flow
 
-### If-Else Statement
+### If Statement (`when`)
 
-**Keyword:** `when` (if), `other` (else)
-
-```ez
-when condition {
-    // code if true
-}
-
-when condition {
-    // code if true
-} other {
-    // code if false
-}
 ```
-
-**Example:**
-```ez
 age = 20
 
-when age greater 18 {
+when age greaterthen 18 {
     out "You are an adult"
-} other {
-    out "You are a minor"
 }
 ```
 
-**Nested Conditions:**
-```ez
-score = 85
+### If-Else (`when` / `other`)
+
+```
+age = 15
+
+when age greaterthen 18 {
+    out "Adult"
+} other {
+    out "Minor"
+}
+```
+
+### If-Else If-Else
+
+```
+score = 75
 
 when score greaterthen 90 {
     out "Grade: A"
+} other when score greaterthen 80 {
+    out "Grade: B"
+} other when score greaterthen 70 {
+    out "Grade: C"
 } other {
-    when score greaterthen 80 {
-        out "Grade: B"
-    } other {
-        out "Grade: C"
-    }
+    out "Grade: F"
 }
 ```
 
@@ -215,93 +249,92 @@ when score greaterthen 90 {
 
 ## Loops
 
-### For Loop (Range-Based)
+### For Loop (`repeat`)
 
-**Keyword:** `repeat...to`
-
-```ez
-repeat variable = start to end {
-    // code
-}
 ```
-
-**Example:**
-```ez
+// Count from 1 to 5
 repeat i = 1 to 5 {
     out i
 }
-// Output: 1 2 3 4 5
 ```
 
-**Countdown:**
-```ez
-repeat i = 5 to 1 {
-    out i
-}
+Output:
+```
+1
+2
+3
+4
+5
 ```
 
-### While Loop
+### While Loop (`until`)
 
-**Keyword:** `until`
-
-```ez
-until condition {
-    // code
-}
 ```
-
-**Example:**
-```ez
-x = 0
-until x less 5 {
+x = 5
+until x equal 0 {
     out x
-    x++
+    x = x - 1
 }
-// Output: 0 1 2 3 4
 ```
 
-**Infinite Loop (use with caution):**
-```ez
-until yes {
-    out "Running..."
-    // Remember to use 'escape' to break!
+Output:
+```
+5
+4
+3
+2
+1
+```
+
+### Foreach Loop (`get`)
+
+```
+fruits = ["apple", "banana", "orange"]
+get fruit in fruits {
+    out fruit
 }
 ```
 
 ### Loop Control
 
-**Keywords:** `escape` (break), `skip` (continue)
-
-```ez
+**Break out of loop:**
+```
 repeat i = 1 to 10 {
     when i equal 5 {
-        skip    // Skip iteration when i is 5
-    }
-    when i equal 8 {
-        escape  // Exit loop when i is 8
+        escape
     }
     out i
 }
-// Output: 1 2 3 4 6 7
+```
+
+**Skip to next iteration:**
+```
+repeat i = 1 to 5 {
+    when i equal 3 {
+        skip
+    }
+    out i
+}
 ```
 
 ---
 
 ## Functions
 
-### Function Definition
+### Defining Functions (`task`)
 
-**Keyword:** `task` (function), `give` (return)
-
-```ez
-task functionName(param1, param2) {
-    // code
-    give result
+```
+task greet(name) {
+    out "Hello, " + name + "!"
 }
+
+// Call the function
+greet("World")
 ```
 
-**Example:**
-```ez
+### Return Values (`give`)
+
+```
 task add(a, b) {
     give a + b
 }
@@ -310,17 +343,19 @@ result = add(5, 3)
 out result  // 8
 ```
 
-### Functions Without Return
-```ez
-task greet(name) {
-    out "Hello, " + name + "!"
+### Multiple Parameters
+
+```
+task introduce(name, age, city) {
+    out name + " is " + age + " years old from " + city
 }
 
-greet("Alice")  // Hello, Alice!
+introduce("Abdullah", 25, "Lahore")
 ```
 
 ### Recursive Functions
-```ez
+
+```
 task factorial(n) {
     when n lessthen 2 {
         give 1
@@ -331,355 +366,201 @@ task factorial(n) {
 out factorial(5)  // 120
 ```
 
-**Note:** Maximum recursion depth is 1000 to prevent stack overflow.
-
 ---
 
 ## Arrays
 
 ### Creating Arrays
-```ez
+
+```
 numbers = [1, 2, 3, 4, 5]
-empty = []
+names = ["Alice", "Bob", "Charlie"]
+mixed = [1, "hello", yes, 3.14]
 ```
 
 ### Accessing Elements
-```ez
-numbers = [10, 20, 30, 40]
-out numbers[0]  // 10
-out numbers[2]  // 30
+
+```
+fruits = ["apple", "banana", "orange"]
+out fruits[0]  // apple
+out fruits[1]  // banana
 ```
 
-**Note:** Arrays are 0-indexed (first element is at index 0).
+### Array Operations
 
-### Modifying Elements
-```ez
-numbers = [1, 2, 3]
-numbers[1] = 99
-out numbers[1]  // 99
+```
+colors = ["red", "green"]
+
+// Add element
+add(colors, "blue")
+
+// Remove element
+remove(colors, 0)
+
+// Get length
+out len(colors)
 ```
 
-### Arrays in Loops
-```ez
-colors = ["red", "green", "blue"]
+### Iterating Arrays
 
-repeat i = 0 to 2 {
-    out colors[i]
+```
+numbers = [10, 20, 30, 40, 50]
+
+get num in numbers {
+    out num * 2
 }
 ```
 
 ---
 
-## Input/Output
+## Built-in Functions
 
-### Output
-
-**Keyword:** `out`
-
-```ez
-out "Hello"
-out 42
-out 3.14
-
-x = 100
-out x
-
-out "Result: " + x
-```
-
-### Input
-
-**Keyword:** `in`
-
-```ez
-in variableName
-```
-
-**Example:**
-```ez
-out "Enter your name: "
-in name
-out "Hello, " + name + "!"
-
-out "Enter your age: "
-in age
-out "You are " + age + " years old"
-```
-
-**Note:** Input is automatically parsed as a number if possible, otherwise stored as a string.
+| Function | Description | Example |
+|----------|-------------|---------|
+| `len(x)` | Get length | `len("hello")` → `5` |
+| `add(arr, val)` | Add to array | `add(list, "item")` |
+| `remove(arr, idx)` | Remove from array | `remove(list, 0)` |
+| `clock()` | Get current time | `time = clock()` |
+| `stop(ms)` | Pause execution | `stop(1000)` |
 
 ---
 
-## Comments
+## VS Code Extension
 
-Use `//` for single-line comments:
+### Installation
 
-```ez
-// This is a comment
-x = 10  // Variable assignment
+1. Download `ez-language.vsix`
+2. Open VS Code
+3. Press `Ctrl + Shift + X`
+4. Click `...` → **Install from VSIX...**
+5. Select the file
 
-// This is ignored
-// Multiple comment lines
-```
+### Available Snippets
+
+Type these prefixes and press `Tab`:
+
+| Prefix | Expands To |
+|--------|------------|
+| `when` | If statement |
+| `whenother` | If-else statement |
+| `repeat` | For loop |
+| `until` | While loop |
+| `task` | Function definition |
+| `get` | Foreach loop |
+| `out` | Print statement |
+| `in` | Input statement |
 
 ---
 
-## Complete Examples
+## Examples
 
-### Example 1: Calculator
-```ez
-task calculator(a, b, op) {
-    when op equal "+" {
-        give a + b
-    }
-    when op equal "-" {
-        give a - b
-    }
-    when op equal "*" {
-        give a * b
-    }
-    when op equal "/" {
-        give a / b
-    }
-    give 0
-}
+### Calculator
 
-out calculator(10, 5, "+")   // 15
-out calculator(10, 5, "*")   // 50
 ```
+out "Simple Calculator"
+out "Enter first number:"
+in num1
+out "Enter second number:"
+in num2
+out "Enter operation (+, -, *, /):"
+in op
 
-### Example 2: Fizz Buzz
-```ez
-repeat i = 1 to 20 {
-    when i % 15 equal 0 {
-        out "FizzBuzz"
-    } other {
-        when i % 3 equal 0 {
-            out "Fizz"
-        } other {
-            when i % 5 equal 0 {
-                out "Buzz"
-            } other {
-                out i
-            }
-        }
-    }
+when op equal "+" {
+    out num1 + num2
+} other when op equal "-" {
+    out num1 - num2
+} other when op equal "*" {
+    out num1 * num2
+} other when op equal "/" {
+    out num1 / num2
 }
 ```
 
-### Example 3: Fibonacci Sequence
-```ez
-task fibonacci(n) {
+### Fibonacci Sequence
+
+```
+task fib(n) {
     when n lessthen 2 {
         give n
     }
-    give fibonacci(n - 1) + fibonacci(n - 2)
+    give fib(n - 1) + fib(n - 2)
 }
 
+out "Fibonacci Sequence:"
 repeat i = 0 to 10 {
-    out fibonacci(i)
+    out fib(i)
 }
 ```
 
-### Example 4: Array Sum
-```ez
-task sumArray(arr, size) {
-    total = 0
-    repeat i = 0 to size - 1 {
-        total = total + arr[i]
+### Prime Checker
+
+```
+task isPrime(n) {
+    when n lessthen 2 {
+        give no
     }
-    give total
+    repeat i = 2 to n - 1 {
+        when n % i equal 0 {
+            give no
+        }
+    }
+    give yes
 }
 
-numbers = [10, 20, 30, 40, 50]
-result = sumArray(numbers, 5)
-out "Sum: " + result  // Sum: 150
+repeat num = 1 to 20 {
+    when isPrime(num) {
+        out num + " is prime"
+    }
+}
 ```
 
-### Example 5: Guessing Game
-```ez
-secret = 42
-guesses = 0
+### Guess the Number
 
-out "Guess the number (1-100):"
+```
+secret = 7
 
-until no {
-    in guess
-    guesses++
-    
-    when guess equal secret {
-        out "Correct! You won in " + guesses + " guesses!"
-        escape
-    }
-    
+out "Guess the number (1-10):"
+in guess
+
+until guess equal secret {
     when guess less secret {
         out "Too low! Try again:"
     } other {
         out "Too high! Try again:"
     }
-}
-```
-
-### Example 6: Temperature Converter
-```ez
-task celsiusToFahrenheit(c) {
-    give (c * 9 / 5) + 32
+    in guess
 }
 
-task fahrenheitToCelsius(f) {
-    give (f - 32) * 5 / 9
-}
-
-out "Enter temperature in Celsius:"
-in temp
-out temp + "°C = " + celsiusToFahrenheit(temp) + "°F"
+out "Congratulations! You got it!"
 ```
 
 ---
 
-## Keywords Reference
-
-| Keyword | Purpose | Example |
-|---------|---------|---------|
-| `out` | Print output | `out "Hello"` |
-| `in` | Get input | `in name` |
-| `when` | If statement | `when x > 5 { }` |
-| `other` | Else statement | `other { }` |
-| `repeat` | For loop | `repeat i = 1 to 10 { }` |
-| `to` | Range end in loop | `repeat i = 1 to 10` |
-| `until` | While loop | `until x < 10 { }` |
-| `task` | Define function | `task add(a, b) { }` |
-| `give` | Return value | `give result` |
-| `escape` | Break from loop | `escape` |
-| `skip` | Continue loop | `skip` |
-| `yes` | Boolean true | `isActive = yes` |
-| `no` | Boolean false | `isActive = no` |
-| `and` | Logical AND | `x > 0 and x < 10` |
-| `or` | Logical OR | `x equal 5 or x equal 10` |
-| `not` | Logical NOT | `not isActive` |
-| `equal` | Equality comparison | `x equal 5` |
-| `greater` | Greater than | `x greater 5` |
-| `greaterthen` | Greater than or equal | `x greaterthen 5` |
-| `less` | Less than | `x less 10` |
-| `lessthen` | Less than or equal | `x lessthen 10` |
-
----
-
-## Error Handling
-
-EZ provides detailed error messages with line numbers:
-
-```
-Error on line 5: Division by zero
-Error on line 12: Undefined variable: count
-Error on line 8: Array index out of bounds: 10
-```
+## Troubleshooting
 
 ### Common Errors
 
-1. **Division by Zero**
-   ```ez
-   x = 10 / 0  // Error!
-   ```
+**"ez is not recognized"**
+- Make sure you added the EZ folder to your PATH
+- Open a new Command Prompt after adding to PATH
 
-2. **Undefined Variable**
-   ```ez
-   out myVar  // Error if myVar not defined
-   ```
+**"File not found"**
+- Check that the file extension is `.ez`
+- Make sure you're in the correct directory
 
-3. **Array Out of Bounds**
-   ```ez
-   arr = [1, 2, 3]
-   out arr[5]  // Error!
-   ```
+**Syntax errors**
+- Check for matching braces `{ }`
+- Ensure strings are in double quotes `"`
+- Verify keyword spelling
 
-4. **Type Mismatch**
-   ```ez
-   x = "text" - 5  // Error!
-   ```
+### Getting Help
 
-5. **Maximum Recursion**
-   ```ez
-   task infinite() {
-       give infinite()  // Error after 1000 calls
-   }
-   ```
+- Visit the [GitHub repository](https://github.com/imabd645/EZ-language)
+- Check the [examples folder](examples/)
+- Open an issue for bugs
 
 ---
 
-## Tips and Best Practices
-
-1. **Use meaningful variable names**
-   ```ez
-   // Good
-   userName = "Alice"
-   totalScore = 100
-   
-   // Bad
-   x = "Alice"
-   y = 100
-   ```
-
-2. **Comment your code**
-   ```ez
-   // Calculate area of circle
-   radius = 5
-   area = 3.14159 * radius * radius
-   ```
-
-3. **Keep functions small and focused**
-   ```ez
-   // Do one thing well
-   task square(n) {
-       give n * n
-   }
-   ```
-
-4. **Use arrays for collections**
-   ```ez
-   // Instead of score1, score2, score3...
-   scores = [95, 87, 92, 88, 91]
-   ```
-
-5. **Check conditions before operations**
-   ```ez
-   when divisor != 0 {
-       result = dividend / divisor
-   }
-   ```
-
----
-
-## Limitations
-
-- Maximum recursion depth: 1000 levels
-- No file I/O operations
-- No object-oriented features
-- No string slicing/manipulation functions
-- Arrays cannot be resized dynamically
-
----
-
-## Contributing
-
-Found a bug or want to add a feature? Contributions are welcome!
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
----
-
-## License
-
-This project is open source and available under the MIT License.
-
----
-
-## Support
-
-For questions, issues, or suggestions, please open an issue on GitHub.
-
-Happy coding with EZ! 🚀
+<p align="center">
+  <b>Happy Coding with EZ! 🚀</b>
+</p>

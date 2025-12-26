@@ -164,18 +164,7 @@ Get syntax highlighting and code snippets for EZ Language in VS Code!
 - ✅ Auto-completion
 - ✅ Comment support
 
-## 📁 Project Structure
 
-```
-EZ-language/
-├── ez.exe              # EZ interpreter
-├── ez-language/        # VS Code extension
-│   ├── package.json
-│   ├── syntaxes/
-│   └── snippets/
-├── examples/           # Sample EZ programs
-└── README.md
-```
 
 ## 🤝 Contributing
 
@@ -194,8 +183,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Abdullah Masood**
 
 - GitHub: [@imabd645](https://github.com/imabd645)
-- LinkedIn: [imabd645](https://linkedin.com/in/imabd645)
-- Email: abdullahmasood645@gmail.com
+- LinkedIn: [Abdullah Masood](https://www.linkedin.com/in/abdullah-masood-3056a5379)
+- Email: imabd645@gmail.com
 
 ---
 

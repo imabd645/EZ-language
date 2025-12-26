@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Primary SEO Tags -->
+    <title>EZ Language Documentation - Complete Guide</title>
+    <meta name="title" content="EZ Language Documentation - Complete Programming Guide">
+    <meta name="description"
+        content="Complete documentation for EZ Language. Learn syntax, keywords, loops, functions, and more. Step-by-step installation guide included.">
+    <meta name="keywords"
+        content="EZ Language documentation, EZ tutorial, learn EZ programming, EZ syntax, programming guide">
+    <meta name="author" content="Abdullah Masood">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="EZ Language Documentation">
+    <meta property="og:description" content="Complete documentation for EZ Language programming.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Documentation-specific styles */
+        .docs-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 120px 24px 80px;
+        }
+
+        .docs-nav {
+            position: fixed;
+            left: 24px;
+            top: 120px;
+            width: 220px;
+            background: var(--bg-card);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            max-height: calc(100vh - 160px);
+            overflow-y: auto;
+            display: none;
+        }
+
+        @media (min-width: 1400px) {
+            .docs-nav {
+                display: block;
+            }
+        }
+
+        .docs-nav h4 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .docs-nav a {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            padding: 8px 0;
+            border-left: 2px solid transparent;
+            padding-left: 12px;
+            margin-left: -12px;
+            transition: all var(--transition-fast);
+        }
+
+        .docs-nav a:hover {
+            color: var(--accent-purple);
+            border-left-color: var(--accent-purple);
+        }
+
+        .docs-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .docs-content h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 60px 0 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .docs-content h2:first-child {
+            margin-top: 0;
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .docs-content h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 40px 0 16px;
+            color: var(--accent-purple);
+        }
+
+        .docs-content p {
+            color: var(--text-secondary);
+            line-height: 1.8;
+            margin-bottom: 16px;
+        }
+
+        .docs-content ul,
+        .docs-content ol {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            padding-left: 24px;
+        }
+
+        .docs-content li {
+            margin-bottom: 8px;
+            line-height: 1.7;
+        }
+
+        .docs-content pre {
+            background: var(--bg-tertiary);
+            border-radius: var(--border-radius-sm);
+            padding: 20px;
+            margin: 24px 0;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .docs-content code {
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .docs-content pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .docs-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+
+        .docs-table th,
+        .docs-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .docs-table th {
+            background: var(--bg-tertiary);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .docs-table td {
+            color: var(--text-secondary);
+        }
+
+        .docs-table td code {
+            color: var(--code-keyword);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent-purple);
+            font-weight: 500;
+            margin-bottom: 32px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .keyword-highlight {
+            color: var(--code-keyword);
+        }
+
+        .string-highlight {
+            color: var(--code-string);
+        }
+
+        .number-highlight {
+            color: var(--code-number);
+        }
+
+        .comment-highlight {
+            color: var(--code-comment);
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <span class="logo-icon">⚡</span>
+                <span class="logo-text">EZ</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="index.html#features" class="nav-link">Features</a></li>
+                <li><a href="index.html#snippets" class="nav-link">Examples</a></li>
+                <li><a href="index.html#installation" class="nav-link">Installation</a></li>
+                <li><a href="index.html#about" class="nav-link">About</a></li>
+            </ul>
+            <a href="index.html#download" class="nav-cta">Download</a>
+        </div>
+    </nav>
+
+    <div class="docs-container">
+        <a href="index.html" class="back-link">← Back to Home</a>
+
+        <div class="docs-header">
+            <span class="section-badge">Documentation</span>
+            <h1 class="section-title">EZ Language <span class="gradient-text">Guide</span></h1>
+            <p class="section-subtitle">Everything you need to master EZ programming</p>
+        </div>
+
+        <div class="docs-content">
+            <h2 id="introduction">Introduction</h2>
+            <p>EZ Language is a beginner-friendly programming language designed to make learning to code as easy as
+                possible. It uses intuitive, human-readable keywords that feel natural to write and read.</p>
+
+            <h3>Why EZ?</h3>
+            <ul>
+                <li><strong>Natural Syntax</strong> - Keywords like <code>when</code>, <code>repeat</code>, and
+                    <code>task</code> read like English</li>
+                <li><strong>No Semicolons</strong> - Focus on your logic, not punctuation</li>
+                <li><strong>Readable Booleans</strong> - Use <code>yes</code> and <code>no</code> instead of
+                    <code>true/false</code></li>
+                <li><strong>Quick Learning Curve</strong> - Start coding in minutes, not hours</li>
+            </ul>
+
+            <h2 id="installation">Installation</h2>
+
+            <h3>Step 1: Download EZ Interpreter</h3>
+            <p>Download <code>ez.exe</code> from the <a href="index.html#download">downloads section</a>.</p>
+
+            <h3>Step 2: Create Installation Folder</h3>
+            <p>Create a folder for EZ Language:</p>
+            <pre>C:\EZ</pre>
+            <p>Move <code>ez.exe</code> to this folder.</p>
+
+            <h3>Step 3: Add to System PATH</h3>
+            <ol>
+                <li>Press <code>Win + R</code> to open Run dialog</li>
+                <li>Type <code>sysdm.cpl</code> and press Enter</li>
+                <li>Click the <strong>Advanced</strong> tab</li>
+                <li>Click <strong>Environment Variables</strong></li>
+                <li>Under <strong>System variables</strong>, find <strong>Path</strong> and click <strong>Edit</strong>
+                </li>
+                <li>Click <strong>New</strong> and add: <code>C:\EZ</code></li>
+                <li>Click <strong>OK</strong> on all dialogs</li>
+            </ol>
+
+            <h3>Step 4: Verify Installation</h3>
+            <p>Open a new Command Prompt and type:</p>
+            <pre>ez --version</pre>
+
+            <h2 id="basics">Language Basics</h2>
+
+            <h3>Comments</h3>
+            <pre><span class="comment-highlight">// This is a single-line comment</span></pre>
+
+            <h3>Output</h3>
+            <p>Use <code>out</code> to print to the console:</p>
+            <pre><span class="keyword-highlight">out</span> <span class="string-highlight">"Hello, World!"</span>
+<span class="keyword-highlight">out</span> <span class="number-highlight">42</span>
+<span class="keyword-highlight">out</span> <span class="string-highlight">"The answer is: "</span> + <span class="number-highlight">42</span></pre>
+
+            <h3>Input</h3>
+            <p>Use <code>in</code> to get user input:</p>
+            <pre><span class="keyword-highlight">out</span> <span class="string-highlight">"What is your name?"</span>
+<span class="keyword-highlight">in</span> name
+<span class="keyword-highlight">out</span> <span class="string-highlight">"Hello, "</span> + name + <span class="string-highlight">"!"</span></pre>
+
+            <h2 id="variables">Variables & Data Types</h2>
+            <p>Variables are created by assignment:</p>
+            <pre>name = <span class="string-highlight">"Abdullah"</span>
+age = <span class="number-highlight">25</span>
+pi = <span class="number-highlight">3.14159</span>
+isStudent = <span class="keyword-highlight">yes</span></pre>
+
+            <table class="docs-table">
+                <tr>
+                    <th>Type</th>
+                    <th>Example</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>String</td>
+                    <td><code>"Hello"</code></td>
+                    <td>Text in quotes</td>
+                </tr>
+                <tr>
+                    <td>Number</td>
+                    <td><code>42</code>, <code>3.14</code></td>
+                    <td>Integers and decimals</td>
+                </tr>
+                <tr>
+                    <td>Boolean</td>
+                    <td><code>yes</code>, <code>no</code></td>
+                    <td>True/false values</td>
+                </tr>
+                <tr>
+                    <td>Array</td>
+                    <td><code>[1, 2, 3]</code></td>
+                    <td>Collection of values</td>
+                </tr>
+            </table>
+
+            <h2 id="operators">Operators</h2>
+
+            <h3>Comparison Operators</h3>
+            <table class="docs-table">
+                <tr>
+                    <th>EZ Operator</th>
+                    <th>Symbol</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>equal</code></td>
+                    <td>==</td>
+                    <td>Equal to</td>
+                </tr>
+                <tr>
+                    <td><code>notequal</code></td>
+                    <td>!=</td>
+                    <td>Not equal to</td>
+                </tr>
+                <tr>
+                    <td><code>greater</code></td>
+                    <td>></td>
+                    <td>Greater than</td>
+                </tr>
+                <tr>
+                    <td><code>less</code></td>
+                    <td>
+                        << /td>
+                    <td>Less than</td>
+                </tr>
+                <tr>
+                    <td><code>greaterthen</code></td>
+                    <td>>=</td>
+                    <td>Greater than or equal</td>
+                </tr>
+                <tr>
+                    <td><code>lessthen</code></td>
+                    <td>
+                        <=< /td>
+                    <td>Less than or equal</td>
+                </tr>
+            </table>
+
+            <h3>Logical Operators</h3>
+            <table class="docs-table">
+                <tr>
+                    <th>EZ Operator</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>and</code></td>
+                    <td>Both must be true</td>
+                </tr>
+                <tr>
+                    <td><code>or</code></td>
+                    <td>At least one true</td>
+                </tr>
+                <tr>
+                    <td><code>not</code></td>
+                    <td>Negation</td>
+                </tr>
+            </table>
+
+            <h2 id="control-flow">Control Flow</h2>
+
+            <h3>If Statement (<code>when</code>)</h3>
+            <pre>age = <span class="number-highlight">20</span>
+
+<span class="keyword-highlight">when</span> age <span class="keyword-highlight">greaterthen</span> <span class="number-highlight">18</span> {
+    <span class="keyword-highlight">out</span> <span class="string-highlight">"You are an adult"</span>
+}</pre>
+
+            <h3>If-Else</h3>
+            <pre>age = <span class="number-highlight">15</span>
+
+<span class="keyword-highlight">when</span> age <span class="keyword-highlight">greaterthen</span> <span class="number-highlight">18</span> {
+    <span class="keyword-highlight">out</span> <span class="string-highlight">"Adult"</span>
+} <span class="keyword-highlight">other</span> {
+    <span class="keyword-highlight">out</span> <span class="string-highlight">"Minor"</span>
+}</pre>
+
+            <h2 id="loops">Loops</h2>
+
+            <h3>For Loop (<code>repeat</code>)</h3>
+            <pre><span class="comment-highlight">// Count from 1 to 5</span>
+<span class="keyword-highlight">repeat</span> i = <span class="number-highlight">1</span> <span class="keyword-highlight">to</span> <span class="number-highlight">5</span> {
+    <span class="keyword-highlight">out</span> i
+}</pre>
+
+            <h3>While Loop (<code>until</code>)</h3>
+            <pre>x = <span class="number-highlight">5</span>
+<span class="keyword-highlight">until</span> x <span class="keyword-highlight">equal</span> <span class="number-highlight">0</span> {
+    <span class="keyword-highlight">out</span> x
+    x = x - <span class="number-highlight">1</span>
+}</pre>
+
+            <h3>Foreach Loop (<code>get</code>)</h3>
+            <pre>fruits = [<span class="string-highlight">"apple"</span>, <span class="string-highlight">"banana"</span>, <span class="string-highlight">"orange"</span>]
+<span class="keyword-highlight">get</span> fruit <span class="keyword-highlight">in</span> fruits {
+    <span class="keyword-highlight">out</span> fruit
+}</pre>
+
+            <h2 id="functions">Functions</h2>
+
+            <h3>Defining Functions (<code>task</code>)</h3>
+            <pre><span class="keyword-highlight">task</span> greet(name) {
+    <span class="keyword-highlight">out</span> <span class="string-highlight">"Hello, "</span> + name + <span class="string-highlight">"!"</span>
+}
+
+greet(<span class="string-highlight">"World"</span>)</pre>
+
+            <h3>Return Values (<code>give</code>)</h3>
+            <pre><span class="keyword-highlight">task</span> add(a, b) {
+    <span class="keyword-highlight">give</span> a + b
+}
+
+result = add(<span class="number-highlight">5</span>, <span class="number-highlight">3</span>)
+<span class="keyword-highlight">out</span> result  <span class="comment-highlight">// 8</span></pre>
+
+            <h2 id="arrays">Arrays</h2>
+            <pre><span class="comment-highlight">// Creating arrays</span>
+numbers = [<span class="number-highlight">1</span>, <span class="number-highlight">2</span>, <span class="number-highlight">3</span>, <span class="number-highlight">4</span>, <span class="number-highlight">5</span>]
+names = [<span class="string-highlight">"Alice"</span>, <span class="string-highlight">"Bob"</span>, <span class="string-highlight">"Charlie"</span>]
+
+<span class="comment-highlight">// Accessing elements</span>
+<span class="keyword-highlight">out</span> numbers[<span class="number-highlight">0</span>]  <span class="comment-highlight">// 1</span>
+
+<span class="comment-highlight">// Iterating</span>
+<span class="keyword-highlight">get</span> num <span class="keyword-highlight">in</span> numbers {
+    <span class="keyword-highlight">out</span> num * <span class="number-highlight">2</span>
+}</pre>
+
+            <h2 id="examples">Complete Examples</h2>
+
+            <h3>Fibonacci Sequence</h3>
+            <pre><span class="keyword-highlight">task</span> fib(n) {
+    <span class="keyword-highlight">when</span> n <span class="keyword-highlight">lessthen</span> <span class="number-highlight">2</span> {
+        <span class="keyword-highlight">give</span> n
+    }
+    <span class="keyword-highlight">give</span> fib(n - <span class="number-highlight">1</span>) + fib(n - <span class="number-highlight">2</span>)
+}
+
+<span class="keyword-highlight">repeat</span> i = <span class="number-highlight">0</span> <span class="keyword-highlight">to</span> <span class="number-highlight">10</span> {
+    <span class="keyword-highlight">out</span> fib(i)
+}</pre>
+
+            <h3>Simple Calculator</h3>
+            <pre><span class="keyword-highlight">out</span> <span class="string-highlight">"Enter first number:"</span>
+<span class="keyword-highlight">in</span> num1
+<span class="keyword-highlight">out</span> <span class="string-highlight">"Enter second number:"</span>
+<span class="keyword-highlight">in</span> num2
+<span class="keyword-highlight">out</span> <span class="string-highlight">"Enter operation (+, -, *, /):"</span>
+<span class="keyword-highlight">in</span> op
+
+<span class="keyword-highlight">when</span> op <span class="keyword-highlight">equal</span> <span class="string-highlight">"+"</span> {
+    <span class="keyword-highlight">out</span> num1 + num2
+} <span class="keyword-highlight">other</span> <span class="keyword-highlight">when</span> op <span class="keyword-highlight">equal</span> <span class="string-highlight">"-"</span> {
+    <span class="keyword-highlight">out</span> num1 - num2
+} <span class="keyword-highlight">other</span> <span class="keyword-highlight">when</span> op <span class="keyword-highlight">equal</span> <span class="string-highlight">"*"</span> {
+    <span class="keyword-highlight">out</span> num1 * num2
+} <span class="keyword-highlight">other</span> {
+    <span class="keyword-highlight">out</span> num1 / num2
+}</pre>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-bottom">
+                <p>&copy; 2024 EZ Language. Created by Abdullah Masood. Licensed under MIT.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

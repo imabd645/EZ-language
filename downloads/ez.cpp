@@ -2241,29 +2241,46 @@ if (cur().type == IDENT)
     }
 
     if (cur().type == LBRACKET)
-    {
-        next();
-        Value idx = logicalOr();
-        if (cur().type != RBRACKET)
-            error("Expected ']'", cur().line);
-        next();
+        {
+            next();
+            Value idx = logicalOr();
+            if (cur().type != RBRACKET)
+                error("Expected ']'", cur().line);
+            next();
 
-        Value arr = getVar(n);
-        if (arr.type != Value::ARR)
-            error("Not an array: " + n, cur().line);
-        int i = (int)idx.toNumber();
-        if (i < 0 || i >= (int)arr.arr.size())
-            error("Array index out of bounds: " + to_string(i), cur().line);
-        return arr.arr[i];
+            Value variable = getVar(n);
+            
+            // Handle array indexing (existing)
+            if (variable.type == Value::ARR)
+            {
+                int i = (int)idx.toNumber();
+                if (i < 0 || i >= (int)variable.arr.size())
+                    error("Array index out of bounds: " + to_string(i), cur().line);
+                return variable.arr[i];
+            }
+            // NEW: Handle string indexing
+            else if (variable.type == Value::STR)
+            {
+                int i = (int)idx.toNumber();
+                if (i < 0 || i >= (int)variable.str.length())
+                    error("String index out of bounds: " + to_string(i), cur().line);
+                // Return single character as a string
+                return Value::String(string(1, variable.str[i]));
+            }
+            else
+            {
+                error("Cannot index type, only arrays and strings can be indexed", callLine);
+            }
+        }
+
+        if (functions.count(n))
+        {
+            return Value::FuncRef(n);
+        }
+
+        return getVar(n);
     }
 
-    if (functions.count(n))
-    {
-        return Value::FuncRef(n);
-    }
-
-    return getVar(n);
-}
 
 error("Unexpected token: " + cur().text, cur().line);
 return Value::Number(0);
@@ -2962,36 +2979,60 @@ return Value::Number(0);
 
         
         if (cur().type == IDENT)
+    {
+        string varName = cur().text;
+        int line = cur().line;
+        next();
+
+        // ===== MODIFIED: Handle string[index] = value =====
+        if (cur().type == LBRACKET)
         {
-            string varName = cur().text;
-            int line = cur().line;
+            next();
+            Value idx = logicalOr();
+            if (cur().type != RBRACKET)
+                error("Expected ']'", cur().line);
             next();
 
-           
-            if (cur().type == LBRACKET)
+            if (cur().type == ASSIGN)
             {
                 next();
-                Value idx = logicalOr();
-                if (cur().type != RBRACKET)
-                    error("Expected ']'", cur().line);
-                next();
-
-                if (cur().type == ASSIGN)
+                Value newVal = logicalOr();
+                Value variable = getVar(varName);
+                
+                // Handle array assignment (existing)
+                if (variable.type == Value::ARR)
                 {
-                    next();
-                    Value newVal = logicalOr();
-                    Value arr = getVar(varName);
-                    if (arr.type != Value::ARR)
-                        error("Not an array: " + varName, line);
                     int i = (int)idx.toNumber();
-                    if (i < 0 || i >= (int)arr.arr.size())
+                    if (i < 0 || i >= (int)variable.arr.size())
                         error("Array index out of bounds: " + to_string(i), line);
-                    arr.arr[i] = newVal;
-                    setVar(varName, arr);
+                    variable.arr[i] = newVal;
+                    setVar(varName, variable);
                     return;
                 }
-                error("Expected '=' after array index", cur().line);
+                // NEW: Handle string assignment
+                else if (variable.type == Value::STR)
+                {
+                    int i = (int)idx.toNumber();
+                    if (i < 0 || i >= (int)variable.str.length())
+                        error("String index out of bounds: " + to_string(i), line);
+                    
+                    // Convert newVal to string and get first character
+                    string newChar = newVal.toString();
+                    if (newChar.empty())
+                        error("Cannot assign empty string to character position", line);
+                    
+                    // Modify the string at position i
+                    variable.str[i] = newChar[0];
+                    setVar(varName, variable);
+                    return;
+                }
+                else
+                {
+                    error("Not an array or string: " + varName, line);
+                }
             }
+            error("Expected '=' after array/string index", cur().line);
+        }
 
             
             if (cur().type == ASSIGN)

@@ -145,25 +145,48 @@ vector<Token> tokenize(const string &src)
             continue;
         }
 
-       
+        // Comment handling
         if (src[i] == '/' && i + 1 < src.size() && src[i + 1] == '/')
         {
-            
+            // Check if it's integer division (//) vs comment (// )
             if (i + 2 < src.size() && src[i + 2] != '/' && !isspace(src[i + 2]))
             {
-                
                 tokens.push_back({INTT_DIV, "//", line});
                 i += 2;
                 continue;
             }
-          
+            // It's a comment, skip to end of line
             while (i < src.size() && src[i] != '\n')
                 i++;
             continue;
         }
 
-        
-        if (isdigit(src[i]) || (src[i] == '-' && i + 1 < src.size() && isdigit(src[i + 1])))
+        // Number tokenization - FIXED VERSION
+        // Only treat '-' as part of number if it appears after operators or at start
+        bool canBeNegative = tokens.empty() || 
+                            tokens.back().type == LPAREN ||
+                            tokens.back().type == LBRACKET ||
+                            tokens.back().type == COMMA ||
+                            tokens.back().type == ASSIGN ||
+                            tokens.back().type == PLUS ||
+                            tokens.back().type == MINUS ||
+                            tokens.back().type == MUL ||
+                            tokens.back().type == T_DIV ||
+                            tokens.back().type == INTT_DIV ||
+                            tokens.back().type == MOD ||
+                            tokens.back().type == POWER ||
+                            tokens.back().type == EQ ||
+                            tokens.back().type == NEQ ||
+                            tokens.back().type == LT ||
+                            tokens.back().type == GT ||
+                            tokens.back().type == LTE ||
+                            tokens.back().type == GTE ||
+                            tokens.back().type == T_AND ||
+                            tokens.back().type == T_OR ||
+                            tokens.back().type == T_NOT ||
+                            tokens.back().type == RETURN;
+
+        if (isdigit(src[i]) || (src[i] == '-' && canBeNegative && i + 1 < src.size() && isdigit(src[i + 1])))
         {
             string n;
             bool hasDot = false;
@@ -183,7 +206,7 @@ vector<Token> tokenize(const string &src)
             continue;
         }
 
-        
+        // String tokenization
         if (src[i] == '"')
         {
             i++;
@@ -217,29 +240,25 @@ vector<Token> tokenize(const string &src)
             continue;
         }
 
-        // Comparison keyword operators - check longer keywords first
-        // "greaterthan" for >= (correct spelling)
+        // Comparison keyword operators
         if (i + 11 <= src.size() && src.substr(i, 11) == "greaterthan")
         {
             tokens.push_back({GTE, ">=", line});
             i += 11;
             continue;
         }
-        // "greaterthen" for >= (legacy/typo - kept for backward compatibility)
         if (i + 11 <= src.size() && src.substr(i, 11) == "greaterthen")
         {
             tokens.push_back({GTE, ">=", line});
             i += 11;
             continue;
         }
-        // "lessthan" for <= (correct spelling)
         if (i + 8 <= src.size() && src.substr(i, 8) == "lessthan")
         {
             tokens.push_back({LTE, "<=", line});
             i += 8;
             continue;
         }
-        // "lessthen" for <= (legacy/typo - kept for backward compatibility)
         if (i + 8 <= src.size() && src.substr(i, 8) == "lessthen")
         {
             tokens.push_back({LTE, "<=", line});
@@ -271,7 +290,7 @@ vector<Token> tokenize(const string &src)
             continue;
         }
 
-       
+        // Keywords and identifiers
         if (isalpha(src[i]))
         {
             string id;
@@ -319,7 +338,7 @@ vector<Token> tokenize(const string &src)
             continue;
         }
 
-       
+        // Operators - rest remains the same
         if (src[i] == '+')
         {
             if (i + 1 < src.size() && src[i + 1] == '+')
@@ -357,24 +376,23 @@ vector<Token> tokenize(const string &src)
             continue;
         }
         if (src[i] == '*')
-{
-    if (i + 1 < src.size() && src[i + 1] == '*')
-    {
-        tokens.push_back({POWER, "**", line});
-        i += 2;
-        continue;
-    }
-    if (i + 1 < src.size() && src[i + 1] == '=')
-    {
-        tokens.push_back({MULEQ, "*=", line});
-        i += 2;
-        continue;
-    }
-    tokens.push_back({MUL, "*", line});
-    i++;
-    continue;
-}
-        
+        {
+            if (i + 1 < src.size() && src[i + 1] == '*')
+            {
+                tokens.push_back({POWER, "**", line});
+                i += 2;
+                continue;
+            }
+            if (i + 1 < src.size() && src[i + 1] == '=')
+            {
+                tokens.push_back({MULEQ, "*=", line});
+                i += 2;
+                continue;
+            }
+            tokens.push_back({MUL, "*", line});
+            i++;
+            continue;
+        }
         if (src[i] == '/')
         {
             if (i + 1 < src.size() && src[i + 1] == '=')
@@ -494,7 +512,6 @@ vector<Token> tokenize(const string &src)
     tokens.push_back({END, "", line});
     return tokens;
 }
-
 
 struct Value;
 using Closure = shared_ptr<unordered_map<string, Value>>;
@@ -2067,192 +2084,190 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
     }
 
     Value factor()
+{
+if (cur().type == LPAREN)
+{
+next();
+Value v = logicalOr();
+if (cur().type != RPAREN)
+error("Expected ')'", cur().line);
+next();
+return v;
+}
+if (cur().type == T_NOT)
+{
+    next();
+    Value v = factor();
+    return Value::Bool(!v.toBool());
+}
+
+if (cur().type == NUMBER)
+{
+    double v = stod(cur().text);
+    next();
+    return Value::Number(v);
+}
+
+if (cur().type == STRING)
+{
+    string v = cur().text;
+    next();
+    return Value::String(v);
+}
+
+if (cur().type == T_BOOL)
+{
+    bool v = (cur().text == "1");
+    next();
+    return Value::Bool(v);
+}
+
+if (cur().type == LBRACKET)
+{
+    next();
+    vector<Value> arr;
+    while (cur().type != RBRACKET && cur().type != END)
     {
-        if (cur().type == LPAREN)
+        arr.push_back(logicalOr());
+        if (cur().type == COMMA)
         {
             next();
-            Value v = logicalOr();
-            if (cur().type != RPAREN)
-                error("Expected ')'", cur().line);
-            next();
-            return v;
         }
-
-        if (cur().type == T_NOT)
+        else if (cur().type != RBRACKET)
         {
-            next();
-            Value v = factor();
-            return Value::Bool(!v.toBool());
+            error("Expected ',' or ']' in array literal", cur().line);
         }
-
-        if (cur().type == NUMBER)
-        {
-            double v = stod(cur().text);
-            next();
-            return Value::Number(v);
-        }
-
-        if (cur().type == STRING)
-        {
-            string v = cur().text;
-            next();
-            return Value::String(v);
-        }
-
-        if (cur().type == T_BOOL)
-        {
-            bool v = (cur().text == "1");
-            next();
-            return Value::Bool(v);
-        }
-
-        if (cur().type == LBRACKET)
-        {
-            next();
-            vector<Value> arr;
-            while (cur().type != RBRACKET && cur().type != END)
-            {
-                arr.push_back(logicalOr());
-                if (cur().type == COMMA)
-                {
-                    next();
-                }
-                else if (cur().type != RBRACKET)
-                {
-                    error("Expected ',' or ']' in array literal", cur().line);
-                }
-            }
-            if (cur().type != RBRACKET)
-                error("Expected ']'", cur().line);
-            next();
-            return Value::Array(arr);
-        }
-
-        
-        if (cur().type == FUNC)
-        {
-            next();
-            
-            if (cur().type != LPAREN)
-                error("Expected '(' after 'task' in lambda", cur().line);
-            next();
-            
-            vector<string> params;
-            while (cur().type != RPAREN && cur().type != END)
-            {
-                if (cur().type != IDENT)
-                    error("Expected parameter name", cur().line);
-                params.push_back(cur().text);
-                next();
-                if (cur().type == COMMA)
-                    next();
-            }
-            if (cur().type != RPAREN)
-                error("Expected ')' after parameters", cur().line);
-            next();
-            
-            
-            Closure captured = captureScope();
-            
-           
-            size_t bodyStart = p;
-            
-           
-            skipBlock();
-            
-            return Value::Func(params, bodyStart, captured);
-        }
-
-        if (cur().type == IDENT)
-        {
-            string n = cur().text;
-            int callLine = cur().line;
-            next();
-
-            if (cur().type == LPAREN)
-            {
-                next();
-                vector<Value> args;
-                while (cur().type != RPAREN && cur().type != END)
-                {
-                    args.push_back(logicalOr());
-                    if (cur().type == COMMA)
-                        next();
-                }
-                if (cur().type != RPAREN)
-                    error("Expected ')'", cur().line);
-                next();
-                
-               
-                if (varExists(n))
-                {
-                    Value v = getVar(n);
-                    if (v.type == Value::FUNC || v.type == Value::FUNC_REF)
-                    {
-                        Value result = callFunctionValue(v, args, callLine);
-                        
-                        while (cur().type == LPAREN)
-                        {
-                            next();
-                            vector<Value> chainArgs;
-                            while (cur().type != RPAREN && cur().type != END)
-                            {
-                                chainArgs.push_back(logicalOr());
-                                if (cur().type == COMMA)
-                                    next();
-                            }
-                            if (cur().type != RPAREN)
-                                error("Expected ')'", cur().line);
-                            next();
-                            result = callFunctionValue(result, chainArgs, callLine);
-                        }
-                        return result;
-                    }
-                }
-                
-                // Check if it's a defined function
-                if (functions.count(n))
-                {
-                    return callFunction(n, args);
-                }
-                
-                // Check if it's a builtin
-                if (builtins.count(n))
-                {
-                    return builtins[n](args, callLine);
-                }
-                
-                error("Undefined function: " + n, callLine);
-            }
-
-            if (cur().type == LBRACKET)
-            {
-                next();
-                Value idx = logicalOr();
-                if (cur().type != RBRACKET)
-                    error("Expected ']'", cur().line);
-                next();
-
-                Value arr = getVar(n);
-                if (arr.type != Value::ARR)
-                    error("Not an array: " + n, cur().line);
-                int i = (int)idx.toNumber();
-                if (i < 0 || i >= (int)arr.arr.size())
-                    error("Array index out of bounds: " + to_string(i), cur().line);
-                return arr.arr[i];
-            }
-
-            if (functions.count(n))
-            {
-                return Value::FuncRef(n);
-            }
-
-            return getVar(n);
-        }
-
-        error("Unexpected token: " + cur().text, cur().line);
-        return Value::Number(0);
     }
+    if (cur().type != RBRACKET)
+        error("Expected ']'", cur().line);
+    next();
+    return Value::Array(arr);
+}
+
+if (cur().type == FUNC)
+{
+    next();
+    
+    if (cur().type != LPAREN)
+        error("Expected '(' after 'task' in lambda", cur().line);
+    next();
+    
+    vector<string> params;
+    while (cur().type != RPAREN && cur().type != END)
+    {
+        if (cur().type != IDENT)
+            error("Expected parameter name", cur().line);
+        params.push_back(cur().text);
+        next();
+        if (cur().type == COMMA)
+            next();
+    }
+    if (cur().type != RPAREN)
+        error("Expected ')' after parameters", cur().line);
+    next();
+    
+    Closure captured = captureScope();
+    size_t bodyStart = p;
+    skipBlock();
+    
+    return Value::Func(params, bodyStart, captured);
+}
+
+if (cur().type == IDENT)
+{
+    string n = cur().text;
+    int callLine = cur().line;
+    next();
+
+    if (cur().type == LPAREN)
+    {
+        next();
+        vector<Value> args;
+        while (cur().type != RPAREN && cur().type != END)
+        {
+            args.push_back(logicalOr());
+            if (cur().type == COMMA)
+                next();
+        }
+        if (cur().type != RPAREN)
+            error("Expected ')'", cur().line);
+        next();
+        
+        Value result;
+        
+        // Check if it's a variable containing a function
+        if (varExists(n))
+        {
+            Value v = getVar(n);
+            if (v.type == Value::FUNC || v.type == Value::FUNC_REF)
+            {
+                result = callFunctionValue(v, args, callLine);
+                
+                // Handle chained function calls
+                while (cur().type == LPAREN)
+                {
+                    next();
+                    vector<Value> chainArgs;
+                    while (cur().type != RPAREN && cur().type != END)
+                    {
+                        chainArgs.push_back(logicalOr());
+                        if (cur().type == COMMA)
+                            next();
+                    }
+                    if (cur().type != RPAREN)
+                        error("Expected ')'", cur().line);
+                    next();
+                    result = callFunctionValue(result, chainArgs, callLine);
+                }
+                return result; // RETURN HERE instead of continuing
+            }
+        }
+        
+        // Check if it's a defined function
+        if (functions.count(n))
+        {
+            result = callFunction(n, args);
+            return result; // RETURN HERE - this was missing!
+        }
+        
+        // Check if it's a builtin
+        if (builtins.count(n))
+        {
+            result = builtins[n](args, callLine);
+            return result; // RETURN HERE - this was missing!
+        }
+        
+        error("Undefined function: " + n, callLine);
+    }
+
+    if (cur().type == LBRACKET)
+    {
+        next();
+        Value idx = logicalOr();
+        if (cur().type != RBRACKET)
+            error("Expected ']'", cur().line);
+        next();
+
+        Value arr = getVar(n);
+        if (arr.type != Value::ARR)
+            error("Not an array: " + n, cur().line);
+        int i = (int)idx.toNumber();
+        if (i < 0 || i >= (int)arr.arr.size())
+            error("Array index out of bounds: " + to_string(i), cur().line);
+        return arr.arr[i];
+    }
+
+    if (functions.count(n))
+    {
+        return Value::FuncRef(n);
+    }
+
+    return getVar(n);
+}
+
+error("Unexpected token: " + cur().text, cur().line);
+return Value::Number(0);
+}
 
     Value term()
 {

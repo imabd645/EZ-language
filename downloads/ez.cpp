@@ -2170,46 +2170,47 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
     };
     }
 
-    Value factor()
+                Value factor()
 {
-if (cur().type == LPAREN)
-{
-next();
-Value v = logicalOr();
-if (cur().type != RPAREN)
-error("Expected ')'", cur().line);
-next();
-return v;
-}
-if (cur().type == T_NOT)
-{
-    next();
-    Value v = factor();
-    return Value::Bool(!v.toBool());
-}
+    if (cur().type == LPAREN)
+    {
+        next();
+        Value v = logicalOr();
+        if (cur().type != RPAREN)
+            error("Expected ')'", cur().line);
+        next();
+        return v;
+    }
+    
+    if (cur().type == T_NOT)
+    {
+        next();
+        Value v = factor();
+        return Value::Bool(!v.toBool());
+    }
 
-if (cur().type == NUMBER)
-{
-    double v = stod(cur().text);
-    next();
-    return Value::Number(v);
-}
+    if (cur().type == NUMBER)
+    {
+        double v = stod(cur().text);
+        next();
+        return Value::Number(v);
+    }
 
-if (cur().type == STRING)
-{
-    string v = cur().text;
-    next();
-    return Value::String(v);
-}
+    if (cur().type == STRING)
+    {
+        string v = cur().text;
+        next();
+        return Value::String(v);
+    }
 
-if (cur().type == T_BOOL)
-{
-    bool v = (cur().text == "1");
-    next();
-    return Value::Bool(v);
-}
+    if (cur().type == T_BOOL)
+    {
+        bool v = (cur().text == "1");
+        next();
+        return Value::Bool(v);
+    }
 
-if (cur().type == LBRACKET)
+    if (cur().type == LBRACKET)
     {
         next();
         vector<Value> arr;
@@ -2231,58 +2232,55 @@ if (cur().type == LBRACKET)
         return Value::Array(arr);
     }
 
-if (cur().type == FUNC)
-{
-    next();
-    
-    if (cur().type != LPAREN)
-        error("Expected '(' after 'task' in lambda", cur().line);
-    next();
-    
-    vector<string> params;
-    while (cur().type != RPAREN && cur().type != END)
+    if (cur().type == FUNC)
     {
-        if (cur().type != IDENT)
-            error("Expected parameter name", cur().line);
-        params.push_back(cur().text);
         next();
-        if (cur().type == COMMA)
+        
+        if (cur().type != LPAREN)
+            error("Expected '(' after 'task' in lambda", cur().line);
+        next();
+        
+        vector<string> params;
+        while (cur().type != RPAREN && cur().type != END)
+        {
+            if (cur().type != IDENT)
+                error("Expected parameter name", cur().line);
+            params.push_back(cur().text);
             next();
+            if (cur().type == COMMA)
+                next();
+        }
+        if (cur().type != RPAREN)
+            error("Expected ')' after parameters", cur().line);
+        next();
+        
+        Closure captured = captureScope();
+        size_t bodyStart = p;
+        skipBlock();
+        
+        return Value::Func(params, bodyStart, captured);
     }
-    if (cur().type != RPAREN)
-        error("Expected ')' after parameters", cur().line);
-    next();
     
-    Closure captured = captureScope();
-    size_t bodyStart = p;
-    skipBlock();
-    
-    return Value::Func(params, bodyStart, captured);
-}
-if (cur().type == LBRACE)
+    if (cur().type == LBRACE)
     {
         next();
         unordered_map<string, Value> fields;
         
         while (cur().type != RBRACE && cur().type != END)
         {
-            // Expect identifier as key
             if (cur().type != IDENT && cur().type != STRING)
                 error("Expected field name in struct literal", cur().line);
             
             string key = cur().text;
             next();
             
-            // Expect colon
             if (cur().type != ASSIGN)
                 error("Expected ':' or '=' after field name in struct", cur().line);
             next();
             
-            // Get value
             Value val = logicalOr();
             fields[key] = val;
             
-            // Handle comma
             if (cur().type == COMMA)
             {
                 next();
@@ -2299,92 +2297,92 @@ if (cur().type == LBRACE)
         
         return Value::Struct(fields);
     }
-if (cur().type == IDENT)
-{
-    string n = cur().text;
-    int callLine = cur().line;
-    next();
-
-    if (cur().type == LPAREN)
+    
+    if (cur().type == IDENT)
     {
+        string n = cur().text;
+        int callLine = cur().line;
         next();
-        vector<Value> args;
-        while (cur().type != RPAREN && cur().type != END)
-        {
-            args.push_back(logicalOr());
-            if (cur().type == COMMA)
-                next();
-        }
-        if (cur().type != RPAREN)
-            error("Expected ')'", cur().line);
-        next();
-        
-        Value result;
-        
-        // Check if it's a variable containing a function
-        if (varExists(n))
-        {
-            Value v = getVar(n);
-            if (v.type == Value::FUNC || v.type == Value::FUNC_REF)
-            {
-                result = callFunctionValue(v, args, callLine);
-                
-                // Handle chained function calls
-                while (cur().type == LPAREN)
-                {
-                    next();
-                    vector<Value> chainArgs;
-                    while (cur().type != RPAREN && cur().type != END)
-                    {
-                        chainArgs.push_back(logicalOr());
-                        if (cur().type == COMMA)
-                            next();
-                    }
-                    if (cur().type != RPAREN)
-                        error("Expected ')'", cur().line);
-                    next();
-                    result = callFunctionValue(result, chainArgs, callLine);
-                }
-                return result; // RETURN HERE instead of continuing
-            }
-        }
-        
-        // Check if it's a defined function
-        if (functions.count(n))
-        {
-            result = callFunction(n, args);
-            return result; // RETURN HERE - this was missing!
-        }
-        
-        // Check if it's a builtin
-        if (builtins.count(n))
-        {
-            result = builtins[n](args, callLine);
-            return result; // RETURN HERE - this was missing!
-        }
-        
-        error("Undefined function: " + n, callLine);
-    }
 
-            if (cur().type == LBRACKET)
+        // Handle function calls
+        if (cur().type == LPAREN)
         {
+            next();
+            vector<Value> args;
+            while (cur().type != RPAREN && cur().type != END)
+            {
+                args.push_back(logicalOr());
+                if (cur().type == COMMA)
+                    next();
+            }
+            if (cur().type != RPAREN)
+                error("Expected ')'", cur().line);
+            next();
+            
+            Value result;
+            
+            if (varExists(n))
+            {
+                Value v = getVar(n);
+                if (v.type == Value::FUNC || v.type == Value::FUNC_REF)
+                {
+                    result = callFunctionValue(v, args, callLine);
+                    
+                    while (cur().type == LPAREN)
+                    {
+                        next();
+                        vector<Value> chainArgs;
+                        while (cur().type != RPAREN && cur().type != END)
+                        {
+                            chainArgs.push_back(logicalOr());
+                            if (cur().type == COMMA)
+                                next();
+                        }
+                        if (cur().type != RPAREN)
+                            error("Expected ')'", cur().line);
+                        next();
+                        result = callFunctionValue(result, chainArgs, callLine);
+                    }
+                    return result;
+                }
+            }
+            
+            if (functions.count(n))
+            {
+                result = callFunction(n, args);
+                return result;
+            }
+            
+            if (builtins.count(n))
+            {
+                result = builtins[n](args, callLine);
+                return result;
+            }
+            
+            error("Undefined function: " + n, callLine);
+        }
+
+        // NEW: Handle array/string indexing for READING (not assignment)
+        if (cur().type == LBRACKET)
+        {
+            Value variable = getVar(n);
             next();
             Value idx = logicalOr();
             if (cur().type != RBRACKET)
                 error("Expected ']'", cur().line);
             next();
 
+            // Check if this is an assignment (arr[0] = value)
             if (cur().type == ASSIGN)
             {
                 next();
                 Value newVal = logicalOr();
-                Value variable = getVar(n);
                 
                 if (variable.type == Value::ARR)
                 {
                     int i = (int)idx.toNumber();
                     if (i < 0 || i >= (int)variable.arr.size())
-                        error("Array index out of bounds: " + to_string(i), cur().line);
+                        error("Array index out of bounds: " + to_string(i), callLine);
                     variable.arr[i] = newVal;
                     setVar(n, variable);
                     return Value();
@@ -2393,31 +2391,58 @@ if (cur().type == IDENT)
                 {
                     int i = (int)idx.toNumber();
                     if (i < 0 || i >= (int)variable.str.length())
-                        error("String index out of bounds: " + to_string(i), cur().line);
+                        error("String index out of bounds: " + to_string(i), callLine);
                     
                     string newChar = newVal.toString();
                     if (newChar.empty())
-                        error("Cannot assign empty string to character position", cur().line);
+                        error("Cannot assign empty string to character position", callLine);
                     
                     variable.str[i] = newChar[0];
                     setVar(n, variable);
                     return Value();
                 }
-                // ← ADD THIS: Struct bracket assignment
                 else if (variable.type == Value::STRUCT)
                 {
                     string key = idx.toString();
                     variable.structFields[key] = newVal;
                     setVar(n, variable);
-                    return  Value();
+                    return Value();
                 }
                 else
                 {
-                    error("Not an array, string, or struct: " + n, cur().line);
+                    error("Not an array, string, or struct: " + n, callLine);
                 }
             }
-            error("Expected '=' after index", cur().line);
+            
+            // NEW: This is reading (arr[0] to get the value)
+            if (variable.type == Value::ARR)
+            {
+                int i = (int)idx.toNumber();
+                if (i < 0 || i >= (int)variable.arr.size())
+                    error("Array index out of bounds: " + to_string(i), callLine);
+                return variable.arr[i];
+            }
+            else if (variable.type == Value::STR)
+            {
+                int i = (int)idx.toNumber();
+                if (i < 0 || i >= (int)variable.str.length())
+                    error("String index out of bounds: " + to_string(i), callLine);
+                return Value::String(string(1, variable.str[i]));
+            }
+            else if (variable.type == Value::STRUCT)
+            {
+                string key = idx.toString();
+                if (variable.structFields.find(key) == variable.structFields.end())
+                    error("Struct field not found: " + key, callLine);
+                return variable.structFields[key];
+            }
+            else
+            {
+                error("Cannot index non-array/string/struct type", callLine);
+            }
         }
+        
+        // Handle struct field access
         if (cur().type == DOT)
         {
             Value obj = getVar(n);
@@ -2444,17 +2469,18 @@ if (cur().type == IDENT)
             return obj;
         }
 
+        // Handle function references
         if (functions.count(n))
         {
             return Value::FuncRef(n);
         }
 
+        // Return variable value
         return getVar(n);
     }
 
-
-            error("Unexpected token: " + cur().text, cur().line);
-            return Value::Number(0);
+    error("Unexpected token: " + cur().text, cur().line);
+    return Value::Number(0);
 }
 
     Value term()

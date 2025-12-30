@@ -77,7 +77,8 @@ enum Token_Type
     GET,
     USE,
     END,
-    POWER
+    POWER,
+    DOT 
 };
 
 struct Token
@@ -339,6 +340,12 @@ vector<Token> tokenize(const string &src)
         }
 
         // Operators - rest remains the same
+        if (src[i] == '.')
+        {
+            tokens.push_back({DOT, ".", line});
+            i++;
+            continue;
+        }
         if (src[i] == '+')
         {
             if (i + 1 < src.size() && src[i + 1] == '+')
@@ -525,14 +532,15 @@ struct Value
         T_BOOL,
         ARR,
         FUNC,
-        FUNC_REF
+        FUNC_REF,
+        STRUCT
     } type;
     double num = 0;
     string str = "";
     bool boolean = false;
     vector<Value> arr;
     
-    
+    unordered_map<string, Value> structFields;
     vector<string> funcParams;
     size_t funcBodyStart = 0;
     Closure closure;
@@ -584,7 +592,13 @@ struct Value
         val.funcRefName = name;
         return val;
     }
-
+    static Value Struct(const unordered_map<string, Value> &fields = {})
+    {
+        Value val;
+        val.type = STRUCT;
+        val.structFields = fields;
+        return val;
+    }
     bool toBool() const
     {
         if (type == T_BOOL)
@@ -656,6 +670,21 @@ struct Value
             return "<function>";
         if (type == FUNC_REF)
             return "<function " + funcRefName + ">";
+        if (type == STRUCT)
+        {
+            string s = "{";
+            bool first = true;
+            for (const auto &pair : structFields)
+            {
+                if (!first)
+                    s += ", ";
+                s += pair.first + ": " + pair.second.toString();
+                first = false;
+            }
+            s += "}";
+            return s;
+        }
+        
         return "";
     }
 
@@ -675,6 +704,8 @@ struct Value
             return funcBodyStart == other.funcBodyStart;
         if (type == FUNC_REF)
             return funcRefName == other.funcRefName;
+        if (type == STRUCT)
+            return &structFields == &other.structFields;
         return false;
     }
 };
@@ -2081,6 +2112,62 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             result.erase(result.begin() + index);
             return Value::Array(result);
         };
+        
+    // keys() - get all keys from a struct
+    builtins["keys"] = [](vector<Value> &args, int line) -> Value
+    {
+        if (args.size() != 1)
+            error("keys expects 1 argument (struct)", line);
+        
+        if (args[0].type != Value::STRUCT)
+            error("keys expects a struct", line);
+        
+        vector<Value> keys;
+        for (const auto &pair : args[0].structFields)
+        {
+            keys.push_back(Value::String(pair.first));
+        }
+        return Value::Array(keys);
+    };
+
+    // values() - get all values from a struct
+    builtins["values"] = [](vector<Value> &args, int line) -> Value
+    {
+        if (args.size() != 1)
+            error("values expects 1 argument (struct)", line);
+        
+        if (args[0].type != Value::STRUCT)
+            error("values expects a struct", line);
+        
+        vector<Value> vals;
+        for (const auto &pair : args[0].structFields)
+        {
+            vals.push_back(pair.second);
+        }
+        return Value::Array(vals);
+    };
+
+    // hasField() - check if struct has a field
+    builtins["hasField"] = [](vector<Value> &args, int line) -> Value
+    {
+        if (args.size() != 2)
+            error("hasField expects 2 arguments (struct, fieldName)", line);
+        
+        if (args[0].type != Value::STRUCT)
+            error("First argument must be a struct", line);
+        
+        string fieldName = args[1].toString();
+        bool exists = args[0].structFields.find(fieldName) != args[0].structFields.end();
+        return Value::Bool(exists);
+    };
+
+    // isStruct() - check if value is a struct
+    builtins["isStruct"] = [](vector<Value> &args, int line) -> Value
+    {
+        if (args.size() != 1)
+            error("isStruct expects 1 argument", line);
+        return Value::Bool(args[0].type == Value::STRUCT);
+    };
     }
 
     Value factor()
@@ -2123,26 +2210,26 @@ if (cur().type == T_BOOL)
 }
 
 if (cur().type == LBRACKET)
-{
-    next();
-    vector<Value> arr;
-    while (cur().type != RBRACKET && cur().type != END)
     {
-        arr.push_back(logicalOr());
-        if (cur().type == COMMA)
+        next();
+        vector<Value> arr;
+        while (cur().type != RBRACKET && cur().type != END)
         {
-            next();
+            arr.push_back(logicalOr());
+            if (cur().type == COMMA)
+            {
+                next();
+            }
+            else if (cur().type != RBRACKET)
+            {
+                error("Expected ',' or ']' in array literal", cur().line);
+            }
         }
-        else if (cur().type != RBRACKET)
-        {
-            error("Expected ',' or ']' in array literal", cur().line);
-        }
+        if (cur().type != RBRACKET)
+            error("Expected ']'", cur().line);
+        next();
+        return Value::Array(arr);
     }
-    if (cur().type != RBRACKET)
-        error("Expected ']'", cur().line);
-    next();
-    return Value::Array(arr);
-}
 
 if (cur().type == FUNC)
 {
@@ -2172,7 +2259,46 @@ if (cur().type == FUNC)
     
     return Value::Func(params, bodyStart, captured);
 }
-
+if (cur().type == LBRACE)
+    {
+        next();
+        unordered_map<string, Value> fields;
+        
+        while (cur().type != RBRACE && cur().type != END)
+        {
+            // Expect identifier as key
+            if (cur().type != IDENT && cur().type != STRING)
+                error("Expected field name in struct literal", cur().line);
+            
+            string key = cur().text;
+            next();
+            
+            // Expect colon
+            if (cur().type != ASSIGN)
+                error("Expected ':' or '=' after field name in struct", cur().line);
+            next();
+            
+            // Get value
+            Value val = logicalOr();
+            fields[key] = val;
+            
+            // Handle comma
+            if (cur().type == COMMA)
+            {
+                next();
+            }
+            else if (cur().type != RBRACE)
+            {
+                error("Expected ',' or '}' in struct literal", cur().line);
+            }
+        }
+        
+        if (cur().type != RBRACE)
+            error("Expected '}'", cur().line);
+        next();
+        
+        return Value::Struct(fields);
+    }
 if (cur().type == IDENT)
 {
     string n = cur().text;
@@ -2240,7 +2366,7 @@ if (cur().type == IDENT)
         error("Undefined function: " + n, callLine);
     }
 
-    if (cur().type == LBRACKET)
+            if (cur().type == LBRACKET)
         {
             next();
             Value idx = logicalOr();
@@ -2248,29 +2374,74 @@ if (cur().type == IDENT)
                 error("Expected ']'", cur().line);
             next();
 
-            Value variable = getVar(n);
+            if (cur().type == ASSIGN)
+            {
+                next();
+                Value newVal = logicalOr();
+                Value variable = getVar(n);
+                
+                if (variable.type == Value::ARR)
+                {
+                    int i = (int)idx.toNumber();
+                    if (i < 0 || i >= (int)variable.arr.size())
+                        error("Array index out of bounds: " + to_string(i), cur().line);
+                    variable.arr[i] = newVal;
+                    setVar(n, variable);
+                    return Value();
+                }
+                else if (variable.type == Value::STR)
+                {
+                    int i = (int)idx.toNumber();
+                    if (i < 0 || i >= (int)variable.str.length())
+                        error("String index out of bounds: " + to_string(i), cur().line);
+                    
+                    string newChar = newVal.toString();
+                    if (newChar.empty())
+                        error("Cannot assign empty string to character position", cur().line);
+                    
+                    variable.str[i] = newChar[0];
+                    setVar(n, variable);
+                    return Value();
+                }
+                // ← ADD THIS: Struct bracket assignment
+                else if (variable.type == Value::STRUCT)
+                {
+                    string key = idx.toString();
+                    variable.structFields[key] = newVal;
+                    setVar(n, variable);
+                    return  Value();
+                }
+                else
+                {
+                    error("Not an array, string, or struct: " + n, cur().line);
+                }
+            }
+            error("Expected '=' after index", cur().line);
+        }
+        if (cur().type == DOT)
+        {
+            Value obj = getVar(n);
             
-            // Handle array indexing (existing)
-            if (variable.type == Value::ARR)
+            while (cur().type == DOT)
             {
-                int i = (int)idx.toNumber();
-                if (i < 0 || i >= (int)variable.arr.size())
-                    error("Array index out of bounds: " + to_string(i), cur().line);
-                return variable.arr[i];
+                next();
+                
+                if (cur().type != IDENT)
+                    error("Expected field name after '.'", cur().line);
+                
+                string fieldName = cur().text;
+                next();
+                
+                if (obj.type != Value::STRUCT)
+                    error("Cannot access field of non-struct type", cur().line);
+                
+                if (obj.structFields.find(fieldName) == obj.structFields.end())
+                    error("Struct field not found: " + fieldName, cur().line);
+                
+                obj = obj.structFields[fieldName];
             }
-            // NEW: Handle string indexing
-            else if (variable.type == Value::STR)
-            {
-                int i = (int)idx.toNumber();
-                if (i < 0 || i >= (int)variable.str.length())
-                    error("String index out of bounds: " + to_string(i), cur().line);
-                // Return single character as a string
-                return Value::String(string(1, variable.str[i]));
-            }
-            else
-            {
-                error("Cannot index type, only arrays and strings can be indexed", callLine);
-            }
+            
+            return obj;
         }
 
         if (functions.count(n))
@@ -2282,8 +2453,8 @@ if (cur().type == IDENT)
     }
 
 
-error("Unexpected token: " + cur().text, cur().line);
-return Value::Number(0);
+            error("Unexpected token: " + cur().text, cur().line);
+            return Value::Number(0);
 }
 
     Value term()
@@ -2978,60 +3149,61 @@ return Value::Number(0);
         }
 
         
-        if (cur().type == IDENT)
+            if (cur().type == IDENT)
     {
         string varName = cur().text;
         int line = cur().line;
         next();
 
-        // ===== MODIFIED: Handle string[index] = value =====
-        if (cur().type == LBRACKET)
+        // ← ADD THIS: Handle struct field assignment (person.name = "Ali")
+        if (cur().type == DOT)
         {
-            next();
-            Value idx = logicalOr();
-            if (cur().type != RBRACKET)
-                error("Expected ']'", cur().line);
-            next();
-
+            vector<string> path;
+            path.push_back(varName);
+            
+            while (cur().type == DOT)
+            {
+                next();
+                if (cur().type != IDENT)
+                    error("Expected field name after '.'", cur().line);
+                path.push_back(cur().text);
+                next();
+            }
+            
             if (cur().type == ASSIGN)
             {
                 next();
                 Value newVal = logicalOr();
-                Value variable = getVar(varName);
                 
-                // Handle array assignment (existing)
-                if (variable.type == Value::ARR)
+                // Navigate to the struct
+                Value obj = getVar(path[0]);
+                
+                // Navigate through nested fields
+                for (size_t i = 1; i < path.size() - 1; i++)
                 {
-                    int i = (int)idx.toNumber();
-                    if (i < 0 || i >= (int)variable.arr.size())
-                        error("Array index out of bounds: " + to_string(i), line);
-                    variable.arr[i] = newVal;
-                    setVar(varName, variable);
-                    return;
+                    if (obj.type != Value::STRUCT)
+                        error("Cannot access field of non-struct", line);
+                    if (obj.structFields.find(path[i]) == obj.structFields.end())
+                        error("Field not found: " + path[i], line);
+                    obj = obj.structFields[path[i]];
                 }
-                // NEW: Handle string assignment
-                else if (variable.type == Value::STR)
+                
+                // Set the final field
+                if (obj.type != Value::STRUCT)
+                    error("Cannot set field of non-struct", line);
+                
+                obj.structFields[path.back()] = newVal;
+                
+                // For single-level access, update the variable
+                if (path.size() == 2)
                 {
-                    int i = (int)idx.toNumber();
-                    if (i < 0 || i >= (int)variable.str.length())
-                        error("String index out of bounds: " + to_string(i), line);
-                    
-                    // Convert newVal to string and get first character
-                    string newChar = newVal.toString();
-                    if (newChar.empty())
-                        error("Cannot assign empty string to character position", line);
-                    
-                    // Modify the string at position i
-                    variable.str[i] = newChar[0];
-                    setVar(varName, variable);
-                    return;
+                    Value root = getVar(path[0]);
+                    root.structFields[path[1]] = newVal;
+                    setVar(path[0], root);
                 }
-                else
-                {
-                    error("Not an array or string: " + varName, line);
-                }
+                
+                return;
             }
-            error("Expected '=' after array/string index", cur().line);
         }
 
             

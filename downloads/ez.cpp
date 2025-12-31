@@ -18,6 +18,13 @@
 #include <ctime>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
+#include <shellapi.h>
+#include <zip.h>
+// Add these includes at the top with other includes
+#include <curl/curl.h>
+#include <json/json.h>  // You'll need jsoncpp library
+#pragma comment(lib, "libcurl.lib")
 #pragma comment(lib, "ws2_32.lib")
 
 
@@ -88,6 +95,599 @@ struct Token
     int line;
 };
 
+struct Package {
+    string name;
+    string version;
+    string description;
+    string author;
+    vector<string> dependencies;
+    string mainFile;
+    string repository;
+    string localPath;
+};
+
+class PackageManager {
+private:
+    string packagesDir;
+    string cacheDir;
+    string configFile;
+    unordered_map<string, Package> installedPackages;
+    unordered_map<string, string> packageRegistry;
+    
+    // Callback for CURL downloads
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* userp) {
+        size_t totalSize = size * nmemb;
+        userp->append((char*)contents, totalSize);
+        return totalSize;
+    }
+    
+    static size_t WriteFileCallback(void* ptr, size_t size, size_t nmemb, FILE* stream) {
+        size_t written = fwrite(ptr, size, nmemb, stream);
+        return written;
+    }
+    
+    // Download file from URL
+    bool downloadFile(const string& url, const string& outputPath) {
+        CURL* curl = curl_easy_init();
+        if (!curl) return false;
+        
+        FILE* fp = fopen(outputPath.c_str(), "wb");
+        if (!fp) {
+            curl_easy_cleanup(curl);
+            return false;
+        }
+        
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteFileCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        
+        CURLcode res = curl_easy_perform(curl);
+        fclose(fp);
+        curl_easy_cleanup(curl);
+        
+        return res == CURLE_OK;
+    }
+    
+    // Download string from URL
+    string downloadString(const string& url) {
+        CURL* curl = curl_easy_init();
+        if (!curl) return "";
+        
+        string response;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+        
+        if (res != CURLE_OK) return "";
+        return response;
+    }
+    
+    // Extract ZIP file
+    bool extractZip(const string& zipPath, const string& outputDir) {
+        int err = 0;
+        zip_t* zip = zip_open(zipPath.c_str(), 0, &err);
+        if (!zip) return false;
+        
+        zip_int64_t num_entries = zip_get_num_entries(zip, 0);
+        for (zip_int64_t i = 0; i < num_entries; i++) {
+            struct zip_stat st;
+            zip_stat_init(&st);
+            zip_stat_index(zip, i, 0, &st);
+            
+            string entryPath = string(st.name);
+            string outputPath = outputDir + "/" + entryPath;
+            
+            // Create directory if needed
+            size_t pos = outputPath.find_last_of("/\\");
+            if (pos != string::npos) {
+                string dirPath = outputPath.substr(0, pos);
+                fs::create_directories(dirPath);
+            }
+            
+            // Skip directories
+            if (entryPath.back() == '/') continue;
+            
+            // Extract file
+            zip_file_t* f = zip_fopen_index(zip, i, 0);
+            if (!f) continue;
+            
+            vector<char> contents(st.size);
+            zip_int64_t read_bytes = zip_fread(f, contents.data(), st.size);
+            zip_fclose(f);
+            
+            if (read_bytes > 0) {
+                ofstream outFile(outputPath, ios::binary);
+                outFile.write(contents.data(), read_bytes);
+                outFile.close();
+            }
+        }
+        
+        zip_close(zip);
+        return true;
+    }
+    
+    // Parse package.ez file
+    Package parsePackageFile(const string& filepath) {
+        Package pkg;
+        ifstream file(filepath);
+        if (!file.is_open()) {
+            throw runtime_error("Cannot open package file: " + filepath);
+        }
+        
+        Json::Value root;
+        Json::Reader reader;
+        
+        stringstream buffer;
+        buffer << file.rdbuf();
+        
+        if (!reader.parse(buffer.str(), root)) {
+            throw runtime_error("Invalid package.ez format");
+        }
+        
+        pkg.name = root.get("name", "").asString();
+        pkg.version = root.get("version", "1.0.0").asString();
+        pkg.description = root.get("description", "").asString();
+        pkg.author = root.get("author", "").asString();
+        pkg.mainFile = root.get("main", "main.ez").asString();
+        pkg.repository = root.get("repository", "").asString();
+        
+        const Json::Value deps = root["dependencies"];
+        if (!deps.isNull()) {
+            for (const auto& dep : deps.getMemberNames()) {
+                pkg.dependencies.push_back(dep + "@" + deps[dep].asString());
+            }
+        }
+        
+        return pkg;
+    }
+    
+    // Save package config
+    void saveConfig() {
+        Json::Value root;
+        
+        for (const auto& pair : installedPackages) {
+            Json::Value pkgJson;
+            pkgJson["name"] = pair.second.name;
+            pkgJson["version"] = pair.second.version;
+            pkgJson["description"] = pair.second.description;
+            pkgJson["author"] = pair.second.author;
+            pkgJson["mainFile"] = pair.second.mainFile;
+            pkgJson["repository"] = pair.second.repository;
+            pkgJson["localPath"] = pair.second.localPath;
+            
+            Json::Value deps(Json::arrayValue);
+            for (const auto& dep : pair.second.dependencies) {
+                deps.append(dep);
+            }
+            pkgJson["dependencies"] = deps;
+            
+            root[pair.first] = pkgJson;
+        }
+        
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "  ";
+        unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        
+        ofstream file(configFile);
+        writer->write(root, &file);
+        file.close();
+    }
+    
+    // Load package config
+    void loadConfig() {
+        installedPackages.clear();
+        
+        if (!fs::exists(configFile)) return;
+        
+        ifstream file(configFile);
+        if (!file.is_open()) return;
+        
+        Json::Value root;
+        Json::Reader reader;
+        
+        if (!reader.parse(file, root)) return;
+        
+        for (const auto& name : root.getMemberNames()) {
+            Json::Value pkgJson = root[name];
+            Package pkg;
+            
+            pkg.name = pkgJson.get("name", "").asString();
+            pkg.version = pkgJson.get("version", "1.0.0").asString();
+            pkg.description = pkgJson.get("description", "").asString();
+            pkg.author = pkgJson.get("author", "").asString();
+            pkg.mainFile = pkgJson.get("mainFile", "main.ez").asString();
+            pkg.repository = pkgJson.get("repository", "").asString();
+            pkg.localPath = pkgJson.get("localPath", "").asString();
+            
+            const Json::Value deps = pkgJson["dependencies"];
+            for (const auto& dep : deps) {
+                pkg.dependencies.push_back(dep.asString());
+            }
+            
+            installedPackages[name] = pkg;
+        }
+    }
+    
+    // Get GitHub download URL
+    string getGitHubDownloadUrl(const string& repoUrl, const string& version = "main") {
+        // Convert GitHub URL to download URL
+        // Example: https://github.com/user/repo -> https://github.com/user/repo/archive/refs/heads/main.zip
+        string downloadUrl = repoUrl;
+        if (downloadUrl.find("github.com") != string::npos) {
+            if (downloadUrl.back() == '/') downloadUrl.pop_back();
+            downloadUrl += "/archive/refs/heads/" + version + ".zip";
+        }
+        return downloadUrl;
+    }
+    
+    // Install dependencies recursively
+    void installDependencies(const Package& pkg) {
+        for (const string& dep : pkg.dependencies) {
+            size_t atPos = dep.find('@');
+            string depName = dep.substr(0, atPos);
+            string depVersion = (atPos != string::npos) ? dep.substr(atPos + 1) : "main";
+            
+            if (!installedPackages.count(depName)) {
+                cout << "Installing dependency: " << depName << endl;
+                installPackage(depName, depVersion);
+            }
+        }
+    }
+    
+public:
+    PackageManager(const string& baseDir = "C:/EZlib") {
+        packagesDir = baseDir;
+        cacheDir = baseDir + "/.cache";
+        configFile = packagesDir + "/packages.json";
+        
+        // Create directories if they don't exist
+        fs::create_directories(packagesDir);
+        fs::create_directories(cacheDir);
+        
+        // Load installed packages
+        loadConfig();
+        
+        // Initialize CURL globally
+        curl_global_init(CURL_GLOBAL_ALL);
+    }
+    
+    ~PackageManager() {
+        curl_global_cleanup();
+    }
+    
+    // Install package from GitHub
+    bool installPackage(const string& packageName, const string& version = "main", const string& repoUrl = "") {
+        cout << "Installing " << packageName << "@" << version << "..." << endl;
+        
+        // Check if already installed
+        if (installedPackages.count(packageName)) {
+            Package& existing = installedPackages[packageName];
+            cout << packageName << " is already installed (v" << existing.version << ")" << endl;
+            
+            // Ask for reinstall if version different
+            if (existing.version != version) {
+                cout << "Version mismatch. Reinstall? (y/n): ";
+                char choice;
+                cin >> choice;
+                if (tolower(choice) != 'y') {
+                    return false;
+                }
+                uninstallPackage(packageName);
+            } else {
+                return true;
+            }
+        }
+        
+        string repositoryUrl = repoUrl;
+        if (repositoryUrl.empty()) {
+            // Try to get from registry or guess GitHub URL
+           repositoryUrl = "https://github.com/imabd645/EZ" + packageName;
+
+        }
+        
+        string downloadUrl = getGitHubDownloadUrl(repositoryUrl, version);
+        string cachePath = cacheDir + "/" + packageName + "-" + version + ".zip";
+        
+        // Download package
+        cout << "Downloading from " << downloadUrl << "..." << endl;
+        if (!downloadFile(downloadUrl, cachePath)) {
+            cerr << "Failed to download package" << endl;
+            return false;
+        }
+        
+        // Extract package
+        string extractDir = packagesDir + "/" + packageName;
+        fs::remove_all(extractDir);  // Remove old version if exists
+        fs::create_directories(extractDir);
+        
+        cout << "Extracting package..." << endl;
+        if (!extractZip(cachePath, extractDir)) {
+            cerr << "Failed to extract package" << endl;
+            fs::remove_all(extractDir);
+            return false;
+        }
+        
+        // Find and parse package.ez file
+        string packageEzPath;
+        for (const auto& entry : fs::recursive_directory_iterator(extractDir)) {
+            if (entry.path().filename() == "package.ez") {
+                packageEzPath = entry.path().string();
+                break;
+            }
+        }
+        
+        if (packageEzPath.empty()) {
+            // Try to guess the structure (GitHub adds -main suffix)
+            for (const auto& entry : fs::directory_iterator(extractDir)) {
+                if (entry.is_directory()) {
+                    string possiblePath = entry.path().string() + "/package.ez";
+                    if (fs::exists(possiblePath)) {
+                        packageEzPath = possiblePath;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (packageEzPath.empty()) {
+            cerr << "No package.ez file found in the package" << endl;
+            fs::remove_all(extractDir);
+            return false;
+        }
+        
+        // Parse package info
+        Package pkg = parsePackageFile(packageEzPath);
+        pkg.localPath = fs::path(packageEzPath).parent_path().string();
+        installedPackages[packageName] = pkg;
+        
+        // Install dependencies
+        installDependencies(pkg);
+        
+        // Save configuration
+        saveConfig();
+        
+        cout << "Successfully installed " << packageName << "@" << version << endl;
+        cout << "  Location: " << pkg.localPath << endl;
+        cout << "  Main file: " << pkg.mainFile << endl;
+        
+        return true;
+    }
+    
+    // Install from local directory
+    bool installLocal(const string& path) {
+        string packageEzPath = path + "/package.ez";
+        if (!fs::exists(packageEzPath)) {
+            cerr << "No package.ez file found in directory" << endl;
+            return false;
+        }
+        
+        Package pkg = parsePackageFile(packageEzPath);
+        pkg.localPath = path;
+        
+        installedPackages[pkg.name] = pkg;
+        installDependencies(pkg);
+        saveConfig();
+        
+        cout << "Installed local package: " << pkg.name << "@" << pkg.version << endl;
+        return true;
+    }
+    
+    // Uninstall package
+    bool uninstallPackage(const string& packageName) {
+        if (!installedPackages.count(packageName)) {
+            cerr << "Package " << packageName << " is not installed" << endl;
+            return false;
+        }
+        
+        // Check if other packages depend on it
+        for (const auto& pair : installedPackages) {
+            const Package& pkg = pair.second;
+            for (const string& dep : pkg.dependencies) {
+                size_t atPos = dep.find('@');
+                string depName = dep.substr(0, atPos);
+                if (depName == packageName) {
+                    cerr << "Cannot uninstall " << packageName << " - required by " << pkg.name << endl;
+                    return false;
+                }
+            }
+        }
+        
+        // Remove package directory
+        Package& pkg = installedPackages[packageName];
+        if (fs::exists(pkg.localPath)) {
+            fs::remove_all(pkg.localPath);
+        }
+        
+        installedPackages.erase(packageName);
+        saveConfig();
+        
+        cout << "Uninstalled " << packageName << endl;
+        return true;
+    }
+    
+    // List installed packages
+    void listPackages() {
+        if (installedPackages.empty()) {
+            cout << "No packages installed" << endl;
+            return;
+        }
+        
+        cout << "Installed packages:" << endl;
+        for (const auto& pair : installedPackages) {
+            const Package& pkg = pair.second;
+            cout << "  " << pkg.name << " v" << pkg.version;
+            if (!pkg.description.empty()) {
+                cout << " - " << pkg.description;
+            }
+            cout << endl;
+            if (!pkg.dependencies.empty()) {
+                cout << "    Dependencies: ";
+                for (size_t i = 0; i < pkg.dependencies.size(); i++) {
+                    cout << pkg.dependencies[i];
+                    if (i < pkg.dependencies.size() - 1) cout << ", ";
+                }
+                cout << endl;
+            }
+        }
+    }
+    
+    // Get package path
+    string getPackagePath(const string& packageName) {
+        if (!installedPackages.count(packageName)) {
+            return "";
+        }
+        
+        const Package& pkg = installedPackages[packageName];
+        string mainPath = pkg.localPath + "/" + pkg.mainFile;
+        
+        if (fs::exists(mainPath)) {
+            return mainPath;
+        }
+        
+        // Try to find main file
+        for (const auto& entry : fs::recursive_directory_iterator(pkg.localPath)) {
+            if (entry.path().filename() == pkg.mainFile) {
+                return entry.path().string();
+            }
+        }
+        
+        return "";
+    }
+    
+    // Get package directory
+    string getPackageDir(const string& packageName) {
+        if (!installedPackages.count(packageName)) {
+            return "";
+        }
+        return installedPackages[packageName].localPath;
+    }
+    
+    // Search for packages (simple GitHub search)
+    void searchPackages(const string& query) {
+        cout << "Searching for packages with query: " << query << endl;
+        
+        // GitHub search API
+        string url = "https://api.github.com/search/repositories?q=" + query + "+ez-package+in:name,description";
+        string response = downloadString(url);
+        
+        if (response.empty()) {
+            cout << "No results found or network error" << endl;
+            return;
+        }
+        
+        Json::Value root;
+        Json::Reader reader;
+        
+        if (!reader.parse(response, root)) {
+            cout << "Failed to parse search results" << endl;
+            return;
+        }
+        
+        Json::Value items = root["items"];
+        if (items.size() == 0) {
+            cout << "No packages found" << endl;
+            return;
+        }
+        
+        cout << "\nFound " << items.size() << " package(s):" << endl;
+        for (unsigned int i = 0; i < items.size() && i < 10; i++) {
+            cout << "  " << items[i]["name"].asString() << endl;
+            cout << "    " << items[i]["description"].asString() << endl;
+            cout << "    Stars: " << items[i]["stargazers_count"].asInt() << endl;
+            cout << "    URL: " << items[i]["html_url"].asString() << endl;
+            cout << endl;
+        }
+    }
+    
+    // Update package
+    bool updatePackage(const string& packageName, const string& version = "main") {
+        if (!installedPackages.count(packageName)) {
+            cerr << "Package " << packageName << " is not installed" << endl;
+            return false;
+        }
+        
+        Package oldPkg = installedPackages[packageName];
+        cout << "Updating " << packageName << " from v" << oldPkg.version << " to " << version << "..." << endl;
+        
+        return installPackage(packageName, version, oldPkg.repository);
+    }
+    
+    // Update all packages
+    void updateAll() {
+        vector<string> toUpdate;
+        for (const auto& pair : installedPackages) {
+            toUpdate.push_back(pair.first);
+        }
+        
+        if (toUpdate.empty()) {
+            cout << "No packages to update" << endl;
+            return;
+        }
+        
+        cout << "Updating " << toUpdate.size() << " packages..." << endl;
+        for (const string& pkgName : toUpdate) {
+            updatePackage(pkgName);
+        }
+        cout << "Update complete" << endl;
+    }
+    
+    // Initialize new package
+    void initPackage(const string& packageName) {
+        string packageDir = packageName;
+        if (fs::exists(packageDir)) {
+            cout << "Directory " << packageDir << " already exists" << endl;
+            return;
+        }
+        
+        fs::create_directories(packageDir);
+        
+        Json::Value root;
+        root["name"] = packageName;
+        root["version"] = "1.0.0";
+        root["description"] = "My EZ package";
+        root["author"] = "Your Name";
+        root["main"] = "main.ez";
+        root["repository"] = "https://github.com/yourname/" + packageName;
+        root["dependencies"] = Json::Value(Json::objectValue);
+        
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "  ";
+        unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        
+        ofstream file(packageDir + "/package.ez");
+        writer->write(root, &file);
+        file.close();
+        
+        // Create sample main file
+        ofstream mainFile(packageDir + "/main.ez");
+        mainFile << "task greet(name) {\n";
+        mainFile << "    out \"Hello, \" + name + \"!\"\n";
+        mainFile << "    give \"Greeted \" + name\n";
+        mainFile << "}\n";
+        mainFile.close();
+        
+        // Create README
+        ofstream readme(packageDir + "/README.md");
+        readme << "# " << packageName << "\n\n";
+        readme << "An EZ language package.\n\n";
+        readme << "## Usage\n\n";
+        readme << "```ez\n";
+        readme << "use \"" << packageName << "\"\n";
+        readme << "greet(\"World\")\n";
+        readme << "```\n";
+        readme.close();
+        
+        cout << "Created package " << packageName << " in " << packageDir << "/" << endl;
+        cout << "Edit package.ez to add dependencies and metadata" << endl;
+    }
+};
 
 
 
@@ -729,7 +1329,15 @@ enum ControlFlow
 
 
 class EZ
-{
+{   public:
+     EZ() {
+        pkgManager = new PackageManager();
+        // ... [rest of constructor] ...
+    }
+    ~EZ() {
+        delete pkgManager;
+    }
+
     vector<Token> t;
     size_t p = 0;
     vector<unordered_map<string, Value>> scopes;
@@ -743,7 +1351,8 @@ class EZ
     unordered_set<string> loadedLibraries;
     string currentDirectory;
     unordered_map<string, Value> routes;
-
+    PackageManager* pkgManager;
+   
     Token cur()
     {
         if (p >= t.size())
@@ -820,7 +1429,14 @@ class EZ
     }
 
     string resolveLibraryPath(const string &libName)
-    {
+    {   
+        if (!libName.find("/") && !libName.find("\\")) {
+        string pkgPath = pkgManager->getPackagePath(libName);
+        if (!pkgPath.empty() && fs::exists(pkgPath)) {
+            return pkgPath;
+        }
+    }
+
         // Try relative to current directory
         fs::path relPath = fs::path(currentDirectory) / libName;
         if (fs::exists(relPath))
@@ -2168,7 +2784,115 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             error("isStruct expects 1 argument", line);
         return Value::Bool(args[0].type == Value::STRUCT);
     };
-    }
+    // Package manager builtins
+    builtins["pkg_install"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() < 1 || args.size() > 3)
+            error("pkg_install expects 1-3 arguments (name, [version], [url])", line);
+        
+        string name = args[0].toString();
+        string version = "main";
+        string url = "";
+        
+        if (args.size() >= 2) version = args[1].toString();
+        if (args.size() >= 3) url = args[2].toString();
+        
+        bool success = pkgManager->installPackage(name, version, url);
+        return Value::Bool(success);
+    };
+    
+    builtins["pkg_uninstall"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_uninstall expects 1 argument (name)", line);
+        
+        string name = args[0].toString();
+        bool success = pkgManager->uninstallPackage(name);
+        return Value::Bool(success);
+    };
+    
+    builtins["pkg_list"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 0)
+            error("pkg_list expects no arguments", line);
+        
+        pkgManager->listPackages();
+        return Value::Number(1);
+    };
+    
+    builtins["pkg_search"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_search expects 1 argument (query)", line);
+        
+        string query = args[0].toString();
+        pkgManager->searchPackages(query);
+        return Value::Number(1);
+    };
+    
+    builtins["pkg_update"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() == 0) {
+            pkgManager->updateAll();
+            return Value::Number(1);
+        }
+        
+        if (args.size() == 1) {
+            string name = args[0].toString();
+            bool success = pkgManager->updatePackage(name);
+            return Value::Bool(success);
+        }
+        
+        if (args.size() == 2) {
+            string name = args[0].toString();
+            string version = args[1].toString();
+            bool success = pkgManager->updatePackage(name, version);
+            return Value::Bool(success);
+        }
+        
+        error("pkg_update expects 0, 1, or 2 arguments", line);
+        return Value::Bool(false);
+    };
+    
+    builtins["pkg_init"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_init expects 1 argument (package name)", line);
+        
+        string name = args[0].toString();
+        pkgManager->initPackage(name);
+        return Value::Number(1);
+    };
+    
+    builtins["pkg_path"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_path expects 1 argument (package name)", line);
+        
+        string name = args[0].toString();
+        string path = pkgManager->getPackagePath(name);
+        if (path.empty()) {
+            error("Package not found: " + name, line);
+        }
+        return Value::String(path);
+    };
+    
+    builtins["pkg_dir"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_dir expects 1 argument (package name)", line);
+        
+        string name = args[0].toString();
+        string dir = pkgManager->getPackageDir(name);
+        if (dir.empty()) {
+            error("Package not found: " + name, line);
+        }
+        return Value::String(dir);
+    };
+    
+    builtins["pkg_local"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("pkg_local expects 1 argument (path)", line);
+        
+        string path = args[0].toString();
+        bool success = pkgManager->installLocal(path);
+        return Value::Bool(success);
+    };
+    
+    // ... [rest of builtins] ...
+}
 
                 Value factor()
 {
@@ -2817,24 +3541,28 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
 
     void statement()
     {
-        if (cur().type == USE)
-        {
-            next();
-            if (cur().type != STRING && cur().type != IDENT)
-                error("Expected library name after 'use'", cur().line);
-            
-            string libName = cur().text;
-            if (cur().type == IDENT)
-            {
+        if (cur().type == USE) {
+        next();
+        if (cur().type != STRING && cur().type != IDENT)
+            error("Expected library name after 'use'", cur().line);
+        
+        string libName = cur().text;
+        int line = cur().line;
+        next();
+        
+        // Check if it's a package
+        string pkgPath = pkgManager->getPackagePath(libName);
+        if (!pkgPath.empty()) {
+            loadLibrary(pkgPath);
+        } else {
+            // Try as regular library
+            if (cur().type == IDENT) {
                 libName += ".ez";
             }
-            int line = cur().line;
-            next();
-            
             loadLibrary(libName);
-            return;
         }
-
+        return;
+    }
         if (cur().type == PRINT)
         {
             next();
@@ -3334,8 +4062,78 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        cout << "Usage: " << argv[0] << " <filename.ez>" << endl;
+        cout << "Usage: " << argv[0] << " <filename.ez> or <command> [args]" << endl;
+        cout << "Commands:" << endl;
+        cout << "  install <package> [version]  Install a package" << endl;
+        cout << "  uninstall <package>          Uninstall a package" << endl;
+        cout << "  list                         List installed packages" << endl;
+        cout << "  search <query>               Search for packages" << endl;
+        cout << "  update [package]             Update package(s)" << endl;
+        cout << "  init <name>                  Initialize a new package" << endl;
         return 1;
+    }
+
+    string command = argv[1];
+    
+    // Package Manager Commands
+    if (command == "install" || command == "remove" || command == "uninstall" || 
+        command == "list" || command == "search" || command == "update" || command == "init")
+    {
+        try {
+            PackageManager pm;
+            
+            if (command == "install") {
+                if (argc < 3) {
+                     // "install" alone -> install from current directory's package.ez
+                     if (!pm.installLocal(".")) return 1;
+                } else {
+                    string pkg = argv[2];
+                    if (pkg == ".") {
+                        if (!pm.installLocal(".")) return 1;
+                    } else {
+                        string ver = (argc > 3) ? argv[3] : "main";
+                        if (!pm.installPackage(pkg, ver)) return 1;
+                    }
+                }
+            }
+            else if (command == "remove" || command == "uninstall") {
+                if (argc < 3) {
+                    cerr << "Usage: " << argv[0] << " " << command << " <package>" << endl;
+                    return 1;
+                }
+                if (!pm.uninstallPackage(argv[2])) return 1;
+            }
+            else if (command == "list") {
+                pm.listPackages();
+            }
+            else if (command == "search") {
+                if (argc < 3) {
+                    cerr << "Usage: " << argv[0] << " search <query>" << endl;
+                    return 1;
+                }
+                pm.searchPackages(argv[2]);
+            }
+            else if (command == "update") {
+                if (argc < 3) {
+                    pm.updateAll();
+                } else {
+                    string ver = (argc > 3) ? argv[3] : "main";
+                    if (!pm.updatePackage(argv[2], ver)) return 1;
+                }
+            }
+            else if (command == "init") {
+                if (argc < 3) {
+                    cerr << "Usage: " << argv[0] << " init <package_name>" << endl;
+                    return 1;
+                }
+                pm.initPackage(argv[2]);
+            }
+            
+            return 0;
+        } catch (const exception& e) {
+            cerr << "Package Manager Error: " << e.what() << endl;
+            return 1;
+        }
     }
 
     try

@@ -1,0 +1,32 @@
+// Bubble Sort Implementation in EZ Language
+
+task bubbleSort(arr) 
+{
+    n = len(arr)
+    repeat i = 0 to n - 1 
+    {
+        repeat j = 0 to n - i - 2 
+        {
+            when arr[j] greater arr[j + 1] 
+            {
+                temp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = temp
+               
+            }
+        }
+    }
+    
+    give arr
+}
+
+
+out "Original array:"
+numbers = [64, 34, 25, 12, 22, 11, 90]
+out numbers
+
+out "Sorting..."
+sorted = bubbleSort(numbers)
+out "Sorted array:"
+out sorted
+

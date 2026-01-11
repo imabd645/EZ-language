@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "MinGW64",
+            "compilerPath": "C:/msys64/mingw64/bin/g++.exe",
+            "includePath": [
+                "C:/msys64/mingw64/include",
+                "C:/msys64/mingw64/include/curl",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            "intelliSenseMode": "windows-gcc-x64",
+            "cStandard": "c17",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

@@ -342,7 +342,7 @@ private:
     }
     
 public:
-    PackageManager(const string& baseDir = "C:/EZlib") {
+    PackageManager(const string& baseDir = "C:/ez/libraries") {
         packagesDir = baseDir;
         cacheDir = baseDir + "/.cache";
         configFile = packagesDir + "/packages.json";
@@ -1430,7 +1430,7 @@ class EZ
 
     string resolveLibraryPath(const string &libName)
     {   
-        if (!libName.find("/") && !libName.find("\\")) {
+        if (libName.find("/") == string::npos && libName.find("\\") == string::npos) {
         string pkgPath = pkgManager->getPackagePath(libName);
         if (!pkgPath.empty() && fs::exists(pkgPath)) {
             return pkgPath;

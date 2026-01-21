@@ -2809,6 +2809,199 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             error("isStruct expects 1 argument", line);
         return Value::Bool(args[0].type == Value::STRUCT);
     };
+    // ==================== TERMINAL CONTROL ====================
+        
+        // clear() - clear the console screen
+        builtins["clear"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 0)
+                error("clear expects no arguments", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            COORD coordScreen = {0, 0};
+            DWORD cCharsWritten;
+            CONSOLE_SCREEN_BUFFER_INFO csbi;
+            DWORD dwConSize;
+            
+            if (!GetConsoleScreenBufferInfo(hConsole, &csbi))
+                return Value::Bool(false);
+            
+            dwConSize = csbi.dwSize.X * csbi.dwSize.Y;
+            
+            if (!FillConsoleOutputCharacter(hConsole, (TCHAR)' ', dwConSize, coordScreen, &cCharsWritten))
+                return Value::Bool(false);
+            
+            if (!GetConsoleScreenBufferInfo(hConsole, &csbi))
+                return Value::Bool(false);
+            
+            if (!FillConsoleOutputAttribute(hConsole, csbi.wAttributes, dwConSize, coordScreen, &cCharsWritten))
+                return Value::Bool(false);
+            
+            SetConsoleCursorPosition(hConsole, coordScreen);
+            #else
+            system("clear");
+            #endif
+            
+            return Value::Bool(true);
+        };
+        
+        // setColor() - set text color (Windows)
+        // Colors: 0=Black, 1=Blue, 2=Green, 3=Cyan, 4=Red, 5=Magenta, 6=Yellow, 7=White
+        // 8=Gray, 9=LightBlue, 10=LightGreen, 11=LightCyan, 12=LightRed, 13=LightMagenta, 14=LightYellow, 15=BrightWhite
+        builtins["setColor"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() < 1 || args.size() > 2)
+                error("setColor expects 1 or 2 arguments (textColor, [backgroundColor])", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            int textColor = (int)args[0].toNumber();
+            int bgColor = 0;
+            
+            if (args.size() == 2)
+                bgColor = (int)args[1].toNumber();
+            
+            // Validate colors
+            if (textColor < 0 || textColor > 15)
+                error("Text color must be between 0 and 15", line);
+            if (bgColor < 0 || bgColor > 15)
+                error("Background color must be between 0 and 15", line);
+            
+            // Combine colors (background color is shifted by 4 bits)
+            WORD colorAttribute = textColor | (bgColor << 4);
+            SetConsoleTextAttribute(hConsole, colorAttribute);
+            
+            return Value::Bool(true);
+            #else
+            // For Unix/Linux, you could use ANSI escape codes here
+            return Value::Bool(false);
+            #endif
+        };
+        
+        // resetColor() - reset to default console colors
+        builtins["resetColor"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 0)
+                error("resetColor expects no arguments", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            // Default is light gray (7) on black (0)
+            SetConsoleTextAttribute(hConsole, 7);
+            return Value::Bool(true);
+            #else
+            return Value::Bool(false);
+            #endif
+        };
+        
+        // setCursorPosition() - move cursor to specific position
+        builtins["setCursorPosition"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 2)
+                error("setCursorPosition expects 2 arguments (x, y)", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            COORD pos;
+            pos.X = (SHORT)args[0].toNumber();
+            pos.Y = (SHORT)args[1].toNumber();
+            
+            SetConsoleCursorPosition(hConsole, pos);
+            return Value::Bool(true);
+            #else
+            // ANSI escape codes for Unix/Linux
+            cout << "\033[" << (int)args[1].toNumber() << ";" << (int)args[0].toNumber() << "H";
+            return Value::Bool(true);
+            #endif
+        };
+        
+        // hideCursor() - hide the console cursor
+        builtins["hideCursor"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 0)
+                error("hideCursor expects no arguments", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            CONSOLE_CURSOR_INFO cursorInfo;
+            GetConsoleCursorInfo(hConsole, &cursorInfo);
+            cursorInfo.bVisible = FALSE;
+            SetConsoleCursorInfo(hConsole, &cursorInfo);
+            return Value::Bool(true);
+            #else
+            cout << "\033[?25l";
+            return Value::Bool(true);
+            #endif
+        };
+        
+        // showCursor() - show the console cursor
+        builtins["showCursor"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 0)
+                error("showCursor expects no arguments", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            CONSOLE_CURSOR_INFO cursorInfo;
+            GetConsoleCursorInfo(hConsole, &cursorInfo);
+            cursorInfo.bVisible = TRUE;
+            SetConsoleCursorInfo(hConsole, &cursorInfo);
+            return Value::Bool(true);
+            #else
+            cout << "\033[?25h";
+            return Value::Bool(true);
+            #endif
+        };
+        
+        // getConsoleSize() - get console width and height as array [width, height]
+        builtins["getConsoleSize"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 0)
+                error("getConsoleSize expects no arguments", line);
+            
+            #ifdef _WIN32
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            CONSOLE_SCREEN_BUFFER_INFO csbi;
+            
+            if (GetConsoleScreenBufferInfo(hConsole, &csbi))
+            {
+                int width = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+                int height = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+                
+                vector<Value> size;
+                size.push_back(Value::Number(width));
+                size.push_back(Value::Number(height));
+                return Value::Array(size);
+            }
+            #endif
+            
+            // Default fallback
+            vector<Value> size;
+            size.push_back(Value::Number(80));
+            size.push_back(Value::Number(25));
+            return Value::Array(size);
+        };
+        
+        // setTitle() - set console window title
+        builtins["setTitle"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("setTitle expects 1 argument (title)", line);
+            
+            string title = args[0].toString();
+            
+            #ifdef _WIN32
+            SetConsoleTitleA(title.c_str());
+            return Value::Bool(true);
+            #else
+            cout << "\033]0;" << title << "\007";
+            return Value::Bool(true);
+            #endif
+        };
+
+        // Package manager builtins
+    
     // Package manager builtins
     builtins["pkg_install"] = [this](vector<Value> &args, int line) -> Value {
         if (args.size() < 1 || args.size() > 3)

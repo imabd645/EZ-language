@@ -342,7 +342,7 @@ private:
     }
     
 public:
-    PackageManager(const string& baseDir = "C:/ez/libraries") {
+    PackageManager(const string& baseDir = "C:/ezlib") {
         packagesDir = baseDir;
         cacheDir = baseDir + "/.cache";
         configFile = packagesDir + "/packages.json";
@@ -1888,9 +1888,7 @@ class EZ
 
             return Value::Number(0);
         };
-                // Add this to the initBuiltins() function in your EZ interpreter
 
-// Inside the initBuiltins() method, add:
 
 // split() - split string by delimiter
         builtins["split"] = [](vector<Value> &args, int line) -> Value
@@ -2581,6 +2579,33 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
                 error("toStr expects 1 argument", line);
             return Value::String(args[0].toString());
         };
+        builtins["ord"] = [](vector<Value> &args, int line) -> Value
+            {
+                if (args.size() != 1)
+                    error("ord expects 1 argument", line);
+
+                if (args[0].type != Value::STR)
+                    error("ord expects a string", line);
+
+                const string &s = args[0].toString();
+
+                if (s.size() == 0)
+                    error("ord cannot be used on empty string", line);
+
+                unsigned char c = s[0];
+                return Value::Number((int)c);
+                };
+                builtins["xor"] = [](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 2)
+                error("xor expects 2 arguments", line);
+
+            int a = (int)args[0].toNumber();
+            int b = (int)args[1].toNumber();
+
+            return Value::Number(a ^ b);
+        };
+
 
         // contains() - check if array contains value or string contains substring
         builtins["contains"] = [](vector<Value> &args, int line) -> Value

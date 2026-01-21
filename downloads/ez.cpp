@@ -21,11 +21,13 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <zip.h>
+#include <sqlite3.h>
 // Add these includes at the top with other includes
 #include <curl/curl.h>
 #include <json/json.h>  // You'll need jsoncpp library
 #pragma comment(lib, "libcurl.lib")
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "sqlite3.lib")
 
 
 
@@ -1332,10 +1334,18 @@ class EZ
 {   public:
      EZ() {
         pkgManager = new PackageManager();
+        nextDbId = 1;
+        srand(time(nullptr));
         // ... [rest of constructor] ...
     }
     ~EZ() {
         delete pkgManager;
+        for (auto& pair : openDatabases) {
+            if (pair.second) {
+                sqlite3_close(pair.second);
+            }
+        }
+        openDatabases.clear();
     }
 
     vector<Token> t;
@@ -1352,7 +1362,8 @@ class EZ
     string currentDirectory;
     unordered_map<string, Value> routes;
     PackageManager* pkgManager;
-   
+    unordered_map<string, sqlite3*> openDatabases;  // Maps db_id -> sqlite3 connection
+    int nextDbId;
     Token cur()
     {
         if (p >= t.size())
@@ -2998,6 +3009,366 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             cout << "\033]0;" << title << "\007";
             return Value::Bool(true);
             #endif
+        };
+        // db_open() - Open or create a SQLite database
+        // Returns database ID string to use in other db functions
+        builtins["db_open"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_open expects 1 argument (filename)", line);
+            
+            string filename = args[0].toString();
+            sqlite3* db = nullptr;
+            
+            int rc = sqlite3_open(filename.c_str(), &db);
+            if (rc != SQLITE_OK)
+            {
+                string errMsg = "Cannot open database: " + string(sqlite3_errmsg(db));
+                sqlite3_close(db);
+                error(errMsg, line);
+            }
+            
+            // Generate unique ID for this database connection
+            string dbId = "db_" + to_string(nextDbId++);
+            openDatabases[dbId] = db;
+            
+            return Value::String(dbId);
+        };
+        
+        // db_close() - Close a database connection
+        builtins["db_close"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_close expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            sqlite3_close(db);
+            openDatabases.erase(dbId);
+            
+            return Value::Bool(true);
+        };
+        
+        // db_execute() - Execute SQL command (CREATE, INSERT, UPDATE, DELETE)
+        // Returns number of affected rows
+        builtins["db_execute"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() < 2)
+                error("db_execute expects at least 2 arguments (database_id, sql, [params...])", line);
+            
+            string dbId = args[0].toString();
+            string sql = args[1].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            sqlite3_stmt* stmt;
+            
+            // Prepare statement
+            int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+            if (rc != SQLITE_OK)
+            {
+                string errMsg = "SQL error: " + string(sqlite3_errmsg(db));
+                error(errMsg, line);
+            }
+            
+            // Bind parameters if provided
+            for (size_t i = 2; i < args.size(); i++)
+            {
+                int paramIndex = i - 1;
+                const Value& param = args[i];
+                
+                if (param.type == Value::NUM)
+                {
+                    sqlite3_bind_double(stmt, paramIndex, param.toNumber());
+                }
+                else if (param.type == Value::STR)
+                {
+                    sqlite3_bind_text(stmt, paramIndex, param.toString().c_str(), -1, SQLITE_TRANSIENT);
+                }
+                else if (param.type == Value::T_BOOL)
+                {
+                    sqlite3_bind_int(stmt, paramIndex, param.toBool() ? 1 : 0);
+                }
+                else
+                {
+                    sqlite3_bind_text(stmt, paramIndex, param.toString().c_str(), -1, SQLITE_TRANSIENT);
+                }
+            }
+            
+            // Execute
+            rc = sqlite3_step(stmt);
+            
+            int changes = 0;
+            if (rc == SQLITE_DONE)
+            {
+                changes = sqlite3_changes(db);
+            }
+            else if (rc != SQLITE_ROW)
+            {
+                string errMsg = "SQL execution error: " + string(sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                error(errMsg, line);
+            }
+            
+            sqlite3_finalize(stmt);
+            return Value::Number(changes);
+        };
+        
+        // db_query() - Execute SELECT query and return results as array of structs
+        // Each row is a struct with column names as keys
+        builtins["db_query"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() < 2)
+                error("db_query expects at least 2 arguments (database_id, sql, [params...])", line);
+            
+            string dbId = args[0].toString();
+            string sql = args[1].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            sqlite3_stmt* stmt;
+            
+            // Prepare statement
+            int rc = sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr);
+            if (rc != SQLITE_OK)
+            {
+                string errMsg = "SQL error: " + string(sqlite3_errmsg(db));
+                error(errMsg, line);
+            }
+            
+            // Bind parameters if provided
+            for (size_t i = 2; i < args.size(); i++)
+            {
+                int paramIndex = i - 1;
+                const Value& param = args[i];
+                
+                if (param.type == Value::NUM)
+                {
+                    sqlite3_bind_double(stmt, paramIndex, param.toNumber());
+                }
+                else if (param.type == Value::STR)
+                {
+                    sqlite3_bind_text(stmt, paramIndex, param.toString().c_str(), -1, SQLITE_TRANSIENT);
+                }
+                else if (param.type == Value::T_BOOL)
+                {
+                    sqlite3_bind_int(stmt, paramIndex, param.toBool() ? 1 : 0);
+                }
+                else
+                {
+                    sqlite3_bind_text(stmt, paramIndex, param.toString().c_str(), -1, SQLITE_TRANSIENT);
+                }
+            }
+            
+            // Execute and collect results
+            vector<Value> results;
+            int columnCount = sqlite3_column_count(stmt);
+            
+            while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+            {
+                unordered_map<string, Value> row;
+                
+                for (int i = 0; i < columnCount; i++)
+                {
+                    string colName = sqlite3_column_name(stmt, i);
+                    int colType = sqlite3_column_type(stmt, i);
+                    
+                    switch (colType)
+                    {
+                        case SQLITE_INTEGER:
+                            row[colName] = Value::Number(sqlite3_column_int(stmt, i));
+                            break;
+                        case SQLITE_FLOAT:
+                            row[colName] = Value::Number(sqlite3_column_double(stmt, i));
+                            break;
+                        case SQLITE_TEXT:
+                            row[colName] = Value::String(
+                                reinterpret_cast<const char*>(sqlite3_column_text(stmt, i))
+                            );
+                            break;
+                        case SQLITE_NULL:
+                            row[colName] = Value::String("");
+                            break;
+                        case SQLITE_BLOB:
+                            row[colName] = Value::String("<BLOB>");
+                            break;
+                    }
+                }
+                
+                results.push_back(Value::Struct(row));
+            }
+            
+            if (rc != SQLITE_DONE)
+            {
+                string errMsg = "SQL query error: " + string(sqlite3_errmsg(db));
+                sqlite3_finalize(stmt);
+                error(errMsg, line);
+            }
+            
+            sqlite3_finalize(stmt);
+            return Value::Array(results);
+        };
+        
+        // db_query_one() - Execute SELECT query and return first row as struct (or empty struct if no results)
+        builtins["db_query_one"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() < 2)
+                error("db_query_one expects at least 2 arguments (database_id, sql, [params...])", line);
+            
+            Value results = builtins["db_query"](args, line);
+            
+            if (results.arr.empty())
+            {
+                return Value::Struct({});
+            }
+            
+            return results.arr[0];
+        };
+        
+        // db_begin() - Begin a transaction
+        builtins["db_begin"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_begin expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            char* errMsg = nullptr;
+            
+            int rc = sqlite3_exec(db, "BEGIN TRANSACTION", nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK)
+            {
+                string err = "Transaction begin error: " + string(errMsg);
+                sqlite3_free(errMsg);
+                error(err, line);
+            }
+            
+            return Value::Bool(true);
+        };
+        
+        // db_commit() - Commit a transaction
+        builtins["db_commit"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_commit expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            char* errMsg = nullptr;
+            
+            int rc = sqlite3_exec(db, "COMMIT", nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK)
+            {
+                string err = "Transaction commit error: " + string(errMsg);
+                sqlite3_free(errMsg);
+                error(err, line);
+            }
+            
+            return Value::Bool(true);
+        };
+        
+        // db_rollback() - Rollback a transaction
+        builtins["db_rollback"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_rollback expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            char* errMsg = nullptr;
+            
+            int rc = sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, &errMsg);
+            if (rc != SQLITE_OK)
+            {
+                string err = "Transaction rollback error: " + string(errMsg);
+                sqlite3_free(errMsg);
+                error(err, line);
+            }
+            
+            return Value::Bool(true);
+        };
+        
+        // db_last_insert_id() - Get the last inserted row ID
+        builtins["db_last_insert_id"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_last_insert_id expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            if (openDatabases.find(dbId) == openDatabases.end())
+                error("Invalid database ID: " + dbId, line);
+            
+            sqlite3* db = openDatabases[dbId];
+            sqlite3_int64 lastId = sqlite3_last_insert_rowid(db);
+            
+            return Value::Number(static_cast<double>(lastId));
+        };
+        
+        // db_table_exists() - Check if a table exists
+        builtins["db_table_exists"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 2)
+                error("db_table_exists expects 2 arguments (database_id, table_name)", line);
+            
+            string dbId = args[0].toString();
+            string tableName = args[1].toString();
+            
+            vector<Value> queryArgs = {
+                Value::String(dbId),
+                Value::String("SELECT name FROM sqlite_master WHERE type='table' AND name=?"),
+                Value::String(tableName)
+            };
+            
+            Value results = builtins["db_query"](queryArgs, line);
+            return Value::Bool(!results.arr.empty());
+        };
+        
+        // db_tables() - List all tables in the database
+        builtins["db_tables"] = [this](vector<Value> &args, int line) -> Value
+        {
+            if (args.size() != 1)
+                error("db_tables expects 1 argument (database_id)", line);
+            
+            string dbId = args[0].toString();
+            
+            vector<Value> queryArgs = {
+                Value::String(dbId),
+                Value::String("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            };
+            
+            Value results = builtins["db_query"](queryArgs, line);
+            vector<Value> tableNames;
+            
+            for (const Value& row : results.arr)
+            {
+                if (row.structFields.count("name"))
+                {
+                    tableNames.push_back(row.structFields.at("name"));
+                }
+            }
+            
+            return Value::Array(tableNames);
         };
 
         // Package manager builtins

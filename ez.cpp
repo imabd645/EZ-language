@@ -87,7 +87,14 @@ enum Token_Type
     USE,
     END,
     POWER,
-    DOT 
+    DOT,
+    CLASS,
+    NEW,
+    EXTENDS,
+    SELF,
+    PRIVATE,
+    PUBLIC,
+    COLON 
 };
 
 struct Token
@@ -936,6 +943,19 @@ vector<Token> tokenize(const string &src)
                 tokens.push_back({GET, id, line});
             else if (id == "use")
                 tokens.push_back({USE, id, line});
+            // OOP keywords
+            else if (id == "model")
+                tokens.push_back({CLASS, id, line});
+            else if (id == "create")
+                tokens.push_back({NEW, id, line});
+            else if (id == "from")
+                tokens.push_back({EXTENDS, id, line});
+            else if (id == "self")
+                tokens.push_back({SELF, id, line});
+            else if (id == "hidden")
+                tokens.push_back({PRIVATE, id, line});
+            else if (id == "shown")
+                tokens.push_back({PUBLIC, id, line});
             else
                 tokens.push_back({IDENT, id, line});
             continue;
@@ -1114,6 +1134,12 @@ vector<Token> tokenize(const string &src)
             i++;
             continue;
         }
+        if (src[i] == ':')
+        {
+            tokens.push_back({COLON, ":", line});
+            i++;
+            continue;
+        }
 
         error("Unknown character: " + string(1, src[i]), line);
     }
@@ -1135,7 +1161,8 @@ struct Value
         ARR,
         FUNC,
         FUNC_REF,
-        STRUCT
+        STRUCT,
+        OBJECT  // New type for class instances
     } type;
     double num = 0;
     string str = "";
@@ -1147,6 +1174,9 @@ struct Value
     size_t funcBodyStart = 0;
     Closure closure;
     string funcRefName = "";
+    
+    // OOP fields
+    string className = "";  // For OBJECT type - tracks which class this instance belongs to
 
     Value() : type(NUM), num(0) {}
 
@@ -1201,6 +1231,15 @@ struct Value
         val.structFields = fields;
         return val;
     }
+    // New: Create an Object (class instance)
+    static Value Object(const string& clsName, const unordered_map<string, Value> &fields = {})
+    {
+        Value val;
+        val.type = OBJECT;
+        val.className = clsName;
+        val.structFields = fields;
+        return val;
+    }
     bool toBool() const
     {
         if (type == T_BOOL)
@@ -1214,6 +1253,10 @@ struct Value
         if (type == FUNC)
             return true;
         if (type == FUNC_REF)
+            return true;
+        if (type == STRUCT)
+            return true;
+        if (type == OBJECT)
             return true;
         return false;
     }
@@ -1286,6 +1329,20 @@ struct Value
             s += "}";
             return s;
         }
+        if (type == OBJECT)
+        {
+            string s = "<" + className + " object {";
+            bool first = true;
+            for (const auto &pair : structFields)
+            {
+                if (!first)
+                    s += ", ";
+                s += pair.first + ": " + pair.second.toString();
+                first = false;
+            }
+            s += "}>";
+            return s;
+        }
         
         return "";
     }
@@ -1308,6 +1365,8 @@ struct Value
             return funcRefName == other.funcRefName;
         if (type == STRUCT)
             return &structFields == &other.structFields;
+        if (type == OBJECT)
+            return className == other.className && &structFields == &other.structFields;
         return false;
     }
 };
@@ -1318,6 +1377,26 @@ struct Function
     vector<string> params;
     size_t bodyStart;
     vector<Token> tokens;  // Add this line
+};
+
+// OOP: Method definition (similar to Function but with access modifier)
+struct Method
+{
+    vector<string> params;
+    size_t bodyStart;
+    vector<Token> tokens;
+    bool isPrivate = false;  // Access modifier
+};
+
+// OOP: Class definition to store class structure
+struct ClassDefinition
+{
+    string name;
+    string parentClass;  // For inheritance (extends)
+    unordered_map<string, Value> fields;          // Default field values
+    unordered_map<string, bool> fieldPrivate;     // Field access modifiers
+    unordered_map<string, Method> methods;        // Class methods
+    bool hasInit = false;  // Whether class has init() constructor
 };
 
 
@@ -1364,6 +1443,9 @@ class EZ
     PackageManager* pkgManager;
     unordered_map<string, sqlite3*> openDatabases;  // Maps db_id -> sqlite3 connection
     int nextDbId;
+    
+    // OOP: Store class definitions
+    unordered_map<string, ClassDefinition> classes;
     Token cur()
     {
         if (p >= t.size())
@@ -3824,6 +3906,66 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
         return Value::Bool(success);
     };
     
+    // OOP Builtins
+    
+    // typeof() - returns the type of a value as a string
+    builtins["typeof"] = [](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("typeof expects 1 argument", line);
+        
+        switch (args[0].type) {
+            case Value::NUM: return Value::String("number");
+            case Value::STR: return Value::String("string");
+            case Value::T_BOOL: return Value::String("boolean");
+            case Value::ARR: return Value::String("array");
+            case Value::FUNC: return Value::String("function");
+            case Value::FUNC_REF: return Value::String("function");
+            case Value::STRUCT: return Value::String("struct");
+            case Value::OBJECT: return Value::String("object:" + args[0].className);
+            default: return Value::String("unknown");
+        }
+    };
+    
+    // isObject() - check if a value is an object instance
+    builtins["isObject"] = [](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("isObject expects 1 argument", line);
+        return Value::Bool(args[0].type == Value::OBJECT);
+    };
+    
+    // classOf() - returns the class name of an object
+    builtins["classOf"] = [](vector<Value> &args, int line) -> Value {
+        if (args.size() != 1)
+            error("classOf expects 1 argument", line);
+        if (args[0].type != Value::OBJECT)
+            error("classOf expects an object", line);
+        return Value::String(args[0].className);
+    };
+    
+    // isInstance() - check if object is instance of a class
+    builtins["isInstance"] = [this](vector<Value> &args, int line) -> Value {
+        if (args.size() != 2)
+            error("isInstance expects 2 arguments (object, className)", line);
+        if (args[0].type != Value::OBJECT)
+            return Value::Bool(false);
+        
+        string targetClass = args[1].toString();
+        string objClass = args[0].className;
+        
+        // Check direct match
+        if (objClass == targetClass)
+            return Value::Bool(true);
+        
+        // Check inheritance chain
+        while (classes.count(objClass) && !classes[objClass].parentClass.empty()) {
+            objClass = classes[objClass].parentClass;
+            if (objClass == targetClass)
+                return Value::Bool(true);
+        }
+        
+        return Value::Bool(false);
+    };
+    
     // ... [rest of builtins] ...
 }
 
@@ -3865,6 +4007,111 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
         bool v = (cur().text == "1");
         next();
         return Value::Bool(v);
+    }
+
+    // OOP: Handle 'self' keyword for accessing current object
+    if (cur().type == SELF)
+    {
+        int selfLine = cur().line;
+        next();
+        
+        // Get 'self' from scope
+        if (!varExists("self"))
+            error("'self' can only be used inside a class method", selfLine);
+        
+        Value obj = getVar("self");
+        
+        // Handle self.field or self.method() access
+        while (cur().type == DOT)
+        {
+            next();
+            
+            if (cur().type != IDENT)
+                error("Expected field or method name after 'self.'", cur().line);
+            
+            string memberName = cur().text;
+            int memberLine = cur().line;
+            next();
+            
+            // Check if this is a method call
+            if (cur().type == LPAREN && obj.type == Value::OBJECT)
+            {
+                string className = obj.className;
+                
+                if (!classes.count(className))
+                    error("Class not found for self: " + className, memberLine);
+                
+                ClassDefinition& classDef = classes[className];
+                
+                if (!classDef.methods.count(memberName))
+                    error("Method not found: " + memberName, memberLine);
+                
+                Method& method = classDef.methods[memberName];
+                
+                // Parse method arguments
+                next();
+                vector<Value> args;
+                while (cur().type != RPAREN && cur().type != END)
+                {
+                    args.push_back(logicalOr());
+                    if (cur().type == COMMA)
+                        next();
+                }
+                if (cur().type != RPAREN)
+                    error("Expected ')' after method arguments", cur().line);
+                next();
+                
+                // Save current state
+                vector<Token> savedTokens = t;
+                size_t savedPos = p;
+                
+                // Switch to method's tokens
+                t = method.tokens;
+                p = method.bodyStart;
+                
+                pushScope();
+                setVar("self", obj);
+                
+                for (size_t i = 0; i < method.params.size() && i < args.size(); i++)
+                {
+                    setVar(method.params[i], args[i]);
+                }
+                
+                executeBlock();
+                
+                Value modifiedSelf = getVar("self");
+                Value result = returnValue;
+                
+                popScope();
+                
+                t = savedTokens;
+                p = savedPos;
+                
+                // Update self in outer scope
+                setVar("self", modifiedSelf);
+                obj = modifiedSelf;
+                
+                if (flow == RETURN_FLAG)
+                {
+                    flow = NONE;
+                    obj = result;
+                }
+                else
+                {
+                    flow = NONE;
+                    returnValue = Value();
+                }
+            }
+            else
+            {
+                // Field access
+                if (obj.structFields.find(memberName) == obj.structFields.end())
+                    error("Field not found: " + memberName, memberLine);
+                obj = obj.structFields[memberName];
+            }
+        }
+        
+        return obj;
     }
 
     if (cur().type == LBRACKET)
@@ -3953,6 +4200,84 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
         next();
         
         return Value::Struct(fields);
+    }
+    
+    // OOP: Object instantiation with 'create ClassName(args)'
+    if (cur().type == NEW)
+    {
+        int createLine = cur().line;
+        next();
+        
+        if (cur().type != IDENT)
+            error("Expected class name after 'create'", cur().line);
+        
+        string className = cur().text;
+        next();
+        
+        // Check if class exists
+        if (!classes.count(className))
+            error("Class not found: " + className, createLine);
+        
+        ClassDefinition& classDef = classes[className];
+        
+        // Parse constructor arguments
+        vector<Value> args;
+        if (cur().type == LPAREN)
+        {
+            next();
+            while (cur().type != RPAREN && cur().type != END)
+            {
+                args.push_back(logicalOr());
+                if (cur().type == COMMA)
+                    next();
+            }
+            if (cur().type != RPAREN)
+                error("Expected ')' after constructor arguments", cur().line);
+            next();
+        }
+        
+        // Create the object with fields from class definition
+        Value obj = Value::Object(className, classDef.fields);
+        
+        // Call init constructor if it exists
+        if (classDef.hasInit)
+        {
+            Method& initMethod = classDef.methods["init"];
+            
+            // Save current state
+            vector<Token> savedTokens = t;
+            size_t savedPos = p;
+            
+            // Switch to method's tokens
+            t = initMethod.tokens;
+            p = initMethod.bodyStart;
+            
+            pushScope();
+            
+            // Bind 'self' to the object
+            setVar("self", obj);
+            
+            // Bind parameters
+            for (size_t i = 0; i < initMethod.params.size() && i < args.size(); i++)
+            {
+                setVar(initMethod.params[i], args[i]);
+            }
+            
+            // Execute constructor body
+            executeBlock();
+            
+            // Get the modified 'self' after constructor execution
+            obj = getVar("self");
+            
+            popScope();
+            
+            // Restore state
+            t = savedTokens;
+            p = savedPos;
+            flow = NONE;
+        }
+        
+        return obj;
     }
     
     if (cur().type == IDENT)
@@ -4099,28 +4424,128 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             }
         }
         
-        // Handle struct field access
+        // Handle struct/object field access and method calls
         if (cur().type == DOT)
         {
             Value obj = getVar(n);
+            string objVarName = n;  // Keep track of original variable name
             
             while (cur().type == DOT)
             {
                 next();
                 
                 if (cur().type != IDENT)
-                    error("Expected field name after '.'", cur().line);
+                    error("Expected field or method name after '.'", cur().line);
                 
-                string fieldName = cur().text;
+                string memberName = cur().text;
+                int memberLine = cur().line;
                 next();
                 
-                if (obj.type != Value::STRUCT)
-                    error("Cannot access field of non-struct type", cur().line);
-                
-                if (obj.structFields.find(fieldName) == obj.structFields.end())
-                    error("Struct field not found: " + fieldName, cur().line);
-                
-                obj = obj.structFields[fieldName];
+                // Check if this is a method call (followed by parentheses)
+                if (cur().type == LPAREN && obj.type == Value::OBJECT)
+                {
+                    // This is a method call on an object
+                    string className = obj.className;
+                    
+                    if (!classes.count(className))
+                        error("Class not found for object: " + className, memberLine);
+                    
+                    ClassDefinition& classDef = classes[className];
+                    
+                    if (!classDef.methods.count(memberName))
+                        error("Method not found: " + memberName + " in class " + className, memberLine);
+                    
+                    Method& method = classDef.methods[memberName];
+                    
+                    // Check access modifier
+                    if (method.isPrivate)
+                        error("Cannot access private method: " + memberName, memberLine);
+                    
+                    // Parse method arguments
+                    next();  // Skip '('
+                    vector<Value> args;
+                    while (cur().type != RPAREN && cur().type != END)
+                    {
+                        args.push_back(logicalOr());
+                        if (cur().type == COMMA)
+                            next();
+                    }
+                    if (cur().type != RPAREN)
+                        error("Expected ')' after method arguments", cur().line);
+                    next();
+                    
+                    // Save current state
+                    vector<Token> savedTokens = t;
+                    size_t savedPos = p;
+                    
+                    // Switch to method's tokens
+                    t = method.tokens;
+                    p = method.bodyStart;
+                    
+                    pushScope();
+                    
+                    // Bind 'self' to the object
+                    setVar("self", obj);
+                    
+                    // Bind parameters
+                    for (size_t i = 0; i < method.params.size() && i < args.size(); i++)
+                    {
+                        setVar(method.params[i], args[i]);
+                    }
+                    
+                    // Execute method body
+                    executeBlock();
+                    
+                    // Get the modified 'self' after method execution (for mutation)
+                    Value modifiedSelf = getVar("self");
+                    
+                    // Get return value
+                    Value result = returnValue;
+                    
+                    popScope();
+                    
+                    // Restore state
+                    t = savedTokens;
+                    p = savedPos;
+                    
+                    // Update the original object variable if self was modified
+                    setVar(objVarName, modifiedSelf);
+                    obj = modifiedSelf;
+                    
+                    // Reset flow and return value
+                    if (flow == RETURN_FLAG)
+                    {
+                        flow = NONE;
+                        obj = result;
+                    }
+                    else
+                    {
+                        flow = NONE;
+                        returnValue = Value();
+                    }
+                }
+                else
+                {
+                    // Regular field access (struct or object)
+                    if (obj.type != Value::STRUCT && obj.type != Value::OBJECT)
+                        error("Cannot access field of non-struct/object type", memberLine);
+                    
+                    // Check for private field access on objects
+                    if (obj.type == Value::OBJECT)
+                    {
+                        if (classes.count(obj.className))
+                        {
+                            ClassDefinition& cls = classes[obj.className];
+                            if (cls.fieldPrivate.count(memberName) && cls.fieldPrivate[memberName])
+                                error("Cannot access private field: " + memberName, memberLine);
+                        }
+                    }
+                    
+                    if (obj.structFields.find(memberName) == obj.structFields.end())
+                        error("Field not found: " + memberName, memberLine);
+                    
+                    obj = obj.structFields[memberName];
+                }
             }
             
             return obj;
@@ -4835,6 +5260,184 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
             return;
         }
 
+        // OOP: Class (model) definition
+        // Syntax: model ClassName from ParentClass { fields and methods }
+        if (cur().type == CLASS)
+        {
+            next();
+            if (cur().type != IDENT)
+                error("Expected class name after 'model'", cur().line);
+            
+            string className = cur().text;
+            next();
+            
+            ClassDefinition classDef;
+            classDef.name = className;
+            
+            // Check for inheritance (from ParentClass)
+            if (cur().type == EXTENDS)
+            {
+                next();
+                if (cur().type != IDENT)
+                    error("Expected parent class name after 'from'", cur().line);
+                classDef.parentClass = cur().text;
+                
+                // Verify parent class exists
+                if (!classes.count(classDef.parentClass))
+                    error("Parent class not found: " + classDef.parentClass, cur().line);
+                
+                // Copy parent's fields and methods
+                ClassDefinition& parent = classes[classDef.parentClass];
+                classDef.fields = parent.fields;
+                classDef.fieldPrivate = parent.fieldPrivate;
+                classDef.methods = parent.methods;
+                
+                next();
+            }
+            
+            if (cur().type != LBRACE)
+                error("Expected '{' after class declaration", cur().line);
+            next();
+            
+            // Parse class body
+            while (cur().type != RBRACE && cur().type != END)
+            {
+                bool isPrivate = false;
+                
+                // Check for access modifiers
+                if (cur().type == PRIVATE)
+                {
+                    isPrivate = true;
+                    next();
+                }
+                else if (cur().type == PUBLIC)
+                {
+                    isPrivate = false;
+                    next();
+                }
+                
+                // Method definition (task inside class)
+                if (cur().type == FUNC)
+                {
+                    next();
+                    if (cur().type != IDENT)
+                        error("Expected method name", cur().line);
+                    
+                    string methodName = cur().text;
+                    next();
+                    
+                    if (cur().type != LPAREN)
+                        error("Expected '(' after method name", cur().line);
+                    next();
+                    
+                    vector<string> params;
+                    while (cur().type != RPAREN && cur().type != END)
+                    {
+                        if (cur().type != IDENT)
+                            error("Expected parameter name", cur().line);
+                        params.push_back(cur().text);
+                        next();
+                        if (cur().type == COMMA)
+                            next();
+                    }
+                    if (cur().type != RPAREN)
+                        error("Expected ')' after parameters", cur().line);
+                    next();
+                    
+                    Method method;
+                    method.params = params;
+                    method.bodyStart = p;
+                    method.tokens = t;
+                    method.isPrivate = isPrivate;
+                    
+                    classDef.methods[methodName] = method;
+                    
+                    // Check if this is the init (constructor) method
+                    if (methodName == "init")
+                        classDef.hasInit = true;
+                    
+                    skipBlock();
+                }
+                // Field definition (identifier = value)
+                else if (cur().type == IDENT)
+                {
+                    string fieldName = cur().text;
+                    next();
+                    
+                    if (cur().type == ASSIGN)
+                    {
+                        next();
+                        Value fieldValue = logicalOr();
+                        classDef.fields[fieldName] = fieldValue;
+                        classDef.fieldPrivate[fieldName] = isPrivate;
+                    }
+                    else
+                    {
+                        // Field with no default value
+                        classDef.fields[fieldName] = Value::Number(0);
+                        classDef.fieldPrivate[fieldName] = isPrivate;
+                    }
+                }
+                else
+                {
+                    error("Expected field or method definition in class", cur().line);
+                }
+            }
+            
+            if (cur().type != RBRACE)
+                error("Expected '}' at end of class definition", cur().line);
+            next();
+            
+            // Store the class definition
+            classes[className] = classDef;
+            return;
+        }
+
+        // OOP: Handle self.field = value assignment
+        if (cur().type == SELF)
+        {
+            int selfLine = cur().line;
+            next();
+            
+            if (cur().type != DOT)
+                error("Expected '.' after 'self'", selfLine);
+            
+            next();
+            
+            if (cur().type != IDENT)
+                error("Expected field name after 'self.'", cur().line);
+            
+            string fieldName = cur().text;
+            next();
+            
+            if (cur().type == ASSIGN)
+            {
+                next();
+                Value newVal = logicalOr();
+                
+                // Get self from scope
+                if (!varExists("self"))
+                    error("'self' can only be used inside a class method", selfLine);
+                
+                Value selfObj = getVar("self");
+                
+                if (selfObj.type != Value::OBJECT)
+                    error("'self' is not an object", selfLine);
+                
+                // Update the field
+                selfObj.structFields[fieldName] = newVal;
+                
+                // Update self in scope
+                setVar("self", selfObj);
+                return;
+            }
+            else
+            {
+                // Not an assignment, backtrack and treat as expression
+                p -= 2;  // Go back before field name and dot
+            }
+        }
+
         
             if (cur().type == IDENT)
     {
@@ -4845,6 +5448,9 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
         // ← ADD THIS: Handle struct field assignment (person.name = "Ali")
         if (cur().type == DOT)
         {
+            // Save position in case this is a method call, not an assignment
+            size_t savedP = p - 1;  // Go back to include varName
+            
             vector<string> path;
             path.push_back(varName);
             
@@ -4862,22 +5468,22 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
                 next();
                 Value newVal = logicalOr();
                 
-                // Navigate to the struct
+                // Navigate to the struct/object
                 Value obj = getVar(path[0]);
                 
                 // Navigate through nested fields
                 for (size_t i = 1; i < path.size() - 1; i++)
                 {
-                    if (obj.type != Value::STRUCT)
-                        error("Cannot access field of non-struct", line);
+                    if (obj.type != Value::STRUCT && obj.type != Value::OBJECT)
+                        error("Cannot access field of non-struct/object", line);
                     if (obj.structFields.find(path[i]) == obj.structFields.end())
                         error("Field not found: " + path[i], line);
                     obj = obj.structFields[path[i]];
                 }
                 
                 // Set the final field
-                if (obj.type != Value::STRUCT)
-                    error("Cannot set field of non-struct", line);
+                if (obj.type != Value::STRUCT && obj.type != Value::OBJECT)
+                    error("Cannot set field of non-struct/object", line);
                 
                 obj.structFields[path.back()] = newVal;
                 
@@ -4889,6 +5495,14 @@ builtins["endsWith"] = [](vector<Value> &args, int line) -> Value
                     setVar(path[0], root);
                 }
                 
+                return;
+            }
+            else
+            {
+                // Not an assignment - it's a method call or field access expression
+                // Restore position and let logicalOr() handle it
+                p = savedP;
+                logicalOr();
                 return;
             }
         }

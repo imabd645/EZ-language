@@ -27,6 +27,16 @@ To compile the `ez` interpreter:
 g++ -std=c++17 -Wall -o ez.exe src/main.cpp src/Lexer.cpp src/Parser.cpp src/Interpreter.cpp src/Builtins.cpp -I src -lws2_32 -lsqlite3
 ```
 
+### Add to PATH (Windows)
+
+To use the `ez` command from any directory:
+1. Move `ez.exe` and the required `.dll` files to a permanent folder (e.g., `C:\ezlang`).
+2. Open the Start Search, type in "env", and choose "Edit the system environment variables".
+3. Click the "Environment Variables" button.
+4. Under "System Variables", find the `Path` variable and select "Edit".
+5. Click "New" and add the path to your folder (e.g., `C:\ezlang`).
+6. Restart your terminal.
+
 ## Usage
 
 ### Running a Script
@@ -34,7 +44,7 @@ g++ -std=c++17 -Wall -o ez.exe src/main.cpp src/Lexer.cpp src/Parser.cpp src/Int
 To run an EZ script:
 
 ```bash
-.\ez.exe path/to/script.ez
+ez path/to/script.ez
 ```
 
 ### Package Management
@@ -43,10 +53,10 @@ EZ includes a built-in package manager to install standard libraries and communi
 
 ```bash
 # Install the math library
-.\ez.exe install math
+ez install math
 
 # Install the collections library
-.\ez.exe install collections
+ez install collections
 ```
 
 Packages are stored globally in `C:/ezlib`, making them accessible to all your projects.

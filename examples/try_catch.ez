@@ -1,0 +1,17 @@
+out "Start"
+try {
+    out "In try block"
+    throw "Oops!"
+    out "This should not print"
+} catch err {
+    out "Caught error: " + err
+}
+out "After try-catch"
+
+// Test error keyword alias
+try {
+    error "Alias works"
+} catch e {
+    out "Caught: " + e
+}
+out "End"

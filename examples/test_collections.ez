@@ -1,0 +1,52 @@
+// Test for Modernized Collections Library
+use "collections"
+
+out "--- EZ Collections Library Test ---"
+
+// 1. Set Test
+out "Testing Set:"
+s = Set()
+s.add(1).add(2).add(3).add(2)
+out "  Added 1, 2, 3, 2. Has 2? " + str(s.has(2))
+s.remove(2)
+out "  Removed 2. Has 2? " + str(s.has(2))
+s.print()
+
+// 2. Map Test
+out "Testing Map:"
+m = Map()
+m.set("name", "EZ").set("version", 2.0)
+out "  Map name: " + m.get("name")
+m.remove("version")
+out "  Has version? " + str(m.has("version"))
+
+// 3. Queue Test
+out "Testing Queue:"
+q = Queue()
+q.enqueue("first").enqueue("second").enqueue("third")
+out "  Dequeue: " + q.dequeue()
+out "  Peek:    " + q.peek()
+q.print()
+
+// 4. Stack Test
+out "Testing Stack:"
+st = Stack()
+st.push(100).push(200)
+out "  Pop:     " + str(st.pop())
+out "  Peek:    " + str(st.peek())
+
+// 5. List Test
+out "Testing List:"
+l = List()
+l.append("A").append("B").prepend("Z")
+l.print()
+l.reverse()
+out "  Reversed: "
+l.print()
+
+// 6. Counter Test
+out "Testing Counter:"
+c = Counter()
+c.add("apple").add("banana").add("apple")
+out "  Apple count: " + str(c.get("apple"))
+c.print()

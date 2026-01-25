@@ -1,0 +1,105 @@
+# Test Lambda Expressions and Higher-Order Functions
+
+out "=== Lambda and First-Class Functions Test ==="
+out ""
+
+# Test 1: Basic lambda with expression body
+out "Test 1: Basic lambda expression"
+double = |x| => x * 2
+out "double(5) = " + str(double(5))
+
+# Test 2: Lambda with multiple parameters
+out ""
+out "Test 2: Multi-parameter lambda"
+add = |a, b| => a + b
+out "add(3, 4) = " + str(add(3, 4))
+
+# Test 3: Storing functions in variables (first-class functions)
+out ""
+out "Test 3: First-class functions"
+task multiply(x, y) {
+    give x * y
+}
+fn = multiply
+out "fn(6, 7) = " + str(fn(6, 7))
+
+# Test 4: Higher-order function - map
+out ""
+out "Test 4: map()"
+nums = [1, 2, 3, 4, 5]
+doubled = map(nums, |x| => x * 2)
+out "Original: " + str(nums)
+out "Doubled: " + str(doubled)
+
+# Test 5: Higher-order function - filter
+out ""
+out "Test 5: filter()"
+evens = filter(nums, |x| => x % 2 == 0)
+out "Even numbers: " + str(evens)
+
+# Test 6: Higher-order function - reduce
+out ""
+out "Test 6: reduce()"
+sum = reduce(nums, |acc, x| => acc + x, 0)
+out "Sum of " + str(nums) + " = " + str(sum)
+
+product = reduce(nums, |acc, x| => acc * x, 1)
+out "Product = " + str(product)
+
+# Test 7: Closures - lambda captures outer scope
+out ""
+out "Test 7: Closures"
+task makeAdder(n) {
+    give |x| => x + n
+}
+add10 = makeAdder(10)
+add100 = makeAdder(100)
+out "add10(5) = " + str(add10(5))
+out "add100(5) = " + str(add100(5))
+
+# Test 8: Passing functions to functions
+out ""
+out "Test 8: Passing functions as arguments"
+task apply(fn, value) {
+    give fn(value)
+}
+out "apply(double, 7) = " + str(apply(double, 7))
+
+# Test 9: forEach
+out ""
+out "Test 9: forEach()"
+forEach([10, 20, 30], |x| => print("Processing: " + str(x)))
+
+# Test 10: find, every, some
+out ""
+out "Test 10: find, every, some"
+found = find([1, 3, 5, 8, 9], |x| => x % 2 == 0)
+out "First even in [1,3,5,8,9]: " + str(found)
+
+allPositive = every([1, 2, 3, 4], |x| => x > 0)
+out "All positive in [1,2,3,4]: " + str(allPositive)
+
+hasNegative = some([1, -2, 3], |x| => x < 0)
+out "Has negative in [1,-2,3]: " + str(hasNegative)
+
+# Test 11: Chaining higher-order functions
+out ""
+out "Test 11: Function chaining"
+data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+squared = map(data, |x| => x * x)
+bigSquares = filter(squared, |x| => x > 20)
+result = reduce(bigSquares, |acc, x| => acc + x, 0)
+out "Sum of squares > 20 from 1-10: " + str(result)
+
+# Test 12: Lambda with block body
+out ""
+out "Test 12: Lambda with block body"
+process = |n| {
+    temp = n * 2
+    temp = temp + 10
+    give temp
+}
+out "process(5) = " + str(process(5))
+
+out ""
+out "=== All Lambda Tests Complete! ==="

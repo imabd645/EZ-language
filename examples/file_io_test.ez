@@ -1,0 +1,15 @@
+# Test File I/O
+
+filename = "test_output.txt"
+
+out "Writing to file: " + filename
+writeFile(filename, "Hello File I/O!\n")
+
+out "Appending to file..."
+appendFile(filename, "This is appended text.\n")
+
+out "Reading file content:"
+content = readFile(filename)
+out "--- File Content Start ---"
+out content
+out "--- File Content End ---"

@@ -1,0 +1,5 @@
+use "examples/mylib.ez"
+
+out "Main program starting..."
+sayHello("EZ User")
+out "Main program done."

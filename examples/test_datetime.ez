@@ -1,0 +1,29 @@
+// Test for Migrated DateTime Library
+use "datetime"
+
+out "--- EZ DateTime Library Test ---"
+
+now_ms = now()
+out "Timestamp: " + str(now_ms)
+
+out "Formatted: " + format(now_ms)
+out "Date only: " + dateStr(now_ms)
+out "Time only: " + timeStr(now_ms)
+
+out "Date Now: " + dateNow()
+out "Time Now (+0h): " + timeNow(0)
+out "Time Now (+5h): " + timeNow(5)
+
+c = getComponents(now_ms)
+out "Components year: " + str(c.year)
+out "Components month: " + str(c.month)
+out "Components day: " + str(c.day)
+
+// Test leap year
+out "Is 2024 leap? " + str(isLeap(2024))
+out "Is 2023 leap? " + str(isLeap(2023))
+
+// Test math
+tomorrow = addTime(now_ms, 1, 0, 0, 0)
+out "Tomorrow:  " + format(tomorrow)
+out "Difference in days: " + str(diffDays(tomorrow, now_ms))

@@ -1,0 +1,42 @@
+// Advanced Web Server Example
+// Demonstrates routing, query parameters, JSON, and static files
+
+task main_handler(req) {
+    out "Request: " + req.method + " " + req.path
+    
+    // Routing
+    when req.path == "/" {
+        give "<h1>EZ Web Framework</h1><p>Welcome! Try these routes:</p><ul><li><a href='/about'>/about</a> - Static file</li><li><a href='/api/info?user=EZ'>/api/info</a> - Query params</li><li><a href='/json'>/json</a> - JSON response</li></ul>"
+    }
+    
+    when req.path == "/about" {
+        give serveFile("examples/about.html")
+    }
+    
+    when req.path == "/api/info" {
+        user = "Guest"
+        when "user" in req.query {
+            user = req.query.user
+        }
+        give "<h2>API Info</h2><p>Hello, " + user + "!</p><p>Method: " + req.method + "</p>"
+    }
+    
+    when req.path == "/json" {
+        give {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+            body: "{ \"app\": \"EZ Server\", \"version\": \"1.0\", \"features\": [\"winsock\", \"routing\", \"json\"] }"
+        }
+    }
+    
+    // 404 handler
+    give {
+        status: 404,
+        headers: { "Content-Type": "text/plain" },
+        body: "404 Not Found"
+    }
+}
+
+port = 8080
+out "Starting server on http://localhost:" + str(port)
+server(port, main_handler)

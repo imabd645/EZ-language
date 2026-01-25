@@ -1,0 +1,18 @@
+# Test Line-based File I/O
+
+filename = "test_lines.txt"
+
+out "Writing lines..."
+writeLine(filename, "First Line")
+appendLine(filename, "Second Line")
+appendLine(filename, "Third Line")
+
+out "Reading lines..."
+lines = readLines(filename)
+
+out "Number of lines: " + str(len(lines))
+out "Lines content:"
+repeat i = 0 to len(lines)
+    out str(i) + ": " + lines[i]
+
+out "Line test complete"

@@ -1,0 +1,40 @@
+# Test Dictionary
+out "--- Testing Dictionary ---"
+
+d = { "name": "EZ", "ver": 1.0 }
+out "Dict created: " + str(len(d)) + " entries"
+
+out "Name: " + d["name"]
+out "Ver: " + str(d["ver"])
+
+d["ver"] = 1.1
+out "Updated Ver: " + str(d["ver"])
+
+d["newKey"] = 100
+out "Added newKey: " + str(d["newKey"])
+out "Len now: " + str(len(d))
+
+ks = keys(d)
+out "Keys: " + str(ks)
+
+vs = values(d)
+out "Values: " + str(vs)
+
+out "Contains 'name'? " + str(contains(d, "name"))
+out "Contains 'missing'? " + str(contains(d, "missing"))
+
+
+# Test Struct
+out "\n--- Testing Struct ---"
+
+struct Point { x, y }
+
+p = Point(10, 20)
+out "Point p created"
+out "p.x: " + str(p.x)
+out "p.y: " + str(p.y)
+
+p.x = 100
+out "Updated p.x: " + str(p.x)
+
+out "Struct test complete"

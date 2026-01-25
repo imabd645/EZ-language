@@ -1,0 +1,58 @@
+// Test for Modernized Database Library
+use "database"
+
+out "--- EZ Database Library Test ---"
+
+// 1. Connection
+db = openDatabase("test.db")
+out "Connected to: " + db.path
+
+// 2. Schema
+out "Creating table 'users'..."
+db.createTable("users", [
+    "id INTEGER PRIMARY KEY",
+    "name TEXT",
+    "email TEXT",
+    "age INTEGER"
+])
+
+// 3. Clear existing data
+db.execute("DELETE FROM users", [])
+
+// 4. Insert
+out "Inserting users..."
+id1 = db.insert("users", {name: "Alice", email: "alice@example.com", age: 30})
+id2 = db.insert("users", {name: "Bob", email: "bob@example.com", age: 25})
+out "Inserted Alice (ID: " + str(id1) + ") and Bob (ID: " + str(id2) + ")"
+
+// 5. Query
+out "Querying all users:"
+users = db.query("SELECT * FROM users ORDER BY name", [])
+get u in users {
+    out "  - " + u.name + " (" + u.email + "), Age: " + str(u.age)
+}
+
+// 6. Update
+out "Updating Bob's age..."
+db.update("users", id2, {age: 26})
+
+bob = db.queryOne("SELECT * FROM users WHERE id = ?", [id2])
+out "Updated Bob: " + bob.name + ", Age: " + str(bob.age)
+
+// 7. Transactions
+out "Testing transaction..."
+db.begin()
+db.insert("users", {name: "Charlie", email: "charlie@example.com", age: 40})
+db.rollback()
+
+count = db.queryOne("SELECT COUNT(*) as count FROM users", [])
+out "User count after rollback: " + str(count.count) // Should be 2
+
+// 8. Delete
+out "Deleting Alice..."
+db.delete("users", id1)
+final_count = db.queryOne("SELECT COUNT(*) as count FROM users", [])
+out "Final user count: " + str(final_count.count) // Should be 1
+
+db.disconnect()
+out "Done."

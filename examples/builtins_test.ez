@@ -1,0 +1,24 @@
+# Test built-in functions
+out "Testing built-ins..."
+
+# String functions
+s = "Hello World"
+out "Len: " + str(len(s))
+out "Upper: " + upper(s)
+out "Lower: " + lower(s)
+out "Contains World: " + str(contains(s, "World"))
+out "Replace: " + replace(s, "World", "EZ")
+
+# Array functions
+arr = [1, 2, 3, 4]
+push(arr, 5)
+out "Pop: " + str(pop(arr))
+out "Arr len: " + str(len(arr))
+
+# Math
+out "Sqrt 16: " + str(sqrt(16))
+out "Pow 2^3: " + str(pow(2, 3))
+out "Min 10, 20: " + str(min(10, 20))
+out "Max 10, 20: " + str(max(10, 20))
+
+out "Built-ins test complete"

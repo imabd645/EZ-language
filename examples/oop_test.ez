@@ -1,0 +1,107 @@
+# Test OOP features: Models, Inheritance, Encapsulation
+
+out "=== OOP Feature Tests ==="
+out ""
+
+# Test 1: Basic Model and Instance
+out "Test 1: Basic Model"
+
+model Person {
+    init(name, age) {
+        self.name = name
+        self.age = age
+    }
+    
+    task introduce() {
+        out "Hi, I am " + self.name + " and I am " + str(self.age) + " years old."
+    }
+}
+
+alice = Person("Alice", 30)
+alice.introduce()
+
+out "Name: " + alice.name
+out "Age: " + str(alice.age)
+
+# Test 2: Inheritance
+out ""
+out "Test 2: Inheritance"
+
+model Employee extends Person {
+    init(name, age, role) {
+        self.name = name
+        self.age = age
+        self.role = role
+    }
+    
+    task work() {
+        out self.name + " is working as " + self.role
+    }
+}
+
+bob = Employee("Bob", 40, "Builder")
+bob.introduce()  # Inherited method
+bob.work()       # New method
+
+# Test 3: Encapsulation (hidden members)
+out ""
+out "Test 3: Encapsulation"
+
+model BankAccount {
+    hidden balance
+    
+    init(initial) {
+        self.balance = initial
+    }
+    
+    task deposit(amount) {
+        self.balance = self.balance + amount
+        out "Deposited " + str(amount)
+    }
+    
+    task getBalance() {
+        give self.balance
+    }
+}
+
+account = BankAccount(100)
+account.deposit(50)
+out "Balance: " + str(account.getBalance())
+
+# This should fail if uncommented:
+# out account.balance
+
+# Test 4: Hidden methods
+out ""
+out "Test 4: Hidden methods"
+
+model SecretAgent {
+    init(name) {
+        self.name = name
+    }
+    
+    hidden task secretMission() {
+        out "Executing secret mission..."
+    }
+    
+    task startMission() {
+        out "Agent " + self.name + " starting..."
+        self.secretMission() # Allowed (internal call)
+    }
+}
+
+bond = SecretAgent("Bond")
+bond.startMission()
+
+# This should fail if uncommented:
+# bond.secretMission()
+
+# Test 5: Dynamic properties
+out ""
+out "Test 5: Dynamic properties"
+obj = Person("Charlie", 25)
+obj.city = "New York"
+out "City: " + obj.city
+
+out ""
+out "=== OOP Tests Complete! ==="

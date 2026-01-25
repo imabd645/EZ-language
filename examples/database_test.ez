@@ -1,0 +1,29 @@
+// SQLite Database Test
+// Demonstrates creating a table, inserting data, and querying
+
+out "Opening database..."
+db = dbOpen("app.db")
+
+out "Creating users table..."
+dbExec(db, "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, role TEXT)")
+
+out "Inserting test data..."
+dbExec(db, "INSERT INTO users (name, role) VALUES ('Abdullah', 'Admin')")
+dbExec(db, "INSERT INTO users (name, role) VALUES ('Zaid', 'Developer')")
+dbExec(db, "INSERT INTO users (name, role) VALUES ('Ezra', 'User')")
+
+out "Querying all users:"
+users = dbQuery(db, "SELECT * FROM users")
+
+get user in users {
+    out "  [" + str(user.id) + "] Name: " + user.name + " | Role: " + user.role
+}
+
+out "Finding specific user..."
+admins = dbQuery(db, "SELECT name FROM users WHERE role = 'Admin'")
+when admins.len > 0 {
+    out "  Found admin: " + admins[0].name
+}
+
+dbClose(db)
+out "Database connection closed."

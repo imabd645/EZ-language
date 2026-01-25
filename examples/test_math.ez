@@ -1,0 +1,45 @@
+// Test for Modernized Math Library
+use "math"
+
+out "--- EZ Math Library Test ---"
+
+// 1. Constants & Trig
+out "Trigonometry:"
+out "  PI: " + str(PI())
+out "  cos(60°) = " + str(cosd(60)) + " (expected ~0.5)"
+out "  sin(30°) = " + str(sind(30)) + " (expected ~0.5)"
+out "  tan(45°) = " + str(tand(45)) + " (expected ~1.0)"
+
+// 2. Vectors
+out ""
+out "Vectors:"
+v = Vector3(3, 4, 0)
+out "  Vector: "
+v.print()
+out "  Length: " + str(v.length()) + " (expected 5)"
+v.normalize()
+out "  Normalized: "
+v.print()
+out "  New Length: " + str(v.length())
+
+v2 = Vector3(1, 0, 0)
+out "  Dot(normalized, (1,0,0)): " + str(v.dot(v2))
+
+// 3. Statistics
+out ""
+out "Statistics:"
+data = [10, 20, 30, 40, 50]
+stats = Statistics(data)
+out "  Dataset: [10, 20, 30, 40, 50]"
+out "  Mean:    " + str(stats.mean()) + " (expected 30)"
+out "  Var:     " + str(stats.variance()) + " (expected 200)"
+out "  StdDev:  " + str(stats.stddev())
+
+// 4. Utilities
+out ""
+out "Utilities:"
+out "  Lerp(0, 100, 0.5) = " + str(lerp(0, 100, 0.5))
+out "  Clamp(150, 0, 100) = " + str(clamp(150, 0, 100))
+
+out ""
+out "Done."

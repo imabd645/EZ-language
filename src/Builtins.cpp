@@ -12,10 +12,14 @@
 #include <map>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <conio.h>
+#include "MiniJson.h"
 
 
 #include <sqlite3.h>
 #include <chrono>
+#include <curl/curl.h>
+#include <thread>
 
 void registerBuiltins(Interpreter& interp) {
     // clock() - returns milliseconds since epoch
@@ -1314,4 +1318,242 @@ void registerBuiltins(Interpreter& interp) {
             args[0].asDictionaryPtr()->map.erase(key);
             return args[0];
         }));
+
+    // --- Added Missing Functions ---
+
+    // stop(ms) - Sleep for specified milliseconds
+    interp.defineGlobal("stop", Value::makeNativeFunction("stop", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) throw RuntimeError("stop() expects number");
+            std::this_thread::sleep_for(std::chrono::milliseconds((int)args[0].asNumber()));
+            return Value();
+        }));
+
+    // parse_json(str) - Convert JSON string to EZ value
+    interp.defineGlobal("parse_json", Value::makeNativeFunction("parse_json", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) throw RuntimeError("parse_json() expects string");
+            MiniJson::Value root;
+            MiniJson::Reader reader;
+            if (!reader.parse(args[0].asString(), root)) {
+                throw RuntimeError("Failed to parse JSON");
+            }
+            
+            std::function<Value(const MiniJson::Value&)> convert;
+            convert = [&](const MiniJson::Value& mv) -> Value {
+                if (mv.type == MiniJson::OBJECT) {
+                    Value dv = Value::makeDictionary();
+                    auto& map = dv.asDictionary().map;
+                    for (const auto& name : mv.getMemberNames()) {
+                        map[name] = convert(mv[name]);
+                    }
+                    return dv;
+                } else if (mv.type == MiniJson::ARRAY) {
+                    std::vector<Value> av;
+                    for (const auto& item : mv.items) av.push_back(convert(item));
+                    return Value::makeArray(av);
+                } else {
+                    std::string s = mv.asString();
+                    if (s == "true") return Value(true);
+                    if (s == "false") return Value(false);
+                    if (s == "null") return Value();
+                    // Try number
+                    if (!s.empty() && (isdigit(s[0]) || s[0] == '-' || s[0] == '.')) {
+                        try {
+                            size_t pos;
+                            double d = std::stod(s, &pos);
+                            if (pos == s.length()) return Value(d);
+                        } catch (...) {}
+                    }
+                    return Value(s);
+                }
+            };
+            return convert(root);
+        }));
+
+    // to_json(val) - Convert EZ value to JSON string
+    interp.defineGlobal("to_json", Value::makeNativeFunction("to_json", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            std::function<MiniJson::Value(const Value&)> convert;
+            convert = [&](const Value& v) -> MiniJson::Value {
+                if (v.isDictionary()) {
+                    MiniJson::Value mv(MiniJson::OBJECT);
+                    for (const auto& kv : v.asDictionary().map) mv[kv.first] = convert(kv.second);
+                    return mv;
+                } else if (v.isArray()) {
+                    MiniJson::Value mv(MiniJson::ARRAY);
+                    for (const auto& item : v.asArray()) mv.append(convert(item));
+                    return mv;
+                } else if (v.isString()) return MiniJson::Value(v.asString());
+                else if (v.isNumber()) {
+                    double d = v.asNumber();
+                    if (d == (int)d) return MiniJson::Value(std::to_string((int)d));
+                    return MiniJson::Value(std::to_string(d));
+                }
+                else if (v.isBool()) return MiniJson::Value(v.asBool() ? "true" : "false");
+                return MiniJson::Value("null");
+            };
+            MiniJson::Value root = convert(args[0]);
+            std::stringstream ss;
+            MiniJson::StreamWriter writer;
+            writer.write(root, &ss);
+            return Value(ss.str());
+        }));
+
+    // --- Terminal Built-ins ---
+
+    // term_clear() - Clears the terminal screen (Windows)
+    interp.defineGlobal("clear", Value::makeNativeFunction("clear", 0,
+        [](Interpreter&, const std::vector<Value>&) -> Value {
+            system("cls");
+            return Value();
+        }));
+
+    // term_color(code) - Sets terminal text color (Windows)
+    // 0-15: Standard Windows colors
+    interp.defineGlobal("color", Value::makeNativeFunction("color", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) throw RuntimeError("color() expects a number code (0-15)");
+            int code = (int)args[0].asNumber();
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            SetConsoleTextAttribute(hConsole, (WORD)code);
+            return Value();
+        }));
+
+    // term_reset() - Resets terminal color to default
+    interp.defineGlobal("reset", Value::makeNativeFunction("reset", 0,
+        [](Interpreter&, const std::vector<Value>&) -> Value {
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            SetConsoleTextAttribute(hConsole, 7); // Default light gray/white
+            return Value();
+        }));
+
+    // gotoxy(x, y) - Moves terminal cursor to coordinates
+    interp.defineGlobal("gotoxy", Value::makeNativeFunction("gotoxy", 2,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber() || !args[1].isNumber()) 
+                throw RuntimeError("gotoxy() expects two numbers (x, y)");
+            int x = (int)args[0].asNumber();
+            int y = (int)args[1].asNumber();
+            HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+            COORD pos = { (SHORT)x, (SHORT)y };
+            SetConsoleCursorPosition(hConsole, pos);
+            return Value();
+        }));
+
+    // getch() - Waits for and returns a single character
+    interp.defineGlobal("getch", Value::makeNativeFunction("getch", 0,
+        [](Interpreter&, const std::vector<Value>&) -> Value {
+            int c = _getch();
+            return Value(std::string(1, (char)c));
+        }));
+
+    // url_encode(str)
+    static int curl_init_checker = []() { curl_global_init(CURL_GLOBAL_DEFAULT); return 0; }();
+    (void)curl_init_checker;
+    interp.defineGlobal("url_encode", Value::makeNativeFunction("url_encode", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            std::string s = args[0].toString();
+            CURL* curl = curl_easy_init();
+            char* output = curl_easy_escape(curl, s.c_str(), (int)s.length());
+            std::string res(output);
+            curl_free(output);
+            curl_easy_cleanup(curl);
+            return Value(res);
+        }));
+
+    // url_decode(str)
+    interp.defineGlobal("url_decode", Value::makeNativeFunction("url_decode", 1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            std::string s = args[0].toString();
+            CURL* curl = curl_easy_init();
+            int outlen;
+            char* output = curl_easy_unescape(curl, s.c_str(), (int)s.length(), &outlen);
+            std::string res(output, outlen);
+            curl_free(output);
+            curl_easy_cleanup(curl);
+            return Value(res);
+        }));
+
+    // HTTP Helpers
+    static auto HttpWriteCallback = [](void* contents, size_t size, size_t nmemb, void* userp) -> size_t {
+        ((std::string*)userp)->append((char*)contents, size * nmemb);
+        return size * nmemb;
+    };
+
+    // http_get(url, [headers])
+    interp.defineGlobal("http_get", Value::makeNativeFunction("http_get", -1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (args.empty()) throw RuntimeError("http_get() expects URL");
+            std::string url = args[0].toString();
+            CURL* curl = curl_easy_init();
+            if (!curl) throw RuntimeError("CURL init failed");
+            std::string res;
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))HttpWriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &res);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            struct curl_slist* headers = nullptr;
+            if (args.size() > 1 && args[1].isDictionary()) {
+                for (auto& kv : args[1].asDictionary().map) {
+                    std::string h = kv.first + ": " + kv.second.toString();
+                    headers = curl_slist_append(headers, h.c_str());
+                }
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+            }
+            CURLcode code = curl_easy_perform(curl);
+            if (headers) curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+            if (code != CURLE_OK) throw RuntimeError("http_get failed: " + std::string(curl_easy_strerror(code)));
+            return Value(res);
+        }));
+
+    // http_post(url, body, [headers])
+    interp.defineGlobal("http_post", Value::makeNativeFunction("http_post", -1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2) throw RuntimeError("http_post() expects URL and body");
+            std::string url = args[0].toString();
+            std::string body = args[1].toString();
+            CURL* curl = curl_easy_init();
+            if (!curl) throw RuntimeError("CURL init failed");
+            std::string res;
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))HttpWriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &res);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Bypass for local environments
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // 30 second timeout
+            
+            struct curl_slist* headers = nullptr;
+            bool hasCT = false;
+            if (args.size() > 2 && args[2].isDictionary()) {
+                for (auto& kv : args[2].asDictionary().map) {
+                    std::string k = kv.first;
+                    std::string h = k + ": " + kv.second.toString();
+                    headers = curl_slist_append(headers, h.c_str());
+                    if (k == "Content-Type") hasCT = true;
+                }
+            }
+            if (!hasCT && !body.empty() && (body[0] == '{' || body[0] == '[')) {
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+            }
+            if (headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+            CURLcode code = curl_easy_perform(curl);
+            if (headers) curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+            if (code != CURLE_OK) throw RuntimeError("http_post failed: " + std::string(curl_easy_strerror(code)));
+            return Value(res);
+        }));
+
+    // Database Aliases
+    auto globalEnv = interp.getGlobalEnv();
+    interp.defineGlobal("db_open", globalEnv->get("dbOpen", 0));
+    interp.defineGlobal("db_execute", globalEnv->get("dbExec", 0));
+    interp.defineGlobal("db_query", globalEnv->get("dbQuery", 0));
+    interp.defineGlobal("db_close", globalEnv->get("dbClose", 0));
+    interp.defineGlobal("db_last_insert_id", globalEnv->get("dbLastInsertId", 0));
+    interp.defineGlobal("db_begin", globalEnv->get("dbBegin", 0));
+    interp.defineGlobal("db_commit", globalEnv->get("dbCommit", 0));
+    interp.defineGlobal("db_rollback", globalEnv->get("dbRollback", 0));
 }

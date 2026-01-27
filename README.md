@@ -1,70 +1,149 @@
-# EZ Programming Language
+# EZ Language
 
-EZ is a modern, high-level, interpreted programming language designed for simplicity, power, and high-performance integration. It features a professional object-oriented model system, a built-in package manager, and native support for SQLite and Web Servers.
+EZ is a dynamic, interpreted programming language designed for simplicity and power. It features clean syntax, optional object-oriented programming, and built-in support for asynchronous tasks and web capabilities.
 
-## Key Features
+## 📖 Documentation
 
-- **Object-Oriented**: Support for `model` definitions with constructors and member tasks.
-- **Embedded Database**: First-class support for SQLite with parameterized queries.
-- **Package Management**: Built-in `ez install` command to fetch libraries from GitHub.
-- **Web Capabilities**: Easy-to-use web server built-ins for rapid API development.
-- **Modern Syntax**: Expressive control flow (`when`, `repeat`, `get`) and clean syntax.
+For more detailed documentation:
+- [Language Specification](docs/specification.md)
+- [API Reference](docs/api.md)
+- [Tutorial](docs/tutorial.md)
+- [FAQ](docs/faq.md)
+
+---
+
+## Table of Contents
+1.  [Getting Started](#getting-started)
+2.  [Syntax Basics](#syntax-basics)
+3.  [Control Flow](#control-flow)
+4.  [Functions (Tasks)](#functions-tasks)
+5.  [Object-Oriented Programming](#object-oriented-programming)
+6.  [Concurrency & Async](#concurrency--async)
+7.  [Built-in Functions](#built-in-functions)
 
 ## Getting Started
 
-### Prerequisites
-
-You need a C++ compiler supporting C++17 (e.g., GCC, Clang, or MSVC) and the following libraries:
-- SQLite3
-- WinSock2 (on Windows)
-- Curl (for package management)
-
-### Compilation
-
-To compile the `ez` interpreter:
-
+To run an EZ script, use the interpreter:
 ```bash
-g++ -std=c++17 -Wall -o ez.exe src/main.cpp src/Lexer.cpp src/Parser.cpp src/Interpreter.cpp src/Builtins.cpp -I src -lws2_32 -lsqlite3
+./ez script.ez
 ```
 
-### Add to PATH (Windows)
-
-To use the `ez` command from any directory:
-1. Move `ez.exe` and the required `.dll` files to a permanent folder (e.g., `C:\ezlang`).
-2. Open the Start Search, type in "env", and choose "Edit the system environment variables".
-3. Click the "Environment Variables" button.
-4. Under "System Variables", find the `Path` variable and select "Edit".
-5. Click "New" and add the path to your folder (e.g., `C:\ezlang`).
-6. Restart your terminal.
-
-## Usage
-
-### Running a Script
-
-To run an EZ script:
-
-```bash
-ez path/to/script.ez
+### Comments
+```javascript
+# This is a line comment
+/* This is a 
+   block comment */
 ```
 
-### Package Management
+## Syntax Basics
 
-EZ includes a built-in package manager to install standard libraries and community packages:
-
-```bash
-# Install the math library
-ez install math
-
-# Install the collections library
-ez install collections
+### Variables
+Variables are dynamically typed and declared by assignment.
+```javascript
+name = "EZ Language"
+count = 42
+isValid = true
 ```
 
-Packages are stored globally in `C:/ezlib`, making them accessible to all your projects.
+### Data Types
+- **Nil**: `nil`
+- **Boolean**: `true`, `false`
+- **Number**: Double-precision floating point (e.g., `10`, `3.14`).
+- **String**: Strings with `'` or `"` quotes. Supports escape sequences (`\n`, `\t`).
+- **Array**: Ordered lists.
+    ```javascript
+    items = [1, 2, "three", true]
+    out items[0] # Access by index
+    ```
+- **Dictionary**: Key-value pairs.
+    ```javascript
+    user = { "name": "Alice", "age": 30 }
+    out user["name"]
+    user["city"] = "NY"
+    ```
 
-## Documentation
+### Output
+Use the `out` statement to print line to console.
+```javascript
+out "Hello World"
+out 10 + 20
+```
 
-For a comprehensive guide to the language syntax and features, see [instructions.md](instructions.md).
+## Control Flow
 
-## License
+### Conditionals
+```javascript
+when x > 10 {
+    out "Large"
+} other when x > 5 {
+    out "Medium"
+} other {
+    out "Small"
+}
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Loops
+```javascript
+count = 0
+while count < 5 {
+    out count
+    count += 1
+}
+
+repeat i = 1 to 5 {
+    out "Iteration " + str(i)
+}
+
+get item in [10, 20, 30] {
+    out item
+}
+```
+
+## Functions (Tasks)
+Functions are defined using the `task` keyword. Values are returned using `give`.
+
+```javascript
+task add(a, b) {
+    result = a + b
+    give result
+}
+```
+
+## Object-Oriented Programming
+```javascript
+model Dog extends Animal {
+    init(name) {
+        self.name = name
+    }
+    
+    task speak() {
+        out self.name + " barks!"
+    }
+}
+```
+
+## Concurrency & Async
+
+### Multithreading
+```javascript
+task heavyWork(id) {
+    stop(1000)
+    give id
+}
+future = spawn(heavyWork, 1)
+result = await(future)
+```
+
+### HTTP Fetch
+```javascript
+fut = fetch("https://api.example.com/data")
+data = await(fut)
+```
+
+## Built-in Functions
+
+*See [API Reference](docs/api.md) for full list.*
+- `str`, `num`, `type`, `len`
+- `push`, `pop`, `keys`, `values`
+- `fetch`, `spawn`, `await`
+- `clock`, `stop`, `rand`

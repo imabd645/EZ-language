@@ -181,7 +181,7 @@ task handleRequest(req) {
             hist = body["history"] # Array of {role, content}
             
             try {
-                reply = getGemini("AIzaSyBZ8SZjp5-up4cyVoLjhaZeZETNAYro84A", msg, hist)
+                reply = getGemini(key, msg, hist)
                 out reply
                 give sendJSON({"success": true, "response": reply})
             } catch e {

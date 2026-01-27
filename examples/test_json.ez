@@ -1,0 +1,5 @@
+s = "Line 1\nLine 2 \"Quote\""
+json = to_json({"text": s})
+out "Original: " + s
+out "JSON: " + json
+out "Length: " + str(len(json))

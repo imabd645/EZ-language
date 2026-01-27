@@ -1,0 +1,210 @@
+# Web-Based Gemini Chat Application
+
+out "Starting Web Chat App..."
+db = db_open("web_chat.db")
+db_execute(db, "CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)")
+
+# --- Backend Logic ---
+
+task escapeJSON(s) {
+    res = ""
+    lenS = len(s)
+    i = 0
+    while i < lenS {
+        c = substring(s, i, 1)
+        when c == "\\" { res += "\\\\" }
+        other when c == "\"" { res += "\\\"" }
+        other when c == "\n" { res += "\\u000a" }
+        other when c == "\r" { res += "" } # Ignore CR
+        other when c == "\t" { res += "\\t" }
+        other { res += c }
+        i += 1
+    }
+    give res
+}
+
+task sendJSON(data) {
+    # Manually construct JSON for the specific response structure we need
+    # data is {"success": ..., "response": ...} or {"success": ..., "error": ...}
+    
+    body = "{"
+    body += "\"success\": " + str(data["success"])
+    
+    when data["response"] != nil {
+        body += ", \"response\": \"" + escapeJSON(data["response"]) + "\""
+    }
+    
+    when data["error"] != nil {
+        body += ", \"error\": \"" + escapeJSON(data["error"]) + "\""
+    }
+    
+    body += "}"
+
+    res = "HTTP/1.1 200 OK\r\n"
+    res += "Content-Type: application/json\r\n"
+    res += "Content-Length: " + str(len(body)) + "\r\n"
+    res += "Access-Control-Allow-Origin: *\r\n"
+    res += "\r\n"
+    res += body
+    give res
+}
+
+
+task serializeGeminiPayload(contents) {
+    # Manually serialize { "contents": [...] } structure
+    json = "{ \"contents\": ["
+    
+    first = true
+    get entry in contents {
+        when first == false { json += ", " }
+        first = false
+        
+        role = entry["role"]
+        # entry["parts"] is a list of { "text": ... }
+        # specific to our usage, we know it has 1 part
+        text = entry["parts"][0]["text"]
+        
+        json += "{ \"role\": \"" + role + "\", "
+        json += "\"parts\": [{ \"text\": \"" + escapeJSON(text) + "\" }] }"
+    }
+    
+    json += "] }"
+    give json
+}
+
+task getGemini(apiKey, userMsg, history) {
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey
+    
+    contents = []
+    
+    # Process history
+    get item in history {
+        role = item["role"]
+        text = item["content"]
+        gRole = "user"
+        when role == "model" { gRole = "model" }
+        
+        part = { "text": text }
+        push(contents, { "role": gRole, "parts": [part] })
+    }
+    
+    # Add new message
+    push(contents, { "role": "user", "parts": [{ "text": userMsg }] })
+    
+    # Use manual serializer
+    bodyStr = serializeGeminiPayload(contents)
+    
+    try {
+        out "Sending request to Gemini..."
+        fut = fetch(url, {
+            "method": "POST",
+            "body": bodyStr,
+            "headers": { "Content-Type": "application/json" }
+        })
+        
+        jsonRes = await(fut)
+        out "Gemini Raw Response: " + jsonRes
+        
+        data = parse_json(jsonRes)
+        
+        when type(data) == "dictionary" and data["error"] != nil {
+            out "Gemini API Error: " + str(data["error"])
+            throw data["error"]["message"]
+        }
+        
+        candidates = data["candidates"]
+        when len(candidates) > 0 {
+            part = candidates[0]["content"]["parts"][0]
+            give part["text"]
+        }
+        
+        out "No candidates found in response."
+        throw "No response content"
+    } catch e {
+        out "Exception in getGemini: " + str(e)
+        throw str(e)
+    }
+}
+
+task handleRequest(req) {
+    # Request is a dictionary: { "method": "...", "path": "...", "body": "...", ... }
+    method = req["method"]
+    path = req["path"]
+    
+    out method + " " + path
+    
+    # Route: Home
+    when path == "/" {
+        give serveFile("chat.html")
+    }
+    
+    # API Routes
+    try {
+        bodyStr = req["body"]
+        # Only parse JSON if body exists and looks like JSON
+        body = {}
+        # Simple check if it starts with {
+        when len(bodyStr) > 0 and substring(bodyStr, 0, 1) == "{" {
+            try {
+                body = parse_json(bodyStr)
+            } catch e {
+                out "JSON Parse error: " + str(e)
+            }
+        }
+
+        when path == "/api/register" {
+            u = body["username"]
+            p = body["password"]
+            
+            try {
+                db_execute(db, "INSERT INTO users (username, password) VALUES ('" + u + "', '" + p + "')")
+                give sendJSON({"success": true})
+            } catch e {
+                give sendJSON({"success": false, "error": "Username taken"})
+            }
+        } 
+        
+        other when path == "/api/login" {
+            u = body["username"]
+            p = body["password"]
+            rows = db_query(db, "SELECT * FROM users WHERE username='" + u + "' AND password='" + p + "'")
+            
+            when len(rows) > 0 {
+                give sendJSON({"success": true})
+            } other {
+                give sendJSON({"success": false, "error": "Invalid credentials"})
+            }
+        }
+        
+        other when path == "/api/chat" {
+            msg = body["message"]
+            hist = body["history"] # Array of {role, content}
+            
+            try {
+                reply = getGemini("AIzaSyBZ8SZjp5-up4cyVoLjhaZeZETNAYro84A", msg, hist)
+                out reply
+                give sendJSON({"success": true, "response": reply})
+            } catch e {
+                give sendJSON({"success": false, "error": str(e)})
+            }
+        }
+        
+        other {
+            give "HTTP/1.1 404 Not Found\r\n\r\n"
+        }
+        
+    } catch e {
+        out "Error: " + str(e)
+        give sendJSON({"success": false, "error": "Server Error: " + str(e)})
+    }
+}
+
+out "Server running on http://localhost:8081"
+try {
+   
+server(5000, handleRequest)
+       
+} catch e {
+    out "Server fatal error: " + str(e)
+}
+db_close(db)

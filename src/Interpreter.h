@@ -23,6 +23,7 @@ class ContinueException : public std::exception {};
 class Interpreter {
 public:
     Interpreter();
+    explicit Interpreter(std::shared_ptr<Environment> startEnv);
     
     void interpret(const std::vector<StmtPtr>& statements);
     Value evaluate(const ExprPtr& expr);

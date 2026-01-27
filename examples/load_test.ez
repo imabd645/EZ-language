@@ -1,0 +1,56 @@
+out "Starting Load Test with 2000 concurrent requests..."
+
+concurrent_users = 2000
+completed = 0
+failures = 0
+
+# Function to simulate a single user request
+task simulate_user(id) {
+    try {
+        # Simulate a request to the chat API
+        # Since we just want to test concurrency, a simple GET to root is easiest,
+        # but the chat app expects POST for chat. Let's do a GET to / first to be safe.
+        url = "http://localhost:5000/" 
+        out "User " + str(id) + " sending request..."
+        
+        # We use http_get for simplicity. 
+        # In a real heavy load test, we might want to POST to /api/chat
+        res = http_get(url)
+        
+        out "User " + str(id) + " received response (" + str(len(res)) + " bytes)"
+        give true
+    } catch e {
+        out "User " + str(id) + " failed: " + str(e)
+        give false
+    }
+}
+
+futures = []
+
+# Spawn concurrent requests
+repeat i = 1 to concurrent_users {
+    f = spawn(simulate_user, i)
+    push(futures, f)
+}
+
+out "All requests spawned. Waiting for results..."
+
+# Collect results
+get f in futures {
+    res = await(f)
+    when res {
+        completed += 1
+    } other {
+        failures += 1
+    }
+}
+
+out "Load Test Complete."
+out "Successful: " + str(completed)
+out "Failed: " + str(failures)
+
+when failures == 0 {
+    out "VERIFICATION SUCCESS: Server handled " + str(concurrent_users) + " concurrent requests."
+} other {
+    out "VERIFICATION FAILED: Some requests failed."
+}

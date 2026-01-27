@@ -1,0 +1,53 @@
+# Simple Web Server Example
+# Note: This requires the Windows version of EZ with server support.
+
+out "Starting web server on port 8080..."
+out "Open http://localhost:8080 in your browser."
+
+# Define the request handler
+# The handler receives the raw request string and must return a raw HTTP response string.
+task handleRequest(req) {
+    # Simple parsing to get the path
+    # req starts like "GET /path HTTP/1.1 ..."
+    lines = split(req, "\n")
+    firstLine = lines[0]
+    parts = split(firstLine, " ")
+    method = parts[0]
+    path = parts[1]
+    
+    out "Request: " + method + " " + path
+    
+    # Simple routing
+    body = ""
+    status = "200 OK"
+    contentType = "text/html"
+    
+    when path == "/" {
+        body = "<h1>Welcome to EZ Web Server</h1><p>This is a simple server written in EZ.</p><a href='/about'>About</a>"
+    } other when path == "/about" {
+        body = "<h1>About EZ</h1><p>EZ is designed for simplicity.</p><a href='/'>Home</a>"
+    } other when path == "/api/time" {
+        contentType = "application/json"
+        body = "{\"time\": " + str(clock()) + "}"
+    } other {
+        status = "404 Not Found"
+        body = "<h1>404 Not Found</h1><p>The page you requested does not exist.</p>"
+    }
+    
+    # Construct HTTP response
+    response = "HTTP/1.1 " + status + "\r\n"
+    response += "Content-Type: " + contentType + "\r\n"
+    response += "Content-Length: " + str(len(body)) + "\r\n"
+    response += "Connection: close\r\n"
+    response += "\r\n"
+    response += body
+    
+    give response
+}
+
+# Start the server
+try {
+    server(8080, handleRequest)
+} catch e {
+    out "Server error: " + str(e)
+}

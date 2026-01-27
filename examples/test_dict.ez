@@ -1,0 +1,12 @@
+d = {"a": 1}
+try {
+  out "Key b: " + str(d["b"])
+} catch e {
+  out "Access failed: " + str(e)
+}
+
+try {
+  out "Contains check: " + str(d.contains("a"))
+} catch e {
+  out "Contains failed: " + str(e)
+}

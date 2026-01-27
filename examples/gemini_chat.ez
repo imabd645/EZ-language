@@ -1,0 +1,161 @@
+# EZ Chat App with Gemini Integration
+
+out "Initializing Chat Application..."
+db = db_open("chat_app.db")
+
+# Create users table
+db_execute(db, "CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)")
+
+task prompt(msg) {
+    out msg
+    give in()
+}
+
+task register() {
+    out "\n--- Register ---"
+    username = prompt("Enter username: ")
+    password = prompt("Enter password: ")
+    
+    try {
+        db_execute(db, "INSERT INTO users (username, password) VALUES ('" + username + "', '" + password + "')")
+        out "Registration successful!"
+        give true
+    } catch e {
+        out "Error: " + str(e)
+        out "Username might already be taken."
+        give false
+    }
+}
+
+task login() {
+    out "\n--- Login ---"
+    username = prompt("Enter username: ")
+    password = prompt("Enter password: ")
+    
+    rows = db_query(db, "SELECT * FROM users WHERE username = '" + username + "' AND password = '" + password + "'")
+    
+    when len(rows) > 0 {
+        out "Login successful! Welcome, " + username
+        give username
+    } other {
+        out "Invalid credentials."
+        give nil
+    }
+}
+
+task getGeminiResponse(apiKey, userMessage, history) {
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey
+    
+    # Construct contents array from history + new message
+    contents = []
+    
+    # Add history
+    get msg in history {
+        role = msg["role"]
+        text = msg["content"]
+        
+        # Map simple roles to Gemini roles
+        gRole = "user"
+        when role == "assistant" { gRole = "model" }
+        
+        part = { "text": text }
+        entry = { "role": gRole, "parts": [part] }
+        push(contents, entry)
+    }
+    
+    # Add current message
+    currentPart = { "text": userMessage }
+    currentEntry = { "role": "user", "parts": [currentPart] }
+    push(contents, currentEntry)
+    
+    bodyData = { "contents": contents }
+    bodyStr = to_json(bodyData)
+    
+    options = {
+        "method": "POST",
+        "body": bodyStr,
+        "headers": { "Content-Type": "application/json" }
+    }
+    
+    out "[Sending request to Gemini...]"
+    fut = fetch(url, options)
+    response = await(fut)
+    
+    try {
+        data = parse_json(response)
+        
+        # Check for error
+        when type(data) == "dictionary" and data.contains("error") {
+            out "API Error: " + str(data["error"]["message"])
+            give nil
+        }
+        
+        candidates = data["candidates"]
+        when len(candidates) > 0 {
+            content = candidates[0]["content"]
+            text = content["parts"][0]["text"]
+            give text
+        } other {
+            out "No response candidates."
+            give nil
+        }
+        
+    } catch e {
+        out "Failed to parse response: " + str(e)
+        out "Raw response: " + response
+        give nil
+    }
+}
+
+# Main Application Flow
+currentUser = nil
+
+while currentUser == nil {
+    out "\n1. Login"
+    out "2. Register"
+    out "3. Exit"
+    choice = prompt("Choose invalid option (1-3): ")
+    
+    when choice == "1" {
+        currentUser = login()
+    } other when choice == "2" {
+        register()
+    } other when choice == "3" {
+        out "Goodbye!"
+        db_close(db)
+        escape
+    } other {
+        out "Invalid option."
+    }
+}
+
+when currentUser != nil {
+    apiKey = prompt("\nEnter your Gemini API Key: ")
+    
+    history = []
+    out "\nStarting chat with Gemini. Type 'exit' to quit."
+    
+    while true {
+        input = prompt("\n" + currentUser + ": ")
+        
+        when input == "exit" {
+            out "Ending chat."
+            escape
+        }
+        
+        when len(input) == 0 { skip }
+        
+        # Get response
+        response = getGeminiResponse(apiKey, input, history)
+        
+        when response != nil {
+            out "Gemini: " + response
+            
+            # Update history
+            push(history, {"role": "user", "content": input})
+            push(history, {"role": "assistant", "content": response})
+        }
+    }
+}
+
+db_close(db)

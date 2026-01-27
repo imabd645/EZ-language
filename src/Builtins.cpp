@@ -821,132 +821,170 @@ void registerBuiltins(Interpreter& interp) {
                 SOCKET clientSocket = accept(listenSocket, nullptr, nullptr);
                 if (clientSocket == INVALID_SOCKET) break;
 
-                char recvbuf[8192]; // Increased buffer
-                int recvResult = recv(clientSocket, recvbuf, sizeof(recvbuf) - 1, 0);
-                if (recvResult > 0) {
-                    recvbuf[recvResult] = '\0';
-                    std::string request(recvbuf);
+                // Capture globalEnv to share with the new thread's interpreter
+                auto globalEnv = interp.getGlobalEnv();
+                
+                // Spawn a detached thread for each client
+                std::thread([clientSocket, handler, globalEnv]() {
+                    // OPTIMIZATION: Create a child environment for this request
+                    // and use the lightweight constructor to skip overhead
+                    auto requestEnv = globalEnv->createChild();
+                    Interpreter threadInterp(requestEnv);
+
+                    // Read headers
+                    std::string request;
+                    char buffer[4096];
+                    bool headersComplete = false;
+                    size_t contentLen = 0;
                     
-                    std::string method, fullPath, version, body;
-                    std::unordered_map<std::string, Value> headers;
-                    std::unordered_map<std::string, Value> query;
-
-                    // Parse Request Line
-                    size_t firstSpace = request.find(' ');
-                    if (firstSpace != std::string::npos) {
-                        method = request.substr(0, firstSpace);
-                        size_t secondSpace = request.find(' ', firstSpace + 1);
-                        if (secondSpace != std::string::npos) {
-                            fullPath = request.substr(firstSpace + 1, secondSpace - (firstSpace + 1));
-                            size_t lineEnd = request.find("\r\n");
-                            if (lineEnd != std::string::npos) {
-                                version = request.substr(secondSpace + 1, lineEnd - (secondSpace + 1));
-                            }
-                        }
-                    }
-
-                    // Parse Path and Query Params
-                    std::string path = fullPath;
-                    size_t qPos = fullPath.find('?');
-                    if (qPos != std::string::npos) {
-                        path = fullPath.substr(0, qPos);
-                        std::string qStr = fullPath.substr(qPos + 1);
-                        size_t start = 0;
-                        while (start < qStr.length()) {
-                            size_t amPos = qStr.find('&', start);
-                            std::string pair = qStr.substr(start, amPos == std::string::npos ? amPos : amPos - start);
-                            size_t eqPos = pair.find('=');
-                            if (eqPos != std::string::npos) {
-                                query[pair.substr(0, eqPos)] = Value(pair.substr(eqPos + 1));
-                            } else if (!pair.empty()) {
-                                query[pair] = Value(true);
-                            }
-                            if (amPos == std::string::npos) break;
-                            start = amPos + 1;
-                        }
-                    }
-
-                    // Parse Headers
-                    size_t headStart = request.find("\r\n") + 2;
-                    size_t bodyStart = request.find("\r\n\r\n");
-                    if (bodyStart != std::string::npos) {
-                        std::string headStr = request.substr(headStart, bodyStart - headStart);
-                        body = request.substr(bodyStart + 4);
+                    while (!headersComplete) {
+                        int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+                        if (bytesRead <= 0) break;
+                        request.append(buffer, bytesRead);
                         
-                        size_t pos = 0;
-                        while (pos < headStr.length()) {
-                            size_t nextLine = headStr.find("\r\n", pos);
-                            std::string line = headStr.substr(pos, nextLine == std::string::npos ? nextLine : nextLine - pos);
+                        size_t headerEnd = request.find("\r\n\r\n");
+                        if (headerEnd != std::string::npos) {
+                            headersComplete = true;
+                            
+                            // Parse Content-Length
+                            size_t clPos = request.find("Content-Length: ");
+                            if (clPos != std::string::npos) {
+                                size_t start = clPos + 16;
+                                size_t end = request.find("\r\n", start);
+                                if (end != std::string::npos) {
+                                    contentLen = std::stoi(request.substr(start, end - start));
+                                }
+                            }
+                        }
+                    }
+
+                    if (headersComplete) {
+                        // Check if we have the full body
+                        size_t headerEnd = request.find("\r\n\r\n");
+                        size_t bodyStart = headerEnd + 4;
+                        
+                        while (request.length() - bodyStart < contentLen) {
+                            int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+                            if (bytesRead <= 0) break;
+                            request.append(buffer, bytesRead);
+                        }
+                        
+                        std::string method, fullPath, version, body;
+                        std::unordered_map<std::string, Value> headers;
+                        std::unordered_map<std::string, Value> query;
+
+                        // Parse Request Line
+                        size_t firstSpace = request.find(' ');
+                        if (firstSpace != std::string::npos) {
+                            method = request.substr(0, firstSpace);
+                            size_t secondSpace = request.find(' ', firstSpace + 1);
+                            if (secondSpace != std::string::npos) {
+                                fullPath = request.substr(firstSpace + 1, secondSpace - (firstSpace + 1));
+                                version = request.substr(secondSpace + 1, headerEnd - (secondSpace + 1)); // Approximate
+                            }
+                        }
+
+                        // Parse Path and Query Params
+                        std::string path = fullPath;
+                        size_t qPos = fullPath.find('?');
+                        if (qPos != std::string::npos) {
+                            path = fullPath.substr(0, qPos);
+                            std::string qStr = fullPath.substr(qPos + 1);
+                            size_t start = 0;
+                            while (start < qStr.length()) {
+                                size_t amPos = qStr.find('&', start);
+                                std::string pair = qStr.substr(start, amPos == std::string::npos ? amPos : amPos - start);
+                                size_t eqPos = pair.find('=');
+                                if (eqPos != std::string::npos) {
+                                    query[pair.substr(0, eqPos)] = Value(pair.substr(eqPos + 1));
+                                } else if (!pair.empty()) {
+                                    query[pair] = Value(true);
+                                }
+                                if (amPos == std::string::npos) break;
+                                start = amPos + 1;
+                            }
+                        }
+                        
+                        // Body
+                        if (request.length() > bodyStart) {
+                            body = request.substr(bodyStart);
+                        }
+                        
+                        // Parse Headers
+                        size_t pos = request.find("\r\n") + 2;
+                        while (pos < headerEnd) {
+                            size_t nextLine = request.find("\r\n", pos);
+                            if (nextLine == std::string::npos || nextLine > headerEnd) break;
+                            
+                            std::string line = request.substr(pos, nextLine - pos);
                             size_t colon = line.find(':');
                             if (colon != std::string::npos) {
                                 std::string k = line.substr(0, colon);
                                 std::string v = line.substr(colon + 1);
-                                // Trim v
                                 v.erase(0, v.find_first_not_of(" "));
                                 headers[k] = Value(v);
                             }
-                            if (nextLine == std::string::npos) break;
                             pos = nextLine + 2;
                         }
-                    }
 
-                    // Create request object
-                    Value reqArg = Value::makeDictionary();
-                    auto& reqMap = reqArg.asDictionary().map;
-                    reqMap["method"] = Value(method);
-                    reqMap["path"] = Value(path);
-                    reqMap["fullPath"] = Value(fullPath);
-                    reqMap["version"] = Value(version);
-                    reqMap["body"] = Value(body);
+                        // Create request object
+                        Value reqArg = Value::makeDictionary();
+                        auto& reqMap = reqArg.asDictionary().map;
+                        reqMap["method"] = Value(method);
+                        reqMap["path"] = Value(path);
+                        reqMap["fullPath"] = Value(fullPath);
+                        reqMap["version"] = Value(version);
+                        reqMap["body"] = Value(body);
 
-                    Value queryDict = Value::makeDictionary();
-                    queryDict.asDictionary().map = std::move(query);
-                    reqMap["query"] = queryDict;
+                        Value queryDict = Value::makeDictionary();
+                        queryDict.asDictionary().map = std::move(query);
+                        reqMap["query"] = queryDict;
 
-                    Value headerDict = Value::makeDictionary();
-                    headerDict.asDictionary().map = std::move(headers);
-                    reqMap["headers"] = headerDict;
+                        Value headerDict = Value::makeDictionary();
+                        headerDict.asDictionary().map = std::move(headers);
+                        reqMap["headers"] = headerDict;
 
-                    std::vector<Value> callbackArgs = {reqArg};
-                    try {
-                        Value result = interp.callFunction(handler, callbackArgs, 0);
-                        std::string respStr;
-                        
-                        if (result.isDictionary()) {
-                            auto& d = result.asDictionary().map;
-                            int status = d.count("status") ? (int)d.at("status").asNumber() : 200;
-                            std::string b = d.count("body") ? d.at("body").toString() : "";
+                        std::vector<Value> callbackArgs = {reqArg};
+                        try {
+                            Value result = threadInterp.callFunction(handler, callbackArgs, 0);
+                            std::string respStr;
                             
-                            respStr = "HTTP/1.1 " + std::to_string(status) + " OK\r\n";
-                            if (d.count("headers") && d.at("headers").isDictionary()) {
-                                for (auto& kv : d.at("headers").asDictionary().map) {
-                                    respStr += kv.first + ": " + kv.second.toString() + "\r\n";
+                            if (result.isDictionary()) {
+                                auto& d = result.asDictionary().map;
+                                int status = d.count("status") ? (int)d.at("status").asNumber() : 200;
+                                std::string b = d.count("body") ? d.at("body").toString() : "";
+                                
+                                respStr = "HTTP/1.1 " + std::to_string(status) + " OK\r\n";
+                                if (d.count("headers") && d.at("headers").isDictionary()) {
+                                    for (auto& kv : d.at("headers").asDictionary().map) {
+                                        respStr += kv.first + ": " + kv.second.toString() + "\r\n";
+                                    }
+                                } else {
+                                    respStr += "Content-Type: text/html\r\n";
                                 }
-                            } else {
-                                respStr += "Content-Type: text/html\r\n";
-                            }
-                            respStr += "Content-Length: " + std::to_string(b.length()) + "\r\n";
-                            respStr += "\r\n";
-                            respStr += b;
-                        } else {
-                            respStr = result.toString();
-                            if (respStr.find("HTTP/") != 0) {
-                                std::string b = respStr;
-                                respStr = "HTTP/1.1 200 OK\r\n";
-                                respStr += "Content-Type: text/html\r\n";
                                 respStr += "Content-Length: " + std::to_string(b.length()) + "\r\n";
                                 respStr += "\r\n";
                                 respStr += b;
+                            } else {
+                                respStr = result.toString();
+                                if (respStr.find("HTTP/") != 0) {
+                                    std::string b = respStr;
+                                    respStr = "HTTP/1.1 200 OK\r\n";
+                                    respStr += "Content-Type: text/html\r\n";
+                                    respStr += "Content-Length: " + std::to_string(b.length()) + "\r\n";
+                                    respStr += "\r\n";
+                                    respStr += b;
+                                }
                             }
+                            
+                            send(clientSocket, respStr.c_str(), (int)respStr.length(), 0);
+                        } catch (const std::exception& e) {
+                            std::string errResp = "HTTP/1.1 500 Internal Server Error\r\n\r\nServer Error: " + std::string(e.what());
+                            send(clientSocket, errResp.c_str(), (int)errResp.length(), 0);
                         }
-                        
-                        send(clientSocket, respStr.c_str(), (int)respStr.length(), 0);
-                    } catch (const std::exception& e) {
-                        std::string errResp = "HTTP/1.1 500 Internal Server Error\r\n\r\nServer Error: " + std::string(e.what());
-                        send(clientSocket, errResp.c_str(), (int)errResp.length(), 0);
                     }
-                }
-                closesocket(clientSocket);
+                    closesocket(clientSocket);
+                }).detach();
             }
 
             closesocket(listenSocket);

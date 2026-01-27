@@ -21,6 +21,13 @@ Interpreter::Interpreter() {
     initBuiltins();
 }
 
+Interpreter::Interpreter(std::shared_ptr<Environment> startEnv) {
+    globalEnv = startEnv;
+    currentEnv = globalEnv; // Start execution in this environment
+    GarbageCollector::instance().setRoot(globalEnv);
+    // Skip initBuiltins() and srand()
+}
+
 #include "Builtins.h"
 
 void Interpreter::initBuiltins() {

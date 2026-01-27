@@ -20,6 +20,7 @@
 #include <chrono>
 #include <curl/curl.h>
 #include <thread>
+#include <future>
 
 void registerBuiltins(Interpreter& interp) {
     // clock() - returns milliseconds since epoch
@@ -1556,4 +1557,101 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("db_begin", globalEnv->get("dbBegin", 0));
     interp.defineGlobal("db_commit", globalEnv->get("dbCommit", 0));
     interp.defineGlobal("db_rollback", globalEnv->get("dbRollback", 0));
+    // --- Async / Multithreading ---
+
+    // spawn(fn, args...)
+    interp.defineGlobal("spawn", Value::makeNativeFunction("spawn", -1,
+        [](Interpreter& parentInterp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isCallable()) throw RuntimeError("spawn() expects function");
+            
+            Value func = args[0];
+            std::vector<Value> fnArgs(args.begin() + 1, args.end());
+            auto globalEnv = parentInterp.getGlobalEnv();
+            
+            // Launch async task
+            std::shared_future<Value> fut = std::async(std::launch::async, 
+                [globalEnv, func, fnArgs]() -> Value {
+                    Interpreter threadInterp;
+                    threadInterp.setGlobalEnv(globalEnv);
+                    return threadInterp.callFunction(func, fnArgs, 0);
+                }).share();
+                
+            return Value::makeFuture(fut);
+        }));
+
+    // await(future)
+    auto awaitFn = [](Interpreter&, const std::vector<Value>& args) -> Value {
+        if (!args[0].isFuture()) throw RuntimeError("await() expects future");
+        auto fut = args[0].asFuture();
+        fut->wait();
+        return fut->get();
+    };
+    interp.defineGlobal("await", Value::makeNativeFunction("await", 1, awaitFn));
+    interp.defineGlobal("sync", Value::makeNativeFunction("sync", 1, awaitFn));
+
+    // fetch(url, [options])
+    interp.defineGlobal("fetch", Value::makeNativeFunction("fetch", -1,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (args.empty()) throw RuntimeError("fetch() expects URL");
+            std::string url = args[0].toString();
+            Value options;
+            if (args.size() > 1) options = args[1];
+            
+            // Capture args by value for thread
+            std::shared_future<Value> fut = std::async(std::launch::async, 
+                [url, options]() -> Value {
+                    CURL* curl = curl_easy_init();
+                    if (!curl) throw RuntimeError("CURL init failed");
+                    
+                    std::string response;
+                    std::string method = "GET";
+                    std::string body;
+                    struct curl_slist* headers = nullptr;
+                    
+                    if (options.isDictionary()) {
+                        const auto& opts = options.asDictionary().map;
+                        if (opts.count("method")) method = opts.at("method").toString();
+                        if (opts.count("body")) body = opts.at("body").toString();
+                        if (opts.count("headers") && opts.at("headers").isDictionary()) {
+                            for (const auto& kv : opts.at("headers").asDictionary().map) {
+                                std::string h = kv.first + ": " + kv.second.toString();
+                                headers = curl_slist_append(headers, h.c_str());
+                            }
+                        }
+                    }
+                    
+                    auto writeCb = [](void* contents, size_t size, size_t nmemb, void* userp) -> size_t {
+                        ((std::string*)userp)->append((char*)contents, size * nmemb);
+                        return size * nmemb;
+                    };
+
+                    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+                    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))writeCb);
+                    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+                    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+                    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+                    
+                    if (method == "POST") {
+                        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+                        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+                    } else if (method != "GET") {
+                        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+                    }
+                    
+                    if (headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+                    
+                    CURLcode res = curl_easy_perform(curl);
+                    if (headers) curl_slist_free_all(headers);
+                    curl_easy_cleanup(curl);
+                    
+                    if (res != CURLE_OK) {
+                         throw RuntimeError("Fetch failed: " + std::string(curl_easy_strerror(res)));
+                    }
+                    
+                    return Value(response);
+                }).share();
+                
+            return Value::makeFuture(fut);
+        }));
+
 }

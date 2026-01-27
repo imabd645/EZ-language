@@ -32,6 +32,7 @@ public:
     std::shared_ptr<Environment> getGlobalEnv() const { return globalEnv; }
     std::shared_ptr<Environment> getCurrentEnv() const { return currentEnv; }
     void setCurrentEnv(std::shared_ptr<Environment> env) { currentEnv = env; }
+    void setGlobalEnv(std::shared_ptr<Environment> env) { globalEnv = env; currentEnv = env; }
     
     // For REPL mode
     Value evaluateExpression(const ExprPtr& expr) { return evaluate(expr); }

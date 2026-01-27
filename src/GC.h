@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_set>
 #include <memory>
+#include <atomic>
 #include "Value.h"
 
 class Environment;
@@ -56,9 +57,9 @@ private:
     GarbageCollector() = default;
     
     std::weak_ptr<Environment> rootEnv;
-    size_t allocCount = 0;
-    size_t collectionCount = 0;
-    size_t gcThreshold = 1000; // Collect every 1000 allocations
+    std::atomic<size_t> allocCount{0};
+    std::atomic<size_t> collectionCount{0};
+    std::atomic<size_t> gcThreshold{1000}; // Collect every 1000 allocations
 };
 
 // Helper to create GC-tracked string

@@ -1,0 +1,74 @@
+print("--- Testing Multithreading ---") 
+
+# Define a worker function
+task worker(id, delay) {
+    print("Worker " + str(id) + " started. Sleeping for " + str(delay) + "ms") 
+    stop(delay)  # Sleep for 'delay' milliseconds
+    print("Worker " + str(id) + " finished.") 
+    give id * 10 
+}
+
+ start = clock() 
+
+print("Spawning tasks...") 
+# Spawn two threads with different delays
+ t1 = spawn(worker, 1, 1000) 
+ t2 = spawn(worker, 2, 500) 
+
+print("Waiting for tasks...") 
+# Await the results
+r1 = await(t1) 
+print("Result 1: " + str(r1)) 
+
+r2 = await(t2) 
+print("Result 2: " + str(r2)) 
+
+end = clock() 
+print("Total time: " + str(end - start) + "ms") 
+
+print("\n--- Testing Async Fetch ---") 
+
+url = "https://jsonplaceholder.typicode.com/todos/1" 
+print("Fetching: " + url) 
+
+# Start async fetch
+fetchTask = fetch(url) 
+print("Fetch started, doing other things...") 
+
+# Await response
+response = await(fetchTask) 
+print("Fetch received. Length: " + str(len(response))) 
+
+# Parse and display
+when (len(response) > 0) {
+    # Assuming parse_json is available
+     data = parse_json(response) 
+    when (type(data) == "dictionary") {
+        print("Title: " + data["title"]) 
+    } other {
+        print("Response: " + response) 
+    }
+}
+
+print("\n--- Testing POST Request ---") 
+
+ postUrl = "https://jsonplaceholder.typicode.com/posts" 
+ postData = {
+    "title": "foo",
+    "body": "bar",
+    "userId": 1
+} 
+ options = {
+    "method": "POST",
+    "body": to_json(postData),
+    "headers": {
+        "Content-Type": "application/json  charset=UTF-8"
+    }
+} 
+
+print("Posting to: " + postUrl) 
+ postTask = fetch(postUrl, options) 
+ postResponse = await(postTask) 
+print("Post response received: " + postResponse) 
+
+print("\n--- Test Complete ---") 

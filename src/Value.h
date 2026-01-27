@@ -7,6 +7,7 @@
 #include <variant>
 #include <functional>
 #include <unordered_map>
+#include <future>
 #include "AST.h"
 
 // Forward declarations
@@ -35,7 +36,8 @@ enum class ValueType {
     NATIVE_FUNCTION,
     CLASS,
     INSTANCE,
-    DICTIONARY
+    DICTIONARY,
+    FUTURE
 };
 
 // EZ user-defined function
@@ -72,6 +74,7 @@ struct Value {
     using ClassPtr = std::shared_ptr<EZClass>;
     using InstancePtr = std::shared_ptr<EZInstance>;
     using DictionaryPtr = std::shared_ptr<EZDictionary>;
+    using FuturePtr = std::shared_ptr<std::shared_future<Value>>;
     
     std::variant<
         std::nullptr_t,     // NIL
@@ -83,7 +86,8 @@ struct Value {
         NativeFnPtr,        // NATIVE_FUNCTION
         ClassPtr,           // CLASS
         InstancePtr,        // INSTANCE
-        DictionaryPtr       // DICTIONARY
+        DictionaryPtr,      // DICTIONARY
+        FuturePtr           // FUTURE
     > data;
     
     // Constructors
@@ -101,6 +105,7 @@ struct Value {
     Value(ClassPtr val) : data(val) {}
     Value(InstancePtr val) : data(val) {}
     Value(DictionaryPtr val) : data(val) {}
+    Value(FuturePtr val) : data(val) {}
     
     // Type checking
     ValueType type() const {
@@ -114,6 +119,7 @@ struct Value {
         if (std::holds_alternative<ClassPtr>(data)) return ValueType::CLASS;
         if (std::holds_alternative<InstancePtr>(data)) return ValueType::INSTANCE;
         if (std::holds_alternative<DictionaryPtr>(data)) return ValueType::DICTIONARY;
+        if (std::holds_alternative<FuturePtr>(data)) return ValueType::FUTURE;
         return ValueType::NIL;
     }
     
@@ -127,6 +133,7 @@ struct Value {
     bool isClass() const { return std::holds_alternative<ClassPtr>(data); }
     bool isInstance() const { return std::holds_alternative<InstancePtr>(data); }
     bool isDictionary() const { return std::holds_alternative<DictionaryPtr>(data); }
+    bool isFuture() const { return std::holds_alternative<FuturePtr>(data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass(); }
     
     // Value extraction
@@ -142,6 +149,7 @@ struct Value {
     ClassPtr asClass() const { return std::get<ClassPtr>(data); }
     InstancePtr asInstance() const { return std::get<InstancePtr>(data); }
     DictionaryPtr asDictionaryPtr() const { return std::get<DictionaryPtr>(data); }
+    FuturePtr asFuture() const { return std::get<FuturePtr>(data); }
     EZDictionary& asDictionary();
     const EZDictionary& asDictionary() const;
     
@@ -170,7 +178,10 @@ struct Value {
                 }
                 return true;
             }
-            default: return false;
+            // Functions, Classes, Instances, Futures compared by pointer identity implicitly?
+            // Actually, we should probably implement pointer comparison for objects.
+            // But strict equality for now.
+            default: return false; 
         }
     }
     
@@ -200,6 +211,11 @@ struct Value {
     
     // Create dictionary
     static Value makeDictionary();
+    
+    // Create future
+    static Value makeFuture(std::shared_future<Value> fut) {
+        return Value(std::make_shared<std::shared_future<Value>>(fut));
+    }
 };
 
 // EZ Class definition (model)
@@ -242,9 +258,8 @@ struct EZDictionary {
 
 inline EZDictionary& Value::asDictionary() { return *std::get<DictionaryPtr>(data); }
 inline const EZDictionary& Value::asDictionary() const { return *std::get<DictionaryPtr>(data); }
-inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionary>()); }
+inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionary>()); } 
 
-// Implementations of Value methods that require complete types
 inline std::string Value::toString() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
@@ -281,6 +296,8 @@ inline std::string Value::toString() const {
             return "<" + asInstance()->klass->name + " instance>";
         case ValueType::DICTIONARY:
             return "<dictionary>";
+        case ValueType::FUTURE:
+            return "<future>";
         default:
             return "<unknown>";
     }
@@ -298,6 +315,7 @@ inline std::string Value::typeName() const {
         case ValueType::CLASS: return "model";
         case ValueType::INSTANCE: return "instance";
         case ValueType::DICTIONARY: return "dictionary";
+        case ValueType::FUTURE: return "future";
         default: return "unknown";
     }
 }

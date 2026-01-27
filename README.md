@@ -115,6 +115,19 @@ g++ -std=c++17 -o ez.exe main.cpp Lexer.cpp Parser.cpp Interpreter.cpp Builtins.
     -lsqlite3 -lcurl -lws2_32 -lpthread
 ```
 
+### Adding to System Path
+
+To run `ez` from any directory in your terminal:
+
+1.  Move `ez.exe` to a permanent location (e.g., `C:\ez\ez.exe`).
+2.  Press `Win + S` and search for "Environment Variables".
+3.  Click "Edit the system environment variables".
+4.  Click "Environment Variables..." at the bottom.
+5.  Under "System variables", find `Path` and click "Edit".
+6.  Click "New" and paste the path to the folder containing `ez.exe` (e.g., `C:\ez`).
+7.  Click "OK" on all dialogs.
+8.  Restart your terminal.
+
 ---
 
 ## 🎓 Quick Start

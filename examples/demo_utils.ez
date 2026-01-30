@@ -1,0 +1,59 @@
+
+out "[Utils] Loading utilities..."
+
+# Safe Division (Math helper)
+task safe_div(a, b) {
+    when b == 0 {
+        give 0
+    }
+    give a / b
+}
+
+# Simple Encryption (String/Logic helper)
+# Uses XOR cipher on string
+task crypto_transform(text, key) {
+    res = ""
+    keyLen = len(key)
+    
+    # Iterate using range
+    get i in range(len(text)) {
+        # ord() gets ASCII, substring gets char
+        charStr = substring(text, i, 1)
+        charCode = ord(charStr)
+        
+        # Key char
+        keyChar = substring(key, i % keyLen, 1)
+        keyCode = ord(keyChar)
+        
+        # XOR and convert back to char
+        newCode = xor(charCode, keyCode)
+        res += chr(newCode)
+    }
+    
+    give res
+}
+
+# Array Stats (Collection helper)
+task calc_stats(arr) {
+    sum = 0
+    maxVal = -999999
+    minVal = 999999
+    
+    get n in arr {
+        sum += n
+        maxVal = max(maxVal, n)
+        minVal = min(minVal, n)
+    }
+    
+    avg = 0
+    when len(arr) > 0 { avg = sum / len(arr) }
+    
+    give {
+        "sum": sum,
+        "max": maxVal,
+        "min": minVal,
+        "avg": avg
+    }
+}
+
+out "[Utils] Utilities loaded."

@@ -1,0 +1,7 @@
+{
+    "app_name": "EZ Mega Monitor",
+    "version": "1.0.0",
+    "port": 8080,
+    "db_path": "mega_demo.db",
+    "update_interval_ms": 2000
+}

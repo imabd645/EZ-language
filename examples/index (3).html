@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Photo TIME</title>
+    <link rel="icon" type="image/png" href="pbt.png">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700;800;900&family=Grand+Hotel&display=swap"
+        rel="stylesheet">
+    <!-- SECURITY PROTOCOLS -->
+    <!-- Content Security Policy: Allow HTTPS scripts for CDNs (unpkg, cdnjs, etc.) -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:;">
+    <script src="photobooth/security.js"></script>
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+
+    <script>
+        (function () {
+            'use strict';
+
+            // --- 1. Toast Notification for Blocked Actions ---
+            const showSecurityToast = (msg) => {
+                // Remove existing to avoid stack
+                const existing = document.getElementById('sec-toast');
+                if (existing) existing.remove();
+
+                const toast = document.createElement('div');
+                toast.id = 'sec-toast';
+                toast.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:20px;">🛡️</span> <span>${msg}</span></div>`;
+
+                // Styles to make it look "System" official
+                Object.assign(toast.style, {
+                    position: 'fixed',
+                    top: '20px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(20, 20, 20, 0.95)',
+                    color: '#ff4444',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontFamily: 'monospace',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    zIndex: '2147483647', // Max z-index
+                    boxShadow: '0 5px 15px rgba(0,0,0,0.8)',
+                    backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(255, 68, 68, 0.3)',
+                    pointerEvents: 'none',
+                    userSelect: 'none'
+                });
+
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2500);
+            };
+
+            // --- 2. Disable Context Menu (Right Click) ---
+            document.addEventListener('contextmenu', function (e) {
+                e.preventDefault();
+                showSecurityToast("SECURITY ALERT: CONTEXT MENU DISABLED");
+                return false;
+            }, false);
+
+            // --- 3. Disable Keyboard Shortcuts (DevTools, Source, Save) ---
+            document.addEventListener('keydown', function (e) {
+                // F12 (DevTools)
+                if (e.key === 'F12' || e.keyCode === 123) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showSecurityToast("🚫 DEVTOOLS ACCESS DENIED");
+                    return false;
+                }
+
+                // Ctrl/Cmd + Shift + I/J/C (Inspect Element, Console)
+                if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+                    const key = e.key.toLowerCase();
+                    if (['i', 'j', 'c'].includes(key)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showSecurityToast("🚫 SYSTEM INTEGRITY: INSPECT BLOCKED");
+                        return false;
+                    }
+                }
+
+                // Ctrl/Cmd + U (View Source), S (Save), P (Print)
+                if (e.ctrlKey || e.metaKey) {
+                    const key = e.key.toLowerCase();
+                    if (['u', 's', 'p'].includes(key)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showSecurityToast("🚫 ACTION RESTRICTED");
+                        return false;
+                    }
+                }
+            }, true); // Capture phase to intercept early
+
+            // --- 4. Console Clearing & Anti-Debugging ---
+            // Nuke console functions to prevent logging analysis if they force it open
+            /*
+            const noop = () => {};
+            ['log', 'debug', 'info', 'warn', 'error', 'table', 'trace'].forEach(method => {
+                console[method] = noop;
+            });
+            */
+            setInterval(function () {
+                // console.clear(); // Keep clearing it
+            }, 1000);
+
+            // --- 5. "Debugger" Loop Strategy ---
+            // This annoying check pauses execution if DevTools is open and paused on exceptions/debugger
+            setInterval(function () {
+                const t = new Date().getTime();
+                // debugger; // Triggers breakpoint if DevTools is open
+                if (new Date().getTime() - t > 200) {
+                    // Execution paused (user stepped through or debugger hit), likely DevTools open
+                    document.body.innerHTML = '<div style="background:#000;color:red;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:30px;flex-direction:column;text-align:center;"><div style="font-size:60px;margin-bottom:20px;">⚠️</div><div>ILLEGAL DEBUGGING DETECTED</div><div style="font-size:14px;color:#666;margin-top:20px;">Session Terminated.</div></div>';
+                }
+            }, 2000);
+
+        })();
+    </script>
+    <style>
+        :root {
+            --bg-floor: #f5f5f5;
+
+            /* --- UPDATED EXACT BLUE COLORS --- */
+            /* Sampled directly from the reference image */
+            --teal-edge: #7BBCC1;
+            /* Darker edge for shadow */
+            --teal-mid: #93D5DC;
+            /* Main mid-tone */
+            --teal-light: #A4E3E8;
+            /* Lighter highlight center */
+
+            /* Roof */
+            --roof-grad: linear-gradient(180deg, #555 0%, #2b2b2b 25%, #111 100%);
+
+            /* Base */
+            --cream-strip: #F2E8D5;
+
+            /* Decor */
+            --paper-bg: #F4E5CC;
+            --awning-red: #D85650;
+            --awning-white: #FEFEFE;
+            --sticker-outline: #1a1a1a;
+
+            /* Yellow Tag */
+            --yellow-color: #FFD700;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-floor);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            font-family: 'Nunito', sans-serif;
+            overflow: hidden;
+        }
+
+        /* CONTAINER */
+        .booth-container {
+            width: 100%;
+            max-width: 800px;
+            height: 100dvh;
+            position: relative;
+            flex-shrink: 0;
+            filter: drop-shadow(0 50px 40px rgba(0, 0, 0, 0.3));
+            margin: 0 auto;
+        }
+
+        /* --- MOBILE RESPONSIVENESS --- */
+        @media (max-width: 600px) {
+            .roof-assembly {
+                height: 60px;
+            }
+
+            .roof-plate {
+                height: 35px;
+            }
+
+            .logo-text {
+                font-size: 18px;
+            }
+
+            .logo-svg {
+                width: 28px;
+                height: 26px;
+            }
+
+            .body-shell {
+                top: 60px;
+                height: calc(100% - 60px - 25px);
+                /* Adjusted for smaller base */
+                padding: 15px 10px 0 10px;
+            }
+
+            /* Adjust left column */
+            .col-left {
+                width: 35%;
+                /* Shrink artwork side slightly */
+            }
+
+            .col-right {
+                width: 65%;
+                /* Give more room to curtain/booth */
+                padding-left: 5px;
+            }
+
+            .st-time {
+                font-size: 18px;
+            }
+
+            .st-studio {
+                font-size: 14px;
+            }
+
+            .yellow-tag {
+                left: unset;
+                right: -10px;
+                /* Move tag to avoid overlap */
+                top: 5px;
+                width: 35px;
+                height: 35px;
+            }
+
+            .paper-menu {
+                transform: scale(0.85) rotate(-1.5deg);
+                margin-left: -10px;
+            }
+
+            .base-assembly {
+                height: 25px;
+            }
+
+            .base-lip {
+                height: 20px;
+            }
+
+            .wheels {
+                display: none;
+                /* Hide wheels on mobile to save space */
+            }
+
+            /* Adjust Printer Slot */
+            .printer-assembly {
+                transform: translateX(-50%) scale(0.85);
+                top: -5px;
+            }
+
+            .shelf-zone {
+                height: 15%;
+            }
+
+            .curtain-zone {
+                height: 85%;
+            }
+        }
+
+        /* =========================================
+           1. ROOF
+           ========================================= */
+        .roof-assembly {
+            position: absolute;
+            top: 0;
+            left: -2.5%;
+            width: 105%;
+            height: 80px;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .roof-rim-top {
+            width: 100%;
+            height: 20px;
+            background: var(--roof-grad);
+            border-radius: 12px 12px 4px 4px;
+            border-top: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 4px 5px rgba(0, 0, 0, 0.5);
+            z-index: 3;
+        }
+
+        .roof-plate {
+            width: 96%;
+            height: 42px;
+            margin: 0 auto;
+            background: #202020;
+            box-shadow: inset 0 5px 15px rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .roof-rim-btm {
+            width: 100%;
+            height: 18px;
+            background: linear-gradient(180deg, #333 0%, #111 100%);
+            border-radius: 2px 2px 10px 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            border-bottom: 2px solid #000;
+            z-index: 3;
+        }
+
+        .logo-svg {
+            width: 34px;
+            height: 32px;
+            filter: drop-shadow(0 2px 3px #000);
+        }
+
+        .logo-text {
+            font-family: 'Fredoka One';
+            font-size: 26px;
+            letter-spacing: 0.5px;
+            color: #fff;
+            text-shadow: 2px 2px 0 #000, -1px -1px 0 #000;
+            display: flex;
+            align-items: center;
+        }
+
+        .c-y {
+            color: #FFEB3B;
+        }
+
+        .c-p {
+            color: #E91E63;
+        }
+
+        .c-o {
+            color: #FF9800;
+        }
+
+        /* =========================================
+           2. MAIN BODY (Updated Color)
+           ========================================= */
+        .body-shell {
+            position: absolute;
+            top: 78px;
+            width: 100%;
+            height: calc(100% - 78px - 40px);
+            /* Leave 40px for base */
+            /* UPDATED GRADIENT TO MATCH IMAGE EXACTLY */
+            background: linear-gradient(90deg,
+                    var(--teal-edge) 0%,
+                    var(--teal-mid) 20%,
+                    var(--teal-light) 50%,
+                    var(--teal-mid) 80%,
+                    var(--teal-edge) 100%);
+            display: flex;
+            padding: 30px 20px 0 20px;
+            z-index: 10;
+        }
+
+
+
+        .body-shell::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0.15) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 40;
+        }
+
+        /* --- LEFT SIDE --- */
+        .col-left {
+            width: 43%;
+            position: relative;
+            z-index: 20;
+            padding-right: 5px;
+        }
+
+        /* Sticker Area */
+        .sticker-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            position: relative;
+            z-index: 10;
+        }
+
+        .st-studio {
+            font-family: 'Fredoka One';
+            color: #333;
+            font-size: 20px;
+            line-height: 1;
+            z-index: 10;
+            -webkit-text-stroke: 0.5px #fff;
+        }
+
+        .st-time {
+            font-family: 'Fredoka One';
+            color: #fff;
+            font-size: 26px;
+            line-height: 1;
+            z-index: 10;
+            margin-top: -2px;
+            text-shadow: 3px 3px 0 #111, -1px -1px 0 #111, 1px -1px 0 #111, -1px 1px 0 #111, 1px 1px 0 #111;
+        }
+
+        /* YELLOW TAG - MOVED DOWN */
+        .yellow-tag {
+            position: absolute;
+            top: 15px;
+            left: 145px;
+            width: 45px;
+            height: 45px;
+            background: var(--yellow-color);
+            border-radius: 50%;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1.5px solid #000;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .tag-text {
+            font-size: 9px;
+            font-weight: 900;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            color: #000;
+            letter-spacing: 0.5px;
+        }
+
+        .badges {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: flex-start;
+        }
+
+        .bg-blk {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 3px 8px;
+            font-size: 10px;
+            font-weight: 900;
+            transform: rotate(-2deg);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        /* Paper Menu */
+        .paper-menu {
+            position: relative;
+            margin-top: 15px;
+            width: 100%;
+            height: 240px;
+            background: var(--paper-bg);
+            border: 3px solid #5D4037;
+            border-radius: 12px;
+            transform: rotate(-1.5deg);
+            padding: 10px;
+            box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .clip {
+            position: absolute;
+            top: -12px;
+            left: 38%;
+            width: 25px;
+            height: 12px;
+            background: #AAA;
+            border: 2px solid #444;
+            border-radius: 10px;
+        }
+
+        .menu-head {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 2px;
+        }
+
+        .blk {
+            font-family: 'Fredoka One';
+            color: #fff;
+            background: #F4511E;
+            border: 1.5px solid #000;
+            padding: 0 3px;
+            font-size: 14px;
+            border-radius: 3px;
+            transform: rotate(-3deg);
+        }
+
+        .blk:nth-child(even) {
+            background: #fff;
+            color: #F4511E;
+            transform: rotate(2deg);
+        }
+
+        .menu-sub {
+            font-size: 6px;
+            font-weight: 900;
+            margin-bottom: 8px;
+            line-height: 1;
+            margin-left: 2px;
+            text-transform: uppercase;
+        }
+
+        .ln-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            border: 1px solid #999;
+            flex-shrink: 0;
+        }
+
+        .line {
+            height: 3px;
+            background: #C8B7A6;
+            border-radius: 2px;
+            width: 100%;
+        }
+
+        .panda {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            width: 34px;
+            height: 28px;
+            background: #fff;
+            border: 2px solid #222;
+            border-radius: 50% 50% 40% 40%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            z-index: 2;
+        }
+
+        .eye {
+            width: 6px;
+            height: 6px;
+            background: #000;
+            border-radius: 50%;
+        }
+
+        .footer-txt {
+            position: absolute;
+            bottom: 8px;
+            left: 45px;
+            font-size: 5px;
+            font-weight: 900;
+            line-height: 1.1;
+        }
+
+        .script-logo {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            font-family: 'Grand Hotel', cursive;
+            color: #fff;
+            font-size: 48px;
+            transform: rotate(-8deg);
+            text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.1);
+            line-height: 0.8;
+        }
+
+        .swoosh {
+            position: absolute;
+            bottom: 5px;
+            left: 10px;
+            width: 100px;
+            height: 15px;
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+        }
+
+        /* --- RIGHT SIDE --- */
+        .col-right {
+            width: 57%;
+            padding-left: 10px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .awning {
+            width: 100%;
+            height: 24px;
+            background: repeating-linear-gradient(90deg, var(--awning-red) 0%, var(--awning-red) 20%, var(--awning-white) 20%, var(--awning-white) 40%);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            position: relative;
+            z-index: 15;
+            border-radius: 2px;
+        }
+
+        .booth-opening {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #222;
+            border-left: 1px solid rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 1. CURTAIN ZONE (Upper 82%) */
+        .curtain-zone {
+            width: 100%;
+            height: 82%;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* High Quality Rod */
+        .curtain-rod {
+            position: absolute;
+            top: 6px;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(to bottom, #d0d0d0, #f0f0f0 40%, #999 100%);
+            z-index: 20;
+            box-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+        }
+
+        /* REALISTIC CURTAIN CSS */
+        .curtain {
+            width: 50%;
+            height: 100%;
+            background: #fafafa;
+            position: absolute;
+            top: 0;
+            /* Folds */
+            background-image: repeating-linear-gradient(90deg,
+                    #dcdcdc 0px,
+                    #ffffff 15px,
+                    #ffffff 35px,
+                    #dcdcdc 50px);
+            /* Physics Transition: Bunching */
+            transition: transform 1.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-origin: top center;
+            z-index: 15;
+            box-shadow: 0 10px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        .curtain.left {
+            left: 0;
+            border-right: 1px solid #bbb;
+            transform-origin: left;
+        }
+
+        .curtain.right {
+            right: 0;
+            border-left: 1px solid #bbb;
+            transform-origin: right;
+        }
+
+        .grommet {
+            position: absolute;
+            top: 2px;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #444;
+            border-radius: 50%;
+            background: transparent;
+            z-index: 25;
+            box-shadow: 0 1px 1px rgba(255, 255, 255, 0.8);
+        }
+
+        /* Sticker Layer */
+        .sticker-layer {
+            position: absolute;
+            top: 0;
+            width: 200%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: none;
+            transition: opacity 1.5s ease;
+        }
+
+        .curtain.left .sticker-layer {
+            left: 0;
+        }
+
+        .curtain.right .sticker-layer {
+            left: -100%;
+        }
+
+        .art-t {
+            margin-top: 60px;
+            display: flex;
+            gap: 5px;
+        }
+
+        .svg-txt {
+            height: 30px;
+            filter: drop-shadow(1px 1px 0 #000);
+        }
+
+        .art-faces {
+            margin-top: 8px;
+        }
+
+        .art-box {
+            background: #111;
+            color: #fff;
+            padding: 3px 8px;
+            font-family: 'Fredoka One';
+            font-size: 14px;
+            transform: rotate(-1deg);
+            margin-top: 5px;
+        }
+
+        .art-flowers {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        /* Interior */
+        /* Interior */
+        .interior-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            /* Dark background for iframe context */
+            border-left: 8px solid #999;
+            border-right: 8px solid #999;
+            z-index: 1;
+            overflow: hidden;
+            /* Ensure iframe doesn't overflow */
+        }
+
+        .screen-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        /* 2. SHELF ZONE */
+        .shelf-zone {
+            width: 100%;
+            height: 18%;
+            background: #CDBBA7;
+            border-top: 5px solid #B09B88;
+            box-shadow: inset 0 5px 15px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 30;
+            /* Boost above curtains/screen */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            padding-bottom: 15px;
+        }
+
+        .photo-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .p-card {
+            width: 30px;
+            height: 40px;
+            background: #fff;
+            border: 1px solid #999;
+            padding: 2px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .p-inner {
+            width: 100%;
+            height: 80%;
+            background: #ccc;
+        }
+
+        /* PRINTER ASSEMBLY */
+        .printer-assembly {
+            position: absolute;
+            top: -12px;
+            /* Positioned at the top edge, slightly overlapping Screen */
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 20;
+            perspective: 800px;
+        }
+
+        .printer-slot {
+            width: 140px;
+            height: 18px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            /* 3D Bezel Effect */
+            border-top: 1px solid #444;
+            border-bottom: 3px solid #666;
+            /* Light hitting bottom lip */
+            box-shadow:
+                0 4px 6px rgba(0, 0, 0, 0.4),
+                inset 0 10px 10px rgba(0, 0, 0, 0.9);
+            position: relative;
+            z-index: 30;
+        }
+
+        /* The darkness inside the slot */
+        .printer-slot::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 130px;
+            height: 6px;
+            background: #000;
+            border-radius: 2px;
+            box-shadow: inset 0 0 5px #000;
+        }
+
+        .contact-sheet {
+            position: absolute;
+            top: 8px;
+            /* Start aligned with slot hole */
+            left: 50%;
+            width: 90px;
+            height: auto;
+            background: #fff;
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 25;
+
+            /* Initial State: Hidden and folded 'inside' */
+            transform: translateX(-50%) translateY(-100%) rotateX(-10deg);
+            transform-origin: top center;
+            opacity: 0;
+
+            /* We will use a class to trigger the realistic sequence */
+        }
+
+        .printer-clipper {
+            position: absolute;
+            top: 15px;
+            /* Tucked under slot lip */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 400px;
+            /* Allow long drop */
+            overflow: hidden;
+            z-index: 25;
+            /* Below slot (30) */
+            pointer-events: none;
+            /* Allow clicks to pass if needed, but wrapper shouldn't block */
+            /* Debug: border: 1px solid green; */
+        }
+
+        .contact-sheet {
+            pointer-events: auto;
+            /* Ensure clickable */
+        }
+
+        /* Animation Sequence */
+        /* Animation Sequence with Physics */
+        .contact-sheet.printing {
+            opacity: 1;
+            animation:
+                printEject 2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards,
+                /* Elastic bounce out */
+                paperSway 4s ease-in-out infinite 2s;
+            /* Gentle residual sway */
+        }
+
+        @keyframes printEject {
+            0% {
+                transform: translateX(-50%) translateY(-110%) rotateX(-15deg);
+            }
+
+            40% {
+                transform: translateX(-50%) translateY(-60%) rotateX(0deg);
+                /* Fast eject part way */
+            }
+
+            60% {
+                transform: translateX(-50%) translateY(-45%) rotateX(5deg);
+                /* Overshoot slightly */
+            }
+
+            80% {
+                transform: translateX(-50%) translateY(-52%) rotateX(-2deg);
+                /* Correct */
+            }
+
+            100% {
+                transform: translateX(-50%) translateY(-50%) rotateX(0deg);
+                /* Settle at HALF out */
+            }
+        }
+
+        @keyframes paperSway {
+
+            0%,
+            100% {
+                transform: translateX(-50%) translateY(-50%) rotateZ(0deg) rotateX(0deg);
+            }
+
+            25% {
+                transform: translateX(-50%) translateY(-50%) rotateZ(0.5deg) rotateX(1deg);
+            }
+
+            75% {
+                transform: translateX(-50%) translateY(-50%) rotateZ(-0.5deg) rotateX(1deg);
+            }
+        }
+
+        .strip-photo {
+            width: 100%;
+            height: 60px;
+            background: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+
+
+        /* =========================================
+           3. BASE
+           ========================================= */
+        .base-assembly {
+            position: absolute;
+            bottom: 0;
+            top: auto;
+            width: 100%;
+            height: 40px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .base-cream {
+            width: 100%;
+            height: 12px;
+            background: var(--cream-strip);
+            position: relative;
+            z-index: 10;
+            box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+        }
+
+        .base-lip {
+            width: 100%;
+            height: 28px;
+            background: var(--teal-mid);
+            border-bottom-left-radius: 15px;
+            border-bottom-right-radius: 15px;
+            position: relative;
+            z-index: 10;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            background: linear-gradient(90deg, var(--teal-edge) 0%, var(--teal-mid) 20%, var(--teal-mid) 80%, var(--teal-edge) 100%);
+            box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .wheels {
+            position: absolute;
+            top: 12px;
+            width: 100%;
+            padding: 0 50px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 1;
+        }
+
+        .wheel-unit {
+            width: 22px;
+            height: 32px;
+            position: relative;
+        }
+
+        .w-stem {
+            width: 8px;
+            height: 10px;
+            background: #222;
+            margin-left: 7px;
+        }
+
+        .w-roll {
+            width: 22px;
+            height: 22px;
+            background: radial-gradient(circle at 40% 40%, #555, #111);
+            border-radius: 5px;
+            box-shadow: 0 4px 5px rgba(0, 0, 0, 0.5);
+            margin-top: -2px;
+        }
+
+        /* Animation */
+        .curtain.open.left {
+            transform: translateX(-90%) scaleX(0.35);
+        }
+
+        .curtain.open.right {
+            transform: translateX(90%) scaleX(0.35);
+        }
+
+        .curtain.open .sticker-layer {
+            opacity: 0.6;
+        }
+
+        /* DOWNLOAD MODAL */
+        #downloadModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #downloadModal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow: auto;
+            position: relative;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #downloadModal.show .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-img-container {
+            margin-bottom: 20px;
+            border: 1px solid #1565C0;
+            padding: 5px;
+            background: #1565C0;
+        }
+
+        .modal-img-container img {
+            max-height: 60vh;
+            width: auto;
+            display: block;
+        }
+
+        .modal-btn {
+            background: #1565C0;
+            color: #ffffff;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-family: 'Fredoka One', cursive;
+            margin: 0 10px;
+            transition: transform 0.2s;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px #1565C0;
+        }
+
+        .close-modal {
+            background: #1565C0;
+        }
+
+        /* MOBILE OPTIMIZATIONS */
+        @media (max-width: 768px) {
+            body {
+                height: auto;
+                overflow-y: auto;
+                background: var(--bg-floor);
+            }
+
+            .booth-container {
+                width: 100%;
+                height: auto;
+                min-height: 100vh;
+                filter: none;
+            }
+
+            .body-shell {
+                flex-direction: column-reverse;
+                /* Screen on Top */
+                top: 60px;
+                height: auto;
+                padding: 10px;
+                background: linear-gradient(180deg, var(--teal-edge) 0%, var(--teal-mid) 100%);
+            }
+
+            .roof-assembly {
+                width: 100%;
+                left: 0;
+                height: 60px;
+            }
+
+            .roof-rim-top {
+                height: 15px;
+            }
+
+            .roof-plate {
+                height: 35px;
+            }
+
+            .col-right {
+                width: 100%;
+                height: 60vh;
+                /* Interact Area */
+                padding-left: 0;
+                margin-bottom: 20px;
+            }
+
+            .col-left {
+                width: 100%;
+                padding-right: 0;
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 15px;
+            }
+
+            .sticker-stack {
+                align-items: center;
+                width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .st-time {
+                font-size: 32px;
+            }
+
+            .paper-menu {
+                display: none;
+            }
+
+            .script-logo {
+                position: relative;
+                bottom: auto;
+                left: auto;
+                transform: rotate(0);
+                text-align: center;
+                width: 100%;
+                margin-top: 10px;
+                font-size: 32px;
+            }
+
+            .swoosh {
+                left: 50%;
+                transform: translateX(-50%);
+            }
+
+            .badges {
+                flex-direction: row;
+            }
+
+            .curtain-zone {
+                height: 85%;
+            }
+
+            .shelf-zone {
+                height: 15%;
+            }
+
+            .photo-row {
+                display: none;
+            }
+
+            /* --- Download Modal Overlay (User Style) --- */
+            #downloadModal {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.85);
+                z-index: 1000;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+
+            #downloadModal.show {
+                display: flex;
+                opacity: 1;
+            }
+
+            .modal-content {
+                background: #fff;
+                padding: 20px;
+                border-radius: 12px;
+                text-align: center;
+                max-width: 90%;
+                max-height: 90vh;
+                overflow: auto;
+                position: relative;
+                transform: scale(0.9);
+                transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+
+            #downloadModal.show .modal-content {
+                transform: scale(1);
+            }
+
+            .modal-img-container {
+                margin-bottom: 20px;
+                border: 1px solid #ddd;
+                padding: 5px;
+                background: #f9f9f9;
+            }
+
+            .modal-img-container img {
+                max-height: 60vh;
+                width: auto;
+                display: block;
+            }
+
+            .modal-btn {
+                background: #1565C0 !important;
+                /* Deep Blue Theme */
+                color: white;
+                border: none;
+                padding: 12px 30px;
+                font-size: 1.1rem;
+                border-radius: 30px;
+                cursor: pointer;
+                font-family: 'Fredoka One', cursive;
+                margin: 0 10px;
+                transition: transform 0.2s;
+            }
+
+            .modal-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(21, 101, 192, 0.4) !important;
+            }
+
+            .btn-close {
+                background: #424242 !important;
+                /* Dark Grey */
+            }
+
+            .btn-close:hover {
+                background: #616161 !important;
+            }
+
+            #printer-interaction-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                z-index: 9000;
+                cursor: pointer;
+                display: none;
+                background: transparent;
+            }
+
+            /* --- CRITICAL: Immediate Open State (Render Blocking) --- */
+            html.immediate-open .curtain.left {
+                transform: translateX(-90%) scaleX(0.35) !important;
+                transition: none !important;
+            }
+
+            html.immediate-open .curtain.right {
+                transform: translateX(90%) scaleX(0.35) !important;
+                transition: none !important;
+            }
+
+            html.immediate-open .curtain .sticker-layer {
+                opacity: 0.6 !important;
+                transition: none !important;
+            }
+    </style>
+    <script>
+        // IMMEDIATE STATE CHECK (Before Body Render)
+        try {
+            if (sessionStorage.getItem('boothOpen')) {
+                document.documentElement.classList.add('immediate-open');
+            }
+        } catch (e) {
+            console.error("Session Storage Check Failed", e);
+        }
+    </script>
+
+    <style>
+        body {
+            visibility: hidden;
+            opacity: 0;
+        }
+    </style> <!-- Hide until loaded -->
+
+
+    <style>body { visibility: hidden; opacity: 0; }</style> <!-- Hide until loaded -->
+</head>
+<body>
+    <script>
+        (function() {
+            var e = "CgogICAgPCEtLSBEb3dubG9hZCBNb2RhbCAtLT4KICAgIDxkaXYgaWQ9ImRvd25sb2FkTW9kYWwiPgogICAgICAgIDxkaXYgY2xhc3M9Im1vZGFsLWNvbnRlbnQiPgogICAgICAgICAgICA8aDIgc3R5bGU9ImZvbnQtZmFtaWx5OiAnRnJlZG9rYSBPbmUnOyBtYXJnaW4tYm90dG9tOiA1cHg7IGNvbG9yOiAjMzMzOyBmb250LXNpemU6MS41cmVtIj5IZXJlJ3MgeW91ciBQcmludCEKICAgICAgICAgICAgPC9oMj4KICAgICAgICAgICAgPHAgc3R5bGU9ImNvbG9yOiM2NjY7IGZvbnQtc2l6ZTowLjlyZW07IG1hcmdpbi1ib3R0b206MjBweDsiPkhvdCBmcmVzaCBmcm9tIHRoZSBsYWIuPC9wPgogICAgICAgICAgICA8ZGl2IGNsYXNzPSJtb2RhbC1pbWctY29udGFpbmVyIj4KICAgICAgICAgICAgICAgIDxpbWcgaWQ9Im1vZGFsSW1hZ2UiIHNyYz0iIiBhbHQ9IllvdXIgUGhvdG8gU3RyaXAiPgogICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgPGRpdj4KICAgICAgICAgICAgICAgIDxidXR0b24gY2xhc3M9Im1vZGFsLWJ0biBidG4tZG93bmxvYWQiIG9uY2xpY2s9InRyaWdnZXJEb3dubG9hZCgpIj5TYXZlIEltYWdlPC9idXR0b24+CiAgICAgICAgICAgICAgICA8YnV0dG9uIGNsYXNzPSJtb2RhbC1idG4gYnRuLWNsb3NlIiBvbmNsaWNrPSJjbG9zZU1vZGFsKCkiPkNsb3NlPC9idXR0b24+CiAgICAgICAgICAgIDwvZGl2PgogICAgICAgIDwvZGl2PgogICAgPC9kaXY+CgoKCiAgICA8ZGl2IGNsYXNzPSJib290aC1jb250YWluZXIiPgoKICAgICAgICA8IS0tIFJPT0YgLS0+CiAgICAgICAgPGRpdiBjbGFzcz0icm9vZi1hc3NlbWJseSI+CiAgICAgICAgICAgIDxkaXYgY2xhc3M9InJvb2YtcmltLXRvcCI+PC9kaXY+CiAgICAgICAgICAgIDxkaXYgY2xhc3M9InJvb2YtcGxhdGUiPgogICAgICAgICAgICAgICAgPHN2ZyBjbGFzcz0ibG9nby1zdmciIHZpZXdCb3g9IjAgMCA0MCAzNSI+CiAgICAgICAgICAgICAgICAgICAgPHJlY3QgeD0iMjMiIHk9IjIiIHdpZHRoPSIxMCIgaGVpZ2h0PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSIyIgogICAgICAgICAgICAgICAgICAgICAgICB0cmFuc2Zvcm09InJvdGF0ZSgxMCAyOCA2KSIgLz4KICAgICAgICAgICAgICAgICAgICA8cmVjdCB4PSIyIiB5PSIxMSIgd2lkdGg9IjM2IiBoZWlnaHQ9IjIyIiByeD0iNCIgZmlsbD0iIzAwRTY3NiIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgIDxyZWN0IHg9IjI0IiB5PSI3IiB3aWR0aD0iOCIgaGVpZ2h0PSI2IiBmaWxsPSIjMDBFNjc2IiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjIiIC8+CiAgICAgICAgICAgICAgICAgICAgPGNpcmNsZSBjeD0iMjAiIGN5PSIyMiIgcj0iNyIgZmlsbD0iIzAwRTY3NiIgc3Ryb2tlPSJibGFjayIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgIDxjaXJjbGUgY3g9IjIwIiBjeT0iMjIiIHI9IjUiIGZpbGw9Im5vbmUiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMS41IiAvPgogICAgICAgICAgICAgICAgICAgIDxjaXJjbGUgY3g9IjIwIiBjeT0iMjIiIHI9IjIuNSIgZmlsbD0iIzIyMiIgLz4KICAgICAgICAgICAgICAgIDwvc3ZnPgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG9nby10ZXh0Ij4KICAgICAgICAgICAgICAgICAgICA8c3BhbiBzdHlsZT0iY29sb3I6d2hpdGU7IG1hcmdpbi1sZWZ0OjVweDsiPlBIT1RPIDxzcGFuIGNsYXNzPSJjLXkiPlQ8L3NwYW4+PHNwYW4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIGNsYXNzPSJjLXAiPmk8L3NwYW4+PHNwYW4gY2xhc3M9ImMtbyI+TTwvc3Bhbj48c3BhbiBjbGFzcz0iYy1wIj5FPC9zcGFuPjwvc3Bhbj4KCiAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgIDxkaXYgY2xhc3M9InJvb2YtcmltLWJ0bSI+PC9kaXY+CiAgICAgICAgPC9kaXY+CgogICAgICAgIDwhLS0gTUFJTiBCT0RZIC0tPgogICAgICAgIDxkaXYgY2xhc3M9ImJvZHktc2hlbGwiPgoKICAgICAgICAgICAgPCEtLSBMRUZUIFBBTkVMIC0tPgogICAgICAgICAgICA8ZGl2IGNsYXNzPSJjb2wtbGVmdCI+CiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzdGlja2VyLXN0YWNrIj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzdC1zdHVkaW8iPlNUVURJTyDimIU8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzdC10aW1lIj5QSE9UTyBUSU1FPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ieWVsbG93LXRhZyI+CiAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InRhZy10ZXh0Ij4oU1RVRElPKTwvZGl2PgogICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYmFkZ2VzIj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJiZy1ibGsiPlBIT1RPQk9PVEgg4piFPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYmctYmxrIj5TSE9XIFlPVVJTRUxGPC9kaXY+CiAgICAgICAgICAgICAgICA8L2Rpdj4KCiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwYXBlci1tZW51Ij4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJjbGlwIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJtZW51LWhlYWQiPgogICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJibGsiPlQ8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYmxrIj5JPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImJsayI+TTwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJibGsiPkU8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJtZW51LXN1YiI+UEhPVE9HUkFQSFk8YnI+b29vc2VlPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZG90IiBzdHlsZT0iYmFja2dyb3VuZDojRkZBNzI2Ij48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSIgc3R5bGU9IndpZHRoOjcwJSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZG90IiBzdHlsZT0iYmFja2dyb3VuZDojRUY1MzUwIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSIgc3R5bGU9IndpZHRoOjkwJSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZG90IiBzdHlsZT0iYmFja2dyb3VuZDojNDJBNUY1Ij48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSIgc3R5bGU9IndpZHRoOjgwJSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibG4tcm93Ij4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ibGluZSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InBhbmRhIj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZXllIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZXllIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJmb290ZXItdHh0Ij5UQUtFIEEgTE9PSyBIRVJFIEFORDxicj5UQUtFIEEgUEhPVE88L2Rpdj4KICAgICAgICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InNjcmlwdC1sb2dvIj5QaG90bzxicj48c3BhbiBzdHlsZT0ibWFyZ2luLWxlZnQ6NDBweCI+VGltZTwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzd29vc2giPjwvZGl2PgogICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgICAgPCEtLSBSSUdIVCBQQU5FTCAtLT4KICAgICAgICAgICAgPGRpdiBjbGFzcz0iY29sLXJpZ2h0Ij4KICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImF3bmluZyI+PC9kaXY+CgogICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYm9vdGgtb3BlbmluZyI+CiAgICAgICAgICAgICAgICAgICAgPCEtLSBDVVJUQUlOIFpPTkUgLS0+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iY3VydGFpbi16b25lIj4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iY3VydGFpbi1yb2QiPjwvZGl2PgoKICAgICAgICAgICAgICAgICAgICAgICAgPCEtLSBMZWZ0IEN1cnRhaW4gLS0+CiAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImN1cnRhaW4gbGVmdCIgaWQ9ImMtbGVmdCI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJncm9tbWV0IiBzdHlsZT0ibGVmdDoyMCUiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZ3JvbW1ldCIgc3R5bGU9ImxlZnQ6NzAlIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN0aWNrZXItbGF5ZXIiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImFydC10Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHN2ZyBjbGFzcz0ibG9nby1zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI+PHRleHQgeD0iMCIgeT0iMjUiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZm9udC1mYW1pbHk9IkZyZWRva2EgT25lIiBmb250LXNpemU9IjIyIiBmaWxsPSIjRkZCNzREIiBzdHJva2U9ImJsYWNrIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHN0cm9rZS13aWR0aD0iMS41Ij5UaW48L3RleHQ+PHRleHQgeD0iMzUiIHk9IjI1IiBmb250LWZhbWlseT0iRnJlZG9rYSBPbmUiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZm9udC1zaXplPSIyMiIgZmlsbD0iI0FFRDU4MSIgc3Ryb2tlPSJibGFjayIKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBzdHJva2Utd2lkdGg9IjEuNSI+ZTwvdGV4dD48L3N2Zz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHN2ZyBjbGFzcz0ibG9nby1zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI+PHRleHQgeD0iMCIgeT0iMjUiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZm9udC1mYW1pbHk9IkZyZWRva2EgT25lIiBmb250LXNpemU9IjIyIiBmaWxsPSIjRkZCNzREIiBzdHJva2U9ImJsYWNrIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHN0cm9rZS13aWR0aD0iMS41Ij5ib290aDwvdGV4dD48L3N2Zz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJhcnQtZmFjZXMiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8c3ZnIHdpZHRoPSIxMDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAxMDAgNDAiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGNpcmNsZSBjeD0iMzAiIGN5PSIyMCIgcj0iMTUiIGZpbGw9IndoaXRlIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjEuNSIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0yMCAxNSBRMzAgNSA0MCAxNSIgc3Ryb2tlPSJibGFjayIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGNpcmNsZSBjeD0iMjUiIGN5PSIxOCIgcj0iMS41IiBmaWxsPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxjaXJjbGUgY3g9IjM1IiBjeT0iMTgiIHI9IjEuNSIgZmlsbD0iYmxhY2siIC8+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGF0aCBkPSJNMTUgMjAgTDEwIDI1IiBzdHJva2U9IiNFOTFFNjMiIHN0cm9rZS13aWR0aD0iMS41IiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGNpcmNsZSBjeD0iNzAiIGN5PSIyMCIgcj0iMTUiIGZpbGw9IndoaXRlIiBzdHJva2U9ImJsYWNrIiBzdHJva2Utd2lkdGg9IjEuNSIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik02MCAxMiBRNzAgMiA4MCAxMiIgc3Ryb2tlPSJibGFjayIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGNpcmNsZSBjeD0iNjUiIGN5PSIxOCIgcj0iMS41IiBmaWxsPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxjaXJjbGUgY3g9Ijc1IiBjeT0iMTgiIHI9IjEuNSIgZmlsbD0iYmxhY2siIC8+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8cGF0aCBkPSJNODUgMTAgTDkwIDUgTTkwIDEwIEw5NSA1IiBzdHJva2U9IiNFOTFFNjMiIHN0cm9rZS13aWR0aD0iMS41IiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8L3N2Zz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJhcnQtYm94Ij5TSE9XWU9VUlNFTEY8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJhcnQtZmxvd2VycyI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxzdmcgd2lkdGg9IjIwIiBoZWlnaHQ9IjMwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0xMCAxNSBMMTAgMzAiIHN0cm9rZT0iIzRDQUY1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTUgNSBRMTAgMTUgMTUgNSBMMTIgMTAgTDggMTAgWiIgZmlsbD0iI0VGNTM1MCIgc3Ryb2tlPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zdmc+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxzdmcgd2lkdGg9IjIwIiBoZWlnaHQ9IjMwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0xMCAxNSBMMTAgMzAiIHN0cm9rZT0iIzRDQUY1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTUgNSBRMTAgMTUgMTUgNSBMMTIgMTAgTDggMTAgWiIgZmlsbD0iI0ZGRUU1OCIgc3Ryb2tlPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zdmc+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxzdmcgd2lkdGg9IjIwIiBoZWlnaHQ9IjMwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0xMCAxNSBMMTAgMzAiIHN0cm9rZT0iIzRDQUY1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTUgNSBRMTAgMTUgMTUgNSBMMTIgMTAgTDggMTAgWiIgZmlsbD0iIzQyQTVGNSIgc3Ryb2tlPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zdmc+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJjdXJ0YWluIHJpZ2h0IiBpZD0iYy1yaWdodCI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJncm9tbWV0IiBzdHlsZT0ibGVmdDoyMCUiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iZ3JvbW1ldCIgc3R5bGU9ImxlZnQ6NzAlIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN0aWNrZXItbGF5ZXIiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImFydC10Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHN2ZyBjbGFzcz0ibG9nby1zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI+PHRleHQgeD0iMCIgeT0iMjUiCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgZm9udC1mYW1pbHk9IkZyZWRva2EgT25lIiBmb250LXNpemU9IjIyIiBmaWxsPSIjRkZCNzREIiBzdHJva2U9ImJsYWNrIgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHN0cm9rZS13aWR0aD0iMS41Ij5UaW1lPC90ZXh0Pjwvc3ZnPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8c3ZnIGNsYXNzPSJsb2dvLXN2ZyIgdmlld0JveD0iMCAwIDYwIDMwIj48dGV4dCB4PSIwIiB5PSIyNSIKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBmb250LWZhbWlseT0iRnJlZG9rYSBPbmUiIGZvbnQtc2l6ZT0iMjIiIGZpbGw9IiNGRkI3NEQiIHN0cm9rZT0iYmxhY2siCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgc3Ryb2tlLXdpZHRoPSIxLjUiPmJvb3RoPC90ZXh0Pjwvc3ZnPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImFydC1mYWNlcyI+PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjQwIj48L3N2Zz48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJhcnQtYm94Ij5TSE9XIFlPVVJTRUxGPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iYXJ0LWZsb3dlcnMiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8c3ZnIHdpZHRoPSIyMCIgaGVpZ2h0PSIzMCIgc3R5bGU9Im1hcmdpbi1sZWZ0OjYwcHg7Ij4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0xMCAxNSBMMTAgMzAiIHN0cm9rZT0iIzRDQUY1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTUgNSBRMTAgMTUgMTUgNSBMMTIgMTAgTDggMTAgWiIgZmlsbD0iI0VGNTM1MCIgc3Ryb2tlPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zdmc+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxzdmcgd2lkdGg9IjIwIiBoZWlnaHQ9IjMwIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxwYXRoIGQ9Ik0xMCAxNSBMMTAgMzAiIHN0cm9rZT0iIzRDQUY1MCIgc3Ryb2tlLXdpZHRoPSIyIiAvPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPHBhdGggZD0iTTUgNSBRMTAgMTUgMTUgNSBMMTIgMTAgTDggMTAgWiIgZmlsbD0iIzQyQTVGNSIgc3Ryb2tlPSJibGFjayIgLz4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9zdmc+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CgogICAgICAgICAgICAgICAgICAgICAgICA8IS0tIFNjcmVlbiAoQmVoaW5kKSAtLT4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0iaW50ZXJpb3Itc2NyZWVuIj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxpZnJhbWUgc3JjPSJwaG90b2Jvb3RoL2xheW91dC5odG1sIiBjbGFzcz0ic2NyZWVuLWlmcmFtZSI+PC9pZnJhbWU+CiAgICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICAgIDwvZGl2PgoKICAgICAgICAgICAgICAgICAgICA8IS0tIFNIRUxGIFpPTkUgLS0+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ic2hlbGYtem9uZSI+CiAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InBob3RvLXJvdyI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwLWNhcmQiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InAtaW5uZXIiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwLWNhcmQiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InAtaW5uZXIiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwLWNhcmQiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InAtaW5uZXIiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICA8IS0tIE1hc2sgcmVtb3ZlZCAtLT4KICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0icHJpbnRlci1hc3NlbWJseSI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwcmludGVyLXNsb3QiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPCEtLSBDbGlwcGVyIFdyYXBwZXIgLS0+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJwcmludGVyLWNsaXBwZXIiPgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9ImNvbnRhY3Qtc2hlZXQiIGlkPSJwaG90by1zdHJpcCI+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN0cmlwLXBob3RvIj48L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0ic3RyaXAtcGhvdG8iPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJzdHJpcC1waG90byI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9InN0cmlwLXBob3RvIj48c3BhbgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHN0eWxlPSJmb250LXNpemU6OHB4OyBjb2xvcjojNTU1OyBiYWNrZ3JvdW5kOndoaXRlOyBwYWRkaW5nOjFweCAzcHg7IG1hcmdpbi10b3A6IGF1dG87IG1hcmdpbi1ib3R0b206MnB4OyI+UEhPVE8KICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBUSU1FPC9zcGFuPjwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgICAgICAgICA8ZGl2IGlkPSJwcmludGVyLWludGVyYWN0aW9uLW92ZXJsYXkiPjwvZGl2PgogICAgICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgIDwvZGl2PgogICAgICAgIDwvZGl2PgoKICAgICAgICA8IS0tIEJBU0UgLS0+CiAgICAgICAgPGRpdiBjbGFzcz0iYmFzZS1hc3NlbWJseSI+CiAgICAgICAgICAgIDxkaXYgY2xhc3M9ImJhc2UtY3JlYW0iPjwvZGl2PgogICAgICAgICAgICA8ZGl2IGNsYXNzPSJiYXNlLWxpcCI+PC9kaXY+CiAgICAgICAgICAgIDxkaXYgY2xhc3M9IndoZWVscyI+CiAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJ3aGVlbC11bml0Ij4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzPSJ3LXN0ZW0iPjwvZGl2PgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9Inctcm9sbCI+PC9kaXY+CiAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9IndoZWVsLXVuaXQiPgogICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3M9Inctc3RlbSI+PC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzcz0idy1yb2xsIj48L2Rpdj4KICAgICAgICAgICAgICAgIDwvZGl2PgogICAgICAgICAgICA8L2Rpdj4KICAgICAgICA8L2Rpdj4KCiAgICA8L2Rpdj4KCiAgICA8c2NyaXB0PgogICAgICAgIC8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiAgICAgICAgLy8gMS4gQ09SRSBWQVJJQUJMRVMgJiBTRVRVUAogICAgICAgIC8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiAgICAgICAgY29uc3QgcHJpbnRlclNoZWV0ID0gZG9jdW1lbnQucXVlcnlTZWxlY3RvcignLmNvbnRhY3Qtc2hlZXQnKTsKICAgICAgICBjb25zdCBtb2RhbCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdkb3dubG9hZE1vZGFsJyk7CiAgICAgICAgY29uc3QgbW9kYWxJbWcgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnbW9kYWxJbWFnZScpOwogICAgICAgIGNvbnN0IG92ZXJsYXkgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgncHJpbnRlci1pbnRlcmFjdGlvbi1vdmVybGF5Jyk7CiAgICAgICAgbGV0IGN1cnJlbnRQcmludEltYWdlID0gbnVsbDsKCiAgICAgICAgLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KICAgICAgICAvLyAyLiBNRVNTQUdFIEhBTkRMSU5HIChGcm9tIEVkaXRvcikKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogICAgICAgIHdpbmRvdy5hZGRFdmVudExpc3RlbmVyKCdtZXNzYWdlJywgKGV2ZW50KSA9PiB7CiAgICAgICAgICAgIGlmICgoZXZlbnQuZGF0YS5hY3Rpb24gPT09ICdwcmludCcgfHwgZXZlbnQuZGF0YS50eXBlID09PSAnUFJJTlRfU1RSSVAnKSAmJiBldmVudC5kYXRhLmltYWdlKSB7CiAgICAgICAgICAgICAgICBydW5QcmludFNlcXVlbmNlKGV2ZW50LmRhdGEuaW1hZ2UpOwogICAgICAgICAgICB9CiAgICAgICAgfSk7CgogICAgICAgIC8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiAgICAgICAgLy8gMy4gUFJJTlQgU0VRVUVOQ0UKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogICAgICAgIGZ1bmN0aW9uIHJ1blByaW50U2VxdWVuY2UoaW1hZ2VEYXRhKSB7CiAgICAgICAgICAgIGN1cnJlbnRQcmludEltYWdlID0gaW1hZ2VEYXRhOwoKICAgICAgICAgICAgY29uc3QgcGhvdG9EaXZzID0gZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnLnN0cmlwLXBob3RvJyk7CiAgICAgICAgICAgIHBob3RvRGl2cy5mb3JFYWNoKGRpdiA9PiB7CiAgICAgICAgICAgICAgICBkaXYuc3R5bGUuYmFja2dyb3VuZEltYWdlID0gYHVybCgke2ltYWdlRGF0YX0pYDsKICAgICAgICAgICAgICAgIGRpdi5zdHlsZS5iYWNrZ3JvdW5kU2l6ZSA9ICdjb3Zlcic7CiAgICAgICAgICAgICAgICBkaXYuc3R5bGUuYmFja2dyb3VuZFBvc2l0aW9uID0gJ2NlbnRlcic7CiAgICAgICAgICAgICAgICBkaXYuaW5uZXJIVE1MID0gJyc7CiAgICAgICAgICAgIH0pOwoKICAgICAgICAgICAgcHJpbnRlclNoZWV0LmNsYXNzTGlzdC5yZW1vdmUoJ3ByaW50aW5nJyk7CiAgICAgICAgICAgIHZvaWQgcHJpbnRlclNoZWV0Lm9mZnNldFdpZHRoOwogICAgICAgICAgICBwcmludGVyU2hlZXQuY2xhc3NMaXN0LmFkZCgncHJpbnRpbmcnKTsKCiAgICAgICAgICAgIGlmIChvdmVybGF5KSBvdmVybGF5LnN0eWxlLmRpc3BsYXkgPSAnYmxvY2snOwoKICAgICAgICAgICAgc2V0VGltZW91dCgoKSA9PiB7CiAgICAgICAgICAgICAgICBvcGVuTW9kYWwoaW1hZ2VEYXRhKTsKICAgICAgICAgICAgfSwgMTUwMCk7CiAgICAgICAgfQoKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogICAgICAgIC8vIDQuIElOVEVSQUNUSU9OIEhBTkRMRVJTCiAgICAgICAgLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KICAgICAgICBwcmludGVyU2hlZXQuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCAoKSA9PiB7CiAgICAgICAgICAgIGlmIChwcmludGVyU2hlZXQuY2xhc3NMaXN0LmNvbnRhaW5zKCdwcmludGluZycpICYmIGN1cnJlbnRQcmludEltYWdlKSB7CiAgICAgICAgICAgICAgICBvcGVuTW9kYWwoY3VycmVudFByaW50SW1hZ2UpOwogICAgICAgICAgICB9CiAgICAgICAgfSk7CgogICAgICAgIGlmIChvdmVybGF5KSB7CiAgICAgICAgICAgIG92ZXJsYXkuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCAoKSA9PiB7CiAgICAgICAgICAgICAgICBpZiAoY3VycmVudFByaW50SW1hZ2UpIG9wZW5Nb2RhbChjdXJyZW50UHJpbnRJbWFnZSk7CiAgICAgICAgICAgIH0pOwogICAgICAgIH0KCiAgICAgICAgLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KICAgICAgICAvLyA1LiBNT0RBTCBMT0dJQwogICAgICAgIC8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiAgICAgICAgZnVuY3Rpb24gb3Blbk1vZGFsKGltZ1NyYykgewogICAgICAgICAgICBtb2RhbEltZy5zcmMgPSBpbWdTcmM7CiAgICAgICAgICAgIG1vZGFsLmNsYXNzTGlzdC5hZGQoJ3Nob3cnKTsKICAgICAgICB9CgogICAgICAgIHdpbmRvdy5jbG9zZU1vZGFsID0gZnVuY3Rpb24gKCkgewogICAgICAgICAgICBtb2RhbC5jbGFzc0xpc3QucmVtb3ZlKCdzaG93Jyk7CiAgICAgICAgICAgIGlmIChvdmVybGF5KSBvdmVybGF5LnN0eWxlLmRpc3BsYXkgPSAnbm9uZSc7IC8vIEZJWDogSGlkZSBibG9ja2luZyBvdmVybGF5CiAgICAgICAgfTsKCiAgICAgICAgd2luZG93LnRyaWdnZXJEb3dubG9hZCA9IGZ1bmN0aW9uICgpIHsKICAgICAgICAgICAgaWYgKCFjdXJyZW50UHJpbnRJbWFnZSkgcmV0dXJuOwoKICAgICAgICAgICAgLy8gRElSRUNUIERBVEEgVVJJIC0gR3VhcmFudGVlcyBDb3JyZWN0IEZpbGVuYW1lICYgRm9ybWF0CiAgICAgICAgICAgIGNvbnN0IGEgPSBkb2N1bWVudC5jcmVhdGVFbGVtZW50KCdhJyk7CiAgICAgICAgICAgIGEuZG93bmxvYWQgPSBgUEhPVE8tVElNRS0ke0RhdGUubm93KCl9LnBuZ2A7CiAgICAgICAgICAgIGEuaHJlZiA9IGN1cnJlbnRQcmludEltYWdlOwoKICAgICAgICAgICAgZG9jdW1lbnQuYm9keS5hcHBlbmRDaGlsZChhKTsKICAgICAgICAgICAgYS5jbGljaygpOwogICAgICAgICAgICBkb2N1bWVudC5ib2R5LnJlbW92ZUNoaWxkKGEpOwogICAgICAgIH07CgoKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogICAgICAgIC8vIDcuIENMT1NFIE1PREFMIE9OIE9VVFNJREUgQ0xJQ0sKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQogICAgICAgIG1vZGFsLmFkZEV2ZW50TGlzdGVuZXIoJ2NsaWNrJywgKGUpID0+IHsKICAgICAgICAgICAgaWYgKGUudGFyZ2V0ID09PSBtb2RhbCkgd2luZG93LmNsb3NlTW9kYWwoKTsKICAgICAgICB9KTsKCiAgICAgICAgLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KICAgICAgICAvLyA4LiBSRVNQT05TSVZFIFNDQUxJTkcKICAgICAgICAvLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQoKCiAgICAgICAgd2luZG93LmFkZEV2ZW50TGlzdGVuZXIoJ2xvYWQnLCAoKSA9PiB7CiAgICAgICAgICAgIGNvbnN0IGxlZnRDdXJ0YWluID0gZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ2MtbGVmdCcpOwogICAgICAgICAgICBjb25zdCByaWdodEN1cnRhaW4gPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnYy1yaWdodCcpOwoKICAgICAgICAgICAgaWYgKGRvY3VtZW50LmRvY3VtZW50RWxlbWVudC5jbGFzc0xpc3QuY29udGFpbnMoJ2ltbWVkaWF0ZS1vcGVuJykpIHsKICAgICAgICAgICAgICAgIC8vIEFscmVhZHkgaGFuZGxlZCBieSBDU1MsIGp1c3Qgc3luYyBzdGF0ZSBpbiBjYXNlIG9mIGZ1dHVyZSBpbnRlcmFjdGlvbnMKICAgICAgICAgICAgICAgIGxlZnRDdXJ0YWluLmNsYXNzTGlzdC5hZGQoJ29wZW4nKTsKICAgICAgICAgICAgICAgIHJpZ2h0Q3VydGFpbi5jbGFzc0xpc3QuYWRkKCdvcGVuJyk7CgogICAgICAgICAgICAgICAgLy8gUmVtb3ZlIHRoZSBmb3JjZS1jbGFzcyBhZnRlciBhIHNob3J0IGRlbGF5IHRvIGFsbG93IG5vcm1hbCBhbmltYXRpb25zIGlmIG5lZWRlZCBsYXRlcgogICAgICAgICAgICAgICAgcmVxdWVzdEFuaW1hdGlvbkZyYW1lKCgpID0+IHsKICAgICAgICAgICAgICAgICAgICBzZXRUaW1lb3V0KCgpID0+IHsKICAgICAgICAgICAgICAgICAgICAgICAgZG9jdW1lbnQuZG9jdW1lbnRFbGVtZW50LmNsYXNzTGlzdC5yZW1vdmUoJ2ltbWVkaWF0ZS1vcGVuJyk7CiAgICAgICAgICAgICAgICAgICAgfSwgMTAwKTsKICAgICAgICAgICAgICAgIH0pOwogICAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAgICAgLy8gRmlyc3QgbG9hZCAtPiBBbmltYXRlIG5vcm1hbGx5CiAgICAgICAgICAgICAgICBzZXRUaW1lb3V0KCgpID0+IHsKICAgICAgICAgICAgICAgICAgICBsZWZ0Q3VydGFpbi5jbGFzc0xpc3QuYWRkKCdvcGVuJyk7CiAgICAgICAgICAgICAgICAgICAgcmlnaHRDdXJ0YWluLmNsYXNzTGlzdC5hZGQoJ29wZW4nKTsKICAgICAgICAgICAgICAgICAgICBzZXNzaW9uU3RvcmFnZS5zZXRJdGVtKCdib290aE9wZW4nLCAndHJ1ZScpOwogICAgICAgICAgICAgICAgfSwgMTAwMCk7CiAgICAgICAgICAgIH0KICAgICAgICB9KTsKICAgIDwvc2NyaXB0PgoKCg==";
+            var d = atob(e); // Decode
+            // Safe injection:
+            document.body.innerHTML = d;
+            
+            // Restore visibility
+            document.body.style.visibility = 'visible'; 
+            document.body.style.opacity = '1';
+            
+            // Re-run scripts in the injected content? 
+            // innerHTML does NOT execute <script> tags automatically.
+            // We need to manually execute them.
+            
+            var scripts = document.body.getElementsByTagName("script");
+            for (var i = 0; i < scripts.length; i++) {
+                var oldScript = scripts[i];
+                var newScript = document.createElement("script");
+                newScript.text = oldScript.text;
+                if (oldScript.src) newScript.src = oldScript.src;
+                if (oldScript.type) newScript.type = oldScript.type;
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            }
+            
+            console.log("Secure Content Loaded");
+        })();
+    </script>
+</body>
+</html>

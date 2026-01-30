@@ -1,0 +1,314 @@
+# EZ Language Mega Demo
+# Demonstrates: DB, Network, Async, File IO, OOP, Math, String, System
+
+# 1. Imports
+# Assuming running from examples directory: use "demo_utils.ez"
+# If running from root, might need "examples/demo_utils.ez"
+# We'll use a try-catch block for import if it was dynamic, but 'use' is parse-time.
+# We explicitly use the relative path assuming CWD is examples/
+
+out "[Utils] Loading utilities..."
+
+# Safe Division (Math helper)
+task safe_div(a, b) {
+    when b == 0 {
+        give 0
+    }
+    give a / b
+}
+
+# Simple Encryption (String/Logic helper)
+# Uses XOR cipher on string
+task crypto_transform(text, key) {
+    res = ""
+    keyLen = len(key)
+    
+    # Iterate using range
+    get i in range(len(text)) {
+        # ord() gets ASCII, substring gets char
+        charStr = substring(text, i, 1)
+        charCode = ord(charStr)
+        
+        # Key char
+        keyChar = substring(key, i % keyLen, 1)
+        keyCode = ord(keyChar)
+        
+        # XOR and convert back to char
+        newCode = xor(charCode, keyCode)
+        res += chr(newCode)
+    }
+    
+    give res
+}
+
+# Array Stats (Collection helper)
+task calc_stats(arr) {
+    sum = 0
+    maxVal = -999999
+    minVal = 999999
+    
+    get n in arr {
+        sum += n
+        maxVal = max(maxVal, n)
+        minVal = min(minVal, n)
+    }
+    
+    avg = 0
+    when len(arr) > 0 { avg = sum / len(arr) }
+    
+    give {
+        "sum": sum,
+        "max": maxVal,
+        "min": minVal,
+        "avg": avg
+    }
+}
+
+
+# 2.   State
+config = {}
+db = nil
+running = true
+latest_metrics = {}
+
+# 3. Class Definitions (OOP)
+
+# Model representing a System Metric
+model Metric {
+    init(name, value, unit) {
+        self.name = name
+        self.value = value
+        self.unit = unit
+        self.timestamp = clock()
+    }
+
+    task toDisplay() {
+        give "[" + str(self.timestamp) + "] " + self.name + ": " + str(self.value) + self.unit
+    }
+}
+
+# 4. Helper Tasks
+
+task load_config() {
+    out "Loading config..."
+    try {
+        content = readFile("demo_config.json")
+          config = parse_json(content) # Parse JSON builtin
+        out "Config loaded: " + config["app_name"]
+    } catch e {
+        out "Error loading config: " + str(e)
+        # Defaults
+          config = {"port": 8080, "db_path": "mega_demo.db"}
+    }
+}
+
+task init_db() {
+    out "Initializing Database..."
+    path = config["db_path"]
+    db = db_open(path)
+    
+    # Create table if not exists
+    sql = "CREATE TABLE IF NOT EXISTS metrics (id INTEGER PRIMARY KEY, name TEXT, value REAL, timestamp INTEGER)"
+    db_execute(db, sql)
+    out "Database ready."
+}
+
+task save_metric(metric) {
+    # metric is an instance of Metric model
+    # demonstrate property access
+    sql = "INSERT INTO metrics (name, value, timestamp) VALUES (?, ?, ?)"
+    # Using params array for security
+    params = [metric.name, metric.value, metric.timestamp]
+    try {
+        db_execute(db, sql, params)
+    } catch e {
+        out "DB Error: " + str(e)
+    }
+}
+
+# 5. Background Worker (Concurrency)
+
+task data_collector_worker(interval) {
+    # Runs in a separate thread
+    # Simulates gathering system stats
+    
+    # Needs its own DB connection in multi-thread? 
+    # SQLite handle sharing depends on implementation. 
+    # Best practice: open own connection or use mutex. 
+    # For this demo, we'll just update   variable and let main thread save?
+    # Or just print.
+    
+    out "[Worker] Started collector..."
+    
+    while true {
+        # Simulate CPU usage (Math -> rand)
+        cpu = round(rand() * 100)
+        
+        # Simulate Memory (Math -> randint)
+        mem = randint(100, 16000)
+        
+        # Create Objects
+        m1 = Metric("CPU", cpu, "%")
+        m2 = Metric("Memory", mem, "MB")
+        
+        # Update   state (Thread safety note: simplistic for demo)
+          latest_metrics = {
+            "cpu": m1.toDisplay(),
+            "mem": m2.toDisplay()
+        }
+        
+        # Sleep
+        stop(interval)
+    }
+}
+
+# 6. Web Server Handler
+
+task http_handler(req) {
+    path = req["path"]
+    method = req["method"]
+    
+    # Log request (System I/O)
+    # out "[Server] " + method + " " + path
+    
+    when path == "/" or path == "/status" {
+        # Serve JSON status
+        resp = {
+            "app": config["app_name"],
+            "uptime": clock(),
+            "metrics": latest_metrics
+        }
+        give {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": to_json(resp)
+        }
+    } 
+    other when path == "/api/echo" {
+        # Echo back body
+        body = req["body"]
+        give {
+            "status": 200,
+            "body": "Echo: " + body
+        }
+    }
+    other {
+        give {
+            "status": 404,
+            "body": "Not Found"
+        }
+    }
+}
+
+task start_server_task(port) {
+    out "[Server] Listening on http://localhost:" + str(port)
+    try {
+        server(port, http_handler)
+    } catch e {
+        out "[Server] Error: " + str(e)
+    }
+}
+
+# 7. Main Application Logic
+
+task main() {
+    # System Functions
+    clear()
+    color(10) # Green text
+    out "=== EZ Mega Demo ==="
+    reset()
+    
+    load_config()
+    init_db()
+    
+    # Start Background Worker (Async)
+    interval = 2000
+    when (config["update_interval_ms"] != nil) {
+        interval = config["update_interval_ms"]
+    }
+    
+    out "Spawning collector worker..."
+    worker_fut = spawn(data_collector_worker, interval)
+    
+    # Start Web Server (Async)
+    port = config["port"]
+    out "Spawning web server..."
+    server_fut = spawn(start_server_task, port)
+    
+    out "System running. Press 'q' to quit, 's' for stats, 'db' to query history."
+    
+    # Main Interactive Loop
+    while running {
+        # Use getch() for single key input (Windows)
+        # or input() for line
+        cmd = input("> ")
+        cmd = trim(cmd)
+        
+        when cmd == "q" {
+            out "Shutting down..."
+            running = false
+            # Break loop
+            escape 
+        } 
+        other when cmd == "s" {
+            out "--- Current Stats ---"
+            get key in metrics_keys { 
+                # Note: keys() builtin demo
+                # Can't easily iterate keys of   'latest_metrics' directly in 'get'?
+                # 'get k in latest_metrics' iterates keys provided latest_metrics is dictionary
+                out key + ": " + str(latest_metrics[key])
+            }
+            # Alternative manual iteration
+            when len(latest_metrics) == 0 { out "No data yet..." }
+            get k in latest_metrics {
+                out k + " -> " + str(latest_metrics[k])
+            }
+            out "---------------------"
+        }
+        other when cmd == "db" {
+            out "Querying last 5 entries from DB..."
+            rows = db_query(db, "SELECT * FROM metrics ORDER BY id DESC LIMIT 5")
+            
+            # Array HOF demo: map
+            # We want to format the output
+            # EZ lambda syntax: |row| => ...
+            
+            # Simple iteration
+            get row in rows {
+                out "ID: " + str(row["id"]) + " | " + row["name"] + ": " + str(row["value"])
+            }
+        }
+        other when cmd == "crypt" {
+            txt = input("Enter text to encrypt: ")
+            encrypted = crypto_transform(txt, "secret") # From demo_utils
+            out "Encrypted: " + encrypted
+            decrypted = crypto_transform(encrypted, "secret")
+            out "Decrypted: " + decrypted
+        }
+        other when cmd == "fetch" {
+            # Network Fetch Demo
+            out "Fetching example.com..."
+            try {
+                fut = fetch("http://example.com")
+                # Await result
+                res = await(fut)
+                out "Response length: " + str(len(res))
+                out "First 50 chars: " + substr(res, 0, 50)
+            } catch e {
+                out "Fetch failed: " + str(e)
+            }
+        }
+        other {
+            color(12) # Red
+            out "Unknown command. Try: s, db, crypt, fetch, q"
+            reset()
+        }
+    }
+    
+    db_close(db)
+    out "Goodbye."
+    # Note: detached threads (server/worker) might persist until process exit
+}
+
+# Run Main
+main()

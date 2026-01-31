@@ -1,0 +1,4 @@
+task square(x)
+{
+    give x*x
+}

@@ -1,4 +1,1 @@
-task square(x)
-{
-    give x*x
-}
+out -1*0.1*10000

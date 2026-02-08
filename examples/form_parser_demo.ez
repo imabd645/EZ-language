@@ -1,0 +1,59 @@
+# Form Parsing Demo in EZ
+
+# Helper task to parse application/x-www-form-urlencoded body
+task parse_form_data(body) {
+    data = {}
+    
+    # Split by ampersand to get key=value pairs
+    pairs = split(body, "&")
+    
+    get pair in pairs {
+        # Split by first equals sign
+        # Note: split() returns all parts, so we need to handle cases where value contains '='
+        parts = split(pair, "=")
+        
+        when len(parts) >= 2 {
+            key = parts[0]
+            
+            # Reconstruct value if it contained equals signs
+            # (e.g. "param=a=b" -> parts=["param", "a", "b"])
+            # Ideally we would split only once, but EZ split() splits all.
+            # We can join the rest back.
+            valParts = slice(parts, 1, len(parts))
+            valRaw = join(valParts, "=")
+            
+            # Handle '+' as space (standard form encoding, curl doesn't do this automatically)
+            key = replace(key, "+", " ")
+            valRaw = replace(valRaw, "+", " ")
+            
+            # Decode URL encoding (%20, etc.)
+            keyFunc = url_decode(key)
+            valFunc = url_decode(valRaw)
+            
+            data[keyFunc] = valFunc
+        }
+    }
+    
+    give data
+}
+
+# Test the function
+out "--- Testing Form Parsing ---"
+
+raw_body = "name=John+Doe&age=30&message=Hello%20World!&complex=a%3Db"
+out "Raw Body: " + raw_body
+
+parsed = parse_form_data(raw_body)
+
+out "Parsed Data:"
+out "  name: " + parsed["name"]
+out "  age: " + parsed["age"]
+out "  message: " + parsed["message"]
+out "  complex: " + parsed["complex"]
+
+# Verify
+when parsed["name"] == "John Doe" and parsed["complex"] == "a=b" {
+    out "SUCCESS: Parsing logic works correctly."
+} other {
+    out "FAILURE: Parsing logic incorrect."
+}

@@ -927,6 +927,45 @@ void registerBuiltins(Interpreter& interp) {
                             pos = nextLine + 2;
                         }
 
+
+                        // Parse Form Data if application/x-www-form-urlencoded
+                        std::unordered_map<std::string, Value> formData;
+                        if (headers.count("Content-Type") && headers["Content-Type"].asString().find("application/x-www-form-urlencoded") != std::string::npos) {
+                            std::string qStr = body;
+                            size_t start = 0;
+                            while (start < qStr.length()) {
+                                size_t amPos = qStr.find('&', start);
+                                std::string pair = qStr.substr(start, amPos == std::string::npos ? amPos : amPos - start);
+                                size_t eqPos = pair.find('=');
+                                if (eqPos != std::string::npos) {
+                                    std::string key = pair.substr(0, eqPos);
+                                    std::string val = pair.substr(eqPos + 1);
+                                    
+                                    // Replace + with space
+                                    std::replace(key.begin(), key.end(), '+', ' ');
+                                    std::replace(val.begin(), val.end(), '+', ' ');
+                                    
+                                    // URL Decode using CURL
+                                    CURL* curl = curl_easy_init();
+                                    if (curl) {
+                                        int outlen;
+                                        char* uns_key = curl_easy_unescape(curl, key.c_str(), (int)key.length(), &outlen);
+                                        std::string dec_key(uns_key, outlen);
+                                        curl_free(uns_key);
+                                        
+                                        char* uns_val = curl_easy_unescape(curl, val.c_str(), (int)val.length(), &outlen);
+                                        std::string dec_val(uns_val, outlen);
+                                        curl_free(uns_val);
+                                        
+                                        curl_easy_cleanup(curl);
+                                        formData[dec_key] = Value(dec_val);
+                                    }
+                                }
+                                if (amPos == std::string::npos) break;
+                                start = amPos + 1;
+                            }
+                        }
+
                         // Create request object
                         Value reqArg = Value::makeDictionary();
                         auto& reqMap = reqArg.asDictionary().map;
@@ -935,6 +974,10 @@ void registerBuiltins(Interpreter& interp) {
                         reqMap["fullPath"] = Value(fullPath);
                         reqMap["version"] = Value(version);
                         reqMap["body"] = Value(body);
+                        
+                        Value formDict = Value::makeDictionary();
+                        formDict.asDictionary().map = std::move(formData);
+                        reqMap["form"] = formDict;
 
                         Value queryDict = Value::makeDictionary();
                         queryDict.asDictionary().map = std::move(query);

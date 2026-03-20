@@ -84,8 +84,8 @@ void registerBuiltins(Interpreter& interp) {
     
     // str(x) - convert to string
     interp.defineGlobal("str", Value::makeNativeFunction("str", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            return Value(args[0].toString());
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            return Value(interp.stringify(args[0]));
         }));
     
     // num(x) - convert to number

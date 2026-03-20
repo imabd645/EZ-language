@@ -58,6 +58,7 @@ private:
     StmtPtr blockStatement();
     StmtPtr expressionStatement();
     StmtPtr modelStatement();
+    StmtPtr interfaceStatement();
     StmtPtr structStatement();
     StmtPtr useStatement();
     StmtPtr tryStatement();

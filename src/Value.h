@@ -23,6 +23,7 @@ struct NativeFunction;
 struct EZClass;
 struct EZInstance;
 struct EZDictionary;
+struct EZSuper;
 
 using NativeFn = std::function<Value(Interpreter&, const std::vector<Value>&)>;
 
@@ -37,7 +38,8 @@ enum class ValueType {
     CLASS,
     INSTANCE,
     DICTIONARY,
-    FUTURE
+    FUTURE,
+    SUPER
 };
 
 struct EZFunction {
@@ -76,6 +78,7 @@ struct Value {
     using InstancePtr = std::shared_ptr<EZInstance>;
     using DictionaryPtr = std::shared_ptr<EZDictionary>;
     using FuturePtr = std::shared_ptr<std::shared_future<Value>>;
+    using SuperPtr = std::shared_ptr<EZSuper>;
     
     std::variant<
         std::nullptr_t,     // NIL
@@ -88,7 +91,8 @@ struct Value {
         ClassPtr,           // CLASS
         InstancePtr,        // INSTANCE
         DictionaryPtr,      // DICTIONARY
-        FuturePtr           // FUTURE
+        FuturePtr,          // FUTURE
+        SuperPtr            // SUPER
     > data;
     
     // Constructors
@@ -107,6 +111,7 @@ struct Value {
     Value(InstancePtr val) : data(val) {}
     Value(DictionaryPtr val) : data(val) {}
     Value(FuturePtr val) : data(val) {}
+    Value(SuperPtr val) : data(val) {}
     
     // Type checking
     ValueType type() const {
@@ -121,6 +126,7 @@ struct Value {
         if (std::holds_alternative<InstancePtr>(data)) return ValueType::INSTANCE;
         if (std::holds_alternative<DictionaryPtr>(data)) return ValueType::DICTIONARY;
         if (std::holds_alternative<FuturePtr>(data)) return ValueType::FUTURE;
+        if (std::holds_alternative<SuperPtr>(data)) return ValueType::SUPER;
         return ValueType::NIL;
     }
     
@@ -135,6 +141,7 @@ struct Value {
     bool isInstance() const { return std::holds_alternative<InstancePtr>(data); }
     bool isDictionary() const { return std::holds_alternative<DictionaryPtr>(data); }
     bool isFuture() const { return std::holds_alternative<FuturePtr>(data); }
+    bool isSuper() const { return std::holds_alternative<SuperPtr>(data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass(); }
     
     // Value extraction
@@ -151,6 +158,7 @@ struct Value {
     InstancePtr asInstance() const { return std::get<InstancePtr>(data); }
     DictionaryPtr asDictionaryPtr() const { return std::get<DictionaryPtr>(data); }
     FuturePtr asFuture() const { return std::get<FuturePtr>(data); }
+    SuperPtr asSuper() const { return std::get<SuperPtr>(data); }
     EZDictionary& asDictionary();
     const EZDictionary& asDictionary() const;
     
@@ -218,6 +226,9 @@ struct Value {
     static Value makeFuture(std::shared_future<Value> fut) {
         return Value(std::make_shared<std::shared_future<Value>>(fut));
     }
+    
+    // Create super proxy
+    static Value makeSuper(InstancePtr instance, ClassPtr parentKlass);
 };
 
 // EZ Class definition (model)
@@ -227,6 +238,7 @@ struct EZClass {
     std::vector<std::string> initParams;
     std::vector<StmtPtr> initBody;
     std::unordered_map<std::string, Value> methods;
+    std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool> visibility;  // true = public (shown)
     
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
@@ -254,6 +266,14 @@ struct EZInstance {
     }
 };
 
+struct EZSuper {
+    std::shared_ptr<EZInstance> instance;
+    std::shared_ptr<EZClass> parentKlass;
+    
+    EZSuper(std::shared_ptr<EZInstance> instance, std::shared_ptr<EZClass> parentKlass) 
+        : instance(instance), parentKlass(parentKlass) {}
+};
+
 struct EZDictionary {
     std::unordered_map<std::string, Value> map;
 };
@@ -261,6 +281,7 @@ struct EZDictionary {
 inline EZDictionary& Value::asDictionary() { return *std::get<DictionaryPtr>(data); }
 inline const EZDictionary& Value::asDictionary() const { return *std::get<DictionaryPtr>(data); }
 inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionary>()); } 
+inline Value Value::makeSuper(InstancePtr instance, ClassPtr parentKlass) { return Value(std::make_shared<EZSuper>(instance, parentKlass)); }
 
 inline std::string Value::toString() const {
     switch (type()) {

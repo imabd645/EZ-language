@@ -33,6 +33,10 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"extends", TokenType::EXTENDS},
     {"struct", TokenType::STRUCT},
     {"new", TokenType::NEW},
+    {"super", TokenType::SUPER},
+    {"static", TokenType::STATIC},
+    {"interface", TokenType::INTERFACE},
+    {"implements", TokenType::IMPLEMENTS},
     {"try", TokenType::TRY},
     {"catch", TokenType::CATCH},
     {"throw", TokenType::THROW}

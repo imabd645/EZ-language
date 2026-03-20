@@ -1,0 +1,35 @@
+interface Logger {
+    task log()
+}
+
+interface Formatter {
+    task format()
+}
+
+model ConsoleLogger implements Logger, Formatter {
+    task log() {
+        out "[LOG] Console"
+    }
+    
+    task format() {
+        out "Formatting..."
+    }
+}
+
+out "--- Interface Test ---"
+out "ConsoleLogger defined successfully."
+c = ConsoleLogger()
+c.log()
+c.format()
+
+out "Defining BadLogger with missing method..."
+try {
+    model BadLogger implements Logger {
+        task helper() {
+            out "Doing nothing"
+        }
+    }
+    out "ERROR: BadLogger should have thrown an error!"
+} catch e {
+    out "Caught expected contract error!"
+}

@@ -134,6 +134,8 @@ void Interpreter::execute(const StmtPtr& stmt) {
             visitTryStmt(arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<ThrowStmt>>) {
             visitThrowStmt(arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<InterfaceStmt>>) {
+            visitInterfaceStmt(arg);
         }
     }, stmt->variant);
 }
@@ -170,7 +172,7 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
                 return Value(left.asNumber() + right.asNumber());
             }
             if (left.isString() || right.isString()) {
-                return Value(left.toString() + right.toString());
+                return Value(stringify(left, line) + stringify(right, line));
             }
             if (left.isArray() && right.isArray()) {
                 auto result = left.asArray();
@@ -413,7 +415,7 @@ void Interpreter::visitExprStmt(const std::shared_ptr<ExprStmt>& stmt) {
 
 void Interpreter::visitOutStmt(const std::shared_ptr<OutStmt>& stmt) {
     Value value = evaluate(stmt->expression);
-    std::cout << value.toString() << std::endl;
+    std::cout << stringify(value, stmt->expression->line) << std::endl;
 }
 
 void Interpreter::visitVarDeclStmt(const std::shared_ptr<VarDeclStmt>& stmt) {
@@ -634,6 +636,42 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
         return Value();
     }
     
+    if (callee.isSuper()) {
+        auto superObj = callee.asSuper();
+        auto klass = superObj->parentKlass;
+        
+        if (args.size() != klass->initParams.size()) {
+            throw RuntimeError("Expected " + std::to_string(klass->initParams.size()) + 
+                               " arguments for super init but got " + std::to_string(args.size()), line);
+        }
+        
+        if (!klass->initBody.empty()) {
+            auto methodEnv = globalEnv->createChild(); 
+            methodEnv->define("self", Value(superObj->instance));
+            
+            for (size_t i = 0; i < args.size(); i++) {
+                methodEnv->define(klass->initParams[i], args[i]);
+            }
+            
+            if (klass->parent) {
+                methodEnv->define("super", Value::makeSuper(superObj->instance, klass->parent));
+            }
+            
+            std::shared_ptr<Environment> previousEnv = currentEnv;
+            currentEnv = methodEnv;
+            
+            try {
+                executeBlock(klass->initBody, methodEnv);
+            } catch (const ReturnException&) {
+            } catch (...) {
+                currentEnv = previousEnv;
+                throw;
+            }
+            currentEnv = previousEnv;
+        }
+        return Value();
+    }
+    
     if (callee.isClass()) {
         auto klass = callee.asClass();
         auto instance = std::make_shared<EZInstance>(klass);
@@ -653,6 +691,10 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
             // Define params
             for (size_t i = 0; i < args.size(); i++) {
                 methodEnv->define(klass->initParams[i], args[i]);
+            }
+            
+            if (klass->parent) {
+                methodEnv->define("super", Value::makeSuper(instance, klass->parent));
             }
             
             // Execute init body
@@ -687,6 +729,36 @@ void Interpreter::checkNumberOperands(TokenType op, const Value& left, const Val
     if (!left.isNumber() || !right.isNumber()) {
         throw RuntimeError("Operands must be numbers", line);
     }
+}
+
+std::string Interpreter::stringify(const Value& val, int line) {
+    if (val.isInstance()) {
+        auto instance = val.asInstance();
+        auto klass = instance->klass;
+        while (klass) {
+            auto it = klass->methods.find("toString");
+            if (it != klass->methods.end()) {
+                Value method = it->second;
+                if (method.isFunction()) {
+                    auto func = method.asFunction();
+                    // Must have 0 parameters
+                    if (func->params.empty()) {
+                        auto boundEnv = func->closure->createChild();
+                        boundEnv->define("self", val);
+                        Value boundMethod = Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
+                        try {
+                            Value result = callFunction(boundMethod, {}, line);
+                            return result.toString();
+                        } catch (const RuntimeError& e) {
+                            // Ignore errors and fall back
+                        }
+                    }
+                }
+            }
+            klass = klass->parent;
+        }
+    }
+    return val.toString();
 }
 
 // ============ OOP Visitors ============
@@ -755,6 +827,25 @@ Value Interpreter::visitNew(const std::shared_ptr<NewExpr>& expr, int line) {
 Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>& expr, int line) {
     Value object = evaluate(expr->object);
     
+    if (object.isClass()) {
+        auto klass = object.asClass();
+        auto it = klass->staticMembers.find(expr->property);
+        if (it != klass->staticMembers.end()) {
+            Value member = it->second;
+            if (member.isFunction()) {
+                auto func = member.asFunction();
+                auto boundEnv = func->closure->createChild();
+                boundEnv->define("self", object);
+                if (klass->parent) {
+                    boundEnv->define("super", Value(klass->parent));
+                }
+                return Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
+            }
+            return member;
+        }
+        throw RuntimeError("Undefined static property '" + expr->property + "'", line);
+    }
+    
     // Get property
     if (object.isInstance()) {
         auto instance = object.asInstance();
@@ -794,20 +885,43 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
         while (klass) {
             auto it = klass->methods.find(expr->property);
             if (it != klass->methods.end()) {
-                // Method found (visibility already checked above)
                 Value method = it->second;
                 if (!method.isFunction()) return method;
                 
-                // Bind 'self' to the method
                 auto func = method.asFunction();
                 auto boundEnv = func->closure->createChild();
                 boundEnv->define("self", object);
+                if (klass->parent) {
+                    boundEnv->define("super", Value::makeSuper(instance, klass->parent));
+                }
                 return Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
             }
             klass = klass->parent;
         }
         
         throw RuntimeError("Undefined property '" + expr->property + "'", line);
+    } else if (object.isSuper()) {
+        auto superObj = object.asSuper();
+        auto klass = superObj->parentKlass;
+        while (klass) {
+            auto it = klass->methods.find(expr->property);
+            // Visibility is technically all public from subclasses in EZ currently, 
+            // since we removed strict private checks or they only crash if unshown
+            if (it != klass->methods.end()) {
+                Value method = it->second;
+                if (!method.isFunction()) return method;
+                
+                auto func = method.asFunction();
+                auto boundEnv = func->closure->createChild();
+                boundEnv->define("self", Value(superObj->instance));
+                if (klass->parent) {
+                    boundEnv->define("super", Value::makeSuper(superObj->instance, klass->parent));
+                }
+                return Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
+            }
+            klass = klass->parent;
+        }
+        throw RuntimeError("Undefined property '" + expr->property + "' on super", line);
     } else if (object.isArray() && expr->property == "len") {
         return Value(static_cast<double>(object.asArray().size()));
     } else if (object.isString() && expr->property == "len") {
@@ -848,25 +962,59 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt) {
             Value method = Value::makeFunction(
                 member.name, member.params, std::vector<ExprPtr>{}, member.body, globalEnv
             );
-            klass->methods[member.name] = method;
+            
+            if (member.isStatic) {
+                klass->staticMembers[member.name] = method;
+            } else {
+                klass->methods[member.name] = method;
+            }
         } else {
             // Properties are dynamic, but we can store visibility
-            // We could process initializers here if we had a way to store them in the class
-            // For now, assume properties are initialized in init() via self.prop = val
+            // For static properties, initialize them exactly once per class definition
+            if (member.isStatic) {
+                Value initVal;
+                if (member.initializer) {
+                    initVal = evaluate(member.initializer);
+                }
+                klass->staticMembers[member.name] = initVal;
+            }
+        }
+    }
+    
+    // Validate interfaces
+    for (const auto& ifaceName : stmt->interfaces) {
+        auto it = definedInterfaces.find(ifaceName);
+        if (it == definedInterfaces.end()) {
+            throw RuntimeError("Undefined interface '" + ifaceName + "'", stmt->line);
+        }
+        for (const auto& requiredMethod : it->second) {
+            if (klass->methods.find(requiredMethod) == klass->methods.end()) {
+                throw RuntimeError("Model '" + stmt->name + "' does not implement required method '" + requiredMethod + "' from interface '" + ifaceName + "'", stmt->line);
+            }
         }
     }
     
     globalEnv->define(stmt->name, Value(klass));
 }
 
+void Interpreter::visitInterfaceStmt(const std::shared_ptr<InterfaceStmt>& stmt) {
+    definedInterfaces[stmt->name] = stmt->methods;
+}
+
 Value Interpreter::visitSet(const std::shared_ptr<SetExpr>& expr, int line) {
     Value object = evaluate(expr->object);
     
-    if (!object.isInstance() && !object.isDictionary()) {
-        throw RuntimeError("Only instances or dictionaries have fields", line);
+    if (!object.isInstance() && !object.isDictionary() && !object.isClass()) {
+        throw RuntimeError("Only instances, dictionaries, or classes have fields", line);
     }
     
     Value value = evaluate(expr->value);
+    
+    if (object.isClass()) {
+        auto klass = object.asClass();
+        klass->staticMembers[expr->name] = value;
+        return value;
+    }
     
     if (object.isDictionary()) {
         object.asDictionary().map[expr->name] = value;

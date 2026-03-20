@@ -1,0 +1,17 @@
+out "--- Testing yes/no ---"
+out "yes == true: " + str(yes == true)
+out "no == false: " + str(no == false)
+
+out "\n--- Testing default parameters ---"
+task greet(name, greeting = "Hello") {
+    out greeting + ", " + name
+}
+greet("World")
+greet("Universe", "Greetings")
+
+out "\n--- Testing string interpolation ---"
+name = "EZ"
+version = 1.0
+out `Welcome to {name} version {version}! {2+2} is four.`
+
+out "\n--- All features working! ---"

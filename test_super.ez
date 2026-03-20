@@ -1,0 +1,25 @@
+model Animal {
+    init(name) {
+        self.name = name
+    }
+
+    task speak() {
+        out "Animal " + self.name + " makes a sound."
+    }
+}
+
+model Dog extends Animal {
+    init(name, breed) {
+        super(name)
+        self.breed = breed
+    }
+
+    task speak() {
+        super.speak()
+        out "Dog " + self.name + " (" + self.breed + ") barks!"
+    }
+}
+
+out "--- Testing super ---"
+d = Dog("Buddy", "Golden Retriever")
+d.speak()

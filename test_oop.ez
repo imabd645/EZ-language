@@ -1,0 +1,17 @@
+out "--- Testing toString() override ---"
+
+model Person {
+    init(name, age) {
+        self.name = name
+        self.age = age
+    }
+
+    task toString() {
+        give self.name + " (" + str(self.age) + ")"
+    }
+}
+
+p = Person("Alice", 30)
+out p
+out "Person is: " + str(p)
+out "Person: " + p

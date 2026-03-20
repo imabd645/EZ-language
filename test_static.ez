@@ -1,0 +1,19 @@
+model MathUtil {
+    static PI = 3.14159
+
+    static task square(x) {
+        give x * x
+    }
+
+    static task circleArea(r) {
+        give self.PI * self.square(r)
+    }
+}
+
+out "--- Testing static members ---"
+out "PI: " + str(MathUtil.PI)
+out "Square of 4: " + str(MathUtil.square(4))
+out "Circle Area (r=2): " + str(MathUtil.circleArea(2))
+
+MathUtil.PI = 3.14
+out "Modified PI: " + str(MathUtil.PI)

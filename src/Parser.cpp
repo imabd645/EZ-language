@@ -133,6 +133,7 @@ StmtPtr Parser::declaration() {
 }
 
 StmtPtr Parser::statement() {
+    if (match(TokenType::INTERFACE)) return interfaceStatement();
     if (match(TokenType::OUT)) return outStatement();
     if (match(TokenType::WHEN)) return whenStatement();
     if (match(TokenType::WHILE)) return whileStatement();
@@ -635,6 +636,10 @@ ExprPtr Parser::primary() {
         return makeIdentifierExpr(line, previous().lexeme);
     }
     
+    if (match(TokenType::SUPER)) {
+        return makeIdentifierExpr(line, "super");
+    }
+    
     // Self reference
     if (match(TokenType::SELF)) {
         return makeSelfExpr(line);
@@ -776,6 +781,14 @@ StmtPtr Parser::modelStatement() {
         parentName = parentToken.lexeme;
     }
     
+    std::vector<std::string> interfaces;
+    if (match(TokenType::IMPLEMENTS)) {
+        do {
+            Token interfaceToken = consume(TokenType::IDENTIFIER, "Expected interface name");
+            interfaces.push_back(interfaceToken.lexeme);
+        } while (match(TokenType::COMMA));
+    }
+    
     skipNewlines();
     consume(TokenType::LBRACE, "Expected '{' after model name");
     skipNewlines();
@@ -794,8 +807,14 @@ StmtPtr Parser::modelStatement() {
             visibility = MemberVisibility::PUBLIC;
         }
         
+        bool isStatic = false;
+        if (match(TokenType::STATIC)) {
+            isStatic = true;
+        }
+        
         // Check for init (constructor)
         if (match(TokenType::INIT)) {
+            if (isStatic) error(previous(), "Constructor cannot be static");
             consume(TokenType::LPAREN, "Expected '(' after 'init'");
             
             if (!check(TokenType::RPAREN)) {
@@ -849,6 +868,7 @@ StmtPtr Parser::modelStatement() {
             
             ModelMember member;
             member.visibility = visibility;
+            member.isStatic = isStatic;
             member.isMethod = true;
             member.name = methodName.lexeme;
             member.params = params;
@@ -866,6 +886,7 @@ StmtPtr Parser::modelStatement() {
             
             ModelMember member;
             member.visibility = visibility;
+            member.isStatic = isStatic;
             member.isMethod = false;
             member.name = propName.lexeme;
             member.initializer = initializer;
@@ -880,5 +901,29 @@ StmtPtr Parser::modelStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
-    return makeModelStmt(line, name, parentName, initParams, initBody, members);
+    return makeModelStmt(line, name, parentName, interfaces, initParams, initBody, members);
+}
+
+// Interface definition
+// Syntax: interface Name { task method1() task method2() ... }
+StmtPtr Parser::interfaceStatement() {
+    int line = previous().line;
+    Token nameToken = consume(TokenType::IDENTIFIER, "Expected interface name");
+    
+    skipNewlines();
+    consume(TokenType::LBRACE, "Expected '{' after interface name");
+    skipNewlines();
+    
+    std::vector<std::string> methods;
+    while (!check(TokenType::RBRACE) && !isAtEnd()) {
+        consume(TokenType::TASK, "Expected 'task' in interface definition");
+        Token methodToken = consume(TokenType::IDENTIFIER, "Expected method name");
+        consume(TokenType::LPAREN, "Expected '(' after method name");
+        while (!check(TokenType::RPAREN) && !isAtEnd()) advance();
+        consume(TokenType::RPAREN, "Expected ')' after method parameters");
+        methods.push_back(methodToken.lexeme);
+        skipNewlines();
+    }
+    consume(TokenType::RBRACE, "Expected '}' after interface body");
+    return makeInterfaceStmt(line, nameToken.lexeme, methods);
 }

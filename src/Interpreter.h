@@ -38,6 +38,9 @@ public:
     // For REPL mode
     Value evaluateExpression(const ExprPtr& expr) { return evaluate(expr); }
     
+    // For string conversion (supports toString override)
+    std::string stringify(const Value& val, int line = 0);
+    
     // For calling functions from native code
     Value callFunction(const Value& callee, const std::vector<Value>& args, int line);
     
@@ -47,6 +50,7 @@ public:
 private:
     std::shared_ptr<Environment> globalEnv;
     std::shared_ptr<Environment> currentEnv;
+    std::unordered_map<std::string, std::vector<std::string>> definedInterfaces;
     
     // Initialization
     void initBuiltins();
@@ -82,6 +86,7 @@ private:
     void visitEscapeStmt(const std::shared_ptr<EscapeStmt>& stmt);
     void visitSkipStmt(const std::shared_ptr<SkipStmt>& stmt);
     void visitModelStmt(const std::shared_ptr<ModelStmt>& stmt);
+    void visitInterfaceStmt(const std::shared_ptr<InterfaceStmt>& stmt);
     void visitStructStmt(const std::shared_ptr<StructStmt>& stmt);
     void visitUseStmt(const std::shared_ptr<UseStmt>& stmt);
     void visitTryStmt(const std::shared_ptr<TryStmt>& stmt);

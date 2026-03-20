@@ -206,7 +206,7 @@ struct EscapeStmt;
 struct SkipStmt;
 struct ModelStmt;
 struct StructStmt;
-struct StructStmt;
+struct InterfaceStmt;
 struct UseStmt;
 struct TryStmt;
 struct ThrowStmt;
@@ -228,7 +228,8 @@ using StmtVariant = std::variant<
     std::shared_ptr<StructStmt>,
     std::shared_ptr<UseStmt>,
     std::shared_ptr<TryStmt>,
-    std::shared_ptr<ThrowStmt>
+    std::shared_ptr<ThrowStmt>,
+    std::shared_ptr<InterfaceStmt>
 >;
 
 struct Stmt {
@@ -343,6 +344,7 @@ enum class MemberVisibility {
 // Model member (property or method)
 struct ModelMember {
     MemberVisibility visibility;
+    bool isStatic = false;
     bool isMethod;
     std::string name;
     ExprPtr initializer;  // For properties
@@ -350,20 +352,32 @@ struct ModelMember {
     std::vector<StmtPtr> body;  // For methods
 };
 
+// Interface definition
+struct InterfaceStmt {
+    int line;
+    std::string name;
+    std::vector<std::string> methods;
+    
+    InterfaceStmt(int line, const std::string& name, std::vector<std::string> methods)
+        : line(line), name(name), methods(std::move(methods)) {}
+};
+
 // Model (class) definition
 struct ModelStmt {
     int line;
     std::string name;
     std::string parentName;  // For inheritance (empty if none)
+    std::vector<std::string> interfaces; // For implements
     std::vector<std::string> initParams;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
     
     ModelStmt(int line, const std::string& name, const std::string& parent,
+              std::vector<std::string> interfaces,
               std::vector<std::string> initParams, std::vector<StmtPtr> initBody,
               std::vector<ModelMember> members)
-        : line(line), name(name), parentName(parent), initParams(std::move(initParams)),
-          initBody(std::move(initBody)), members(std::move(members)) {}
+        : line(line), name(name), parentName(parent), interfaces(std::move(interfaces)),
+          initParams(std::move(initParams)), initBody(std::move(initBody)), members(std::move(members)) {}
 };
 
 // Struct definition (simplified class)
@@ -527,11 +541,16 @@ inline ExprPtr makeDictionaryExpr(int line, std::vector<std::pair<ExprPtr, ExprP
     return std::make_shared<Expr>(line, std::make_shared<DictionaryExpr>(std::move(pairs)));
 }
 
+inline StmtPtr makeInterfaceStmt(int line, const std::string& name, std::vector<std::string> methods) {
+    return std::make_shared<Stmt>(line, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
+}
+
 inline StmtPtr makeModelStmt(int line, const std::string& name, const std::string& parent,
+                             std::vector<std::string> interfaces,
                              std::vector<std::string> initParams, std::vector<StmtPtr> initBody,
                              std::vector<ModelMember> members) {
     return std::make_shared<Stmt>(line, std::make_shared<ModelStmt>(
-        line, name, parent, std::move(initParams), std::move(initBody), std::move(members)));
+        line, name, parent, std::move(interfaces), std::move(initParams), std::move(initBody), std::move(members)));
 }
 
 inline StmtPtr makeStructStmt(int line, const std::string& name, std::vector<std::string> fields) {

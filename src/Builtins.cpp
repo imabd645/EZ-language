@@ -412,6 +412,78 @@ void registerBuiltins(Interpreter& interp) {
             return Value(s);
         }));
     
+    // startsWith(str, prefix) - check if string starts with prefix
+    interp.defineGlobal("startsWith", Value::makeNativeFunction("startsWith", 2,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString() || !args[1].isString()) {
+                throw RuntimeError("startsWith() expects two strings");
+            }
+            const std::string& str = args[0].asString();
+            const std::string& prefix = args[1].asString();
+            if (prefix.length() > str.length()) return Value(false);
+            return Value(str.compare(0, prefix.length(), prefix) == 0);
+        }));
+    
+    // endsWith(str, suffix) - check if string ends with suffix
+    interp.defineGlobal("endsWith", Value::makeNativeFunction("endsWith", 2,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString() || !args[1].isString()) {
+                throw RuntimeError("endsWith() expects two strings");
+            }
+            const std::string& str = args[0].asString();
+            const std::string& suffix = args[1].asString();
+            if (suffix.length() > str.length()) return Value(false);
+            return Value(str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0);
+        }));
+    
+    // has_key(dict, key) - check if dictionary contains a key
+    interp.defineGlobal("has_key", Value::makeNativeFunction("has_key", 2,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) {
+                throw RuntimeError("has_key() expects dictionary as first argument");
+            }
+            std::string key = args[1].toString();
+            const auto& map = args[0].asDictionary().map;
+            return Value(map.find(key) != map.end());
+        }));
+    
+    // remove(arr, index) - remove element at index, returns removed value
+    interp.defineGlobal("remove", Value::makeNativeFunction("remove", 2,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) {
+                throw RuntimeError("remove() expects array as first argument");
+            }
+            if (!args[1].isNumber()) {
+                throw RuntimeError("remove() expects number index as second argument");
+            }
+            auto& arr = *args[0].asArrayPtr();
+            int index = static_cast<int>(args[1].asNumber());
+            if (index < 0 || index >= static_cast<int>(arr.size())) {
+                throw RuntimeError("remove() index out of bounds");
+            }
+            Value removed = arr[index];
+            arr.erase(arr.begin() + index);
+            return removed;
+        }));
+    
+    // insert(arr, index, value) - insert element at index
+    interp.defineGlobal("insert", Value::makeNativeFunction("insert", 3,
+        [](Interpreter&, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) {
+                throw RuntimeError("insert() expects array as first argument");
+            }
+            if (!args[1].isNumber()) {
+                throw RuntimeError("insert() expects number index as second argument");
+            }
+            auto& arr = *args[0].asArrayPtr();
+            int index = static_cast<int>(args[1].asNumber());
+            if (index < 0 || index > static_cast<int>(arr.size())) {
+                throw RuntimeError("insert() index out of bounds");
+            }
+            arr.insert(arr.begin() + index, args[2]);
+            return args[0];
+        }));
+    
     // slice(arr/str, start, end) - get slice
     interp.defineGlobal("slice", Value::makeNativeFunction("slice", 3,
         [](Interpreter&, const std::vector<Value>& args) -> Value {
@@ -1310,63 +1382,8 @@ void registerBuiltins(Interpreter& interp) {
             return Value(s.substr(start, len));
         }));
 
-    // split(str, delimiter)
-    interp.defineGlobal("split", Value::makeNativeFunction("split", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString() || !args[1].isString()) throw RuntimeError("split() expects strings");
-            std::string s = args[0].asString();
-            std::string delim = args[1].asString();
-            std::vector<Value> results;
-            
-            if (delim.empty()) {
-                for (char c : s) results.push_back(Value(std::string(1, c)));
-            } else {
-                size_t start = 0;
-                size_t end = s.find(delim);
-                while (end != std::string::npos) {
-                    results.push_back(Value(s.substr(start, end - start)));
-                    start = end + delim.length();
-                    end = s.find(delim, start);
-                }
-                results.push_back(Value(s.substr(start)));
-            }
-            return Value::makeArray(results);
-        }));
-
-    // join(array, delimiter)
-    interp.defineGlobal("join", Value::makeNativeFunction("join", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isArray()) throw RuntimeError("join() expects array as first arg");
-            if (!args[1].isString()) throw RuntimeError("join() expects string delimiter");
-            
-            const auto& arr = args[0].asArray();
-            std::string delim = args[1].asString();
-            std::string result = "";
-            for (size_t i = 0; i < arr.size(); i++) {
-                if (i > 0) result += delim;
-                result += arr[i].toString();
-            }
-            return Value(result);
-        }));
-
-    // push(array, value)
-    interp.defineGlobal("push", Value::makeNativeFunction("push", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isArray()) throw RuntimeError("push() expects array");
-            args[0].asArrayPtr()->push_back(args[1]);
-            return args[1];
-        }));
-
-    // pop(array)
-    interp.defineGlobal("pop", Value::makeNativeFunction("pop", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isArray()) throw RuntimeError("pop() expects array");
-            auto arrPtr = args[0].asArrayPtr();
-            if (arrPtr->empty()) return Value();
-            Value val = arrPtr->back();
-            arrPtr->pop_back();
-            return val;
-        }));
+    // NOTE: split, join, push, pop are already registered above (lines 60-185).
+    // Duplicate registrations were removed to prevent silent overwrites.
 
     // toLower(str)
     interp.defineGlobal("toLower", Value::makeNativeFunction("toLower", 1,

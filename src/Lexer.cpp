@@ -32,8 +32,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"struct", TokenType::STRUCT},
     {"try", TokenType::TRY},
     {"catch", TokenType::CATCH},
-    {"throw", TokenType::THROW},
-    {"error", TokenType::THROW}
+    {"throw", TokenType::THROW}
 };
 
 Lexer::Lexer(const std::string& source) : source(source) {}

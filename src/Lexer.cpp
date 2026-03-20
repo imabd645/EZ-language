@@ -21,6 +21,8 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"not", TokenType::NOT},
     {"true", TokenType::TRUE},
     {"false", TokenType::FALSE},
+    {"yes", TokenType::TRUE},
+    {"no", TokenType::FALSE},
     {"nil", TokenType::NIL},
     // OOP keywords
     {"model", TokenType::MODEL},
@@ -30,6 +32,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"shown", TokenType::SHOWN},
     {"extends", TokenType::EXTENDS},
     {"struct", TokenType::STRUCT},
+    {"new", TokenType::NEW},
     {"try", TokenType::TRY},
     {"catch", TokenType::CATCH},
     {"throw", TokenType::THROW}
@@ -172,6 +175,9 @@ void Lexer::scanToken() {
         case '"':
         case '\'':
             scanString();
+            break;
+        case '`':
+            scanInterpolatedString();
             break;
         default:
             if (isDigit(c)) {
@@ -317,4 +323,127 @@ bool Lexer::isAlphaNumeric(char c) const {
 void Lexer::error(const std::string& message) {
     hadError = true;
     std::cerr << "[Line " << line << ", Col " << column << "] Error: " << message << std::endl;
+}
+
+void Lexer::scanInterpolatedString() {
+    // Backtick template string: `Hello {name}, age {age + 1}`
+    // Emits: ( STRING("Hello ") + str(name) + STRING(", age ") + str(age + 1) + STRING("") )
+    // We emit a LPAREN, then alternating STRING + PLUS + expression tokens, then RPAREN
+    
+    int startLine = line;
+    int startCol = column;
+    
+    // Collect all parts first
+    struct Part {
+        bool isExpr;
+        std::string text;
+    };
+    std::vector<Part> parts;
+    std::string currentText;
+    
+    while (!isAtEnd() && peek() != '`') {
+        if (peek() == '\n') {
+            currentText += '\n';
+            advance();
+        } else if (peek() == '\\') {
+            advance();
+            if (!isAtEnd()) {
+                char escaped = advance();
+                switch (escaped) {
+                    case 'n': currentText += '\n'; break;
+                    case 't': currentText += '\t'; break;
+                    case 'r': currentText += '\r'; break;
+                    case '\\': currentText += '\\'; break;
+                    case '`': currentText += '`'; break;
+                    case '{': currentText += '{'; break;
+                    case '}': currentText += '}'; break;
+                    default: currentText += escaped; break;
+                }
+            }
+        } else if (peek() == '{') {
+            // Save current text as a string part
+            parts.push_back({false, currentText});
+            currentText.clear();
+            advance(); // consume '{'
+            
+            // Collect expression text until matching '}'
+            std::string exprText;
+            int braceDepth = 1;
+            while (!isAtEnd() && braceDepth > 0) {
+                if (peek() == '{') braceDepth++;
+                if (peek() == '}') {
+                    braceDepth--;
+                    if (braceDepth == 0) break;
+                }
+                exprText += advance();
+            }
+            
+            if (isAtEnd()) {
+                error("Unterminated interpolation in template string");
+                return;
+            }
+            advance(); // consume '}'
+            
+            if (!exprText.empty()) {
+                parts.push_back({true, exprText});
+            }
+        } else {
+            currentText += advance();
+        }
+    }
+    
+    if (isAtEnd()) {
+        error("Unterminated template string");
+        return;
+    }
+    advance(); // consume closing backtick
+    
+    // Add trailing text
+    parts.push_back({false, currentText});
+    
+    // If no interpolations, just emit a simple string
+    bool hasExpr = false;
+    for (auto& p : parts) { if (p.isExpr) { hasExpr = true; break; } }
+    
+    if (!hasExpr) {
+        // Simple string, no interpolation
+        std::string fullText;
+        for (auto& p : parts) fullText += p.text;
+        tokens.push_back(Token(TokenType::STRING, "`" + fullText + "`", fullText, startLine, startCol));
+        return;
+    }
+    
+    // Emit: LPAREN + string/expr parts joined by PLUS + RPAREN
+    tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol));
+    
+    bool first = true;
+    for (auto& part : parts) {
+        if (!first) {
+            tokens.push_back(Token(TokenType::PLUS, "+", startLine, startCol));
+        }
+        first = false;
+        
+        if (!part.isExpr) {
+            // String literal part
+            tokens.push_back(Token(TokenType::STRING, "\"" + part.text + "\"", part.text, startLine, startCol));
+        } else {
+            // Expression part: emit str( <tokens> )
+            tokens.push_back(Token(TokenType::IDENTIFIER, "str", startLine, startCol));
+            tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol));
+            
+            // Sub-lex the expression
+            Lexer subLexer(part.text);
+            auto subTokens = subLexer.tokenize();
+            for (auto& t : subTokens) {
+                if (t.type != TokenType::END_OF_FILE && t.type != TokenType::NEWLINE) {
+                    t.line = startLine; // Fix line numbers
+                    tokens.push_back(t);
+                }
+            }
+            
+            tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol));
+        }
+    }
+    
+    tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol));
 }

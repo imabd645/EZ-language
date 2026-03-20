@@ -292,10 +292,25 @@ StmtPtr Parser::taskStatement() {
     consume(TokenType::LPAREN, "Expected '(' after function name");
     
     std::vector<std::string> params;
+    std::vector<ExprPtr> defaultValues;
+    bool hadDefault = false;
+    
     if (!check(TokenType::RPAREN)) {
         do {
             Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
             params.push_back(paramToken.lexeme);
+            
+            // Check for default value: param = expr
+            if (match(TokenType::EQUAL)) {
+                ExprPtr defaultVal = expression();
+                defaultValues.push_back(defaultVal);
+                hadDefault = true;
+            } else {
+                if (hadDefault) {
+                    error(paramToken, "Required parameter cannot follow optional parameter");
+                }
+                defaultValues.push_back(nullptr);
+            }
         } while (match(TokenType::COMMA));
     }
     
@@ -317,7 +332,7 @@ StmtPtr Parser::taskStatement() {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, name, params, body);
+    return makeTaskStmt(line, name, params, defaultValues, body);
 }
 
 StmtPtr Parser::giveStatement() {

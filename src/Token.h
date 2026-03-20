@@ -39,6 +39,7 @@ enum class TokenType {
     SHOWN,
     EXTENDS,
     STRUCT,
+    NEW,
     TRY,
     CATCH,
     THROW,
@@ -134,6 +135,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::CATCH: return "CATCH";
         case TokenType::THROW: return "THROW";
         case TokenType::STRUCT: return "STRUCT";
+        case TokenType::NEW: return "NEW";
         case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";
         case TokenType::STAR: return "STAR";

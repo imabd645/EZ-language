@@ -312,10 +312,13 @@ struct GetStmt {
 struct TaskStmt {
     std::string name;
     std::vector<std::string> params;
+    std::vector<ExprPtr> defaultValues; // nullptr = required, ExprPtr = default value
     std::vector<StmtPtr> body;
     
-    TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<StmtPtr> body)
-        : name(name), params(std::move(params)), body(std::move(body)) {}
+    TaskStmt(const std::string& name, std::vector<std::string> params, 
+             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body)
+        : name(name), params(std::move(params)), defaultValues(std::move(defaultValues)),
+          body(std::move(body)) {}
 };
 
 // Return statement (give)
@@ -486,8 +489,10 @@ inline StmtPtr makeGetStmt(int line, const std::string& var, ExprPtr iter, StmtP
     return std::make_shared<Stmt>(line, std::make_shared<GetStmt>(var, std::move(iter), std::move(body)));
 }
 
-inline StmtPtr makeTaskStmt(int line, const std::string& name, std::vector<std::string> params, std::vector<StmtPtr> body) {
-    return std::make_shared<Stmt>(line, std::make_shared<TaskStmt>(name, std::move(params), std::move(body)));
+inline StmtPtr makeTaskStmt(int line, const std::string& name, std::vector<std::string> params, 
+                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body) {
+    return std::make_shared<Stmt>(line, std::make_shared<TaskStmt>(name, std::move(params), 
+                                                                    std::move(defaultValues), std::move(body)));
 }
 
 inline StmtPtr makeGiveStmt(int line, ExprPtr val = nullptr) {

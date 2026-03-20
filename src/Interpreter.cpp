@@ -398,10 +398,10 @@ Value Interpreter::visitLambda(const std::shared_ptr<LambdaExpr>& expr, int line
         // Expression body lambda - wrap in a give statement
         std::vector<StmtPtr> body;
         body.push_back(makeGiveStmt(line, expr->body));
-        return Value::makeFunction("<lambda>", expr->params, body, closure);
+        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, body, closure);
     } else {
         // Statement body lambda
-        return Value::makeFunction("<lambda>", expr->params, expr->stmtBody, closure);
+        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, expr->stmtBody, closure);
     }
 }
 
@@ -553,7 +553,7 @@ void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt) {
 }
 
 void Interpreter::visitTaskStmt(const std::shared_ptr<TaskStmt>& stmt) {
-    Value function = Value::makeFunction(stmt->name, stmt->params, stmt->body, currentEnv);
+    Value function = Value::makeFunction(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv);
     currentEnv->define(stmt->name, function);
 }
 
@@ -603,14 +603,26 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
     
     if (callee.isFunction()) {
         auto func = callee.asFunction();
-        if (args.size() != func->params.size()) {
+        std::vector<Value> finalArgs = args;
+        
+        // Fill in missing arguments with default values if available
+        for (size_t i = args.size(); i < func->params.size(); i++) {
+            if (i < func->defaultValues.size() && func->defaultValues[i]) {
+                finalArgs.push_back(evaluate(func->defaultValues[i]));
+            } else {
+                throw RuntimeError("Expected " + std::to_string(func->params.size()) + 
+                                 " arguments but got " + std::to_string(args.size()), line);
+            }
+        }
+        
+        if (finalArgs.size() > func->params.size()) {
             throw RuntimeError("Expected " + std::to_string(func->params.size()) + 
-                             " arguments but got " + std::to_string(args.size()), line);
+                             " arguments but got " + std::to_string(finalArgs.size()), line);
         }
         
         auto funcEnv = std::make_shared<Environment>(func->closure);
         for (size_t i = 0; i < func->params.size(); i++) {
-            funcEnv->define(func->params[i], args[i]);
+            funcEnv->define(func->params[i], finalArgs[i]);
         }
         
         try {
@@ -790,7 +802,7 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
                 auto func = method.asFunction();
                 auto boundEnv = func->closure->createChild();
                 boundEnv->define("self", object);
-                return Value::makeFunction(func->name, func->params, func->body, boundEnv);
+                return Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
             }
             klass = klass->parent;
         }
@@ -834,7 +846,7 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt) {
         if (member.isMethod) {
             // Method - capture global env as closure (methods are shared)
             Value method = Value::makeFunction(
-                member.name, member.params, member.body, globalEnv
+                member.name, member.params, std::vector<ExprPtr>{}, member.body, globalEnv
             );
             klass->methods[member.name] = method;
         } else {

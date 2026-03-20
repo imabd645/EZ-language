@@ -40,18 +40,19 @@ enum class ValueType {
     FUTURE
 };
 
-// EZ user-defined function
 struct EZFunction {
     std::string name;
     std::vector<std::string> params;
+    std::vector<ExprPtr> defaultValues;
     std::vector<StmtPtr> body;
     std::shared_ptr<Environment> closure;
     
     EZFunction(const std::string& name, 
                const std::vector<std::string>& params,
+               const std::vector<ExprPtr>& defaultValues,
                const std::vector<StmtPtr>& body,
                std::shared_ptr<Environment> closure)
-        : name(name), params(params), body(body), closure(closure) {}
+        : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure) {}
 };
 
 // Native (built-in) function
@@ -199,9 +200,10 @@ struct Value {
     // Create function
     static Value makeFunction(const std::string& name,
                               const std::vector<std::string>& params,
+                              const std::vector<ExprPtr>& defaultValues,
                               const std::vector<StmtPtr>& body,
                               std::shared_ptr<Environment> closure) {
-        return Value(std::make_shared<EZFunction>(name, params, body, closure));
+        return Value(std::make_shared<EZFunction>(name, params, defaultValues, body, closure));
     }
     
     // Create native function

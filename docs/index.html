@@ -1,0 +1,2746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EZ Language — Complete Reference</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0c10;
+  --ink: #f0f2f8;
+  --muted: #6b7592;
+  --dim: #363d56;
+  --surf: #111420;
+  --surf2: #181d2e;
+  --border: #1e2438;
+  --border2: #2a3150;
+  --gold: #e8c87a;
+  --gold-dim: rgba(232,200,122,.1);
+  --teal: #5ecfcb;
+  --teal-dim: rgba(94,207,203,.08);
+  --rose: #e87a8c;
+  --rose-dim: rgba(232,122,140,.08);
+  --violet: #9f8df5;
+  --violet-dim: rgba(159,141,245,.1);
+  --sidebar: 280px;
+  --content: 760px;
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 15px; scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.8;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ═══════════════ SIDEBAR ═══════════════ */
+#sidebar {
+  width: var(--sidebar);
+  height: 100vh;
+  background: var(--surf);
+  border-right: 1px solid var(--border);
+  position: fixed;
+  top: 0; left: 0;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+#sidebar:hover { scrollbar-color: var(--muted) transparent; }
+#sidebar::-webkit-scrollbar { width: 4px; }
+#sidebar::-webkit-scrollbar-track { background: transparent; }
+#sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+#sidebar:hover::-webkit-scrollbar-thumb { background: var(--muted); }
+
+.logo-area {
+  padding: 28px 24px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo-text {
+  font-family: 'Fraunces', serif;
+  font-size: 28px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--gold);
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.logo-sub {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.version-tag {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--teal);
+  background: var(--teal-dim);
+  border: 1px solid rgba(94,207,203,.2);
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: .5px;
+}
+
+nav { padding: 16px 0 32px; }
+.nav-section {
+  padding: 12px 24px 4px;
+  font-family: 'Space Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-top: 6px;
+}
+nav a {
+  display: block;
+  padding: 5px 24px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: all .15s;
+  font-weight: 400;
+}
+nav a:hover { color: var(--ink); background: var(--surf2); }
+nav a.active {
+  color: var(--gold);
+  border-left-color: var(--gold);
+  background: var(--gold-dim);
+}
+
+/* ═══════════════ MAIN ═══════════════ */
+main {
+  margin-left: var(--sidebar);
+  flex: 1;
+  min-height: 100vh;
+  position: relative;
+  padding-bottom: 52px;
+}
+
+/* ═══════════════ SECTION BLOCKS ═══════════════ */
+.section {
+  display: none;
+  padding: 64px 72px 80px;
+  max-width: var(--content);
+  position: relative;
+  animation: pageIn .22s ease;
+}
+.section.active { display: block; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.section::before { display: none; }
+.section.in-view::before { display: none; }
+
+.section-meta {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 12px;
+}
+
+.section h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -.5px;
+  line-height: 1.15;
+  margin-bottom: 14px;
+  color: var(--ink);
+}
+
+.section-lead {
+  font-size: 15.5px;
+  color: var(--muted);
+  max-width: 580px;
+  line-height: 1.7;
+  margin-bottom: 40px;
+}
+
+/* hero section */
+#hero {
+  display: none;
+  background: var(--surf);
+  padding: 80px 72px 72px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  max-width: 900px;
+  animation: pageIn .22s ease;
+}
+#hero.active { display: block; }
+#hero::after {
+  content: 'EZ';
+  position: absolute;
+  right: -20px; top: -20px;
+  font-family: 'Fraunces', serif;
+  font-size: 220px;
+  font-weight: 700;
+  font-style: italic;
+  color: rgba(232,200,122,.04);
+  pointer-events: none;
+  line-height: 1;
+  user-select: none;
+}
+
+#hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 58px;
+  font-weight: 700;
+  letter-spacing: -2.5px;
+  line-height: 1.05;
+  margin-bottom: 18px;
+  max-width: 640px;
+}
+#hero h1 em { font-style: italic; color: var(--gold); }
+
+#hero .tagline {
+  font-size: 16px;
+  color: var(--muted);
+  max-width: 520px;
+  line-height: 1.65;
+  margin-bottom: 36px;
+}
+
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 40px; }
+.badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  border: 1px solid;
+  letter-spacing: .3px;
+}
+.badge-gold { color: var(--gold); border-color: rgba(232,200,122,.3); background: var(--gold-dim); }
+.badge-teal { color: var(--teal); border-color: rgba(94,207,203,.3); background: var(--teal-dim); }
+.badge-rose { color: var(--rose); border-color: rgba(232,122,140,.3); background: var(--rose-dim); }
+.badge-violet { color: var(--violet); border-color: rgba(159,141,245,.3); background: var(--violet-dim); }
+
+/* ═══════════════ TYPOGRAPHY IN SECTIONS ═══════════════ */
+.section h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 44px 0 12px;
+  letter-spacing: -.3px;
+}
+
+.section h4 {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 28px 0 10px;
+}
+
+.section p {
+  color: var(--muted);
+  font-size: 14.5px;
+  margin-bottom: 14px;
+  line-height: 1.75;
+}
+.section p strong { color: var(--ink); font-weight: 500; }
+
+.section ul, .section ol {
+  color: var(--muted);
+  font-size: 14px;
+  padding-left: 22px;
+  line-height: 2.1;
+  margin-bottom: 14px;
+}
+
+/* ═══════════════ CODE BLOCKS ═══════════════ */
+.code-block {
+  background: #080a0f;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 16px 0 28px;
+}
+
+.code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  background: var(--surf2);
+  border-bottom: 1px solid var(--border);
+}
+.code-dots { display: flex; gap: 5px; }
+.code-dots span { width: 8px; height: 8px; border-radius: 50%; }
+.d1 { background: var(--rose); opacity: .7; }
+.d2 { background: var(--gold); opacity: .7; }
+.d3 { background: var(--teal); opacity: .7; }
+.code-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.code-block code {
+  display: block;
+  padding: 20px 22px;
+  font-family: 'Space Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: #bec8e8;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Syntax colors */
+.k  { color: #9f8df5; font-weight: 700; }   /* keywords */
+.s  { color: #7de8a0; }                      /* strings */
+.n  { color: #e8c87a; }                      /* numbers */
+.c  { color: #3d4866; font-style: italic; }  /* comments */
+.f  { color: #5ecfcb; }                      /* functions */
+.t  { color: #e8d47a; }                      /* types/class names */
+.op { color: #e8a87a; }                      /* operators/special */
+.se { color: #e87a8c; }                      /* self */
+.p  { color: #8ab4e8; }                      /* properties */
+
+/* Inline code */
+code:not(.code-block code) {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  color: var(--violet);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+/* ═══════════════ TABLES ═══════════════ */
+.tbl-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 14px 0 28px;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead tr { background: var(--surf2); }
+th {
+  padding: 10px 16px;
+  text-align: left;
+  font-family: 'Space Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  font-weight: 400;
+}
+td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  vertical-align: top;
+  line-height: 1.55;
+}
+td:first-child {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--teal);
+  white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,.012); }
+
+/* ═══════════════ CALLOUTS ═══════════════ */
+.note, .warn, .tip, .danger {
+  display: flex;
+  gap: 14px;
+  border-left: 2px solid;
+  padding: 14px 18px;
+  border-radius: 0 6px 6px 0;
+  margin: 18px 0 24px;
+  font-size: 13.5px;
+}
+.note-icon, .warn-icon, .tip-icon, .danger-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  margin-top: 1px;
+}
+.note-body, .warn-body, .tip-body, .danger-body {
+  flex: 1;
+}
+.note-body strong, .warn-body strong, .tip-body strong, .danger-body strong {
+  display: block;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.note-body p, .warn-body p, .tip-body p, .danger-body p { margin: 0; }
+
+.note { border-color: var(--violet); background: var(--violet-dim); }
+.note .note-icon, .note strong { color: var(--violet); }
+.warn { border-color: var(--gold); background: var(--gold-dim); }
+.warn .warn-icon, .warn strong { color: var(--gold); }
+.tip { border-color: var(--teal); background: var(--teal-dim); }
+.tip .tip-icon, .tip strong { color: var(--teal); }
+.danger { border-color: var(--rose); background: var(--rose-dim); }
+.danger .danger-icon, .danger strong { color: var(--rose); }
+
+/* ═══════════════ KEYWORD CHIPS ═══════════════ */
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 24px; }
+.chip {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: var(--surf2);
+  color: var(--violet);
+  cursor: default;
+  transition: all .15s;
+}
+.chip:hover { border-color: rgba(159,141,245,.5); background: var(--violet-dim); }
+.chip.gold { color: var(--gold); }
+.chip.gold:hover { border-color: rgba(232,200,122,.5); background: var(--gold-dim); }
+.chip.teal { color: var(--teal); }
+.chip.teal:hover { border-color: rgba(94,207,203,.5); background: var(--teal-dim); }
+.chip.rose { color: var(--rose); }
+.chip.rose:hover { border-color: rgba(232,122,140,.5); background: var(--rose-dim); }
+
+/* ═══════════════ FEATURE GRID ═══════════════ */
+.feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 32px; }
+.feat-card {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  transition: border-color .2s;
+}
+.feat-card:hover { border-color: var(--border2); }
+.feat-title {
+  font-family: 'Fraunces', serif;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 5px;
+}
+.feat-body { font-size: 13px; color: var(--muted); line-height: 1.55; }
+.feat-body code { font-size: 11px; }
+
+/* ═══════════════ TYPE TILES ═══════════════ */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 14px 0 28px; }
+.type-tile {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.type-tile-name {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.type-tile-ex {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--dim);
+  margin-bottom: 5px;
+}
+.type-tile-desc { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+
+/* ═══════════════ CMD ═══════════════ */
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #080a0f;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 11px 16px;
+  margin: 8px 0;
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+}
+.cmd-prompt { color: var(--teal); user-select: none; }
+.cmd-text { color: var(--ink); }
+
+/* ═══════════════ DIVIDER ═══════════════ */
+.divider { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+/* ═══════════════ SECTION ANCHOR DECORATION ═══════════════ */
+.section > .section-num {
+  position: absolute;
+  right: 72px;
+  top: 72px;
+  font-family: 'Fraunces', serif;
+  font-size: 80px;
+  font-weight: 700;
+  font-style: italic;
+  color: rgba(255,255,255,.025);
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ═══════════════ SCROLLBAR ═══════════════ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+
+/* ═══════════════ PROGRESS BAR ═══════════════ */
+#progress-wrap {
+  position: fixed;
+  bottom: 0;
+  left: var(--sidebar);
+  right: 0;
+  height: 36px;
+  background: var(--surf);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 72px 0 24px;
+  z-index: 150;
+}
+#progress-track {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#progress-bar {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 2px;
+  width: 0%;
+  transition: width .3s ease;
+}
+#progress-label {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  letter-spacing: .5px;
+}
+.progress-nav {
+  display: flex;
+  gap: 6px;
+}
+.progress-nav button {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.progress-nav button:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+.progress-nav button:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+/* ═══════════════ SECTION FOOTER ═══════════════ */
+.section-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.section-footer button {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  padding: 7px 16px;
+  border-radius: 5px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .3px;
+}
+.section-footer button:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+.section-footer button:disabled { opacity: .25; cursor: default; }
+
+/* ═══════════════ RESPONSIVE ═══════════════ */
+@media (max-width: 900px) {
+  #sidebar { display: none; }
+  main { margin-left: 0; }
+  .section { padding: 48px 28px; }
+  #hero { padding: 48px 28px; }
+  .feat-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ───────────────── SIDEBAR ───────────────── -->
+<aside id="sidebar">
+  <div class="logo-area">
+    <div class="logo-text">EZ</div>
+    <div class="logo-sub">Language Reference</div>
+    <div class="version-tag">v1.0 · C++17 · MIT</div>
+  </div>
+  <nav id="nav">
+    <div class="nav-section">Introduction</div>
+    <a href="#hero"        data-s="hero">Overview</a>
+    <a href="#install"     data-s="install">Installation</a>
+
+    <div class="nav-section">Core Language</div>
+    <a href="#keywords"    data-s="keywords">Keywords</a>
+    <a href="#types"       data-s="types">Data Types</a>
+    <a href="#variables"   data-s="variables">Variables &amp; Operators</a>
+    <a href="#strings"     data-s="strings">Strings</a>
+    <a href="#comments"    data-s="comments">Comments</a>
+
+    <div class="nav-section">Control Flow</div>
+    <a href="#when"        data-s="when">when / other</a>
+    <a href="#while"       data-s="while">while</a>
+    <a href="#repeat"      data-s="repeat">repeat … to</a>
+    <a href="#get"         data-s="get">get … in</a>
+    <a href="#escape"      data-s="escape">escape / skip</a>
+
+    <div class="nav-section">Functions</div>
+    <a href="#tasks"       data-s="tasks">task (functions)</a>
+    <a href="#lambda"      data-s="lambda">Lambda &amp; closures</a>
+
+    <div class="nav-section">Data Structures</div>
+    <a href="#arrays"      data-s="arrays">Arrays</a>
+    <a href="#dicts"       data-s="dicts">Dictionaries</a>
+
+    <div class="nav-section">OOP</div>
+    <a href="#models"      data-s="models">model (classes)</a>
+    <a href="#inherit"     data-s="inherit">Inheritance</a>
+    <a href="#interfaces"  data-s="interfaces">Interfaces</a>
+    <a href="#structs"     data-s="structs">Structs</a>
+
+    <div class="nav-section">Error Handling</div>
+    <a href="#errors"      data-s="errors">try / catch / throw</a>
+
+    <div class="nav-section">Built-in Functions</div>
+    <a href="#io"          data-s="io">I/O</a>
+    <a href="#math"        data-s="math">Math</a>
+    <a href="#strfns"      data-s="strfns">String functions</a>
+    <a href="#arrfns"      data-s="arrfns">Array functions</a>
+    <a href="#hof"         data-s="hof">Higher-order functions</a>
+    <a href="#dictfns"     data-s="dictfns">Dictionary functions</a>
+    <a href="#files"       data-s="files">File I/O</a>
+    <a href="#json"        data-s="json">JSON</a>
+    <a href="#time"        data-s="time">Time &amp; sleep</a>
+    <a href="#terminal"    data-s="terminal">Terminal</a>
+    <a href="#http"        data-s="http">HTTP requests</a>
+    <a href="#async"       data-s="async">Async / spawn</a>
+
+    <div class="nav-section">Advanced</div>
+    <a href="#database"    data-s="database">SQLite database</a>
+    <a href="#server"      data-s="server">Web server</a>
+    <a href="#packages"    data-s="packages">Package manager</a>
+    <a href="#use"         data-s="use">use (imports)</a>
+    <a href="#gc"          data-s="gc">Runtime internals</a>
+  </nav>
+</aside>
+
+<!-- ───────────────── MAIN CONTENT ───────────────── -->
+<main>
+
+<!-- ════════════════════════════════════ HERO ════════════════════════════════════ -->
+<section id="hero">
+  <h1>The <em>EZ</em><br>Language</h1>
+  <p class="tagline">A dynamically typed, tree-walk interpreted language built in C++17. Reads like plain English, ships with a web server, SQLite, an HTTP client, async threads, and a package manager — all out of the box.</p>
+  <div class="badge-row">
+    <span class="badge badge-gold">Dynamically Typed</span>
+    <span class="badge badge-teal">C++17 Interpreter</span>
+    <span class="badge badge-violet">Full OOP</span>
+    <span class="badge badge-rose">Built-in SQLite</span>
+    <span class="badge badge-teal">Built-in Web Server</span>
+    <span class="badge badge-violet">Package Manager</span>
+    <span class="badge badge-gold">First-class Functions</span>
+    <span class="badge badge-rose">Async / spawn</span>
+  </div>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · quickstart</span></div>
+    <code><span class="c">// A quick taste of EZ</span>
+<span class="k">model</span> <span class="t">Person</span> {
+    <span class="k">init</span>(name, age) {
+        <span class="se">self</span>.name = name
+        <span class="se">self</span>.age  = age
+    }
+    <span class="k">task</span> <span class="f">greet</span>() {
+        <span class="k">out</span> <span class="s">`Hi, I'm </span><span class="op">{</span><span class="se">self</span>.name<span class="op">}</span><span class="s"> — age </span><span class="op">{</span><span class="se">self</span>.age<span class="op">}</span><span class="s">`</span>
+    }
+}
+
+people = [<span class="k">new</span> <span class="t">Person</span>(<span class="s">"Alice"</span>, <span class="n">30</span>), <span class="k">new</span> <span class="t">Person</span>(<span class="s">"Bob"</span>, <span class="n">17</span>)]
+
+<span class="k">get</span> p <span class="k">in</span> people {
+    <span class="f">p.greet</span>()
+    <span class="k">when</span> p.age >= <span class="n">18</span> { <span class="k">out</span> <span class="s">`  ↳ adult`</span> }
+}
+
+<span class="c">// Higher-order + lambda</span>
+adults = <span class="f">filter</span>(people, (p) <span class="op">=></span> p.age >= <span class="n">18</span>)
+names  = <span class="f">map</span>(adults, (p) <span class="op">=></span> p.name)
+<span class="k">out</span> <span class="f">join</span>(names, <span class="s">", "</span>)
+
+<span class="c">// SQLite in 3 lines</span>
+db = <span class="f">dbOpen</span>(<span class="s">"app.db"</span>)
+<span class="f">dbExec</span>(db, <span class="s">"CREATE TABLE IF NOT EXISTS log (msg TEXT)"</span>)
+<span class="f">dbExec</span>(db, <span class="s">"INSERT INTO log VALUES (?)"</span>, [<span class="s">"started"</span>])</code>
+  </div>
+
+  <div class="feat-grid">
+    <div class="feat-card">
+      <div class="feat-title">Plain-English syntax</div>
+      <div class="feat-body"><code>when</code> = if, <code>task</code> = function, <code>give</code> = return, <code>model</code> = class. Code reads like prose.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-title">Batteries included</div>
+      <div class="feat-body">SQLite, HTTP server, libcurl HTTP client, JSON, async threads, file I/O — no imports needed, all built into the runtime.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-title">Full OOP</div>
+      <div class="feat-body">Classes (<code>model</code>), constructors (<code>init</code>), single inheritance (<code>extends</code>), interfaces (<code>implements</code>), <code>hidden</code>/<code>shown</code>, <code>static</code>, <code>super</code>.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-title">First-class functions</div>
+      <div class="feat-body">Functions are values. Arrow lambdas, pipe lambdas, closures, default parameters, higher-order built-ins like <code>map</code>/<code>filter</code>/<code>reduce</code>.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-title">Two comment styles</div>
+      <div class="feat-body"><code>// line comments</code>, <code># hash comments</code>, and <code>/* nested block comments */</code>.</div>
+    </div>
+    <div class="feat-card">
+      <div class="feat-title">Pipeline: Lexer → Parser → Interpreter</div>
+      <div class="feat-body">Classic tree-walk interpreter. Lexer tokenises → Parser builds AST → Interpreter walks it. Errors include line numbers.</div>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ INSTALL ════════════════════════════════════ -->
+<section class="section" id="install">
+  <div class="section-num">01</div>
+  <div class="section-meta">Getting Started</div>
+  <h2>Installation</h2>
+  <p class="section-lead">EZ is built from source. You need a C++17 compiler and a handful of libraries on Windows.</p>
+
+  <h3>Prerequisites</h3>
+  <ul>
+    <li>C++17 compiler — GCC (MinGW-w64), Clang, or MSVC 2019+</li>
+    <li><strong>SQLite3</strong> — development headers + <code>sqlite3.lib</code></li>
+    <li><strong>libcurl</strong> — development headers + lib (for HTTP client and package manager)</li>
+    <li><strong>WinSock2</strong> — bundled in the Windows SDK (<code>ws2_32.lib</code>)</li>
+  </ul>
+
+  <h3>Clone &amp; compile</h3>
+  <div class="cmd"><span class="cmd-prompt">$</span><span class="cmd-text">git clone https://github.com/imabd645/EZ-language.git &amp;&amp; cd EZ-language</span></div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">bash</span></div>
+    <code>g++ -std=c++17 -O2 -Wall -o ez.exe \
+    src/main.cpp src/Lexer.cpp src/Parser.cpp \
+    src/Interpreter.cpp src/Builtins.cpp \
+    -I src -lws2_32 -lsqlite3 -lcurl</code>
+  </div>
+
+  <h3>Add to PATH</h3>
+  <p>Create <code>C:\ezlang\</code>, copy <code>ez.exe</code> and all required <code>.dll</code> files there, then add the folder to your Windows <em>PATH</em> environment variable. Restart your terminal.</p>
+
+  <h3>CLI reference</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Command</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>ez</td><td>Launch the interactive REPL</td></tr>
+        <tr><td>ez &lt;file.ez&gt;</td><td>Run an EZ script file — exits 65 on lexer/parser error</td></tr>
+        <tr><td>ez install &lt;pkg&gt;</td><td>Install a package from GitHub</td></tr>
+        <tr><td>ez install &lt;pkg&gt; &lt;branch&gt;</td><td>Install a specific branch / version</td></tr>
+        <tr><td>ez list</td><td>List all installed packages in <code>C:/ezlib</code></td></tr>
+        <tr><td>ez init &lt;name&gt;</td><td>Scaffold a new package with <code>package.ez</code> manifest</td></tr>
+        <tr><td>ez --help</td><td>Print usage summary</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>REPL</h3>
+  <p>Running <code>ez</code> with no arguments launches an interactive read-eval-print loop. The REPL detects unclosed <code>{ }</code> braces and waits for the block to complete before executing, shown by the <code>...</code> prompt.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">repl session</span></div>
+    <code>EZ Language Interpreter v1.0
+Type 'exit' to quit
+
+>>> x = 42
+>>> out x
+42
+>>> task add(a, b) {
+...   give a + b
+... }
+>>> out add(10, 5)
+15
+>>> exit
+Goodbye!</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ KEYWORDS ════════════════════════════════════ -->
+<section class="section" id="keywords">
+  <div class="section-num">02</div>
+  <div class="section-meta">Core Language</div>
+  <h2>Keywords</h2>
+  <p class="section-lead">All reserved words in EZ. They cannot be used as variable or function names. EZ also allows keywords as property names after a dot — <code>obj.task</code> or <code>obj.get</code> parse correctly.</p>
+
+  <h4>Control flow</h4>
+  <div class="chip-row">
+    <span class="chip">when</span><span class="chip">other</span><span class="chip">while</span>
+    <span class="chip">repeat</span><span class="chip">to</span><span class="chip">get</span>
+    <span class="chip">in</span><span class="chip">escape</span><span class="chip">skip</span>
+  </div>
+
+  <h4>Functions</h4>
+  <div class="chip-row">
+    <span class="chip teal">task</span><span class="chip teal">give</span>
+  </div>
+
+  <h4>OOP</h4>
+  <div class="chip-row">
+    <span class="chip gold">model</span><span class="chip gold">init</span><span class="chip gold">self</span>
+    <span class="chip gold">new</span><span class="chip gold">super</span><span class="chip gold">extends</span>
+    <span class="chip gold">hidden</span><span class="chip gold">shown</span><span class="chip gold">static</span>
+    <span class="chip gold">interface</span><span class="chip gold">implements</span><span class="chip gold">struct</span>
+  </div>
+
+  <h4>Literals &amp; logic</h4>
+  <div class="chip-row">
+    <span class="chip rose">true</span><span class="chip rose">yes</span>
+    <span class="chip rose">false</span><span class="chip rose">no</span>
+    <span class="chip rose">nil</span>
+    <span class="chip">and</span><span class="chip">or</span><span class="chip">not</span>
+  </div>
+
+  <h4>I/O &amp; modules</h4>
+  <div class="chip-row">
+    <span class="chip teal">out</span><span class="chip teal">in</span><span class="chip teal">use</span>
+  </div>
+
+  <h4>Error handling</h4>
+  <div class="chip-row">
+    <span class="chip">try</span><span class="chip">catch</span><span class="chip">throw</span>
+  </div>
+
+  <div class="note">
+    <div class="note-icon">ℹ</div>
+    <div class="note-body">
+      <strong>Aliases</strong>
+      <p><code>yes</code> / <code>no</code> are aliases for <code>true</code> / <code>false</code> — they tokenise identically. Use whichever reads better in context.</p>
+    </div>
+  </div>
+
+  <h3>Keyword-to-conventional mapping</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>EZ</th><th>Conventional equivalent</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>out</td><td>print / console.log</td><td>Keyword, not a function — no parentheses</td></tr>
+        <tr><td>in</td><td>input()</td><td>Reads one line from stdin — also usable as expression</td></tr>
+        <tr><td>when / other</td><td>if / else</td><td>Chains: <code>other when …</code> = else-if</td></tr>
+        <tr><td>while</td><td>while</td><td>Condition checked before each iteration</td></tr>
+        <tr><td>repeat i=0 to N</td><td>for (i=0; i&lt;=N; i++)</td><td>Supports both ascending and descending loops</td></tr>
+        <tr><td>get x in arr</td><td>for…of / foreach</td><td>Also iterates strings char-by-char and dicts by key</td></tr>
+        <tr><td>escape</td><td>break</td><td>Exits the innermost loop</td></tr>
+        <tr><td>skip</td><td>continue</td><td>Jumps to next iteration</td></tr>
+        <tr><td>task</td><td>function / def</td><td>First-class value; supports default parameters</td></tr>
+        <tr><td>give</td><td>return</td><td><code>give</code> alone returns nil</td></tr>
+        <tr><td>model</td><td>class</td><td>Full OOP with init, methods, inheritance</td></tr>
+        <tr><td>init</td><td>constructor / __init__</td><td>Called by <code>new ModelName(…)</code></td></tr>
+        <tr><td>self</td><td>this</td><td>Always refers to the current instance</td></tr>
+        <tr><td>super</td><td>super</td><td>Access parent class constructor and methods</td></tr>
+        <tr><td>hidden</td><td>private</td><td>Enforced at property-access time</td></tr>
+        <tr><td>shown</td><td>public</td><td>Default visibility</td></tr>
+        <tr><td>static</td><td>static</td><td>Belongs to the class, not an instance</td></tr>
+        <tr><td>use</td><td>import / require</td><td>Loads a .ez file or package from C:/ezlib</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ TYPES ════════════════════════════════════ -->
+<section class="section" id="types">
+  <div class="section-num">03</div>
+  <div class="section-meta">Core Language</div>
+  <h2>Data Types</h2>
+  <p class="section-lead">EZ is dynamically typed — every value carries its type at runtime. There are nine value types, all represented by the <code>Value</code> variant type internally.</p>
+
+  <div class="type-grid">
+    <div class="type-tile"><div class="type-tile-name">number</div><div class="type-tile-ex">42, 3.14, -7</div><div class="type-tile-desc">64-bit IEEE-754 float. No integer type — all numbers are doubles.</div></div>
+    <div class="type-tile"><div class="type-tile-name">string</div><div class="type-tile-ex">"hi", 'hi', `hi`</div><div class="type-tile-desc">Immutable text. Three literal forms: double, single, and backtick template strings.</div></div>
+    <div class="type-tile"><div class="type-tile-name">bool</div><div class="type-tile-ex">true / yes</div><div class="type-tile-desc">Boolean. <code>yes</code>/<code>no</code> are aliases for <code>true</code>/<code>false</code>.</div></div>
+    <div class="type-tile"><div class="type-tile-name">nil</div><div class="type-tile-ex">nil</div><div class="type-tile-desc">Absence of value. Functions without <code>give</code> return nil.</div></div>
+    <div class="type-tile"><div class="type-tile-name">array</div><div class="type-tile-ex">[1, "a", true]</div><div class="type-tile-desc">Ordered, mutable, mixed-type. Zero-indexed. Shared via pointer.</div></div>
+    <div class="type-tile"><div class="type-tile-name">dictionary</div><div class="type-tile-ex">{key: val}</div><div class="type-tile-desc">Hash map. Keys are always strings. Dot or bracket access.</div></div>
+    <div class="type-tile"><div class="type-tile-name">function</div><div class="type-tile-ex">task foo(){}</div><div class="type-tile-desc">First-class. Captures its environment (closure).</div></div>
+    <div class="type-tile"><div class="type-tile-name">instance</div><div class="type-tile-ex">new Dog("Rex")</div><div class="type-tile-desc">Object created from a model. Holds properties and bound methods.</div></div>
+    <div class="type-tile"><div class="type-tile-name">future</div><div class="type-tile-ex">spawn(fn)</div><div class="type-tile-desc">Handle to an async computation. Resolve with <code>await()</code>.</div></div>
+  </div>
+
+  <h3>Truthiness rules</h3>
+  <p>Only two values are falsy: <code>nil</code> and <code>false</code>. Everything else — including <code>0</code>, <code>""</code>, and <code>[]</code> — is truthy. This differs from many languages.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">when</span> <span class="n">0</span>    { <span class="k">out</span> <span class="s">"truthy"</span> }  <span class="c">// ← runs! 0 is truthy in EZ</span>
+<span class="k">when</span> <span class="s">""</span>   { <span class="k">out</span> <span class="s">"truthy"</span> }  <span class="c">// ← runs!</span>
+<span class="k">when</span> []   { <span class="k">out</span> <span class="s">"truthy"</span> }  <span class="c">// ← runs!</span>
+<span class="k">when</span> <span class="k">nil</span>  { <span class="k">out</span> <span class="s">"x"</span> }     <span class="c">// never runs</span>
+<span class="k">when</span> <span class="k">false</span>{ <span class="k">out</span> <span class="s">"x"</span> }     <span class="c">// never runs</span></code>
+  </div>
+
+  <h3>Equality semantics</h3>
+  <p><code>==</code> compares values <em>deeply</em>: two arrays are equal if they have the same length and all elements are equal. Two instances are only equal if they are the exact same object (reference equality). Two functions are never equal to each other.</p>
+
+  <h3>Runtime type inspection</h3>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">out</span> <span class="f">type</span>(<span class="n">42</span>)           <span class="c">// "number"</span>
+<span class="k">out</span> <span class="f">type</span>(<span class="s">"hi"</span>)          <span class="c">// "string"</span>
+<span class="k">out</span> <span class="f">type</span>(<span class="k">true</span>)          <span class="c">// "bool"</span>
+<span class="k">out</span> <span class="f">type</span>(<span class="k">nil</span>)           <span class="c">// "nil"</span>
+<span class="k">out</span> <span class="f">type</span>([<span class="n">1</span>,<span class="n">2</span>])         <span class="c">// "array"</span>
+<span class="k">out</span> <span class="f">type</span>({a:<span class="n">1</span>})         <span class="c">// "dictionary"</span>
+<span class="k">out</span> <span class="f">type</span>(<span class="k">new</span> <span class="t">Dog</span>(<span class="s">""</span>))  <span class="c">// "instance"</span>
+<span class="k">out</span> <span class="f">type</span>(<span class="f">type</span>)          <span class="c">// "function" (native)</span></code>
+  </div>
+
+  <div class="warn">
+    <div class="warn-icon">⚠</div>
+    <div class="warn-body">
+      <strong>No integer type</strong>
+      <p>All numbers are 64-bit floats. <code>10 / 3</code> → <code>3.333…</code>. Use <code>floor()</code>, <code>ceil()</code>, or <code>round()</code> when you need whole numbers.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ VARIABLES ════════════════════════════════════ -->
+<section class="section" id="variables">
+  <div class="section-num">04</div>
+  <div class="section-meta">Core Language</div>
+  <h2>Variables &amp; Operators</h2>
+  <p class="section-lead">Variables are created by assignment — no declaration keyword. Scope is lexical: each <code>{ }</code> block creates a new child scope.</p>
+
+  <h3>Assignment</h3>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code>x      = <span class="n">10</span>
+name   = <span class="s">"Alice"</span>
+active = <span class="k">true</span>
+nothing= <span class="k">nil</span>
+scores = [<span class="n">90</span>, <span class="n">85</span>, <span class="n">92</span>]
+config = { debug: <span class="k">false</span>, port: <span class="n">8080</span> }
+
+<span class="c">// Compound assignment operators</span>
+x <span class="op">+=</span> <span class="n">5</span>   <span class="c">// x = x + 5</span>
+x <span class="op">-=</span> <span class="n">2</span>
+x <span class="op">*=</span> <span class="n">3</span>
+x <span class="op">/=</span> <span class="n">4</span></code>
+  </div>
+
+  <div class="note">
+    <div class="note-icon">ℹ</div>
+    <div class="note-body">
+      <strong>Scope walk on write</strong>
+      <p>On assignment EZ walks up the scope chain looking for an existing binding. If it finds one it updates it (allowing closures to mutate outer variables). If nothing is found anywhere the variable is created in the <em>current</em> scope.</p>
+    </div>
+  </div>
+
+  <h3>Arithmetic operators</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Op</th><th>Types</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>+</td><td>number + number</td><td>Sum</td></tr>
+        <tr><td>+</td><td>string + anything</td><td>String concatenation — right side is stringified automatically</td></tr>
+        <tr><td>+</td><td>array + array</td><td>New concatenated array</td></tr>
+        <tr><td>-</td><td>number - number</td><td>Difference</td></tr>
+        <tr><td>*</td><td>number * number</td><td>Product</td></tr>
+        <tr><td>*</td><td>string * number</td><td>Repeats string N times: <code>"ab" * 3</code> → <code>"ababab"</code></td></tr>
+        <tr><td>/</td><td>number / number</td><td>Quotient — throws <code>RuntimeError</code> on division by zero</td></tr>
+        <tr><td>%</td><td>number % number</td><td>Floating-point modulo via <code>std::fmod</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Comparison operators</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Op</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>==</td><td>Deep equality (arrays compared element-by-element)</td></tr>
+        <tr><td>!=</td><td>Not equal</td></tr>
+        <tr><td>&lt; &lt;= &gt; &gt;=</td><td>Numeric comparison — both operands must be numbers</td></tr>
+        <tr><td>in</td><td>Membership: <code>x in arr</code>, <code>key in dict</code>, <code>substr in str</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Logical operators</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Op</th><th>Short-circuits?</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>and</td><td>Yes — returns first falsy value</td><td><code>x > 0 and x &lt; 100</code></td></tr>
+        <tr><td>or</td><td>Yes — returns first truthy value</td><td><code>x == nil or x == 0</code></td></tr>
+        <tr><td>not / !</td><td>No</td><td>Unary NOT: <code>not active</code> or <code>!active</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Operator precedence (highest → lowest)</h3>
+  <ol>
+    <li>Unary: <code>-</code>, <code>not</code>, <code>!</code></li>
+    <li>Multiplicative: <code>*</code> <code>/</code> <code>%</code></li>
+    <li>Additive: <code>+</code> <code>-</code></li>
+    <li>Comparison: <code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code> <code>in</code></li>
+    <li>Equality: <code>==</code> <code>!=</code></li>
+    <li>Logical AND: <code>and</code></li>
+    <li>Logical OR: <code>or</code></li>
+    <li>Assignment: <code>=</code> <code>+=</code> <code>-=</code> <code>*=</code> <code>/=</code></li>
+  </ol>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ STRINGS ════════════════════════════════════ -->
+<section class="section" id="strings">
+  <div class="section-num">05</div>
+  <div class="section-meta">Core Language</div>
+  <h2>Strings</h2>
+  <p class="section-lead">Strings are immutable sequences of characters. Three literal forms are available; the backtick form supports full expression interpolation.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · all string forms</span></div>
+    <code><span class="c">// Double quotes</span>
+s1 = <span class="s">"Hello, World!"</span>
+
+<span class="c">// Single quotes — identical behaviour</span>
+s2 = <span class="s">'Hello, World!'</span>
+
+<span class="c">// Backtick template strings — interpolate any expression with { }</span>
+name  = <span class="s">"Alice"</span>
+age   = <span class="n">30</span>
+items = [<span class="s">"a"</span>, <span class="s">"b"</span>]
+
+s3 = <span class="s">`Hello, </span><span class="op">{</span>name<span class="op">}</span><span class="s">!`</span>                     <span class="c">// Hello, Alice!</span>
+s4 = <span class="s">`She is </span><span class="op">{</span>age<span class="op">}</span><span class="s"> years old`</span>             <span class="c">// She is 30 years old</span>
+s5 = <span class="s">`List has </span><span class="op">{</span><span class="f">len</span>(items)<span class="op">}</span><span class="s"> items`</span>         <span class="c">// List has 2 items</span>
+s6 = <span class="s">`2 + 2 = </span><span class="op">{</span><span class="n">2</span> + <span class="n">2</span><span class="op">}</span><span class="s">`</span>                   <span class="c">// 2 + 2 = 4</span>
+s7 = <span class="s">`UPPER: </span><span class="op">{</span><span class="f">upper</span>(name)<span class="op">}</span><span class="s">`</span>               <span class="c">// UPPER: ALICE</span>
+
+<span class="c">// Concatenation with +</span>
+full = <span class="s">"Hello, "</span> + name + <span class="s">"!"</span>
+
+<span class="c">// String repetition with *</span>
+line = <span class="s">"-"</span> * <span class="n">30</span>                            <span class="c">// "------------------------------"</span>
+
+<span class="c">// Character-by-character iteration</span>
+<span class="k">get</span> ch <span class="k">in</span> <span class="s">"hello"</span> { <span class="k">out</span> ch }              <span class="c">// h e l l o</span>
+
+<span class="c">// Index access — returns single-char string</span>
+<span class="k">out</span> s1[<span class="n">0</span>]                                  <span class="c">// "H"</span></code>
+  </div>
+
+  <h3>Escape sequences</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Sequence</th><th>Character</th></tr></thead>
+      <tbody>
+        <tr><td>\n</td><td>Newline (LF)</td></tr>
+        <tr><td>\t</td><td>Tab</td></tr>
+        <tr><td>\r</td><td>Carriage return</td></tr>
+        <tr><td>\\</td><td>Literal backslash</td></tr>
+        <tr><td>\"</td><td>Double quote inside <code>"…"</code></td></tr>
+        <tr><td>\'</td><td>Single quote inside <code>'…'</code></td></tr>
+        <tr><td>\`</td><td>Backtick inside <code>`…`</code></td></tr>
+        <tr><td>\{</td><td>Literal <code>{</code> inside template strings</td></tr>
+        <tr><td>\}</td><td>Literal <code>}</code> inside template strings</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>How template strings work internally</h3>
+  <p>When the lexer encounters a backtick string it <em>expands</em> it at tokenisation time. <code>`Hello {name}!`</code> becomes the token stream equivalent of <code>("Hello " + str(name) + "!")</code>. This means the full power of EZ expressions — function calls, arithmetic, method calls — is available inside the <code>{ }</code> braces.</p>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ COMMENTS ════════════════════════════════════ -->
+<section class="section" id="comments">
+  <div class="section-num">06</div>
+  <div class="section-meta">Core Language</div>
+  <h2>Comments</h2>
+  <p class="section-lead">Three comment forms. Block comments can be nested.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Double-slash line comment</span>
+x = <span class="n">10</span>   <span class="c">// inline comment</span>
+
+<span class="c"># Hash line comment — alternative style</span>
+y = <span class="n">20</span>   <span class="c"># also a comment</span>
+
+<span class="c">/*
+  Block comment — spans multiple lines.
+  /* Nesting is supported — the lexer tracks depth.
+     This inner comment is valid. */
+  Back to the outer block.
+*/</span>
+<span class="k">out</span> x + y</code>
+  </div>
+
+  <div class="tip">
+    <div class="tip-icon">✦</div>
+    <div class="tip-body">
+      <strong>Nested block comments</strong>
+      <p>EZ's lexer tracks nesting depth for <code>/* */</code>, so you can safely comment out blocks that already contain block comments — a common need during development. A mismatched closing tag emits an "Unterminated block comment" error.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ WHEN ════════════════════════════════════ -->
+<section class="section" id="when">
+  <div class="section-num">07</div>
+  <div class="section-meta">Control Flow</div>
+  <h2>when / other</h2>
+  <p class="section-lead">Conditional execution. <code>when</code> is EZ's <code>if</code>; <code>other</code> is <code>else</code>. Chain with <code>other when</code> for else-if.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Basic when</span>
+<span class="k">when</span> x > <span class="n">10</span> {
+    <span class="k">out</span> <span class="s">"big"</span>
+}
+
+<span class="c">// when / other</span>
+<span class="k">when</span> age >= <span class="n">18</span> {
+    <span class="k">out</span> <span class="s">"adult"</span>
+} <span class="k">other</span> {
+    <span class="k">out</span> <span class="s">"minor"</span>
+}
+
+<span class="c">// Chained: other when = else-if</span>
+<span class="k">when</span> score >= <span class="n">90</span> {
+    grade = <span class="s">"A"</span>
+} <span class="k">other when</span> score >= <span class="n">80</span> {
+    grade = <span class="s">"B"</span>
+} <span class="k">other when</span> score >= <span class="n">70</span> {
+    grade = <span class="s">"C"</span>
+} <span class="k">other</span> {
+    grade = <span class="s">"F"</span>
+}
+
+<span class="c">// Braceless single-statement form</span>
+<span class="k">when</span> x > <span class="n">0</span> <span class="k">out</span> <span class="s">"positive"</span>
+<span class="k">other</span> <span class="k">out</span> <span class="s">"non-positive"</span>
+
+<span class="c">// Logical operators in condition</span>
+<span class="k">when</span> x > <span class="n">0</span> <span class="k">and</span> x < <span class="n">100</span> { <span class="k">out</span> <span class="s">"in range"</span> }
+<span class="k">when</span> name == <span class="s">"admin"</span> <span class="k">or</span> role == <span class="s">"superuser"</span> { <span class="k">out</span> <span class="s">"privileged"</span> }
+<span class="k">when</span> <span class="k">not</span> active { <span class="k">out</span> <span class="s">"inactive"</span> }</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ WHILE ════════════════════════════════════ -->
+<section class="section" id="while">
+  <div class="section-num">08</div>
+  <div class="section-meta">Control Flow</div>
+  <h2>while</h2>
+  <p class="section-lead">Loop while a condition remains truthy. Condition is tested before each iteration.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Count up</span>
+i = <span class="n">0</span>
+<span class="k">while</span> i < <span class="n">5</span> {
+    <span class="k">out</span> i
+    i <span class="op">+=</span> <span class="n">1</span>
+}
+
+<span class="c">// Infinite loop with escape</span>
+<span class="k">while</span> <span class="k">true</span> {
+    answer = <span class="f">input</span>(<span class="s">"Enter 'quit' to stop: "</span>)
+    <span class="k">when</span> answer == <span class="s">"quit"</span> { <span class="k">escape</span> }
+    <span class="k">out</span> <span class="s">`You entered: </span><span class="op">{</span>answer<span class="op">}</span><span class="s">`</span>
+}</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ REPEAT ════════════════════════════════════ -->
+<section class="section" id="repeat">
+  <div class="section-num">09</div>
+  <div class="section-meta">Control Flow</div>
+  <h2>repeat … to</h2>
+  <p class="section-lead">Counted loop. Iterates a loop variable from <code>start</code> to <code>end</code> — inclusive both ends. Supports both ascending and descending iteration.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// repeat varName = start to end  (inclusive both ends)</span>
+<span class="k">repeat</span> i = <span class="n">0</span> <span class="k">to</span> <span class="n">4</span> {
+    <span class="k">out</span> i   <span class="c">// 0, 1, 2, 3, 4</span>
+}
+
+<span class="c">// Descending (start > end)</span>
+<span class="k">repeat</span> n = <span class="n">5</span> <span class="k">to</span> <span class="n">1</span> {
+    <span class="k">out</span> n   <span class="c">// 5, 4, 3, 2, 1</span>
+}
+
+<span class="c">// Expressions as bounds</span>
+size = <span class="f">len</span>(items) - <span class="n">1</span>
+<span class="k">repeat</span> idx = <span class="n">0</span> <span class="k">to</span> size {
+    <span class="k">out</span> items[idx]
+}
+
+<span class="c">// Nested repeat — times table</span>
+<span class="k">repeat</span> r = <span class="n">1</span> <span class="k">to</span> <span class="n">5</span> {
+    <span class="k">repeat</span> c = <span class="n">1</span> <span class="k">to</span> <span class="n">5</span> {
+        <span class="k">out</span> <span class="s">`</span><span class="op">{</span>r<span class="op">}</span><span class="s">×</span><span class="op">{</span>c<span class="op">}</span><span class="s">=</span><span class="op">{</span>r*c<span class="op">}</span><span class="s">`</span>
+    }
+}</code>
+  </div>
+
+  <div class="warn">
+    <div class="warn-icon">⚠</div>
+    <div class="warn-body">
+      <strong>Inclusive upper bound</strong>
+      <p><code>repeat i = 0 to 4</code> runs for i = 0, 1, 2, 3, <strong>4</strong>. Both bounds are inclusive. This differs from <code>range()</code> which is exclusive at the upper end.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ GET ════════════════════════════════════ -->
+<section class="section" id="get">
+  <div class="section-num">10</div>
+  <div class="section-meta">Control Flow</div>
+  <h2>get … in</h2>
+  <p class="section-lead">Foreach loop. Works over arrays, strings (character-by-character), and dictionaries (iterates keys).</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Over array</span>
+fruits = [<span class="s">"apple"</span>, <span class="s">"banana"</span>, <span class="s">"cherry"</span>]
+<span class="k">get</span> fruit <span class="k">in</span> fruits { <span class="k">out</span> fruit }
+
+<span class="c">// Over range()</span>
+<span class="k">get</span> n <span class="k">in</span> <span class="f">range</span>(<span class="n">5</span>) { <span class="k">out</span> n }        <span class="c">// 0,1,2,3,4</span>
+<span class="k">get</span> n <span class="k">in</span> <span class="f">range</span>(<span class="n">3</span>, <span class="n">8</span>) { <span class="k">out</span> n }    <span class="c">// 3,4,5,6,7</span>
+
+<span class="c">// Over string — yields one character per iteration</span>
+<span class="k">get</span> ch <span class="k">in</span> <span class="s">"hello"</span> { <span class="k">out</span> ch }       <span class="c">// h e l l o</span>
+
+<span class="c">// Over dictionary — yields KEYS as strings</span>
+config = { host: <span class="s">"localhost"</span>, port: <span class="n">8080</span> }
+<span class="k">get</span> k <span class="k">in</span> config {
+    <span class="k">out</span> <span class="s">`</span><span class="op">{</span>k<span class="op">}</span><span class="s"> = </span><span class="op">{</span>config[k]<span class="op">}</span><span class="s">`</span>
+}</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ ESCAPE ════════════════════════════════════ -->
+<section class="section" id="escape">
+  <div class="section-num">11</div>
+  <div class="section-meta">Control Flow</div>
+  <h2>escape / skip</h2>
+  <p class="section-lead"><code>escape</code> breaks out of the innermost loop. <code>skip</code> jumps to the next iteration. Both work inside <code>while</code>, <code>repeat</code>, and <code>get</code>.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// escape = break</span>
+<span class="k">repeat</span> i = <span class="n">0</span> <span class="k">to</span> <span class="n">10</span> {
+    <span class="k">when</span> i == <span class="n">5</span> { <span class="k">escape</span> }
+    <span class="k">out</span> i   <span class="c">// 0 1 2 3 4</span>
+}
+
+<span class="c">// skip = continue</span>
+<span class="k">repeat</span> i = <span class="n">0</span> <span class="k">to</span> <span class="n">10</span> {
+    <span class="k">when</span> i % <span class="n">2</span> == <span class="n">0</span> { <span class="k">skip</span> }
+    <span class="k">out</span> i   <span class="c">// 1 3 5 7 9</span>
+}
+
+<span class="c">// Search-and-escape pattern</span>
+found = <span class="k">false</span>
+<span class="k">get</span> item <span class="k">in</span> data {
+    <span class="k">when</span> item == target { found = <span class="k">true</span>  <span class="k">escape</span> }
+}</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ TASKS ════════════════════════════════════ -->
+<section class="section" id="tasks">
+  <div class="section-num">12</div>
+  <div class="section-meta">Functions</div>
+  <h2>task (functions)</h2>
+  <p class="section-lead">Functions are defined with <code>task</code>. They are first-class values — assign them to variables, pass them as arguments, return them from other functions. Functions close over their defining environment.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Basic function</span>
+<span class="k">task</span> <span class="f">greet</span>(name) {
+    <span class="k">out</span> <span class="s">`Hello, </span><span class="op">{</span>name<span class="op">}</span><span class="s">!`</span>
+}
+<span class="f">greet</span>(<span class="s">"World"</span>)
+
+<span class="c">// Return value with give</span>
+<span class="k">task</span> <span class="f">add</span>(a, b) {
+    <span class="k">give</span> a + b
+}
+result = <span class="f">add</span>(<span class="n">3</span>, <span class="n">4</span>)   <span class="c">// 7</span>
+
+<span class="c">// Default parameters — must come after required params</span>
+<span class="k">task</span> <span class="f">connect</span>(host, port = <span class="n">8080</span>, ssl = <span class="k">false</span>) {
+    <span class="k">out</span> <span class="s">`</span><span class="op">{</span>host<span class="op">}</span><span class="s">:</span><span class="op">{</span>port<span class="op">}</span><span class="s"> ssl=</span><span class="op">{</span>ssl<span class="op">}</span><span class="s">`</span>
+}
+<span class="f">connect</span>(<span class="s">"localhost"</span>)              <span class="c">// localhost:8080 ssl=false</span>
+<span class="f">connect</span>(<span class="s">"api.example.com"</span>, <span class="n">443</span>, <span class="k">true</span>)
+
+<span class="c">// Early return</span>
+<span class="k">task</span> <span class="f">safeDivide</span>(a, b) {
+    <span class="k">when</span> b == <span class="n">0</span> { <span class="k">give</span> <span class="k">nil</span> }
+    <span class="k">give</span> a / b
+}
+
+<span class="c">// Functions as values</span>
+<span class="k">task</span> <span class="f">double</span>(x) { <span class="k">give</span> x * <span class="n">2</span> }
+transform = double
+<span class="k">out</span> <span class="f">transform</span>(<span class="n">5</span>)   <span class="c">// 10</span>
+
+<span class="c">// Higher-order function</span>
+<span class="k">task</span> <span class="f">applyTwice</span>(fn, x) { <span class="k">give</span> <span class="f">fn</span>(<span class="f">fn</span>(x)) }
+<span class="k">out</span> <span class="f">applyTwice</span>(double, <span class="n">3</span>)   <span class="c">// 12</span></code>
+  </div>
+
+  <h3>Function arity &amp; error handling</h3>
+  <p>If you call a function with the wrong number of arguments (and no defaults cover the gap), the runtime throws a <code>RuntimeError</code> naming the expected and actual counts. Native built-in functions use <code>arity = -1</code> to signal variadic.</p>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ LAMBDA ════════════════════════════════════ -->
+<section class="section" id="lambda">
+  <div class="section-num">13</div>
+  <div class="section-meta">Functions</div>
+  <h2>Lambda &amp; closures</h2>
+  <p class="section-lead">EZ supports two anonymous function syntaxes. All functions — named or anonymous — close over their defining environment, enabling factory functions, counters, and memoisation.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · lambda forms</span></div>
+    <code><span class="c">// Arrow form: (params) => expr</span>
+double  = (x)    <span class="op">=></span> x * <span class="n">2</span>
+add     = (a, b) <span class="op">=></span> a + b
+noArgs  = ()     <span class="op">=></span> <span class="s">"hello"</span>
+
+<span class="c">// Block body arrow</span>
+process = (x) <span class="op">=></span> {
+    y = x * <span class="n">2</span>
+    <span class="k">give</span> y + <span class="n">1</span>
+}
+
+<span class="c">// Pipe form: |params| => expr  (alternative syntax)</span>
+square = |x| <span class="op">=></span> x * x
+sumTwo = |a, b| <span class="op">=></span> a + b
+
+<span class="c">// Pipe with block body</span>
+clamp = |val, lo, hi| {
+    <span class="k">when</span> val < lo { <span class="k">give</span> lo }
+    <span class="k">when</span> val > hi { <span class="k">give</span> hi }
+    <span class="k">give</span> val
+}</code>
+  </div>
+
+  <h3>Closures</h3>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · closures</span></div>
+    <code><span class="c">// Counter — inner function captures outer variable</span>
+<span class="k">task</span> <span class="f">makeCounter</span>(start = <span class="n">0</span>) {
+    count = start
+    <span class="k">give</span> () <span class="op">=></span> {
+        count <span class="op">+=</span> <span class="n">1</span>
+        <span class="k">give</span> count
+    }
+}
+
+c1 = <span class="f">makeCounter</span>()
+<span class="k">out</span> <span class="f">c1</span>()   <span class="c">// 1</span>
+<span class="k">out</span> <span class="f">c1</span>()   <span class="c">// 2</span>
+<span class="k">out</span> <span class="f">c1</span>()   <span class="c">// 3</span>
+
+c2 = <span class="f">makeCounter</span>(<span class="n">10</span>)
+<span class="k">out</span> <span class="f">c2</span>()   <span class="c">// 11  — independent state</span>
+
+<span class="c">// Factory returning specialised function</span>
+<span class="k">task</span> <span class="f">multiplier</span>(factor) {
+    <span class="k">give</span> (x) <span class="op">=></span> x * factor
+}
+triple = <span class="f">multiplier</span>(<span class="n">3</span>)
+<span class="k">out</span> <span class="f">triple</span>(<span class="n">7</span>)   <span class="c">// 21</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ ARRAYS ════════════════════════════════════ -->
+<section class="section" id="arrays">
+  <div class="section-num">14</div>
+  <div class="section-meta">Data Structures</div>
+  <h2>Arrays</h2>
+  <p class="section-lead">Ordered, mutable, mixed-type sequences. Zero-indexed. Internally stored as a <code>std::vector&lt;Value&gt;</code> allocated on the heap and shared by pointer — mutations propagate to all references.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Create</span>
+nums   = [<span class="n">1</span>, <span class="n">2</span>, <span class="n">3</span>, <span class="n">4</span>, <span class="n">5</span>]
+mixed  = [<span class="s">"hi"</span>, <span class="n">42</span>, <span class="k">true</span>, <span class="k">nil</span>]
+nested = [[<span class="n">1</span>,<span class="n">2</span>], [<span class="n">3</span>,<span class="n">4</span>]]
+empty  = []
+
+<span class="c">// Read (0-based index)</span>
+<span class="k">out</span> nums[<span class="n">0</span>]     <span class="c">// 1</span>
+<span class="k">out</span> nums[<span class="n">4</span>]     <span class="c">// 5</span>
+
+<span class="c">// Write</span>
+nums[<span class="n">0</span>] = <span class="n">99</span>
+
+<span class="c">// Add / remove (mutate in-place)</span>
+<span class="f">push</span>(nums, <span class="n">6</span>)          <span class="c">// append, returns array</span>
+last = <span class="f">pop</span>(nums)        <span class="c">// remove + return last</span>
+<span class="f">insert</span>(nums, <span class="n">0</span>, <span class="n">0</span>)     <span class="c">// prepend 0</span>
+<span class="f">remove</span>(nums, <span class="n">2</span>)        <span class="c">// remove at index 2, returns removed value</span>
+
+<span class="c">// Non-mutating transforms (return new array)</span>
+sorted  = <span class="f">sort</span>(nums)
+rev     = <span class="f">reverse</span>(nums)
+part    = <span class="f">slice</span>(nums, <span class="n">1</span>, <span class="n">4</span>)   <span class="c">// index 1,2,3</span>
+
+<span class="c">// Query</span>
+size  = <span class="f">len</span>(nums)
+found = <span class="f">contains</span>(nums, <span class="n">3</span>)
+idx   = <span class="f">indexOf</span>(nums, <span class="n">3</span>)    <span class="c">// -1 if not found</span>
+
+<span class="c">// Array + array concatenation</span>
+combined = [<span class="n">1</span>,<span class="n">2</span>] + [<span class="n">3</span>,<span class="n">4</span>]    <span class="c">// [1,2,3,4]</span>
+
+<span class="c">// Create with range()</span>
+r1 = <span class="f">range</span>(<span class="n">5</span>)          <span class="c">// [0,1,2,3,4]</span>
+r2 = <span class="f">range</span>(<span class="n">3</span>, <span class="n">8</span>)      <span class="c">// [3,4,5,6,7]</span></code>
+  </div>
+
+  <div class="warn">
+    <div class="warn-icon">⚠</div>
+    <div class="warn-body">
+      <strong>Out-of-bounds is a runtime error</strong>
+      <p>Accessing <code>arr[idx]</code> where <code>idx &lt; 0</code> or <code>idx &gt;= len(arr)</code> throws a <code>RuntimeError: Array index out of bounds</code>. Always guard with a length check or <code>try/catch</code>.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ DICTS ════════════════════════════════════ -->
+<section class="section" id="dicts">
+  <div class="section-num">15</div>
+  <div class="section-meta">Data Structures</div>
+  <h2>Dictionaries</h2>
+  <p class="section-lead">Hash maps with string keys and any-type values. Use brace literal syntax; access with dot notation or bracket notation. Internally an <code>unordered_map&lt;string, Value&gt;</code>.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Create — colon separator, or equals</span>
+person = { name: <span class="s">"Alice"</span>, age: <span class="n">30</span>, active: <span class="k">true</span> }
+point  = { x = <span class="n">10</span>, y = <span class="n">20</span> }    <span class="c">// equals also works as separator</span>
+empty  = {}
+
+<span class="c">// Access — dot or bracket notation</span>
+<span class="k">out</span> person.name          <span class="c">// "Alice"</span>
+<span class="k">out</span> person[<span class="s">"age"</span>]        <span class="c">// 30</span>
+
+<span class="c">// Add / modify</span>
+person.email = <span class="s">"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="284944414b4d684d50494558444d064b4745">[email&#160;protected]</a>"</span>
+person[<span class="s">"age"</span>] = <span class="n">31</span>
+
+<span class="c">// Missing key returns nil (no error)</span>
+<span class="k">out</span> person[<span class="s">"missing"</span>]    <span class="c">// nil</span>
+
+<span class="c">// Check existence</span>
+<span class="k">out</span> <span class="f">has_key</span>(person, <span class="s">"email"</span>)   <span class="c">// true</span>
+<span class="k">out</span> <span class="s">"name"</span> <span class="k">in</span> person           <span class="c">// true (in operator)</span>
+
+<span class="c">// Remove a key</span>
+<span class="f">dictRemove</span>(person, <span class="s">"active"</span>)
+
+<span class="c">// Iterate keys</span>
+<span class="k">get</span> k <span class="k">in</span> person {
+    <span class="k">out</span> <span class="s">`</span><span class="op">{</span>k<span class="op">}</span><span class="s">: </span><span class="op">{</span>person[k]<span class="op">}</span><span class="s">`</span>
+}
+
+<span class="c">// get all keys / values</span>
+<span class="k">out</span> <span class="f">keys</span>(person)
+<span class="k">out</span> <span class="f">values</span>(person)
+
+<span class="c">// Nesting</span>
+cfg = { db: { host: <span class="s">"localhost"</span>, port: <span class="n">5432</span> } }
+<span class="k">out</span> cfg.db.host   <span class="c">// "localhost"</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ MODELS ════════════════════════════════════ -->
+<section class="section" id="models">
+  <div class="section-num">16</div>
+  <div class="section-meta">OOP</div>
+  <h2>model (classes)</h2>
+  <p class="section-lead">Define object types with <code>model</code>. Use <code>init</code> for the constructor, <code>self</code> inside methods to reference the current instance, and <code>new ModelName(…)</code> to instantiate. If a model defines a <code>toString</code> task the interpreter calls it automatically on string conversion.</p>
+
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · model full example</span></div>
+    <code><span class="k">model</span> <span class="t">BankAccount</span> {
+    <span class="k">init</span>(owner, balance) {
+        <span class="se">self</span>.owner = owner
+        <span class="k">hidden</span> <span class="se">self</span>.balance = balance   <span class="c">// private property</span>
+    }
+
+    <span class="k">shown task</span> <span class="f">deposit</span>(amount) {
+        <span class="k">when</span> amount <= <span class="n">0</span> { <span class="k">throw</span> <span class="s">"Amount must be positive"</span> }
+        <span class="se">self</span>.balance <span class="op">+=</span> amount
+    }
+
+    <span class="k">shown task</span> <span class="f">withdraw</span>(amount) {
+        <span class="k">when</span> amount > <span class="se">self</span>.balance { <span class="k">throw</span> <span class="s">"Insufficient funds"</span> }
+        <span class="se">self</span>.balance <span class="op">-=</span> amount
+    }
+
+    <span class="k">shown task</span> <span class="f">getBalance</span>() { <span class="k">give</span> <span class="se">self</span>.balance }
+
+    <span class="c">// static — belongs to class, not instance</span>
+    <span class="k">static task</span> <span class="f">create</span>(owner) {
+        <span class="k">give</span> <span class="k">new</span> <span class="t">BankAccount</span>(owner, <span class="n">0</span>)
+    }
+
+    <span class="c">// Automatic string conversion</span>
+    <span class="k">task</span> <span class="f">toString</span>() {
+        <span class="k">give</span> <span class="s">`BankAccount(</span><span class="op">{</span><span class="se">self</span>.owner<span class="op">}</span><span class="s">, $</span><span class="op">{</span><span class="se">self</span>.balance<span class="op">}</span><span class="s">)`</span>
+    }
+}
+
+<span class="c">// Static method call via class name</span>
+acc = <span class="t">BankAccount</span>.<span class="f">create</span>(<span class="s">"Alice"</span>)
+<span class="f">acc.deposit</span>(<span class="n">1000</span>)
+<span class="f">acc.withdraw</span>(<span class="n">250</span>)
+<span class="k">out</span> <span class="f">acc.getBalance</span>()   <span class="c">// 750</span>
+<span class="k">out</span> acc                 <span class="c">// BankAccount(Alice, $750)  ← toString()</span></code>
+  </div>
+
+  <h3>Access modifiers</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Modifier</th><th>Meaning</th><th>Usage</th></tr></thead>
+      <tbody>
+        <tr><td>shown</td><td>Public — default if omitted</td><td><code>shown task getName() { … }</code></td></tr>
+        <tr><td>hidden</td><td>Private — only accessible from inside the model. A RuntimeError is thrown if accessed externally.</td><td><code>hidden self.balance = 0</code></td></tr>
+        <tr><td>static</td><td>Class-level member — accessed via <code>ClassName.member</code></td><td><code>static task create() { … }</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Property declarations in the class body</h3>
+  <p>Properties can be declared directly in the model body outside <code>init</code>. Optionally give them an initial value. Static properties with an initializer are evaluated once at class-definition time.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">model</span> <span class="t">Config</span> {
+    <span class="k">static</span> version = <span class="s">"1.0"</span>    <span class="c">// class-level constant</span>
+    <span class="k">hidden</span> debug = <span class="k">false</span>    <span class="c">// private default</span>
+
+    <span class="k">init</span>() {}
+
+    <span class="k">task</span> <span class="f">enableDebug</span>() { <span class="se">self</span>.debug = <span class="k">true</span> }
+}
+<span class="k">out</span> <span class="t">Config</span>.version   <span class="c">// "1.0"</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ INHERIT ════════════════════════════════════ -->
+<section class="section" id="inherit">
+  <div class="section-num">17</div>
+  <div class="section-meta">OOP</div>
+  <h2>Inheritance</h2>
+  <p class="section-lead">EZ supports single inheritance via <code>extends</code>. Use <code>super.init(…)</code> to call the parent constructor and <code>super.methodName()</code> to call a parent method. Method lookup walks up the class hierarchy automatically.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">model</span> <span class="t">Animal</span> {
+    <span class="k">init</span>(name, sound) {
+        <span class="se">self</span>.name  = name
+        <span class="se">self</span>.sound = sound
+    }
+    <span class="k">task</span> <span class="f">speak</span>() {
+        <span class="k">out</span> <span class="s">`</span><span class="op">{</span><span class="se">self</span>.name<span class="op">}</span><span class="s"> says: </span><span class="op">{</span><span class="se">self</span>.sound<span class="op">}</span><span class="s">`</span>
+    }
+    <span class="k">task</span> <span class="f">describe</span>() {
+        <span class="k">out</span> <span class="s">`I am </span><span class="op">{</span><span class="se">self</span>.name<span class="op">}</span><span class="s">`</span>
+    }
+}
+
+<span class="k">model</span> <span class="t">Dog</span> <span class="k">extends</span> <span class="t">Animal</span> {
+    <span class="k">init</span>(name, breed) {
+        <span class="f">super.init</span>(name, <span class="s">"Woof"</span>)   <span class="c">// call parent constructor</span>
+        <span class="se">self</span>.breed = breed
+    }
+    <span class="k">task</span> <span class="f">speak</span>() {              <span class="c">// override</span>
+        <span class="f">super.speak</span>()           <span class="c">// call parent method</span>
+        <span class="k">out</span> <span class="s">`(breed: </span><span class="op">{</span><span class="se">self</span>.breed<span class="op">}</span><span class="s">)`</span>
+    }
+}
+
+<span class="k">model</span> <span class="t">GuideDog</span> <span class="k">extends</span> <span class="t">Dog</span> {  <span class="c">// multi-level chain</span>
+    <span class="k">init</span>(name) {
+        <span class="f">super.init</span>(name, <span class="s">"Labrador"</span>)
+        <span class="se">self</span>.trained = <span class="k">true</span>
+    }
+}
+
+rex   = <span class="k">new</span> <span class="t">Dog</span>(<span class="s">"Rex"</span>, <span class="s">"Labrador"</span>)
+buddy = <span class="k">new</span> <span class="t">GuideDog</span>(<span class="s">"Buddy"</span>)
+
+<span class="f">rex.speak</span>()       <span class="c">// Rex says: Woof  /  (breed: Labrador)</span>
+<span class="f">rex.describe</span>()    <span class="c">// inherited from Animal</span>
+<span class="f">buddy.speak</span>()     <span class="c">// Buddy says: Woof  /  (breed: Labrador)</span>
+<span class="k">out</span> buddy.trained  <span class="c">// true</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ INTERFACES ════════════════════════════════════ -->
+<section class="section" id="interfaces">
+  <div class="section-num">18</div>
+  <div class="section-meta">OOP</div>
+  <h2>Interfaces</h2>
+  <p class="section-lead">Declare a set of required method names. Any model that <code>implements</code> an interface is checked at class-definition time — a <code>RuntimeError</code> is thrown immediately if any declared method is missing.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">interface</span> <span class="t">Serializable</span> {
+    <span class="k">task</span> <span class="f">serialize</span>()
+    <span class="k">task</span> <span class="f">deserialize</span>(data)
+}
+
+<span class="k">interface</span> <span class="t">Drawable</span> {
+    <span class="k">task</span> <span class="f">draw</span>()
+    <span class="k">task</span> <span class="f">resize</span>(factor)
+}
+
+<span class="c">// A model can implement multiple interfaces</span>
+<span class="k">model</span> <span class="t">Shape</span> <span class="k">implements</span> <span class="t">Drawable</span>, <span class="t">Serializable</span> {
+    <span class="k">init</span>(kind, size) {
+        <span class="se">self</span>.kind = kind
+        <span class="se">self</span>.size = size
+    }
+    <span class="k">task</span> <span class="f">draw</span>() {
+        <span class="k">out</span> <span class="s">`Drawing </span><span class="op">{</span><span class="se">self</span>.kind<span class="op">}</span><span class="s"> at size </span><span class="op">{</span><span class="se">self</span>.size<span class="op">}</span><span class="s">`</span>
+    }
+    <span class="k">task</span> <span class="f">resize</span>(f) { <span class="se">self</span>.size <span class="op">*=</span> f }
+    <span class="k">task</span> <span class="f">serialize</span>() {
+        <span class="k">give</span> <span class="f">to_json</span>({ kind: <span class="se">self</span>.kind, size: <span class="se">self</span>.size })
+    }
+    <span class="k">task</span> <span class="f">deserialize</span>(data) {
+        obj = <span class="f">parse_json</span>(data)
+        <span class="se">self</span>.kind = obj[<span class="s">"kind"</span>]
+        <span class="se">self</span>.size = obj[<span class="s">"size"</span>]
+    }
+}</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ STRUCTS ════════════════════════════════════ -->
+<section class="section" id="structs">
+  <div class="section-num">19</div>
+  <div class="section-meta">OOP</div>
+  <h2>Structs</h2>
+  <p class="section-lead">Structs are lightweight named records. They compile to a model whose <code>init</code> sets each declared field. Use them for simple data containers without behaviour.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">struct</span> <span class="t">Point</span> { x  y }
+<span class="k">struct</span> <span class="t">Color</span> { r  g  b }
+<span class="k">struct</span> <span class="t">Rect</span>  { x  y  width  height }
+
+<span class="c">// Instantiate — positional arguments match field order</span>
+p = <span class="k">new</span> <span class="t">Point</span>(<span class="n">10</span>, <span class="n">20</span>)
+c = <span class="k">new</span> <span class="t">Color</span>(<span class="n">255</span>, <span class="n">0</span>, <span class="n">128</span>)
+
+<span class="k">out</span> p.x    <span class="c">// 10</span>
+<span class="k">out</span> c.r    <span class="c">// 255</span>
+
+<span class="c">// Fields are mutable</span>
+p.x = <span class="n">99</span></code>
+  </div>
+
+  <div class="tip">
+    <div class="tip-icon">✦</div>
+    <div class="tip-body">
+      <strong>struct vs model</strong>
+      <p>Use <code>struct</code> for plain data records. Use <code>model</code> when you need methods, access control, inheritance, or a custom constructor. Under the hood a struct simply generates a model whose <code>init</code> assigns each field from positional arguments.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ ERRORS ════════════════════════════════════ -->
+<section class="section" id="errors">
+  <div class="section-num">20</div>
+  <div class="section-meta">Error Handling</div>
+  <h2>try / catch / throw</h2>
+  <p class="section-lead"><code>throw</code> any value as an error — string, number, dictionary, or instance. <code>catch</code> receives the thrown value (or the error message string for native <code>RuntimeError</code>s) in the named variable.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Basic try / catch</span>
+<span class="k">try</span> {
+    result = <span class="f">num</span>(<span class="s">"not a number"</span>)
+} <span class="k">catch</span> (err) {
+    <span class="k">out</span> <span class="s">`Caught: </span><span class="op">{</span>err<span class="op">}</span><span class="s">`</span>
+}
+
+<span class="c">// throw a string</span>
+<span class="k">task</span> <span class="f">divide</span>(a, b) {
+    <span class="k">when</span> b == <span class="n">0</span> { <span class="k">throw</span> <span class="s">"Division by zero"</span> }
+    <span class="k">give</span> a / b
+}
+
+<span class="c">// throw a structured dictionary — rich error objects</span>
+<span class="k">task</span> <span class="f">validateAge</span>(age) {
+    <span class="k">when</span> age < <span class="n">0</span> {
+        <span class="k">throw</span> { code: <span class="s">"INVALID"</span>, msg: <span class="s">"Age cannot be negative"</span>, got: age }
+    }
+    <span class="k">give</span> age
+}
+
+<span class="k">try</span> {
+    <span class="f">validateAge</span>(-<span class="n">5</span>)
+} <span class="k">catch</span> (e) {
+    <span class="k">when</span> <span class="f">type</span>(e) == <span class="s">"dictionary"</span> {
+        <span class="k">out</span> <span class="s">`[</span><span class="op">{</span>e[<span class="s">"code"</span>]<span class="op">}</span><span class="s">] </span><span class="op">{</span>e[<span class="s">"msg"</span>]<span class="op">}</span><span class="s"> (got </span><span class="op">{</span>e[<span class="s">"got"</span>]<span class="op">}</span><span class="s">)`</span>
+    } <span class="k">other</span> {
+        <span class="k">out</span> <span class="s">`Error: </span><span class="op">{</span>e<span class="op">}</span><span class="s">`</span>
+    }
+}
+
+<span class="c">// Re-throw — propagate after logging</span>
+<span class="k">try</span> {
+    <span class="f">riskyOperation</span>()
+} <span class="k">catch</span> (e) {
+    <span class="f">appendLine</span>(<span class="s">"errors.log"</span>, e)
+    <span class="k">throw</span> e
+}</code>
+  </div>
+
+  <div class="note">
+    <div class="note-icon">ℹ</div>
+    <div class="note-body">
+      <strong>Internals</strong>
+      <p>Native runtime errors (wrong argument count, index out of bounds, undefined variable, etc.) are thrown as C++ <code>RuntimeError</code> exceptions and caught by EZ's <code>catch</code>. The caught value in EZ is always a <strong>string</strong> — the error message. When you <code>throw</code> a dictionary in EZ, it is stringified to its <code>toString()</code> value before being wrapped in a <code>RuntimeError</code>.</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ IO ════════════════════════════════════ -->
+<section class="section" id="io">
+  <div class="section-num">21</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>I/O</h2>
+  <p class="section-lead">Printing to stdout and reading from stdin.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>out</td><td>out value</td><td>Print + newline. Keyword — no parentheses. Calls <code>stringify()</code> which uses <code>toString()</code> override if present.</td></tr>
+        <tr><td>print</td><td>print(v1, v2, …)</td><td>Variadic. Prints all args separated by spaces + newline.</td></tr>
+        <tr><td>input</td><td>input(prompt?)</td><td>Reads one line from stdin. Optional prompt string is printed first (no newline).</td></tr>
+        <tr><td>in</td><td>in (keyword)</td><td>Shorthand for <code>input()</code> with no prompt — usable as an expression: <code>x = in</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">out</span> <span class="s">"Hello!"</span>
+<span class="k">out</span> <span class="n">42</span>
+<span class="k">out</span> [<span class="n">1</span>, <span class="n">2</span>, <span class="n">3</span>]           <span class="c">// [1, 2, 3]</span>
+<span class="f">print</span>(<span class="s">"a"</span>, <span class="s">"b"</span>, <span class="s">"c"</span>)   <span class="c">// a b c</span>
+name = <span class="f">input</span>(<span class="s">"Name: "</span>)
+age  = <span class="f">num</span>(<span class="f">input</span>(<span class="s">"Age: "</span>))
+x    = in               <span class="c">// shorthand, no prompt</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ MATH ════════════════════════════════════ -->
+<section class="section" id="math">
+  <div class="section-num">22</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Math</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>floor</td><td>floor(x)</td><td>Round down to nearest integer</td></tr>
+        <tr><td>ceil</td><td>ceil(x)</td><td>Round up to nearest integer</td></tr>
+        <tr><td>round</td><td>round(x)</td><td>Round to nearest integer (half-away-from-zero)</td></tr>
+        <tr><td>abs</td><td>abs(x)</td><td>Absolute value</td></tr>
+        <tr><td>sqrt</td><td>sqrt(x)</td><td>Square root — throws if x &lt; 0</td></tr>
+        <tr><td>pow</td><td>pow(base, exp)</td><td>base raised to exp</td></tr>
+        <tr><td>min</td><td>min(a, b)</td><td>Smaller of two numbers</td></tr>
+        <tr><td>max</td><td>max(a, b)</td><td>Larger of two numbers</td></tr>
+        <tr><td>rand</td><td>rand()</td><td>Pseudorandom float in [0, 1) — seeded at startup via <code>std::srand(time())</code></td></tr>
+        <tr><td>randint</td><td>randint(min, max)</td><td>Pseudorandom integer in inclusive range [min, max]</td></tr>
+        <tr><td>xor</td><td>xor(a, b)</td><td>Bitwise XOR of two integers</td></tr>
+        <tr><td>ord</td><td>ord(s)</td><td>ASCII code of the first character of string</td></tr>
+        <tr><td>chr</td><td>chr(n)</td><td>Single-character string from ASCII code</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ STRFNS ════════════════════════════════════ -->
+<section class="section" id="strfns">
+  <div class="section-num">23</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>String functions</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>len</td><td>len(s)</td><td>Character count</td></tr>
+        <tr><td>str</td><td>str(x)</td><td>Convert any value to string via <code>stringify()</code></td></tr>
+        <tr><td>num</td><td>num(x)</td><td>Parse string to number; also accepts bool (true→1, false→0)</td></tr>
+        <tr><td>type / typeOf</td><td>type(x)</td><td>Returns the type name string</td></tr>
+        <tr><td>upper / toUpper</td><td>upper(s)</td><td>Uppercase</td></tr>
+        <tr><td>lower / toLower</td><td>lower(s)</td><td>Lowercase</td></tr>
+        <tr><td>trim</td><td>trim(s)</td><td>Strip leading and trailing whitespace (<code>\t\n\r </code>)</td></tr>
+        <tr><td>split</td><td>split(s, delim)</td><td>Split into array. Empty delim splits by character.</td></tr>
+        <tr><td>join</td><td>join(arr, delim)</td><td>Join array elements into string with delimiter</td></tr>
+        <tr><td>replace</td><td>replace(s, old, new)</td><td>Replace all occurrences of old with new</td></tr>
+        <tr><td>substr</td><td>substr(s, start, len)</td><td>Substring starting at <code>start</code>, length <code>len</code></td></tr>
+        <tr><td>substring</td><td>substring(s, start, len?)</td><td>Like substr; <code>len</code> defaults to end-of-string</td></tr>
+        <tr><td>slice</td><td>slice(s, start, end)</td><td>Substring from <code>start</code> (inclusive) to <code>end</code> (exclusive). Negative indices count from end.</td></tr>
+        <tr><td>indexOf</td><td>indexOf(s, sub)</td><td>First index of substring; -1 if not found</td></tr>
+        <tr><td>contains</td><td>contains(s, sub)</td><td>True if substring found</td></tr>
+        <tr><td>startsWith</td><td>startsWith(s, prefix)</td><td>True if string begins with prefix</td></tr>
+        <tr><td>endsWith</td><td>endsWith(s, suffix)</td><td>True if string ends with suffix</td></tr>
+        <tr><td>reverse</td><td>reverse(s)</td><td>Reversed copy of string</td></tr>
+        <tr><td>url_encode</td><td>url_encode(s)</td><td>Percent-encode a string for URLs (uses libcurl)</td></tr>
+        <tr><td>url_decode</td><td>url_decode(s)</td><td>Percent-decode a URL-encoded string</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code>s = <span class="s">"  Hello, World!  "</span>
+<span class="k">out</span> <span class="f">trim</span>(s)                       <span class="c">// "Hello, World!"</span>
+<span class="k">out</span> <span class="f">upper</span>(s)                      <span class="c">// "  HELLO, WORLD!  "</span>
+<span class="k">out</span> <span class="f">replace</span>(s, <span class="s">"World"</span>, <span class="s">"EZ"</span>)    <span class="c">// "  Hello, EZ!  "</span>
+<span class="k">out</span> <span class="f">split</span>(<span class="f">trim</span>(s), <span class="s">","</span>)           <span class="c">// ["Hello", " World!"]</span>
+<span class="k">out</span> <span class="f">join</span>([<span class="s">"a"</span>,<span class="s">"b"</span>,<span class="s">"c"</span>], <span class="s">"-"</span>)     <span class="c">// "a-b-c"</span>
+<span class="k">out</span> <span class="f">startsWith</span>(<span class="f">trim</span>(s), <span class="s">"Hello"</span>) <span class="c">// true</span>
+<span class="k">out</span> <span class="f">substr</span>(s, <span class="n">2</span>, <span class="n">5</span>)              <span class="c">// "Hello"</span>
+<span class="k">out</span> <span class="f">slice</span>(<span class="s">"abcdef"</span>, <span class="n">1</span>, <span class="n">4</span>)       <span class="c">// "bcd"</span>
+<span class="k">out</span> <span class="f">reverse</span>(<span class="s">"abcde"</span>)             <span class="c">// "edcba"</span>
+<span class="k">out</span> <span class="f">split</span>(<span class="s">"hello"</span>, <span class="s">""</span>)           <span class="c">// ["h","e","l","l","o"]</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ ARRFNS ════════════════════════════════════ -->
+<section class="section" id="arrfns">
+  <div class="section-num">24</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Array functions</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Mutates?</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>len</td><td>len(arr)</td><td>No</td><td>Number of elements</td></tr>
+        <tr><td>push</td><td>push(arr, val)</td><td>Yes</td><td>Append val to end — returns the same array</td></tr>
+        <tr><td>pop</td><td>pop(arr)</td><td>Yes</td><td>Remove and return the last element — throws on empty array</td></tr>
+        <tr><td>insert</td><td>insert(arr, index, val)</td><td>Yes</td><td>Insert val at index — returns same array</td></tr>
+        <tr><td>remove</td><td>remove(arr, index)</td><td>Yes</td><td>Remove element at index and return it — throws on OOB</td></tr>
+        <tr><td>slice</td><td>slice(arr, start, end)</td><td>No</td><td>New sub-array [start, end). Negative indices count from end.</td></tr>
+        <tr><td>sort</td><td>sort(arr)</td><td>No</td><td>Returns new sorted array (numbers by value; others by string)</td></tr>
+        <tr><td>reverse</td><td>reverse(arr)</td><td>No</td><td>Returns new reversed array</td></tr>
+        <tr><td>contains</td><td>contains(arr, val)</td><td>No</td><td>True if val found (deep equality)</td></tr>
+        <tr><td>indexOf</td><td>indexOf(arr, val)</td><td>No</td><td>Index of first match or -1</td></tr>
+        <tr><td>range</td><td>range(end) / range(start,end)</td><td>No</td><td>Array of integers [start, end) — exclusive at end</td></tr>
+        <tr><td>join</td><td>join(arr, delim)</td><td>No</td><td>Concatenate elements as string</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ HOF ════════════════════════════════════ -->
+<section class="section" id="hof">
+  <div class="section-num">25</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Higher-order functions</h2>
+  <p class="section-lead">All HOFs accept any callable — named task, lambda, or native function. They never mutate the original array.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>map</td><td>map(arr, fn)</td><td>Apply fn to every element, return new array of results</td></tr>
+        <tr><td>filter</td><td>filter(arr, fn)</td><td>Keep elements where fn returns truthy, return new array</td></tr>
+        <tr><td>reduce</td><td>reduce(arr, fn, initial)</td><td>Fold: fn(accumulator, element) → final accumulator</td></tr>
+        <tr><td>forEach</td><td>forEach(arr, fn)</td><td>Call fn on each element; returns nil</td></tr>
+        <tr><td>find</td><td>find(arr, fn)</td><td>Return first element where fn is truthy; nil if not found</td></tr>
+        <tr><td>every</td><td>every(arr, fn)</td><td>True if fn is truthy for all elements (short-circuits)</td></tr>
+        <tr><td>some</td><td>some(arr, fn)</td><td>True if fn is truthy for at least one element (short-circuits)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · HOF pipeline</span></div>
+    <code>people = [
+    { name: <span class="s">"Alice"</span>, age: <span class="n">30</span>, score: <span class="n">88</span> },
+    { name: <span class="s">"Bob"</span>,   age: <span class="n">17</span>, score: <span class="n">72</span> },
+    { name: <span class="s">"Carol"</span>, age: <span class="n">25</span>, score: <span class="n">95</span> },
+]
+
+names   = <span class="f">map</span>(people, (p) <span class="op">=></span> p[<span class="s">"name"</span>])
+adults  = <span class="f">filter</span>(people, (p) <span class="op">=></span> p[<span class="s">"age"</span>] >= <span class="n">18</span>)
+total   = <span class="f">reduce</span>(people, (acc, p) <span class="op">=></span> acc + p[<span class="s">"score"</span>], <span class="n">0</span>)
+avg     = total / <span class="f">len</span>(people)
+star    = <span class="f">find</span>(people, (p) <span class="op">=></span> p[<span class="s">"score"</span>] >= <span class="n">90</span>)
+passing = <span class="f">every</span>(people, (p) <span class="op">=></span> p[<span class="s">"score"</span>] >= <span class="n">60</span>)
+
+<span class="c">// Chain</span>
+topNames = <span class="f">map</span>(
+    <span class="f">filter</span>(people, (p) <span class="op">=></span> p[<span class="s">"score"</span>] >= <span class="n">85</span>),
+    (p) <span class="op">=></span> p[<span class="s">"name"</span>]
+)  <span class="c">// ["Alice", "Carol"]</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ DICTFNS ════════════════════════════════════ -->
+<section class="section" id="dictfns">
+  <div class="section-num">26</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Dictionary functions</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>keys</td><td>keys(dict)</td><td>Array of all string keys</td></tr>
+        <tr><td>values</td><td>values(dict)</td><td>Array of all values</td></tr>
+        <tr><td>has_key</td><td>has_key(dict, key)</td><td>True if key exists</td></tr>
+        <tr><td>contains</td><td>contains(dict, key)</td><td>Alias for has_key</td></tr>
+        <tr><td>dictRemove</td><td>dictRemove(dict, key)</td><td>Remove key from dict, returns modified dict</td></tr>
+        <tr><td>len</td><td>len(dict)</td><td>Number of key-value pairs</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ FILES ════════════════════════════════════ -->
+<section class="section" id="files">
+  <div class="section-num">27</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>File I/O</h2>
+  <p class="section-lead">Read and write files from disk. All paths can be relative (resolved from the working directory) or absolute.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>readFile</td><td>readFile(path)</td><td>Read entire file as a string — throws if not found</td></tr>
+        <tr><td>writeFile</td><td>writeFile(path, content)</td><td>Write string to file (overwrite). Returns true.</td></tr>
+        <tr><td>appendFile</td><td>appendFile(path, content)</td><td>Append string to file (no newline). Returns true.</td></tr>
+        <tr><td>readLines</td><td>readLines(path)</td><td>Read file into array of lines (no trailing newlines)</td></tr>
+        <tr><td>writeLine</td><td>writeLine(path, content)</td><td>Write string + newline (overwrite)</td></tr>
+        <tr><td>appendLine</td><td>appendLine(path, content)</td><td>Append string + newline</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="f">writeFile</span>(<span class="s">"data.txt"</span>, <span class="s">"first line\n"</span>)
+<span class="f">appendLine</span>(<span class="s">"data.txt"</span>, <span class="s">"second line"</span>)
+
+content = <span class="f">readFile</span>(<span class="s">"data.txt"</span>)
+lines   = <span class="f">readLines</span>(<span class="s">"data.txt"</span>)
+
+<span class="k">try</span> {
+    data = <span class="f">readFile</span>(<span class="s">"missing.txt"</span>)
+} <span class="k">catch</span> (e) {
+    <span class="k">out</span> <span class="s">`File error: </span><span class="op">{</span>e<span class="op">}</span><span class="s">`</span>
+}</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ JSON ════════════════════════════════════ -->
+<section class="section" id="json">
+  <div class="section-num">28</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>JSON</h2>
+  <p class="section-lead">EZ ships with a lightweight JSON parser/writer (MiniJson). No external library required.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>parse_json</td><td>parse_json(str)</td><td>JSON string → EZ value. Objects→dict, arrays→array, null→nil.</td></tr>
+        <tr><td>to_json</td><td>to_json(val)</td><td>EZ value → JSON string. Handles dict, array, string, number, bool, nil.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code>raw  = <span class="s">'{"name":"Alice","tags":["dev","admin"]}'</span>
+data = <span class="f">parse_json</span>(raw)
+<span class="k">out</span> data[<span class="s">"name"</span>]       <span class="c">// "Alice"</span>
+<span class="k">out</span> data[<span class="s">"tags"</span>][<span class="n">0</span>]   <span class="c">// "dev"</span>
+
+user = { id: <span class="n">1</span>, active: <span class="k">true</span>, role: <span class="k">nil</span> }
+<span class="k">out</span> <span class="f">to_json</span>(user)      <span class="c">// {"id": 1, "active": "true", "role": "null"}</span>
+
+<span class="c">// Round-trip file</span>
+cfg = <span class="f">parse_json</span>(<span class="f">readFile</span>(<span class="s">"config.json"</span>))
+<span class="f">writeFile</span>(<span class="s">"config.json"</span>, <span class="f">to_json</span>(cfg))</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ TIME ════════════════════════════════════ -->
+<section class="section" id="time">
+  <div class="section-num">29</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Time &amp; sleep</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>clock</td><td>clock()</td><td>Milliseconds since Unix epoch as a number (uses <code>std::chrono::system_clock</code>)</td></tr>
+        <tr><td>stop</td><td>stop(ms)</td><td>Block the current thread for N milliseconds (<code>std::this_thread::sleep_for</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">task</span> <span class="f">bench</span>(fn) {
+    t = <span class="f">clock</span>()
+    <span class="f">fn</span>()
+    <span class="k">give</span> <span class="f">clock</span>() - t
+}
+ms = <span class="f">bench</span>(() <span class="op">=></span> {
+    <span class="k">repeat</span> i = <span class="n">0</span> <span class="k">to</span> <span class="n">100000</span> { x = i * i }
+})
+<span class="k">out</span> <span class="s">`Loop took </span><span class="op">{</span>ms<span class="op">}</span><span class="s">ms`</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ TERMINAL ════════════════════════════════════ -->
+<section class="section" id="terminal">
+  <div class="section-num">30</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Terminal</h2>
+  <p class="section-lead">Windows-only console control using <code>Windows.h</code> + <code>conio.h</code>. Useful for TUI applications.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>clear</td><td>clear()</td><td>Clear terminal (<code>system("cls")</code>)</td></tr>
+        <tr><td>color</td><td>color(code)</td><td>Set text color via Windows console attribute. Codes 0–15.</td></tr>
+        <tr><td>reset</td><td>reset()</td><td>Reset to default color (attribute 7 = light gray)</td></tr>
+        <tr><td>gotoxy</td><td>gotoxy(x, y)</td><td>Move cursor to column x, row y</td></tr>
+        <tr><td>getch</td><td>getch()</td><td>Block until keypress, return as single-char string (<code>_getch()</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Color</th><th>Code</th><th>Color</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>Black</td><td>8</td><td>Dark gray</td></tr>
+        <tr><td>1</td><td>Dark blue</td><td>9</td><td>Bright blue</td></tr>
+        <tr><td>2</td><td>Dark green</td><td>10</td><td>Bright green</td></tr>
+        <tr><td>3</td><td>Dark cyan</td><td>11</td><td>Bright cyan</td></tr>
+        <tr><td>4</td><td>Dark red</td><td>12</td><td>Bright red</td></tr>
+        <tr><td>5</td><td>Magenta</td><td>13</td><td>Bright magenta</td></tr>
+        <tr><td>6</td><td>Dark yellow</td><td>14</td><td>Bright yellow</td></tr>
+        <tr><td>7</td><td>Light gray (default)</td><td>15</td><td>White</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ HTTP ════════════════════════════════════ -->
+<section class="section" id="http">
+  <div class="section-num">31</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>HTTP requests</h2>
+  <p class="section-lead">Synchronous and async outbound HTTP via libcurl.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>http_get</td><td>http_get(url, headers?)</td><td>Synchronous GET — returns body string. Optional headers dict.</td></tr>
+        <tr><td>http_post</td><td>http_post(url, body, headers?)</td><td>Synchronous POST — returns body string. Auto-adds <code>Content-Type: application/json</code> if body starts with <code>{</code> or <code>[</code>.</td></tr>
+        <tr><td>fetch</td><td>fetch(url, opts?)</td><td>Async HTTP — returns a future. Options dict: <code>method</code>, <code>body</code>, <code>headers</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// GET</span>
+body = <span class="f">http_get</span>(<span class="s">"https://api.github.com/users/octocat"</span>)
+user = <span class="f">parse_json</span>(body)
+<span class="k">out</span> user[<span class="s">"name"</span>]
+
+<span class="c">// POST JSON</span>
+payload = <span class="f">to_json</span>({ user: <span class="s">"alice"</span>, pw: <span class="s">"secret"</span> })
+resp    = <span class="f">http_post</span>(<span class="s">"https://api.example.com/login"</span>, payload)
+
+<span class="c">// Parallel async fetch</span>
+urls = [<span class="s">"https://api.example.com/a"</span>, <span class="s">"https://api.example.com/b"</span>]
+futs = <span class="f">map</span>(urls, (u) <span class="op">=></span> <span class="f">fetch</span>(u))
+results = <span class="f">map</span>(futs, (f) <span class="op">=></span> <span class="f">await</span>(f))</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ ASYNC ════════════════════════════════════ -->
+<section class="section" id="async">
+  <div class="section-num">32</div>
+  <div class="section-meta">Built-in Functions</div>
+  <h2>Async / spawn</h2>
+  <p class="section-lead">Run functions concurrently using <code>spawn</code>. Each spawn launches a C++ <code>std::async</code> task. Spawned threads share the global environment via <code>shared_ptr</code> — the environment uses <code>shared_mutex</code> for thread safety. Each thread gets its own child scope for local variables.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>spawn</td><td>spawn(fn, args…)</td><td>Run fn with optional args in a new thread. Returns a future.</td></tr>
+        <tr><td>await</td><td>await(future)</td><td>Block until future resolves; return its value.</td></tr>
+        <tr><td>sync</td><td>sync(future)</td><td>Alias for await()</td></tr>
+        <tr><td>fetch</td><td>fetch(url, opts?)</td><td>Async HTTP — also returns a future</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="k">task</span> <span class="f">slowSquare</span>(n) {
+    <span class="f">stop</span>(<span class="n">500</span>)
+    <span class="k">give</span> n * n
+}
+
+<span class="c">// Launch 4 in parallel — total ~500ms, not 2000ms</span>
+f1 = <span class="f">spawn</span>(slowSquare, <span class="n">2</span>)
+f2 = <span class="f">spawn</span>(slowSquare, <span class="n">4</span>)
+f3 = <span class="f">spawn</span>(slowSquare, <span class="n">6</span>)
+f4 = <span class="f">spawn</span>(slowSquare, <span class="n">8</span>)
+<span class="k">out</span> <span class="f">await</span>(f1) + <span class="f">await</span>(f2) + <span class="f">await</span>(f3) + <span class="f">await</span>(f4)   <span class="c">// 120</span></code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ DATABASE ════════════════════════════════════ -->
+<section class="section" id="database">
+  <div class="section-num">33</div>
+  <div class="section-meta">Advanced</div>
+  <h2>SQLite database</h2>
+  <p class="section-lead">First-class SQLite3 bindings built into the runtime. Open a database file, run SQL, get rows back as arrays of dictionaries. Parameterised queries use <code>?</code> placeholders and an array of values — no string interpolation into SQL, safe from injection.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Aliases</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>dbOpen(path)</td><td>db_open</td><td>Open or create SQLite file. Returns integer handle.</td></tr>
+        <tr><td>dbExec(h, sql, params?)</td><td>db_execute</td><td>INSERT / UPDATE / DELETE / CREATE. Optional <code>params</code> array for <code>?</code>. Returns true.</td></tr>
+        <tr><td>dbQuery(h, sql, params?)</td><td>db_query</td><td>SELECT. Returns array of row dicts. Column names are keys.</td></tr>
+        <tr><td>dbClose(h)</td><td>db_close</td><td>Close the connection. Returns true.</td></tr>
+        <tr><td>dbLastInsertId(h)</td><td>db_last_insert_id</td><td>ROWID of the last inserted row.</td></tr>
+        <tr><td>dbBegin(h)</td><td>db_begin</td><td>Start a transaction.</td></tr>
+        <tr><td>dbCommit(h)</td><td>db_commit</td><td>Commit.</td></tr>
+        <tr><td>dbRollback(h)</td><td>db_rollback</td><td>Rollback.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · full database example</span></div>
+    <code>db = <span class="f">dbOpen</span>(<span class="s">"users.db"</span>)
+
+<span class="f">dbExec</span>(db, <span class="s">"
+    CREATE TABLE IF NOT EXISTS users (
+        id    INTEGER PRIMARY KEY AUTOINCREMENT,
+        name  TEXT NOT NULL,
+        email TEXT UNIQUE,
+        age   INTEGER
+    )
+"</span>)
+
+<span class="c">// Parameterised — safe, no SQL injection</span>
+<span class="f">dbExec</span>(db, <span class="s">"INSERT INTO users (name, email, age) VALUES (?, ?, ?)"</span>,
+    [<span class="s">"Alice"</span>, <span class="s">"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="3455585d575174514c55594458511a575b59">[email&#160;protected]</a>"</span>, <span class="n">30</span>])
+<span class="f">dbExec</span>(db, <span class="s">"INSERT INTO users (name, email, age) VALUES (?, ?, ?)"</span>,
+    [<span class="s">"Bob"</span>,   <span class="s">"<a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="21434e43614459404c514d440f424e4c">[email&#160;protected]</a>"</span>,   <span class="n">25</span>])
+
+lastId = <span class="f">dbLastInsertId</span>(db)
+<span class="k">out</span> <span class="s">`Last row ID: </span><span class="op">{</span>lastId<span class="op">}</span><span class="s">`</span>
+
+<span class="c">// SELECT — each row is a dictionary</span>
+rows = <span class="f">dbQuery</span>(db, <span class="s">"SELECT * FROM users ORDER BY age DESC"</span>)
+<span class="k">get</span> row <span class="k">in</span> rows {
+    <span class="k">out</span> <span class="s">`</span><span class="op">{</span>row[<span class="s">"id"</span>]<span class="op">}</span><span class="s">. </span><span class="op">{</span>row[<span class="s">"name"</span>]<span class="op">}</span><span class="s"> (age </span><span class="op">{</span>row[<span class="s">"age"</span>]<span class="op">}</span><span class="s">)`</span>
+}
+
+<span class="c">// Parameterised SELECT</span>
+young = <span class="f">dbQuery</span>(db, <span class="s">"SELECT * FROM users WHERE age &lt; ?"</span>, [<span class="n">30</span>])
+
+<span class="c">// Transaction</span>
+<span class="f">dbBegin</span>(db)
+<span class="k">try</span> {
+    <span class="f">dbExec</span>(db, <span class="s">"UPDATE users SET age = age + 1 WHERE name = ?"</span>, [<span class="s">"Alice"</span>])
+    <span class="f">dbExec</span>(db, <span class="s">"UPDATE users SET age = age + 1 WHERE name = ?"</span>, [<span class="s">"Bob"</span>])
+    <span class="f">dbCommit</span>(db)
+} <span class="k">catch</span> (e) {
+    <span class="f">dbRollback</span>(db)
+    <span class="k">out</span> <span class="s">`TX failed: </span><span class="op">{</span>e<span class="op">}</span><span class="s">`</span>
+}
+
+<span class="f">dbClose</span>(db)</code>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ SERVER ════════════════════════════════════ -->
+<section class="section" id="server">
+  <div class="section-num">34</div>
+  <div class="section-meta">Advanced</div>
+  <h2>Web server</h2>
+  <p class="section-lead">Spin up a multi-threaded HTTP/1.1 server with two lines. Uses raw WinSock2 sockets. Each request is handled in a detached <code>std::thread</code> sharing the global interpreter environment.</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>server</td><td>server(port, handler)</td><td>Bind to port, accept connections forever, call handler(req) per request. Blocks the script.</td></tr>
+        <tr><td>serveFile</td><td>serveFile(path)</td><td>Build a response dict for a file with auto-detected MIME type. Returns 404 dict if not found.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Request object keys</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>method</td><td>string</td><td>"GET", "POST", "PUT", "DELETE", etc.</td></tr>
+        <tr><td>path</td><td>string</td><td>URL path without query string</td></tr>
+        <tr><td>fullPath</td><td>string</td><td>Full URL path including query string</td></tr>
+        <tr><td>body</td><td>string</td><td>Raw request body</td></tr>
+        <tr><td>headers</td><td>dictionary</td><td>All request headers</td></tr>
+        <tr><td>query</td><td>dictionary</td><td>Parsed query-string parameters</td></tr>
+        <tr><td>form</td><td>dictionary</td><td>URL-decoded form data from <code>application/x-www-form-urlencoded</code> POST</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Response object keys</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>status</td><td>200</td><td>HTTP status code</td></tr>
+        <tr><td>body</td><td>""</td><td>Response body string</td></tr>
+        <tr><td>headers</td><td>Content-Type: text/html</td><td>Response headers dictionary</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez · REST API with SQLite backend</span></div>
+    <code>db = <span class="f">dbOpen</span>(<span class="s">"notes.db"</span>)
+<span class="f">dbExec</span>(db, <span class="s">"CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, text TEXT)"</span>)
+
+<span class="f">server</span>(<span class="n">8080</span>, <span class="k">task</span>(req) {
+    path   = req[<span class="s">"path"</span>]
+    method = req[<span class="s">"method"</span>]
+
+    <span class="k">when</span> path == <span class="s">"/"</span> {
+        <span class="k">give</span> <span class="f">serveFile</span>(<span class="s">"public/index.html"</span>)
+    }
+
+    <span class="k">when</span> path == <span class="s">"/api/notes"</span> <span class="k">and</span> method == <span class="s">"GET"</span> {
+        rows = <span class="f">dbQuery</span>(db, <span class="s">"SELECT * FROM notes"</span>)
+        <span class="k">give</span> {
+            status: <span class="n">200</span>,
+            headers: { <span class="s">"Content-Type"</span>: <span class="s">"application/json"</span> },
+            body:   <span class="f">to_json</span>(rows)
+        }
+    }
+
+    <span class="k">when</span> path == <span class="s">"/api/notes"</span> <span class="k">and</span> method == <span class="s">"POST"</span> {
+        data = <span class="f">parse_json</span>(req[<span class="s">"body"</span>])
+        <span class="f">dbExec</span>(db, <span class="s">"INSERT INTO notes (text) VALUES (?)"</span>, [data[<span class="s">"text"</span>]])
+        id = <span class="f">dbLastInsertId</span>(db)
+        <span class="k">give</span> { status: <span class="n">201</span>, body: <span class="f">to_json</span>({ id: id }) }
+    }
+
+    <span class="k">when</span> req[<span class="s">"query"</span>][<span class="s">"name"</span>] {
+        name = req[<span class="s">"query"</span>][<span class="s">"name"</span>]
+        <span class="k">give</span> { body: <span class="s">`Hello, </span><span class="op">{</span>name<span class="op">}</span><span class="s">!`</span> }
+    }
+
+    <span class="k">give</span> { status: <span class="n">404</span>, body: <span class="s">"Not Found"</span> }
+})</code>
+  </div>
+  <div class="danger">
+    <div class="danger-icon">⚠</div>
+    <div class="danger-body">
+      <strong>Windows only</strong>
+      <p><code>server()</code> uses WinSock2 APIs and is only compiled on Windows. Calling it on any other platform throws a <code>RuntimeError</code>: "server() is only supported on Windows".</p>
+    </div>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ PACKAGES ════════════════════════════════════ -->
+<section class="section" id="packages">
+  <div class="section-num">35</div>
+  <div class="section-meta">Advanced</div>
+  <h2>Package manager</h2>
+  <p class="section-lead">EZ has a built-in package manager. Packages are GitHub repositories fetched as ZIP archives using libcurl, extracted with system <code>tar</code>, and stored in <code>C:/ezlib/</code>. A <code>packages.json</code> manifest tracks installed packages.</p>
+
+  <div class="cmd"><span class="cmd-prompt">$</span><span class="cmd-text">ez install math</span></div>
+  <div class="cmd"><span class="cmd-prompt">$</span><span class="cmd-text">ez install collections dev</span></div>
+  <div class="cmd"><span class="cmd-prompt">$</span><span class="cmd-text">ez list</span></div>
+  <div class="cmd"><span class="cmd-prompt">$</span><span class="cmd-text">ez init mypackage</span></div>
+
+  <h3>Default registry URL</h3>
+  <p>Without a custom URL the package manager fetches from <code>https://github.com/imabd645/EZ&lt;packagename&gt;</code>. The specified branch (default: <code>main</code>) is downloaded as a ZIP archive.</p>
+
+  <h3>package.ez manifest</h3>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">json</span></div>
+    <code>{
+  "name":        "mypackage",
+  "version":     "1.0.0",
+  "description": "A short description",
+  "author":      "yourname",
+  "main":        "main.ez",
+  "repository":  "https://github.com/yourname/mypackage",
+  "dependencies": {
+    "utils": "1.0.0"
+  }
+}</code>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>name</td><td>Yes</td><td>Package identifier</td></tr>
+        <tr><td>version</td><td>Yes</td><td>Semver string</td></tr>
+        <tr><td>main</td><td>Yes</td><td>Entry-point .ez file (default: main.ez)</td></tr>
+        <tr><td>description</td><td>No</td><td>Short description</td></tr>
+        <tr><td>author</td><td>No</td><td>Author name/handle</td></tr>
+        <tr><td>repository</td><td>No</td><td>GitHub URL — used when installing this package's own dependencies</td></tr>
+        <tr><td>dependencies</td><td>No</td><td>Map of package name → version. Installed automatically.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ USE ════════════════════════════════════ -->
+<section class="section" id="use">
+  <div class="section-num">36</div>
+  <div class="section-meta">Advanced</div>
+  <h2>use (imports)</h2>
+  <p class="section-lead"><code>use</code> loads and executes an EZ file in the current interpreter context. Everything defined in that file becomes available in the current scope.</p>
+  <div class="code-block">
+    <div class="code-bar"><div class="code-dots"><span class="d1"></span><span class="d2"></span><span class="d3"></span></div><span class="code-label">ez</span></div>
+    <code><span class="c">// Import a local file</span>
+<span class="k">use</span> utils.ez
+<span class="f">myUtil</span>()    <span class="c">// function defined in utils.ez</span>
+
+<span class="c">// Import an installed package (looks in C:/ezlib/math/)</span>
+<span class="k">use</span> math
+<span class="k">out</span> math.sqrt(<span class="n">25</span>)</code>
+  </div>
+
+  <h3>Module resolution order</h3>
+  <ol>
+    <li>Try exact path as given (relative to working directory)</li>
+    <li>Try <code>C:/ezlib/&lt;name&gt;</code> (direct file in lib folder)</li>
+    <li>Read <code>C:/ezlib/&lt;name&gt;/package.ez</code> and load the <code>main</code> field</li>
+    <li>Try <code>C:/ezlib/&lt;name&gt;.ez</code></li>
+    <li>Try <code>C:/ezlib/&lt;name&gt;/main.ez</code></li>
+    <li>Throw <code>RuntimeError: Could not find module '&lt;name&gt;'</code></li>
+  </ol>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════ GC ════════════════════════════════════ -->
+<section class="section" id="gc">
+  <div class="section-num">37</div>
+  <div class="section-meta">Advanced</div>
+  <h2>Runtime internals</h2>
+  <p class="section-lead">Understanding how EZ works under the hood — useful when debugging or optimising programs.</p>
+
+  <h3>Execution pipeline</h3>
+  <ol>
+    <li><strong>Lexer</strong> — tokenises source into <code>Token</code> structs with type, lexeme, literal value, line, and column. Reports lexer errors to stderr and sets <code>hadError = true</code>.</li>
+    <li><strong>Parser</strong> — builds an AST using recursive-descent (precedence climbing). Reports parse errors and continues via panic-mode synchronisation (skips to next statement boundary).</li>
+    <li><strong>Interpreter</strong> — tree-walks the AST. Environments form a linked scope chain. Control flow uses C++ exceptions: <code>ReturnException</code>, <code>BreakException</code>, <code>ContinueException</code>.</li>
+  </ol>
+
+  <h3>Memory management</h3>
+  <p>EZ uses <code>std::shared_ptr</code> for all heap-allocated values (strings, arrays, dictionaries, functions, instances). The <code>GarbageCollector</code> class counts allocations and triggers a "collection" every 1000 allocations — in this implementation collection is a no-op since shared_ptr handles reclamation automatically. The GC infrastructure is in place for a future mark-and-sweep upgrade.</p>
+
+  <h3>Environment model</h3>
+  <p>Each scope is an <code>Environment</code> object containing an <code>unordered_map</code> of variable names to <code>Value</code>s, plus a shared pointer to the parent environment. Lookups walk the parent chain. Reads use <code>shared_lock</code>; writes use <code>unique_lock</code> — safe for multi-threaded <code>spawn</code> scenarios.</p>
+
+  <h3>Value representation</h3>
+  <p>Every EZ value is a <code>Value</code> struct holding a <code>std::variant</code> of twelve possible types: <code>nullptr_t</code> (nil), <code>bool</code>, <code>double</code>, <code>StringPtr</code>, <code>ArrayPtr</code>, <code>FunctionPtr</code>, <code>NativeFnPtr</code>, <code>ClassPtr</code>, <code>InstancePtr</code>, <code>DictionaryPtr</code>, <code>FuturePtr</code>, <code>SuperPtr</code>. Copies are cheap for scalars and shared-pointer increments for heap types.</p>
+
+  <h3>Error codes</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Exit code</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>0</td><td>Success</td></tr>
+        <tr><td>65</td><td>Lexer or parser error in source file</td></tr>
+        <tr><td>1</td><td>Package manager error (download/extract failed)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-footer">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+</section>
+
+
+<div id="progress-wrap">
+  <div class="progress-nav">
+    <button class="sec-prev" disabled>← Previous</button>
+    <button class="sec-next">Next →</button>
+  </div>
+  <div id="progress-track"><div id="progress-bar"></div></div>
+  <span id="progress-label">1 / 37</span>
+</div>
+
+</main>
+
+<script>
+(function () {
+  const sidebar  = document.getElementById('sidebar');
+  const pageOrder = [
+    'hero','install','keywords','types','variables','strings','comments',
+    'when','while','repeat','get','escape',
+    'tasks','lambda',
+    'arrays','dicts',
+    'models','inherit','interfaces','structs',
+    'errors',
+    'io','math','strfns','arrfns','hof','dictfns','files','json','time','terminal','http','async',
+    'database','server','packages','use','gc'
+  ];
+
+  const linkMap = {};
+  document.querySelectorAll('nav a[data-s]').forEach(a => { linkMap[a.dataset.s] = a; });
+
+  let current = 'hero';
+
+  /* ── Show a section ── */
+  function goTo(id, addHistory) {
+    if (!document.getElementById(id)) return;
+    if (id === current && document.getElementById(id).classList.contains('active')) return;
+
+    // Hide current
+    const prev = document.getElementById(current);
+    if (prev) prev.classList.remove('active');
+
+    // Show new
+    current = id;
+    const next = document.getElementById(current);
+    next.classList.add('active');
+
+    // Scroll main to top
+    window.scrollTo(0, 0);
+
+    // Update nav active state
+    Object.values(linkMap).forEach(l => l.classList.remove('active'));
+    const activeLink = linkMap[id];
+    if (activeLink) {
+      activeLink.classList.add('active');
+      // Scroll sidebar to show active link
+      const linkTop    = activeLink.offsetTop;
+      const linkHeight = activeLink.offsetHeight;
+      const sidebarH   = sidebar.clientHeight;
+      sidebar.scrollTo({ top: linkTop - sidebarH / 2 + linkHeight / 2, behavior: 'smooth' });
+    }
+
+    // Update footer nav buttons
+    updateFooter();
+
+    // Push browser history so back/forward work
+    if (addHistory !== false) {
+      history.pushState({ section: id }, '', '#' + id);
+    }
+
+    // Update progress bar
+    updateProgress();
+  }
+
+  /* ── Footer prev/next ── */
+  function updateFooter() {
+    const idx  = pageOrder.indexOf(current);
+    const prevId = idx > 0 ? pageOrder[idx - 1] : null;
+    const nextId = idx < pageOrder.length - 1 ? pageOrder[idx + 1] : null;
+
+    document.querySelectorAll('.sec-prev').forEach(btn => {
+      btn.disabled = !prevId;
+      btn.onclick  = prevId ? () => goTo(prevId) : null;
+      btn.textContent = prevId ? '← ' + labelFor(prevId) : '← Previous';
+    });
+    document.querySelectorAll('.sec-next').forEach(btn => {
+      btn.disabled = !nextId;
+      btn.onclick  = nextId ? () => goTo(nextId) : null;
+      btn.textContent = nextId ? labelFor(nextId) + ' →' : 'Next →';
+    });
+  }
+
+  function labelFor(id) {
+    const a = linkMap[id];
+    return a ? a.textContent.trim() : id;
+  }
+
+  /* ── Progress bar ── */
+  function updateProgress() {
+    const idx = pageOrder.indexOf(current);
+    const pct = Math.round((idx / (pageOrder.length - 1)) * 100);
+    const bar = document.getElementById('progress-bar');
+    if (bar) bar.style.width = pct + '%';
+    const label = document.getElementById('progress-label');
+    if (label) label.textContent = (idx + 1) + ' / ' + pageOrder.length;
+  }
+
+  /* ── Nav link clicks ── */
+  document.querySelectorAll('nav a[data-s]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      goTo(a.dataset.s);
+    });
+  });
+
+  /* ── Keyboard navigation ── */
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const idx = pageOrder.indexOf(current);
+    if ((e.key === 'ArrowRight' || e.key === 'ArrowDown') && idx < pageOrder.length - 1) {
+      e.preventDefault();
+      goTo(pageOrder[idx + 1]);
+    }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowUp') && idx > 0) {
+      e.preventDefault();
+      goTo(pageOrder[idx - 1]);
+    }
+  });
+
+  /* ── Browser back/forward ── */
+  window.addEventListener('popstate', e => {
+    const id = (e.state && e.state.section) || pageOrder[0];
+    goTo(id, false);
+  });
+
+  /* ── Init: show section from URL hash or default ── */
+  const initId = location.hash ? location.hash.slice(1) : 'hero';
+  goTo(document.getElementById(initId) ? initId : 'hero', false);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# Scrolling Demo
+# Showcases: ScrollPanel and Mouse Wheel support
+
+use "lib/gui.ez"
+
+gui.setTheme("dark")
+
+win = gui.window("EZ Scroll System", 400, 500)
+
+# Create a scroll panel that fills the window
+# Content area is set to 380px wide and 2000px high
+scroll = win.scrollPanel(0, 0, 400, 500)
+scroll.contentSize(380, 2000)
+
+vbox = scroll.vbox(10)
+
+# Add many buttons to test scrolling
+i = 1
+while i <= 50 {
+    label = "Item Number " + i
+    vbox.button(label, 300, 35, || {
+        gui.alert("Scroll", "You clicked item " + i)
+    })
+    i = i + 1
+}
+
+win.run()

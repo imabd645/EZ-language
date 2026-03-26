@@ -8,12 +8,13 @@
 
 class Lexer {
 public:
-    explicit Lexer(const std::string& source);
+    explicit Lexer(const std::string& source, const std::string& filename = "");
     std::vector<Token> tokenize();
     bool hasError() const { return hadError; }
 
 private:
     std::string source;
+    std::string filename;
     std::vector<Token> tokens;
     size_t start = 0;
     size_t current = 0;

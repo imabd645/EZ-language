@@ -1,0 +1,7 @@
+use "lib/gui.ez"
+gui.setTheme("dark")
+win = gui.window("Dark Test", 400, 300)
+vbox = win.vbox(10)
+vbox.label("Dark Mode Active", 200, 30).color("neon")
+vbox.button("Click", 100, 30, || { out "Clicked" })
+win.run()

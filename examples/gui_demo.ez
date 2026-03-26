@@ -1,0 +1,34 @@
+use "lib/gui.ez"
+
+# Create a modern styled window
+win = gui.window("EZ GUI Demo", 500, 400)
+
+# Add a vertical layout container
+vbox = win.vbox(20)
+
+vbox.addLabel("EZ GUI: Easier than Tkinter!", 200, 30)
+
+vbox.addLabel("Enter your name:", 150, 20)
+input = vbox.addInput(200, 30)
+
+vbox.addSpace(10)
+
+vbox.addLabel("Select your level:", 150, 20)
+vbox.addSlider(200, 30, 0, 100)
+
+vbox.addSpace(10)
+
+# Add a button with a task callback
+vbox.addButton("Submit", 100, 40, || {
+    name = gui_get_text(input)
+    gui.alert("Greetings", "Welcome to the GUI world, " + name + "!")
+})
+
+vbox.addButton("Open File", 100, 40, || {
+    path = gui.openFile("Select a file")
+    when path {
+        gui.alert("Selected", "You chose: " + path)
+    }
+})
+
+win.run()

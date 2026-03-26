@@ -78,8 +78,9 @@
 - Threading support
 
 ### Developer Experience
+- 🚀 **Professional GUI Framework (v6.0)**
+- 🔍 **Detailed Stack Traces** for runtime errors
 - Interactive REPL mode
-- Clear error messages with line numbers
 - Package manager for code reuse
 - Built-in documentation
 
@@ -1234,6 +1235,59 @@ db_close(db)
 
 ---
 
+## 🖼️ Professional GUI Framework (v6.0)
+
+EZ now features a state-of-the-art, object-oriented GUI library built on the native Windows API.
+
+### Key Components
+- **Window**: The main application entry point.
+- **Panel**: A container for grouped widgets or nested layouts.
+- **Tabs**: Native Win32 navigation tabs for multi-screen apps.
+- **ScrollPanel**: Automatic scrollbar support for large content areas.
+- **Widgets**: Professional `Button`, `Label`, `Input`, and `Dropdown` controls.
+
+### Modern Aesthetics
+- 🌑 **Immersive Dark Mode**: `gui.setTheme("dark")` transforms the entire app, including the title bar.
+- 📐 **Rounded Corners**: Automatically applies Windows 11 rounded aesthetics.
+- 🖋️ **Modern Typography**: High-quality Segoe UI defaults.
+
+### Example: Navigation Dashboard
+```ez
+use "gui.ez"
+gui.setTheme("dark")
+
+win = gui.window("EZ Dashboard", 800, 600)
+sidebar = win.panel(0, 0, 200, 600).color("dark")
+
+content = win.panel(200, 0, 600, 600)
+vbox = content.vbox(20)
+vbox.label("Main View", 300, 50).font("Segoe UI", 28)
+
+win.run()
+```
+
+---
+
+## 🛠️ Professional Error Handling
+
+EZ v6.0 introduces professional-grade diagnostics with detailed stack traces.
+
+### Stack Trace Coverage
+When a runtime error occurs, EZ provides a complete call sequence, including:
+1.  **Exact line and file** of the error.
+2.  **Function call hierarchy** leading to the fault.
+3.  **Cross-file tracking** for imported modules.
+
+**Example Trace:**
+```text
+Runtime Error: Division by zero
+  at [line 4] in lib/utils.ez
+  at calculate() in lib/math.ez:12
+  at main() in app.ez:5
+```
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! Here's how you can help:
@@ -1279,13 +1333,13 @@ For more detailed documentation:
 ## 🛣️ Roadmap
 
 ### Version 1.1 (Upcoming)
-- [ ] Improved error messages
+- [x] Improved error messages (Stack Traces)
 - [ ] Debugger support
 - [ ] Standard library expansion
 - [ ] Performance optimizations
 
 ### Version 1.2 (Future)
-- [ ] Native GUI library
+- [x] Native GUI library (v6.0 Released)
 - [ ] Package registry website
 - [ ] VS Code extension
 - [ ] Documentation generator

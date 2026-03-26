@@ -578,7 +578,7 @@ void registerBuiltins(Interpreter& interp) {
             std::vector<Value> result;
             
             for (const auto& elem : arr) {
-                result.push_back(interp.callFunction(args[1], {elem}, 0));
+                result.push_back(interp.callFunction(args[1], {elem}, 0, "native"));
             }
             
             return Value::makeArray(result);
@@ -598,7 +598,7 @@ void registerBuiltins(Interpreter& interp) {
             std::vector<Value> result;
             
             for (const auto& elem : arr) {
-                Value test = interp.callFunction(args[1], {elem}, 0);
+                Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) {
                     result.push_back(elem);
                 }
@@ -621,7 +621,7 @@ void registerBuiltins(Interpreter& interp) {
             Value acc = args[2];
             
             for (const auto& elem : arr) {
-                acc = interp.callFunction(args[1], {acc, elem}, 0);
+                acc = interp.callFunction(args[1], {acc, elem}, 0, "native");
             }
             
             return acc;
@@ -640,7 +640,7 @@ void registerBuiltins(Interpreter& interp) {
             const auto& arr = args[0].asArray();
             
             for (const auto& elem : arr) {
-                interp.callFunction(args[1], {elem}, 0);
+                interp.callFunction(args[1], {elem}, 0, "native");
             }
             
             return Value();
@@ -659,7 +659,7 @@ void registerBuiltins(Interpreter& interp) {
             const auto& arr = args[0].asArray();
             
             for (const auto& elem : arr) {
-                Value test = interp.callFunction(args[1], {elem}, 0);
+                Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) {
                     return elem;
                 }
@@ -681,7 +681,7 @@ void registerBuiltins(Interpreter& interp) {
             const auto& arr = args[0].asArray();
             
             for (const auto& elem : arr) {
-                Value test = interp.callFunction(args[1], {elem}, 0);
+                Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (!test.isTruthy()) {
                     return Value(false);
                 }
@@ -703,7 +703,7 @@ void registerBuiltins(Interpreter& interp) {
             const auto& arr = args[0].asArray();
             
             for (const auto& elem : arr) {
-                Value test = interp.callFunction(args[1], {elem}, 0);
+                Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) {
                     return Value(true);
                 }
@@ -1061,7 +1061,7 @@ void registerBuiltins(Interpreter& interp) {
 
                         std::vector<Value> callbackArgs = {reqArg};
                         try {
-                            Value result = threadInterp.callFunction(handler, callbackArgs, 0);
+                            Value result = threadInterp.callFunction(handler, callbackArgs, 0, "native");
                             std::string respStr;
                             
                             if (result.isDictionary()) {
@@ -1671,7 +1671,7 @@ void registerBuiltins(Interpreter& interp) {
                 [globalEnv, func, fnArgs]() -> Value {
                     Interpreter threadInterp;
                     threadInterp.setGlobalEnv(globalEnv);
-                    return threadInterp.callFunction(func, fnArgs, 0);
+                    return threadInterp.callFunction(func, fnArgs, 0, "native");
                 }).share();
                 
             return Value::makeFuture(fut);

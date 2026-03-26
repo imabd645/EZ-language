@@ -1,0 +1,33 @@
+use "lib/gui/main.ez"
+
+# Create a modern styled window
+win = gui.window("EZ Elegant UI", 500, 450)
+
+# Layout manager for easy stacking
+vbox = win.vbox(20)
+
+# Styled Label with fluent API
+title = vbox.label("Profile Settings", 300, 50)
+title.color("neon").font("Segoe UI", 24)
+
+# Dropdown Menu
+vbox.label("Select Gender:", 200, 20).color("gray")
+gender = vbox.dropdown(250, 150) # Increased height for list
+gender.add("Male").add("Female").add("Other")
+
+# Input field
+vbox.label("Full Name:", 200, 20).color("gray")
+nameInput = vbox.input(300, 40)
+nameInput.color("dark").font("Consolas", 14)
+
+vbox.addSpace(20)
+
+# Submit Button
+btn = vbox.button("Save Profile", 150, 50, || {
+    name = nameInput.value()
+    gen = gender.selected()
+    gui.alert("Profile Saved", "Name: " + name + "\nGender: " + gen)
+})
+btn.color("green").font("Arial", 16)
+
+win.run()

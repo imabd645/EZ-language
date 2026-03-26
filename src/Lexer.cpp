@@ -42,7 +42,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"throw", TokenType::THROW}
 };
 
-Lexer::Lexer(const std::string& source) : source(source) {}
+Lexer::Lexer(const std::string& source, const std::string& filename) : source(source), filename(filename) {}
 
 std::vector<Token> Lexer::tokenize() {
     while (!isAtEnd()) {
@@ -50,7 +50,7 @@ std::vector<Token> Lexer::tokenize() {
         scanToken();
     }
     
-    tokens.push_back(Token(TokenType::END_OF_FILE, "", line, column));
+    tokens.push_back(Token(TokenType::END_OF_FILE, "", line, column, filename));
     return tokens;
 }
 
@@ -197,22 +197,22 @@ void Lexer::scanToken() {
 
 void Lexer::addToken(TokenType type) {
     std::string text = source.substr(start, current - start);
-    tokens.push_back(Token(type, text, line, column - (int)(current - start)));
+    tokens.push_back(Token(type, text, line, column - (int)(current - start), filename));
 }
 
 void Lexer::addToken(TokenType type, double value) {
     std::string text = source.substr(start, current - start);
-    tokens.push_back(Token(type, text, value, line, column - (int)(current - start)));
+    tokens.push_back(Token(type, text, value, line, column - (int)(current - start), filename));
 }
 
 void Lexer::addToken(TokenType type, const std::string& value) {
     std::string text = source.substr(start, current - start);
-    tokens.push_back(Token(type, text, value, line, column - (int)(current - start)));
+    tokens.push_back(Token(type, text, value, line, column - (int)(current - start), filename));
 }
 
 void Lexer::addToken(TokenType type, bool value) {
     std::string text = source.substr(start, current - start);
-    tokens.push_back(Token(type, text, value, line, column - (int)(current - start)));
+    tokens.push_back(Token(type, text, value, line, column - (int)(current - start), filename));
 }
 
 void Lexer::scanString() {
@@ -413,41 +413,42 @@ void Lexer::scanInterpolatedString() {
         // Simple string, no interpolation
         std::string fullText;
         for (auto& p : parts) fullText += p.text;
-        tokens.push_back(Token(TokenType::STRING, "`" + fullText + "`", fullText, startLine, startCol));
+        tokens.push_back(Token(TokenType::STRING, "`" + fullText + "`", fullText, startLine, startCol, filename));
         return;
     }
     
     // Emit: LPAREN + string/expr parts joined by PLUS + RPAREN
-    tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol));
+    tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol, filename));
     
     bool first = true;
     for (auto& part : parts) {
         if (!first) {
-            tokens.push_back(Token(TokenType::PLUS, "+", startLine, startCol));
+            tokens.push_back(Token(TokenType::PLUS, "+", startLine, startCol, filename));
         }
         first = false;
         
         if (!part.isExpr) {
             // String literal part
-            tokens.push_back(Token(TokenType::STRING, "\"" + part.text + "\"", part.text, startLine, startCol));
+            tokens.push_back(Token(TokenType::STRING, "\"" + part.text + "\"", part.text, startLine, startCol, filename));
         } else {
             // Expression part: emit str( <tokens> )
-            tokens.push_back(Token(TokenType::IDENTIFIER, "str", startLine, startCol));
-            tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol));
+            tokens.push_back(Token(TokenType::IDENTIFIER, "str", startLine, startCol, filename));
+            tokens.push_back(Token(TokenType::LPAREN, "(", startLine, startCol, filename));
             
             // Sub-lex the expression
-            Lexer subLexer(part.text);
+            Lexer subLexer(part.text, filename);
             auto subTokens = subLexer.tokenize();
             for (auto& t : subTokens) {
                 if (t.type != TokenType::END_OF_FILE && t.type != TokenType::NEWLINE) {
                     t.line = startLine; // Fix line numbers
+                    t.filename = filename;
                     tokens.push_back(t);
                 }
             }
             
-            tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol));
+            tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol, filename));
         }
     }
     
-    tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol));
+    tokens.push_back(Token(TokenType::RPAREN, ")", startLine, startCol, filename));
 }

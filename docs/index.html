@@ -1,0 +1,2981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EZ Language Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface-raised: #21253a;
+            --border: #2e3250;
+            --accent-purple: #7c6af7;
+            --accent-teal: #1fb896;
+            --text-primary: #e8e8f0;
+            --text-secondary: #9090b0;
+            --text-muted: #5a5a7a;
+            --code-bg: #141720;
+            --keyword: #c792ea;
+            --string: #c3e88d;
+            --number: #f78c6c;
+            --comment: #546e7a;
+            --function: #82aaff;
+            --type: #ffcb6b;
+            --shadow: rgba(0,0,0,0.4);
+            --success: #4ade80;
+        }
+
+        [data-theme="light"] {
+            --bg: #fafafa;
+            --surface: #ffffff;
+            --surface-raised: #f5f5f5;
+            --border: #e0e0e0;
+            --text-primary: #1a1a2e;
+            --text-secondary: #4a4a5a;
+            --text-muted: #7a7a8a;
+            --code-bg: #f4f4f4;
+            --shadow: rgba(0,0,0,0.08);
+            --keyword: #7c4dff;
+            --string: #388e3c;
+            --number: #f57c00;
+            --comment: #78909c;
+            --function: #2962ff;
+            --type: #ff6f00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            line-height: 1.75;
+            background: var(--bg);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Scroll Progress Bar */
+        .scroll-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-teal));
+            width: 0%;
+            z-index: 1001;
+            transition: width 0.1s;
+        }
+
+        /* Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(15, 17, 23, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 1000;
+        }
+
+        [data-theme="light"] .navbar {
+            background: rgba(250, 250, 250, 0.85);
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 200px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-purple);
+            text-decoration: none;
+        }
+
+        .logo-docs {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .nav-center {
+            flex: 1;
+            max-width: 400px;
+        }
+
+        .search-box {
+            position: relative;
+            width: 100%;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(124, 106, 247, 0.1);
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            width: 16px;
+            height: 16px;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 200px;
+            justify-content: flex-end;
+        }
+
+        .nav-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-secondary);
+            cursor: ponumer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: var(--surface-raised);
+            color: var(--text-primary);
+            border-color: var(--accent-purple);
+        }
+
+        .nav-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .mobile-menu-btn {
+            display: none;
+        }
+
+        /* Layout */
+        .layout {
+            display: flex;
+            padding-top: 60px;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 60px;
+            width: 260px;
+            height: calc(100vh - 60px);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 20px 0;
+            z-index: 999;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .nav-section {
+            margin-bottom: 8px;
+        }
+
+        .nav-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            cursor: ponumer;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            transition: color 0.2s;
+            user-select: none;
+        }
+
+        .nav-section-header:hover {
+            color: var(--text-secondary);
+        }
+
+        .nav-section-header svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s;
+        }
+
+        .nav-section.collapsed .nav-section-header svg {
+            transform: rotate(-90deg);
+        }
+
+        .nav-section.collapsed .nav-links {
+            display: none;
+        }
+
+        .nav-links {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .nav-link {
+            padding: 8px 20px 8px 28px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            border-left: 2px solid transparent;
+            transition: all 0.2s;
+            line-height: 1.5;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: rgba(124, 106, 247, 0.05);
+        }
+
+        .nav-link.active {
+            color: var(--accent-purple);
+            border-left-color: var(--accent-purple);
+            background: rgba(124, 106, 247, 0.1);
+        }
+
+        .nav-link.hidden {
+            display: none;
+        }
+
+        /* Main Content */
+        .main {
+            margin-left: 260px;
+            flex: 1;
+            padding: 40px;
+            max-width: 900px;
+        }
+
+        /* Content Styles */
+        .content-section {
+            margin-bottom: 60px;
+        }
+
+        h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            line-height: 1.3;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 600;
+            margin: 48px 0 20px;
+            color: var(--text-primary);
+            line-height: 1.3;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 12px;
+        }
+
+        h3 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 32px 0 16px;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        h4 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 24px 0 12px;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 16px;
+            color: var(--text-secondary);
+        }
+
+        ul, ol {
+            margin: 16px 0;
+            padding-left: 24px;
+        }
+
+        li {
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        a {
+            color: var(--accent-purple);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        blockquote {
+            background: var(--surface);
+            border-left: 3px solid var(--accent-teal);
+            padding: 16px 20px;
+            margin: 24px 0;
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+            color: var(--text-secondary);
+        }
+
+        /* Code Blocks */
+        .code-block {
+            position: relative;
+            margin: 20px 0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: var(--code-bg);
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--surface-raised);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-lang {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-teal);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .copy-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 12px;
+            cursor: ponumer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+            color: white;
+        }
+
+        .copy-btn.copied {
+            background: var(--success);
+            border-color: var(--success);
+            color: #0f1117;
+        }
+
+        .copy-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        pre {
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        pre code {
+            font-family: inherit;
+            background: transparent;
+            padding: 0;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.9em;
+            background: var(--surface);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--accent-purple);
+        }
+
+        /* EZ Language Syntax Highlighting */
+        .hljs-keyword {
+            color: var(--keyword);
+        }
+
+        .hljs-string {
+            color: var(--string);
+        }
+
+        .hljs-number {
+            color: var(--number);
+        }
+
+        .hljs-comment {
+            color: var(--comment);
+            font-style: italic;
+        }
+
+        .hljs-function {
+            color: var(--function);
+        }
+
+        .hljs-type {
+            color: var(--type);
+        }
+
+        .hljs-literal {
+            color: var(--number);
+        }
+
+        /* Tables */
+        .table-wrapper {
+            overflow-x: auto;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th {
+            background: var(--surface-raised);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: var(--surface);
+        }
+
+        /* Feature Cards */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 24px 0;
+        }
+
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent-purple);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px var(--shadow);
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(124, 106, 247, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+
+        .feature-icon svg {
+            width: 20px;
+            height: 20px;
+            color: var(--accent-purple);
+        }
+
+        .feature-card h4 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .feature-card p {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        /* Back to Top */
+        .back-to-top {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            color: white;
+            border: none;
+            cursor: ponumer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            box-shadow: 0 4px 16px rgba(124, 106, 247, 0.4);
+            z-index: 998;
+        }
+
+        .back-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .back-to-top:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(124, 106, 247, 0.5);
+        }
+
+        .back-to-top svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Footer */
+        footer {
+            margin-top: 80px;
+            padding: 40px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .footer-logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-purple);
+            margin-bottom: 8px;
+        }
+
+        .footer-tagline {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .footer-links a:hover {
+            color: var(--accent-purple);
+        }
+
+        .footer-license {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        /* Mobile Sidebar Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 998;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .nav-center {
+                max-width: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 0 16px;
+            }
+
+            .nav-center {
+                display: none;
+            }
+
+            .mobile-menu-btn {
+                display: flex;
+            }
+
+            .nav-left {
+                min-width: auto;
+            }
+
+            .nav-right {
+                min-width: auto;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main {
+                margin-left: 0;
+                padding: 24px 16px;
+                max-width: 100%;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            h2 {
+                font-size: 22px;
+            }
+
+            h3 {
+                font-size: 18px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .table-wrapper {
+                font-size: 13px;
+            }
+
+            th, td {
+                padding: 10px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="scroll-progress" id="scrollProgress"></div>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="nav-left">
+            <button class="nav-btn mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+            <a href="#" class="logo">EZ</a>
+            <span class="logo-docs">docs</span>
+        </div>
+        <div class="nav-center">
+            <div class="search-box">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search documentation...">
+            </div>
+        </div>
+        <div class="nav-right">
+            <button class="nav-btn" id="themeToggle" aria-label="Toggle theme">
+                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+            <a href="https://github.com/imabd645/EZ-language" target="_blank" class="nav-btn" aria-label="GitHub">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <nav>
+            <div class="nav-section" data-section="intro">
+                <div class="nav-section-header">
+                    Introduction
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#what-is-ez" class="nav-link">What is EZ?</a>
+                    <a href="#why-ez" class="nav-link">Why EZ?</a>
+                    <a href="#design-philosophy" class="nav-link">Design philosophy</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="getting-started">
+                <div class="nav-section-header">
+                    Getting Started
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#prerequisites" class="nav-link">Prerequisites</a>
+                    <a href="#installation" class="nav-link">Installation</a>
+                    <a href="#adding-to-path" class="nav-link">Adding to PATH</a>
+                    <a href="#running-first-script" class="nav-link">Running your first script</a>
+                    <a href="#hello-world" class="nav-link">Hello World example</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="language-basics">
+                <div class="nav-section-header">
+                    Language Basics
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#comments" class="nav-link">Comments</a>
+                    <a href="#variables" class="nav-link">Variables</a>
+                    <a href="#data-types" class="nav-link">Data types</a>
+                    <a href="#operators" class="nav-link">Operators</a>
+                    <a href="#string-operations" class="nav-link">String operations</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="control-flow">
+                <div class="nav-section-header">
+                    Control Flow
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#when-statements" class="nav-link">when / other / other</a>
+                    <a href="#repeat-loops" class="nav-link">repeat (loops)</a>
+                    <a href="#escape-skip" class="nav-link">escape and skip</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="functions">
+                <div class="nav-section-header">
+                    Functions (Tasks)
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#defining-task" class="nav-link">Defining a task</a>
+                    <a href="#parameters" class="nav-link">Parameters</a>
+                    <a href="#return-values" class="nav-link">Return values (get)</a>
+                    <a href="#scope" class="nav-link">Scope</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="oop">
+                <div class="nav-section-header">
+                    Object-Oriented Programming
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#defining-model" class="nav-link">Defining a model</a>
+                    <a href="#constructors" class="nav-link">Constructors</a>
+                    <a href="#attributes" class="nav-link">Attributes</a>
+                    <a href="#member-tasks" class="nav-link">Member tasks (methods)</a>
+                    <a href="#creating-instances" class="nav-link">Creating instances</a>
+                    <a href="#accessing-members" class="nav-link">Accessing members</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="arrays">
+                <div class="nav-section-header">
+                    Arrays & Collections
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#creating-arrays" class="nav-link">Creating arrays</a>
+                    <a href="#indexing" class="nav-link">Indexing</a>
+                    <a href="#looping-arrays" class="nav-link">Looping over arrays</a>
+                    <a href="#array-operations" class="nav-link">Built-in array operations</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="builtins">
+                <div class="nav-section-header">
+                    Built-in Functions
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#io-functions" class="nav-link">I/O functions</a>
+                    <a href="#math-functions" class="nav-link">Math functions</a>
+                    <a href="#string-functions" class="nav-link">String functions</a>
+                    <a href="#type-functions" class="nav-link">Type functions</a>
+                    <a href="#array-functions" class="nav-link">Array functions</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="database">
+                <div class="nav-section-header">
+                    Database (SQLite)
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#connecting-db" class="nav-link">Connecting to a database</a>
+                    <a href="#creating-tables" class="nav-link">Creating tables</a>
+                    <a href="#inserting-data" class="nav-link">Inserting data</a>
+                    <a href="#querying-data" class="nav-link">Querying data</a>
+                    <a href="#parameterised-queries" class="nav-link">Parameterised queries</a>
+                    <a href="#closing-connection" class="nav-link">Closing connection</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="web-server">
+                <div class="nav-section-header">
+                    Web Server
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#starting-server" class="nav-link">Starting a server</a>
+                    <a href="#defining-routes" class="nav-link">Defining routes</a>
+                    <a href="#handling-requests" class="nav-link">Handling requests</a>
+                    <a href="#sending-responses" class="nav-link">Sending responses</a>
+                    <a href="#full-api-example" class="nav-link">Full API example</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="packages">
+                <div class="nav-section-header">
+                    Package Manager
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#ez-install" class="nav-link">ez install</a>
+                    <a href="#using-packages" class="nav-link">Using installed packages</a>
+                    <a href="#package-directory" class="nav-link">Package directory</a>
+                    <a href="#available-packages" class="nav-link">Available packages</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="examples">
+                <div class="nav-section-header">
+                    Examples
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#example-calculator" class="nav-link">Calculator</a>
+                    <a href="#example-todo" class="nav-link">Todo list (with SQLite)</a>
+                    <a href="#example-rest-api" class="nav-link">Simple REST API</a>
+                    <a href="#example-bank" class="nav-link">OOP: Bank account model</a>
+                </div>
+            </div>
+
+            <div class="nav-section" data-section="reference">
+                <div class="nav-section-header">
+                    Reference
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </div>
+                <div class="nav-links">
+                    <a href="#keyword-reference" class="nav-link">Keyword reference table</a>
+                    <a href="#operator-precedence" class="nav-link">Operator precedence</a>
+                    <a href="#error-messages" class="nav-link">Error messages guide</a>
+                    <a href="#comparison" class="nav-link">Comparison with Python/JS</a>
+                </div>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+
+        <!-- Introduction -->
+        <section class="content-section" id="what-is-ez">
+            <h1>EZ Language Documentation</h1>
+            <p>A modern numerpreted programming language designed for simplicity and readability.</p>
+            
+            <h2>What is EZ?</h2>
+            <p>EZ is a modern numerpreted programming language built in C++17. It is designed to feel natural and readable — closer to plain English than traditional languages. EZ is ideal for learners, scripting, building small web APIs, and working with local databases without any boilerplate.</p>
+            
+            <p>EZ combines the best of both worlds: the simplicity of Python with the expressiveness of modern scripting languages. Whether you're a beginner learning your first programming language or an experienced developer looking for a lightweight tool for quick scripts, EZ provides an numuitive environment that gets out of your way.</p>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                        </svg>
+                    </div>
+                    <h4>Simple Syntax</h4>
+                    <p>No semicolons, no curly braces. Just clean, readable code.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+                        </svg>
+                    </div>
+                    <h4>Built-in SQLite</h4>
+                    <p>Database operations made simple with native SQL support.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"></polyline>
+                            <polyline points="8 6 2 12 8 18"></polyline>
+                        </svg>
+                    </div>
+                    <h4>Web Server</h4>
+                    <p>Build APIs and web apps without external frameworks.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="6" y1="3" x2="6" y2="15"></line>
+                            <circle cx="18" cy="6" r="3"></circle>
+                            <circle cx="6" cy="18" r="3"></circle>
+                            <path d="M18 9a9 9 0 0 1-9 9"></path>
+                        </svg>
+                    </div>
+                    <h4>Package Manager</h4>
+                    <p>Install and share packages with the built-in <code>ez</code> command.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                            <path d="M2 17l10 5 10-5"></path>
+                            <path d="M2 12l10 5 10-5"></path>
+                        </svg>
+                    </div>
+                    <h4>OOP Support</h4>
+                    <p>Full object-oriented programming with models and inheritance.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        </svg>
+                    </div>
+                    <h4>Single Executable</h4>
+                    <p>Just download and run. No complex setup required.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="content-section" id="why-ez">
+            <h2>Why EZ?</h2>
+            <ul>
+                <li><strong>No semicolons, no curly braces clutter</strong> — EZ uses indentation and English-like keywords for a cleaner look</li>
+                <li><strong>English-like keywords</strong> — Use <code>when</code>, <code>repeat</code>, <code>get</code>, <code>out</code> instead of cryptic symbols</li>
+                <li><strong>Built-in SQLite database support</strong> — Work with databases without installing drivers or writing boilerplate</li>
+                <li><strong>Built-in web server</strong> — No frameworks needed to build REST APIs or simple web services</li>
+                <li><strong>Package manager included</strong> — Install community packages with a simple <code>ez install</code> command</li>
+                <li><strong>Single executable</strong> — Just download and run. All dependencies bundled.</li>
+            </ul>
+        </section>
+
+        <section class="content-section" id="design-philosophy">
+            <h2>Design Philosophy</h2>
+            <blockquote>
+                "Programming should read like instructions you'd give a person, not commands you'd give a machine."
+            </blockquote>
+            <p>EZ was created with the belief that programming languages should prioritize human readability. Every design decision — from keyword choice to syntax structure — serves this goal. The language is deliberately minimal, including only essential features to reduce cognitive load while remaining powerful enough for real-world tasks.</p>
+        </section>
+
+        <!-- Getting Started -->
+        <section class="content-section" id="prerequisites">
+            <h2>Getting Started</h2>
+            <h3>Prerequisites</h3>
+            <p>Before installing EZ, ensure you have:</p>
+            <ul>
+                <li><strong>Windows OS</strong> — EZ currently supports Windows (Linux/Mac support coming soon)</li>
+                <li><strong>No additional installs needed</strong> — All required DLLs are bundled with the executable</li>
+            </ul>
+        </section>
+
+        <section class="content-section" id="installation">
+            <h3>Installation</h3>
+            <p>Follow these steps to install EZ on your Windows system:</p>
+            <ol>
+                <li>Download <code>ez.exe</code> and all <code>.dll</code> files from the <a href="https://github.com/imabd645/EZ-language/releases">GitHub releases page</a></li>
+                <li>Create a permanent folder for EZ, for example: <code>C:\ezlang</code></li>
+                <li>Place all downloaded files in this folder</li>
+                <li>Add the folder to your system PATH (see instructions below)</li>
+            </ol>
+        </section>
+
+        <section class="content-section" id="adding-to-path">
+            <h3>Adding to PATH</h3>
+            <p>To use EZ from any command prompt window, add it to your system PATH:</p>
+            <ol>
+                <li>Press <kbd>Win + S</kbd> and search "Environment Variables"</li>
+                <li>Click "Edit the system environment variables"</li>
+                <li>Click the "Environment Variables" button</li>
+                <li>Under "System variables", find "Path" and click "Edit"</li>
+                <li>Click "New" and enter: <code>C:\ezlang</code> (or your chosen folder)</li>
+                <li>Click "OK" on all dialogs to save</li>
+                <li>Restart your terminal/command prompt</li>
+            </ol>
+            <p>After adding to PATH, you can run <code>ez</code> from any directory.</p>
+        </section>
+
+        <section class="content-section" id="running-first-script">
+            <h3>Running Your First Script</h3>
+            <p>To run an EZ script, use the following command:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">Terminal</span>
+                    <button class="copy-btn" data-code='ez path/to/yourscript.ez'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-bash">ez path/to/yourscript.ez</code></pre>
+            </div>
+            <p>You can also run EZ without arguments to enter numeractive mode:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">Terminal</span>
+                    <button class="copy-btn" data-code='ez'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-bash">ez</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="hello-world">
+            <h3>Hello World Example</h3>
+            <p>Create a file named <code>hello.ez</code> with the following content:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='out("Hello, World!")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">out("Hello, World!")</code></pre>
+            </div>
+            <p>Run it:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">Terminal</span>
+                    <button class="copy-btn" data-code='ez hello.ez'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-bash">ez hello.ez</code></pre>
+            </div>
+            <p>Output:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">Output</span>
+                </div>
+                <pre><code>Hello, World!</code></pre>
+            </div>
+        </section>
+
+        <!-- Language Basics -->
+        <section class="content-section" id="comments">
+            <h2>Language Basics</h2>
+            <h3>Comments</h3>
+            <p>Comments in EZ start with the <code>#</code> character and skip to the end of the line:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# This is a single-line comment&#10;out("Hello")  # This is an inline comment'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># This is a single-line comment
+out("Hello")  # This is an inline comment</code></pre>
+            </div>
+            <p>Currently, EZ only supports single-line comments. Multi-line comments can be simulated by using multiple single-line comments.</p>
+        </section>
+
+        <section class="content-section" id="variables">
+            <h3>Variables</h3>
+            <p>Variables in EZ are declared using the <code>let</code> keyword. EZ is dynamically typed, so you don't need to specify the type:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let name = "Alice"&#10;let age = 25&#10;let score = 98.5&#10;let active = true&#10;let items = [1, 2, 3]&#10;let nothing = nil'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let name = "Alice"
+let age = 25
+let score = 98.5
+let active = true
+let items = [1, 2, 3]
+let nothing = nil</code></pre>
+            </div>
+            <p>Variable names must start with a letter or underscore and can contain letters, numbers, and underscores. EZ uses snake_case by convention.</p>
+        </section>
+
+        <section class="content-section" id="data-types">
+            <h3>Data Types</h3>
+            <p>EZ supports the following data types:</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Type</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>String</code></td><td>Text enclosed in double quotes</td><td><code>"hello world"</code></td></tr>
+                        <tr><td><code>Number</code></td><td>Integers and numing-ponum numbers</td><td><code>42</code>, <code>3.14</code></td></tr>
+                        <tr><td><code>Boolean</code></td><td>true or false values</td><td><code>true</code>, <code>false</code></td></tr>
+                        <tr><td><code>Array</code></td><td>Ordered collection of values</td><td><code>[1, 2, 3]</code></td></tr>
+                        <tr><td><code>Null</code></td><td>Represents no value</td><td><code>nil</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>You can check the type of a value using the <code>type()</code> function:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let x = 42&#10;out(type(x))  # Number&#10;let y = "hello"&#10;out(type(y))  # String'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let x = 42
+out(type(x))  # Number
+
+let y = "hello"
+out(type(y))  # String</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="operators">
+            <h3>Operators</h3>
+            <h4>Arithmetic Operators</h4>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>+</code></td><td>Addition</td><td><code>5 + 3 = 8</code></td></tr>
+                        <tr><td><code>-</code></td><td>Subtraction</td><td><code>5 - 3 = 2</code></td></tr>
+                        <tr><td><code>*</code></td><td>Multiplication</td><td><code>5 * 3 = 15</code></td></tr>
+                        <tr><td><code>/</code></td><td>Division</td><td><code>5 / 2 = 2.5</code></td></tr>
+                        <tr><td><code>%</code></td><td>Modulo (remainder)</td><td><code>5 % 2 = 1</code></td></tr>
+                        <tr><td><code>**</code></td><td>Exponentiation (power)</td><td><code>2 ** 3 = 8</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <h4>Comparison Operators</h4>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>==</code></td><td>Equal to</td><td><code>5 == 5</code> (true)</td></tr>
+                        <tr><td><code>!=</code></td><td>Not equal to</td><td><code>5 != 3</code> (true)</td></tr>
+                        <tr><td><code>&gt;</code></td><td>Greater than</td><td><code>5 > 3</code> (true)</td></tr>
+                        <tr><td><code>&lt;</code></td><td>Less than</td><td><code>5 < 3</code> (false)</td></tr>
+                        <tr><td><code>&gt;=</code></td><td>Greater than or equal</td><td><code>5 >= 5</code> (true)</td></tr>
+                        <tr><td><code>&lt;=</code></td><td>Less than or equal</td><td><code>5 <= 3</code> (false)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <h4>Logical Operators</h4>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>and</code></td><td>Logical AND</td><td><code>true and true</code></td></tr>
+                        <tr><td><code>or</code></td><td>Logical OR</td><td><code>true or false</code></td></tr>
+                        <tr><td><code>not</code></td><td>Logical NOT</td><td><code>not true</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="string-operations">
+            <h3>String Operations</h3>
+            <p>Strings in EZ support concatenation using the <code>+</code> operator:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let first = "Hello"&#10;let second = "World"&#10;let greeting = first + ", " + second + "!"&#10;out(greeting)  # Hello, World!'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let first = "Hello"
+let second = "World"
+let greeting = first + ", " + second + "!"
+out(greeting)  # Hello, World!</code></pre>
+            </div>
+            <p>Use the <code>len()</code> function to givethe length of a string:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let text = "Hello, World!"&#10;out(len(text))  # 13'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let text = "Hello, World!"
+out(len(text))  # 13</code></pre>
+            </div>
+        </section>
+
+        <!-- Control Flow -->
+        <section class="content-section" id="when-statements">
+            <h2>Control Flow</h2>
+            <h3>when / other / other (if/elif/else)</h3>
+            <p>EZ uses English-like keywords for conditional statements. Use <code>when</code> for if, <code>other</code> for else if, and <code>other</code> for else:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let age = 20&#10;&#10;when age >= 18 {&#10;    out("Adult")&#10;} other age >= 13 {&#10;    out("Teenager")&#10;} other {&#10;    out("Child")&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let age = 20
+
+when age >= 18 {
+    out("Adult")
+} other age >= 13 {
+    out("Teenager")
+} other {
+    out("Child")
+}</code></pre>
+            </div>
+            <p>You can also use <code>and</code> and <code>or</code> for compound conditions:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let score = 85&#10;let passed = true&#10;&#10;when score >= 80 and passed {&#10;    out("Excellent work!")&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let score = 85
+let passed = true
+
+when score >= 80 and passed {
+    out("Excellent work!")
+}</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="repeat-loops">
+            <h3>repeat (loops)</h3>
+            <p>EZ supports two styles of loops with the <code>repeat</code> keyword: while-style and for-style.</p>
+            <h4>While-style loops</h4>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let i = 0&#10;repeat i < 5 {&#10;    out(i)&#10;    i = i + 1&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let i = 0
+repeat i < 5 {
+    out(i)
+    i = i + 1
+}</code></pre>
+            </div>
+            <h4>For-style loops (iterating over arrays)</h4>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='repeat item in ["apple", "banana", "cherry"] {&#10;    out(item)&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">repeat item in ["apple", "banana", "cherry"] {
+    out(item)
+}</code></pre>
+            </div>
+            <h4>Looping with index</h4>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let fruits = ["apple", "banana", "cherry"]&#10;let i = 0&#10;repeat i < len(fruits) {&#10;    out(i + ": " + fruits[i])&#10;    i = i + 1&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let fruits = ["apple", "banana", "cherry"]
+let i = 0
+repeat i < len(fruits) {
+    out(i + ": " + fruits[i])
+    i = i + 1
+}</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="escape-skip">
+            <h3>escape and skip</h3>
+            <p>Use <code>escape</code> to exit a loop early and <code>skip</code> to skip to the next iteration:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let i = 0&#10;repeat i < 10 {&#10;    i = i + 1&#10;    when i == 5 {&#10;        skip  # Skip number 5&#10;    }&#10;    when i == 8 {&#10;        escape  # Stop at 8&#10;    }&#10;    out(i)&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let i = 0
+repeat i < 10 {
+    i = i + 1
+    when i == 5 {
+        skip  # Skip number 5
+    }
+    when i == 8 {
+        escape  # Stop at 8
+    }
+    out(i)
+}</code></pre>
+            </div>
+            <p>Output: 1, 2, 3, 4, 6, 7</p>
+        </section>
+
+        <!-- Functions (Tasks) -->
+        <section class="content-section" id="defining-task">
+            <h2>Functions (Tasks)</h2>
+            <h3>Defining a task</h3>
+            <p>Functions in EZ are called <strong>tasks</strong>. Define a task using the <code>task</code> keyword:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='task greet() {&#10;    out("Hello from EZ!")&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">task greet() {
+    out("Hello from EZ!")
+}</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="parameters">
+            <h3>Parameters</h3>
+            <p>Tasks can accept parameters:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='task greet(name) {&#10;    out("Hello, " + name + "!")&#10;}&#10;&#10;greet("Alice")  # Hello, Alice!&#10;greet("Bob")    # Hello, Bob!'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">task greet(name) {
+    out("Hello, " + name + "!")
+}
+
+greet("Alice")  # Hello, Alice!
+greet("Bob")    # Hello, Bob!</code></pre>
+            </div>
+            <p>Multiple parameters are separated by commas:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='task greet(first, last) {&#10;    out("Hello, " + first + " " + last + "!")&#10;}&#10;&#10;greet("John", "Doe")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">task greet(first, last) {
+    out("Hello, " + first + " " + last + "!")
+}
+
+greet("John", "Doe")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="return-values">
+            <h3>Return values (get)</h3>
+            <p>Use the <code>get</code> keyword to return a value from a task:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='task add(a, b) {&#10;    givea + b&#10;}&#10;&#10;let result = add(3, 4)&#10;out(result)   # 7'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">task add(a, b) {
+    givea + b
+}
+
+let result = add(3, 4)
+out(result)   # 7</code></pre>
+            </div>
+            <p>You can return any type of value:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='task make_person(name, age) {&#10;    let person = {&#10;        "name": name,&#10;        "age": age&#10;    }&#10;    giveperson&#10;}&#10;&#10;let p = make_person("Alice", 25)&#10;out(p.name)   # Alice'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">task make_person(name, age) {
+    let person = {
+        "name": name,
+        "age": age
+    }
+    giveperson
+}
+
+let p = make_person("Alice", 25)
+out(p.name)   # Alice</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="scope">
+            <h3>Scope</h3>
+            <p>Variables defined inside a task are local to that task. Variables defined outside are global:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let global_var = "I am global"&#10;&#10;task demo() {&#10;    let local_var = "I am local"&#10;    out(global_var)   # Works: I am global&#10;    out(local_var)    # Works: I am local&#10;}&#10;&#10;demo()&#10;out(global_var)       # Works&#10;# out(local_var)      # Error: local_var not defined'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let global_var = "I am global"
+
+task demo() {
+    let local_var = "I am local"
+    out(global_var)   # Works: I am global
+    out(local_var)    # Works: I am local
+}
+
+demo()
+out(global_var)       # Works
+# out(local_var)      # Error: local_var not defined</code></pre>
+            </div>
+        </section>
+
+        <!-- OOP -->
+        <section class="content-section" id="defining-model">
+            <h2>Object-Oriented Programming</h2>
+            <h3>Defining a model</h3>
+            <p>In EZ, classes are called <strong>models</strong>. Define a model using the <code>model</code> keyword:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model Animal {&#10;    task init(name) {&#10;        self.name = name&#10;    }&#10;}&#10;&#10;let dog = Animal("Rex")&#10;out(dog.name)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model Animal {
+    task init(name) {
+        self.name = name
+    }
+}
+
+let dog = Animal("Rex")
+out(dog.name)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="constructors">
+            <h3>Constructors</h3>
+            <p>The <code>init</code> task is the constructor, called when creating a new instance:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model Person {&#10;    task init(first_name, last_name, age) {&#10;        self.first_name = first_name&#10;        self.last_name = last_name&#10;        self.age = age&#10;    }&#10;}&#10;&#10;let person = Person("John", "Doe", 30)&#10;out(person.first_name + " " + person.last_name)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model Person {
+    task init(first_name, last_name, age) {
+        self.first_name = first_name
+        self.last_name = last_name
+        self.age = age
+    }
+}
+
+let person = Person("John", "Doe", 30)
+out(person.first_name + " " + person.last_name)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="attributes">
+            <h3>Attributes</h3>
+            <p>Attributes are variables that belong to a model instance. Access them using <code>self.attribute_name</code> inside the model, and <code>instance.attribute_name</code> outside:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model Car {&#10;    task init(make, model, year) {&#10;        self.make = make&#10;        self.model = model&#10;        self.year = year&#10;        self.odometer = 0&#10;    }&#10;}&#10;&#10;let my_car = Car("Toyota", "Camry", 2023)&#10;out(my_car.make)      # Toyota&#10;out(my_car.odometer)  # 0'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model Car {
+    task init(make, model, year) {
+        self.make = make
+        self.model = model
+        self.year = year
+        self.odometer = 0
+    }
+}
+
+let my_car = Car("Toyota", "Camry", 2023)
+out(my_car.make)      # Toyota
+out(my_car.odometer)  # 0</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="member-tasks">
+            <h3>Member tasks (methods)</h3>
+            <p>Tasks defined inside a model are called member tasks or methods. They can access and modify the instance's attributes:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model BankAccount {&#10;    task init(owner, balance) {&#10;        self.owner = owner&#10;        self.balance = balance&#10;    }&#10;&#10;    task deposit(amount) {&#10;        self.balance = self.balance + amount&#10;        out(self.owner + " deposited " + amount)&#10;    }&#10;&#10;    task get_balance() {&#10;        giveself.balance&#10;    }&#10;}&#10;&#10;let account = BankAccount("Alice", 100)&#10;account.deposit(50)&#10;out(account.get_balance())  # 150'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model BankAccount {
+    task init(owner, balance) {
+        self.owner = owner
+        self.balance = balance
+    }
+
+    task deposit(amount) {
+        self.balance = self.balance + amount
+        out(self.owner + " deposited " + amount)
+    }
+
+    task get_balance() {
+        giveself.balance
+    }
+}
+
+let account = BankAccount("Alice", 100)
+account.deposit(50)
+out(account.get_balance())  # 150</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="creating-instances">
+            <h3>Creating instances</h3>
+            <p>Create an instance by calling the model name as a function with the constructor arguments:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model Dog {&#10;    task init(name, breed) {&#10;        self.name = name&#10;        self.breed = breed&#10;    }&#10;&#10;    task bark() {&#10;        out(self.name + " says: Woof!")&#10;    }&#10;}&#10;&#10;let my_dog = Dog("Rex", "German Shepherd")&#10;my_dog.bark()  # Rex says: Woof!'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model Dog {
+    task init(name, breed) {
+        self.name = name
+        self.breed = breed
+    }
+
+    task bark() {
+        out(self.name + " says: Woof!")
+    }
+}
+
+let my_dog = Dog("Rex", "German Shepherd")
+my_dog.bark()  # Rex says: Woof!</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="accessing-members">
+            <h3>Accessing members</h3>
+            <p>Use dot notation to access attributes and methods:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='model Student {&#10;    task init(name) {&#10;        self.name = name&#10;        self.grades = []&#10;    }&#10;&#10;    task add_grade(score) {&#10;        self.grades.push(score)&#10;    }&#10;}&#10;&#10;let student = Student("Alice")&#10;out(student.name)       # Access attribute: Alice&#10;student.add_grade(95)     # Call method&#10;out(student.grades)     # Access array attribute: [95]'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">model Student {
+    task init(name) {
+        self.name = name
+        self.grades = []
+    }
+
+    task add_grade(score) {
+        self.grades.push(score)
+    }
+}
+
+let student = Student("Alice")
+out(student.name)       # Access attribute: Alice
+student.add_grade(95)     # Call method
+out(student.grades)     # Access array attribute: [95]</code></pre>
+            </div>
+        </section>
+
+        <!-- Arrays & Collections -->
+        <section class="content-section" id="creating-arrays">
+            <h2>Arrays & Collections</h2>
+            <h3>Creating arrays</h3>
+            <p>Arrays in EZ are created using square brackets with comma-separated values:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let empty = []&#10;let numbers = [1, 2, 3, 4, 5]&#10;let fruits = ["apple", "banana", "cherry"]&#10;let mixed = [1, "hello", true, nil]&#10;let nested = [[1, 2], [3, 4], [5, 6]]'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let empty = []
+let numbers = [1, 2, 3, 4, 5]
+let fruits = ["apple", "banana", "cherry"]
+let mixed = [1, "hello", true, nil]
+let nested = [[1, 2], [3, 4], [5, 6]]</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="indexing">
+            <h3>Indexing</h3>
+            <p>Access array elements using zero-based indexing with square brackets:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let fruits = ["apple", "banana", "cherry", "date"]&#10;out(fruits[0])    # apple&#10;out(fruits[1])    # banana&#10;out(fruits[3])    # date&#10;&#10;# Modify elements&#10;fruits[1] = "blueberry"&#10;out(fruits)       # ["apple", "blueberry", "cherry", "date"]'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let fruits = ["apple", "banana", "cherry", "date"]
+out(fruits[0])    # apple
+out(fruits[1])    # banana
+out(fruits[3])    # date
+
+# Modify elements
+fruits[1] = "blueberry"
+out(fruits)       # ["apple", "blueberry", "cherry", "date"]</code></pre>
+            </div>
+            <p>Use negative indices to access elements from the end:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let items = ["a", "b", "c", "d"]&#10;out(items[-1])   # d (last element)&#10;out(items[-2])   # c (second to last)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let items = ["a", "b", "c", "d"]
+out(items[-1])   # d (last element)
+out(items[-2])   # c (second to last)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="looping-arrays">
+            <h3>Looping over arrays</h3>
+            <p>Use the <code>repeat...in</code> syntax to iterate over array elements:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let colors = ["red", "green", "blue"]&#10;repeat color in colors {&#10;    out("Color: " + color)&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let colors = ["red", "green", "blue"]
+repeat color in colors {
+    out("Color: " + color)
+}</code></pre>
+            </div>
+            <p>For index-based iteration:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let scores = [85, 92, 78, 96]&#10;let i = 0&#10;repeat i < len(scores) {&#10;    out("Score " + (i + 1) + ": " + scores[i])&#10;    i = i + 1&#10;}'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let scores = [85, 92, 78, 96]
+let i = 0
+repeat i < len(scores) {
+    out("Score " + (i + 1) + ": " + scores[i])
+    i = i + 1
+}</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="array-operations">
+            <h3>Built-in array operations</h3>
+            <p>EZ provides several built-in functions for working with arrays:</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>len(array)</code></td><td>Get array length</td><td><code>len([1, 2, 3])</code> → 3</td></tr>
+                        <tr><td><code>push(array, value)</code></td><td>Add element to end</td><td><code>push(arr, 4)</code></td></tr>
+                        <tr><td><code>pop(array)</code></td><td>Remove and return last element</td><td><code>pop(arr)</code></td></tr>
+                        <tr><td><code>contains(array, value)</code></td><td>Check if array contains value</td><td><code>contains(arr, 2)</code></td></tr>
+                        <tr><td><code>range(n)</code></td><td>Create array [0, 1, ..., n-1]</td><td><code>range(5)</code> → [0, 1, 2, 3, 4]</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let arr = []&#10;push(arr, "first")&#10;push(arr, "second")&#10;push(arr, "third")&#10;out(arr)           # ["first", "second", "third"]&#10;out(len(arr))      # 3&#10;let last = pop(arr)&#10;out(last)          # third&#10;out(arr)           # ["first", "second"]'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let arr = []
+push(arr, "first")
+push(arr, "second")
+push(arr, "third")
+out(arr)           # ["first", "second", "third"]
+out(len(arr))      # 3
+let last = pop(arr)
+out(last)          # third
+out(arr)           # ["first", "second"]</code></pre>
+            </div>
+        </section>
+
+        <!-- Built-in Functions -->
+        <section class="content-section" id="io-functions">
+            <h2>Built-in Functions</h2>
+            <h3>I/O Functions</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>out(value)</code></td><td>Prnum value to console</td><td><code>out("Hello")</code></td></tr>
+                        <tr><td><code>input(prompt)</code></td><td>Read user input with optional prompt</td><td><code>input("Name: ")</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Output&#10;out("Hello, World!")&#10;out(42)&#10;&#10;# Input&#10;let name = input("Enter your name: ")&#10;out("Hello, " + name)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Output
+out("Hello, World!")
+out(42)
+
+# Input
+let name = input("Enter your name: ")
+out("Hello, " + name)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="math-functions">
+            <h3>Math Functions</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>sqrt(n)</code></td><td>Square root</td><td><code>sqrt(16)</code> → 4</td></tr>
+                        <tr><td><code>abs(n)</code></td><td>Absolute value</td><td><code>abs(-5)</code> → 5</td></tr>
+                        <tr><td><code>floor(n)</code></td><td>Round down</td><td><code>floor(3.7)</code> → 3</td></tr>
+                        <tr><td><code>ceil(n)</code></td><td>Round up</td><td><code>ceil(3.2)</code> → 4</td></tr>
+                        <tr><td><code>round(n)</code></td><td>Round to nearest</td><td><code>round(3.5)</code> → 4</td></tr>
+                        <tr><td><code>min(a, b)</code></td><td>Minimum of two values</td><td><code>min(3, 7)</code> → 3</td></tr>
+                        <tr><td><code>max(a, b)</code></td><td>Maximum of two values</td><td><code>max(3, 7)</code> → 7</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='out(sqrt(144))      # 12&#10;out(abs(-42))       # 42&#10;out(floor(4.9))     # 4&#10;out(ceil(4.1))      # 5&#10;out(round(4.5))     # 5&#10;out(min(10, 5))     # 5&#10;out(max(10, 5))     # 10'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">out(sqrt(144))      # 12
+out(abs(-42))       # 42
+out(floor(4.9))     # 4
+out(ceil(4.1))      # 5
+out(round(4.5))     # 5
+out(min(10, 5))     # 5
+out(max(10, 5))     # 10</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="string-functions">
+            <h3>String Functions</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>len(s)</code></td><td>String length</td><td><code>len("hello")</code> → 5</td></tr>
+                        <tr><td><code>upper(s)</code></td><td>Uppercase</td><td><code>upper("hi")</code> → "HI"</td></tr>
+                        <tr><td><code>lower(s)</code></td><td>Lowercase</td><td><code>lower("HI")</code> → "hi"</td></tr>
+                        <tr><td><code>trim(s)</code></td><td>Remove whitespace</td><td><code>trim("  hi  ")</code> → "hi"</td></tr>
+                        <tr><td><code>split(s, delim)</code></td><td>Split numo array</td><td><code>split("a,b", ",")</code> → ["a", "b"]</td></tr>
+                        <tr><td><code>join(arr, delim)</code></td><td>Join array to string</td><td><code>join(["a", "b"], ",")</code> → "a,b"</td></tr>
+                        <tr><td><code>contains(s, sub)</code></td><td>Check substring</td><td><code>contains("hello", "ell")</code></td></tr>
+                        <tr><td><code>starts_with(s, prefix)</code></td><td>Check prefix</td><td><code>starts_with("hello", "he")</code></td></tr>
+                        <tr><td><code>ends_with(s, suffix)</code></td><td>Check suffix</td><td><code>ends_with("hello", "lo")</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="type-functions">
+            <h3>Type Functions</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>type(value)</code></td><td>Get type as string</td><td><code>type(42)</code> → "Number"</td></tr>
+                        <tr><td><code>num(value)</code></td><td>Convert to numeger</td><td><code>num("42")</code> → 42</td></tr>
+                        <tr><td><code>num(value)</code></td><td>Convert to num</td><td><code>num("3.14")</code> → 3.14</td></tr>
+                        <tr><td><code>str(value)</code></td><td>Convert to string</td><td><code>str(42)</code> → "42"</td></tr>
+                        <tr><td><code>bool(value)</code></td><td>Convert to boolean</td><td><code>bool(1)</code> → true</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="array-functions">
+            <h3>Array Functions</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Function</th><th>Description</th><th>Example</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>len(arr)</code></td><td>Array length</td><td><code>len([1, 2, 3])</code> → 3</td></tr>
+                        <tr><td><code>push(arr, val)</code></td><td>Add to end</td><td><code>push(arr, 4)</code></td></tr>
+                        <tr><td><code>pop(arr)</code></td><td>Remove from end</td><td><code>pop(arr)</code></td></tr>
+                        <tr><td><code>range(n)</code></td><td>Create range array</td><td><code>range(5)</code> → [0, 1, 2, 3, 4]</td></tr>
+                        <tr><td><code>contains(arr, val)</code></td><td>Check if contains</td><td><code>contains([1, 2], 2)</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Database -->
+        <section class="content-section" id="connecting-db">
+            <h2>Database (SQLite)</h2>
+            <h3>Connecting to a database</h3>
+            <p>EZ has built-in SQLite support. Open a database using <code>dbOpen</code>:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Open or create a database file&#10;let db = dbOpen("myapp.db")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Open or create a database file
+let db = dbOpen("myapp.db")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="creating-tables">
+            <h3>Creating tables</h3>
+            <p>Use <code>dbExec</code> to execute SQL statements:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let db = dbOpen("myapp.db")&#10;&#10;# Create a table&#10;dbExec(db, "CREATE TABLE IF NOT EXISTS users (&#10;    id INTEGER PRIMARY KEY AUTOINCREMENT,&#10;    name TEXT NOT NULL,&#10;    email TEXT,&#10;    age INTEGER&#10;)")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let db = dbOpen("myapp.db")
+
+# Create a table
+dbExec(db, "CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    age INTEGER
+)")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="inserting-data">
+            <h3>Inserting data</h3>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Insert data&#10;dbExec(db, "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",&#10;    ["Alice", "alice@example.com", 25])&#10;&#10;dbExec(db, "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",&#10;    ["Bob", "bob@example.com", 30])'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Insert data
+dbExec(db, "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+    ["Alice", "alice@example.com", 25])
+
+dbExec(db, "INSERT INTO users (name, email, age) VALUES (?, ?, ?)",
+    ["Bob", "bob@example.com", 30])</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="querying-data">
+            <h3>Querying data</h3>
+            <p>Use <code>dbQuery</code> to fetch data. It returns an array of rows:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Query all users&#10;let users = dbQuery(db, "SELECT * FROM users")&#10;repeat user in users {&#10;    out(user.name + " - " + user.email)&#10;}&#10;&#10;# Query with condition&#10;let adults = dbQuery(db, "SELECT * FROM users WHERE age >= ?", [18])&#10;out("Found " + len(adults) + " adults")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Query all users
+let users = dbQuery(db, "SELECT * FROM users")
+repeat user in users {
+    out(user.name + " - " + user.email)
+}
+
+# Query with condition
+let adults = dbQuery(db, "SELECT * FROM users WHERE age >= ?", [18])
+out("Found " + len(adults) + " adults")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="parameterised-queries">
+            <h3>Parameterised queries</h3>
+            <p>Always use parameterised queries (with <code>?</code> placeholders) to prevent SQL injection:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let user_input = input("Enter name: ")&#10;&#10;# Safe - uses parameters&#10;let result = dbQuery(db, &#10;    "SELECT * FROM users WHERE name = ?",&#10;    [user_input])&#10;&#10;# Never concatenate user input directly numo SQL!&#10;# Unsafe - DO NOT DO THIS:&#10;# dbQuery(db, "SELECT * FROM users WHERE name = '" + user_input + "'")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let user_input = input("Enter name: ")
+
+# Safe - uses parameters
+let result = dbQuery(db, 
+    "SELECT * FROM users WHERE name = ?",
+    [user_input])
+
+# Never concatenate user input directly numo SQL!
+# Unsafe - DO NOT DO THIS:
+# dbQuery(db, "SELECT * FROM users WHERE name = '" + user_input + "'")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="closing-connection">
+            <h3>Closing connection</h3>
+            <p>Always close the database when done:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let db = dbOpen("myapp.db")&#10;&#10;# ... do database operations ...&#10;&#10;dbClose(db)&#10;out("Database closed")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let db = dbOpen("myapp.db")
+
+# ... do database operations ...
+
+dbClose(db)
+out("Database closed")</code></pre>
+            </div>
+        </section>
+
+        <!-- Web Server -->
+        <section class="content-section" id="starting-server">
+            <h2>Web Server</h2>
+            <h3>Starting a server</h3>
+            <p>EZ includes a built-in web server. Create and start a server with <code>web_create</code> and <code>web_start</code>:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Create a server on port 8080&#10;let server = web_create(8080)&#10;&#10;out("Server starting on http://localhost:8080")&#10;web_start(server)&#10;&#10;# Server runs until stopped (Ctrl+C)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Create a server on port 8080
+let server = web_create(8080)
+
+out("Server starting on http://localhost:8080")
+web_start(server)
+
+# Server runs until stopped (Ctrl+C)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="defining-routes">
+            <h3>Defining routes</h3>
+            <p>Use <code>web_route</code> to define URL routes:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='let server = web_create(8080)&#10;&#10;# Route handler task&#10;task home_handler(req) {&#10;    giveweb_response("Welcome to EZ!", 200)&#10;}&#10;&#10;# Register routes&#10;web_route(server, "/", home_handler)&#10;web_route(server, "/hello", task(req) {&#10;    giveweb_response("Hello, World!", 200)&#10;})&#10;&#10;web_start(server)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">let server = web_create(8080)
+
+# Route handler task
+task home_handler(req) {
+    giveweb_response("Welcome to EZ!", 200)
+}
+
+# Register routes
+web_route(server, "/", home_handler)
+web_route(server, "/hello", task(req) {
+    giveweb_response("Hello, World!", 200)
+})
+
+web_start(server)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="handling-requests">
+            <h3>Handling requests</h3>
+            <p>The request object contains information about the HTTP request:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='web_route(server, "/user/:id", task(req) {&#10;    # req.path - full path&#10;    # req.params - URL parameters (e.g., id)&#10;    # req.query - query string parameters&#10;    # req.body - request body&#10;    # req.headers - request headers&#10;    &#10;    let user_id = req.params.id&#10;    out("Request for user: " + user_id)&#10;    &#10;    giveweb_response("User: " + user_id, 200)&#10;})'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez">web_route(server, "/user/:id", task(req) {
+    # req.path - full path
+    # req.params - URL parameters (e.g., id)
+    # req.query - query string parameters
+    # req.body - request body
+    # req.headers - request headers
+    
+    let user_id = req.params.id
+    out("Request for user: " + user_id)
+    
+    giveweb_response("User: " + user_id, 200)
+})</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="sending-responses">
+            <h3>Sending responses</h3>
+            <p>Use <code>web_response</code> to create HTTP responses:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Simple text response&#10;giveweb_response("Hello", 200)&#10;&#10;# JSON response&#10;let data = {&#10;    "name": "Alice",&#10;    "age": 25&#10;}&#10;giveweb_response(data, 200)&#10;&#10;# Custom headers&#10;let headers = {&#10;    "Content-Type": "text/html"&#10;}&#10;giveweb_response("&lt;h1&gt;Hello&lt;/h1&gt;", 200, headers)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Simple text response
+giveweb_response("Hello", 200)
+
+# JSON response
+let data = {
+    "name": "Alice",
+    "age": 25
+}
+giveweb_response(data, 200)
+
+# Custom headers
+let headers = {
+    "Content-Type": "text/html"
+}
+giveweb_response("<h1>Hello</h1>", 200, headers)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="full-api-example">
+            <h3>Full API example</h3>
+            <p>Here's a complete REST API with database numegration:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# API Example with SQLite&#10;let db = dbOpen("api.db")&#10;&#10;# Create table&#10;dbExec(db, "CREATE TABLE IF NOT EXISTS items (&#10;    id INTEGER PRIMARY KEY AUTOINCREMENT,&#10;    name TEXT,&#10;    value INTEGER&#10;)")&#10;&#10;let server = web_create(8080)&#10;&#10;# GET all items&#10;web_route(server, "/items", task(req) {&#10;    let items = dbQuery(db, "SELECT * FROM items")&#10;    giveweb_response(items, 200)&#10;})&#10;&#10;# GET single item&#10;web_route(server, "/items/:id", task(req) {&#10;    let items = dbQuery(db, &#10;        "SELECT * FROM items WHERE id = ?",&#10;        [req.params.id])&#10;    when len(items) > 0 {&#10;        giveweb_response(items[0], 200)&#10;    } other {&#10;        giveweb_response({"error": "Not found"}, 404)&#10;    }&#10;})&#10;&#10;# POST new item&#10;web_route(server, "/items", task(req) {&#10;    let name = req.body.name&#10;    let value = req.body.value&#10;    dbExec(db,&#10;        "INSERT INTO items (name, value) VALUES (?, ?)",&#10;        [name, value])&#10;    giveweb_response({"created": true}, 201)&#10;})&#10;&#10;out("API server on http://localhost:8080")&#10;out("Try: curl http://localhost:8080/items")&#10;web_start(server)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># API Example with SQLite
+let db = dbOpen("api.db")
+
+# Create table
+dbExec(db, "CREATE TABLE IF NOT EXISTS items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    value INTEGER
+)")
+
+let server = web_create(8080)
+
+# GET all items
+web_route(server, "/items", task(req) {
+    let items = dbQuery(db, "SELECT * FROM items")
+    giveweb_response(items, 200)
+})
+
+# GET single item
+web_route(server, "/items/:id", task(req) {
+    let items = dbQuery(db, 
+        "SELECT * FROM items WHERE id = ?",
+        [req.params.id])
+    when len(items) > 0 {
+        giveweb_response(items[0], 200)
+    } other {
+        giveweb_response({"error": "Not found"}, 404)
+    }
+})
+
+# POST new item
+web_route(server, "/items", task(req) {
+    let name = req.body.name
+    let value = req.body.value
+    dbExec(db,
+        "INSERT INTO items (name, value) VALUES (?, ?)",
+        [name, value])
+    giveweb_response({"created": true}, 201)
+})
+
+out("API server on http://localhost:8080")
+out("Try: curl http://localhost:8080/items")
+web_start(server)</code></pre>
+            </div>
+        </section>
+
+        <!-- Package Manager -->
+        <section class="content-section" id="ez-install">
+            <h2>Package Manager</h2>
+            <h3>ez install</h3>
+            <p>EZ includes a built-in package manager. Install packages from the command line:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">Terminal</span>
+                    <button class="copy-btn" data-code='# Install a package&#10;ez install math&#10;&#10;# Install multiple packages&#10;ez install collections http json'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-bash"># Install a package
+ez install math
+
+# Install multiple packages
+ez install collections http json</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="using-packages">
+            <h3>Using installed packages</h3>
+            <p>Import packages in your EZ code with the <code>import</code> keyword:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Import installed packages&#10;use math&#10;use collections&#10;&#10;# Use package functions&#10;out(math.sqrt(144))&#10;&#10;let stack = collections.Stack()&#10;stack.push(10)&#10;stack.push(20)&#10;out(stack.pop())'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Import installed packages
+use math
+use collections
+
+# Use package functions
+out(math.sqrt(144))
+
+let stack = collections.Stack()
+stack.push(10)
+stack.push(20)
+out(stack.pop())</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="package-directory">
+            <h3>Package directory (C:/ezlib)</h3>
+            <p>Installed packages are stored in <code>C:/ezlib</code>. This directory contains:</p>
+            <ul>
+                <li>Package source files (<code>.ez</code>)</li>
+                <li>Package metadata (<code>package.json</code>)</li>
+                <li>Dependencies</li>
+            </ul>
+            <p>You can also manually install packages by placing files in this directory.</p>
+        </section>
+
+        <section class="content-section" id="available-packages">
+            <h3>Available packages</h3>
+            <p>Popular EZ packages include:</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Package</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>math</code></td><td>Extended mathematical functions</td></tr>
+                        <tr><td><code>collections</code></td><td>Stack, Queue, Set data structures</td></tr>
+                        <tr><td><code>http</code></td><td>HTTP client for making requests</td></tr>
+                        <tr><td><code>json</code></td><td>Advanced JSON parsing and formatting</td></tr>
+                        <tr><td><code>random</code></td><td>Random number and string generation</td></tr>
+                        <tr><td><code>datetime</code></td><td>Date and time utilities</td></tr>
+                        <tr><td><code>regex</code></td><td>Regular expression support</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Examples -->
+        <section class="content-section" id="example-calculator">
+            <h2>Examples</h2>
+            <h3>Calculator</h3>
+            <p>An numeractive calculator using <code>input()</code> and <code>when</code> statements:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Simple Calculator&#10;out("=== EZ Calculator ===")&#10;&#10;let running = true&#10;repeat running {&#10;    out("\nOperations: +  -  *  /  **  exit")&#10;    let op = input("Enter operation: ")&#10;    &#10;    when op == "exit" {&#10;        running = false&#10;    } other op == "+" {&#10;        let a = num(input("First number: "))&#10;        let b = num(input("Second number: "))&#10;        out("Result: " + (a + b))&#10;    } other op == "-" {&#10;        let a = num(input("First number: "))&#10;        let b = num(input("Second number: "))&#10;        out("Result: " + (a - b))&#10;    } other op == "*" {&#10;        let a = num(input("First number: "))&#10;        let b = num(input("Second number: "))&#10;        out("Result: " + (a * b))&#10;    } other op == "/" {&#10;        let a = num(input("First number: "))&#10;        let b = num(input("Second number: "))&#10;        when b == 0 {&#10;            out("Error: Cannot divide by zero")&#10;        } other {&#10;            out("Result: " + (a / b))&#10;        }&#10;    } other op == "**" {&#10;        let a = num(input("Base: "))&#10;        let b = num(input("Exponent: "))&#10;        out("Result: " + (a ** b))&#10;    } other {&#10;        out("Unknown operation")&#10;    }&#10;}&#10;&#10;out("Goodbye!")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Simple Calculator
+out("=== EZ Calculator ===")
+
+let running = true
+repeat running {
+    out("\nOperations: +  -  *  /  **  exit")
+    let op = input("Enter operation: ")
+    
+    when op == "exit" {
+        running = false
+    } other op == "+" {
+        let a = num(input("First number: "))
+        let b = num(input("Second number: "))
+        out("Result: " + (a + b))
+    } other op == "-" {
+        let a = num(input("First number: "))
+        let b = num(input("Second number: "))
+        out("Result: " + (a - b))
+    } other op == "*" {
+        let a = num(input("First number: "))
+        let b = num(input("Second number: "))
+        out("Result: " + (a * b))
+    } other op == "/" {
+        let a = num(input("First number: "))
+        let b = num(input("Second number: "))
+        when b == 0 {
+            out("Error: Cannot divide by zero")
+        } other {
+            out("Result: " + (a / b))
+        }
+    } other op == "**" {
+        let a = num(input("Base: "))
+        let b = num(input("Exponent: "))
+        out("Result: " + (a ** b))
+    } other {
+        out("Unknown operation")
+    }
+}
+
+out("Goodbye!")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="example-todo">
+            <h3>Todo list (with SQLite)</h3>
+            <p>A persistent todo list application using SQLite:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Todo List with SQLite&#10;let db = dbOpen("todos.db")&#10;&#10;# Create table&#10;dbExec(db, "CREATE TABLE IF NOT EXISTS todos (&#10;    id INTEGER PRIMARY KEY AUTOINCREMENT,&#10;    task TEXT,&#10;    completed INTEGER DEFAULT 0&#10;)")&#10;&#10;task add_todo(task_text) {&#10;    dbExec(db, &#10;        "INSERT INTO todos (task) VALUES (?)",&#10;        [task_text])&#10;    out("Added: " + task_text)&#10;}&#10;&#10;task list_todos() {&#10;    let todos = dbQuery(db, &#10;        "SELECT * FROM todos WHERE completed = 0")&#10;    out("\n=== Your Todos ===")&#10;    when len(todos) == 0 {&#10;        out("No pending todos!")&#10;    }&#10;    repeat todo in todos {&#10;        out(todo.id + ". " + todo.task)&#10;    }&#10;}&#10;&#10;task complete_todo(id) {&#10;    dbExec(db,&#10;        "UPDATE todos SET completed = 1 WHERE id = ?",&#10;        [id])&#10;    out("Completed todo #" + id)&#10;}&#10;&#10;task delete_todo(id) {&#10;    dbExec(db,&#10;        "DELETE FROM todos WHERE id = ?",&#10;        [id])&#10;    out("Deleted todo #" + id)&#10;}&#10;&#10;# Main loop&#10;let running = true&#10;repeat running {&#10;    out("\n1. Add todo")&#10;    out("2. List todos")&#10;    out("3. Complete todo")&#10;    out("4. Delete todo")&#10;    out("5. Exit")&#10;    &#10;    let choice = input("Choice: ")&#10;    &#10;    when choice == "1" {&#10;        let task = input("Enter task: ")&#10;        add_todo(task)&#10;    } other choice == "2" {&#10;        list_todos()&#10;    } other choice == "3" {&#10;        let id = input("Todo ID: ")&#10;        complete_todo(num(id))&#10;    } other choice == "4" {&#10;        let id = input("Todo ID: ")&#10;        delete_todo(num(id))&#10;    } other choice == "5" {&#10;        running = false&#10;    } other {&#10;        out("Invalid choice")&#10;    }&#10;}&#10;&#10;dbClose(db)&#10;out("Goodbye!")'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Todo List with SQLite
+let db = dbOpen("todos.db")
+
+# Create table
+dbExec(db, "CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task TEXT,
+    completed INTEGER DEFAULT 0
+)")
+
+task add_todo(task_text) {
+    dbExec(db, 
+        "INSERT INTO todos (task) VALUES (?)",
+        [task_text])
+    out("Added: " + task_text)
+}
+
+task list_todos() {
+    let todos = dbQuery(db, 
+        "SELECT * FROM todos WHERE completed = 0")
+    out("\n=== Your Todos ===")
+    when len(todos) == 0 {
+        out("No pending todos!")
+    }
+    repeat todo in todos {
+        out(todo.id + ". " + todo.task)
+    }
+}
+
+task complete_todo(id) {
+    dbExec(db,
+        "UPDATE todos SET completed = 1 WHERE id = ?",
+        [id])
+    out("Completed todo #" + id)
+}
+
+task delete_todo(id) {
+    dbExec(db,
+        "DELETE FROM todos WHERE id = ?",
+        [id])
+    out("Deleted todo #" + id)
+}
+
+# Main loop
+let running = true
+repeat running {
+    out("\n1. Add todo")
+    out("2. List todos")
+    out("3. Complete todo")
+    out("4. Delete todo")
+    out("5. Exit")
+    
+    let choice = input("Choice: ")
+    
+    when choice == "1" {
+        let task = input("Enter task: ")
+        add_todo(task)
+    } other choice == "2" {
+        list_todos()
+    } other choice == "3" {
+        let id = input("Todo ID: ")
+        complete_todo(num(id))
+    } other choice == "4" {
+        let id = input("Todo ID: ")
+        delete_todo(num(id))
+    } other choice == "5" {
+        running = false
+    } other {
+        out("Invalid choice")
+    }
+}
+
+dbClose(db)
+out("Goodbye!")</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="example-rest-api">
+            <h3>Simple REST API</h3>
+            <p>A complete REST API using the web server:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Bookstore REST API&#10;let db = dbOpen("bookstore.db")&#10;&#10;# Initialize database&#10;dbExec(db, "CREATE TABLE IF NOT EXISTS books (&#10;    id INTEGER PRIMARY KEY AUTOINCREMENT,&#10;    title TEXT,&#10;    author TEXT,&#10;    price REAL&#10;)")&#10;&#10;let server = web_create(3000)&#10;&#10;# Health check&#10;web_route(server, "/", task(req) {&#10;    giveweb_response({&#10;        "service": "Bookstore API",&#10;        "version": "1.0"&#10;    }, 200)&#10;})&#10;&#10;# GET all books&#10;web_route(server, "/books", task(req) {&#10;    let books = dbQuery(db, "SELECT * FROM books")&#10;    giveweb_response(books, 200)&#10;})&#10;&#10;# GET one book&#10;web_route(server, "/books/:id", task(req) {&#10;    let books = dbQuery(db,&#10;        "SELECT * FROM books WHERE id = ?",&#10;        [req.params.id])&#10;    when len(books) == 0 {&#10;        giveweb_response({&#10;            "error": "Book not found"&#10;        }, 404)&#10;    } other {&#10;        giveweb_response(books[0], 200)&#10;    }&#10;})&#10;&#10;# POST create book&#10;web_route(server, "/books", task(req) {&#10;    let title = req.body.title&#10;    let author = req.body.author&#10;    let price = req.body.price&#10;    &#10;    dbExec(db,&#10;        "INSERT INTO books (title, author, price) VALUES (?, ?, ?)",&#10;        [title, author, price])&#10;    &#10;    giveweb_response({&#10;        "created": true,&#10;        "book": {&#10;            "title": title,&#10;            "author": author,&#10;            "price": price&#10;        }&#10;    }, 201)&#10;})&#10;&#10;out("Bookstore API on http://localhost:3000")&#10;out("Test with: curl http://localhost:3000/books")&#10;web_start(server)'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Bookstore REST API
+let db = dbOpen("bookstore.db")
+
+# Initialize database
+dbExec(db, "CREATE TABLE IF NOT EXISTS books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    author TEXT,
+    price REAL
+)")
+
+let server = web_create(3000)
+
+# Health check
+web_route(server, "/", task(req) {
+    giveweb_response({
+        "service": "Bookstore API",
+        "version": "1.0"
+    }, 200)
+})
+
+# GET all books
+web_route(server, "/books", task(req) {
+    let books = dbQuery(db, "SELECT * FROM books")
+    giveweb_response(books, 200)
+})
+
+# GET one book
+web_route(server, "/books/:id", task(req) {
+    let books = dbQuery(db,
+        "SELECT * FROM books WHERE id = ?",
+        [req.params.id])
+    when len(books) == 0 {
+        giveweb_response({
+            "error": "Book not found"
+        }, 404)
+    } other {
+        giveweb_response(books[0], 200)
+    }
+})
+
+# POST create book
+web_route(server, "/books", task(req) {
+    let title = req.body.title
+    let author = req.body.author
+    let price = req.body.price
+    
+    dbExec(db,
+        "INSERT INTO books (title, author, price) VALUES (?, ?, ?)",
+        [title, author, price])
+    
+    giveweb_response({
+        "created": true,
+        "book": {
+            "title": title,
+            "author": author,
+            "price": price
+        }
+    }, 201)
+})
+
+out("Bookstore API on http://localhost:3000")
+out("Test with: curl http://localhost:3000/books")
+web_start(server)</code></pre>
+            </div>
+        </section>
+
+        <section class="content-section" id="example-bank">
+            <h3>OOP: Bank account model</h3>
+            <p>A complete bank account system using OOP:</p>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">EZ</span>
+                    <button class="copy-btn" data-code='# Bank Account System&#10;model BankAccount {&#10;    task init(account_number, owner, initial_balance) {&#10;        self.account_number = account_number&#10;        self.owner = owner&#10;        self.balance = initial_balance&#10;        self.transactions = []&#10;        self._log_transaction("Account opened", initial_balance)&#10;    }&#10;&#10;    task _log_transaction(type, amount) {&#10;        push(self.transactions, {&#10;            "type": type,&#10;            "amount": amount,&#10;            "balance": self.balance&#10;        })&#10;    }&#10;&#10;    task deposit(amount) {&#10;        when amount <= 0 {&#10;            out("Invalid deposit amount")&#10;            givefalse&#10;        }&#10;        self.balance = self.balance + amount&#10;        self._log_transaction("Deposit", amount)&#10;        out("Deposited $" + amount + " to account " + self.account_number)&#10;        givetrue&#10;    }&#10;&#10;    task withdraw(amount) {&#10;        when amount <= 0 {&#10;            out("Invalid withdrawal amount")&#10;            givefalse&#10;        }&#10;        when amount > self.balance {&#10;            out("Insufficient funds")&#10;            givefalse&#10;        }&#10;        self.balance = self.balance - amount&#10;        self._log_transaction("Withdrawal", -amount)&#10;        out("Withdrew $" + amount + " from account " + self.account_number)&#10;        givetrue&#10;    }&#10;&#10;    task get_balance() {&#10;        giveself.balance&#10;    }&#10;&#10;    task get_statement() {&#10;        out("\n=== Statement for " + self.owner + " ===")&#10;        out("Account: " + self.account_number)&#10;        out("Current Balance: $" + self.balance)&#10;        out("\nTransactions:")&#10;        repeat t in self.transactions {&#10;            out("  " + t.type + ": $" + t.amount + " (Balance: $" + t.balance + ")")&#10;        }&#10;    }&#10;}&#10;&#10;# Create accounts&#10;let alice_account = BankAccount("ACC001", "Alice", 1000)&#10;let bob_account = BankAccount("ACC002", "Bob", 500)&#10;&#10;# Perform transactions&#10;alice_account.deposit(500)&#10;alice_account.withdraw(200)&#10;alice_account.withdraw(2000)  # Should fail (insufficient funds)&#10;alice_account.get_statement()&#10;&#10;bob_account.deposit(1000)&#10;bob_account.get_statement()'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy
+                    </button>
+                </div>
+                <pre><code class="language-ez"># Bank Account System
+model BankAccount {
+    task init(account_number, owner, initial_balance) {
+        self.account_number = account_number
+        self.owner = owner
+        self.balance = initial_balance
+        self.transactions = []
+        self._log_transaction("Account opened", initial_balance)
+    }
+
+    task _log_transaction(type, amount) {
+        push(self.transactions, {
+            "type": type,
+            "amount": amount,
+            "balance": self.balance
+        })
+    }
+
+    task deposit(amount) {
+        when amount <= 0 {
+            out("Invalid deposit amount")
+            givefalse
+        }
+        self.balance = self.balance + amount
+        self._log_transaction("Deposit", amount)
+        out("Deposited $" + amount + " to account " + self.account_number)
+        givetrue
+    }
+
+    task withdraw(amount) {
+        when amount <= 0 {
+            out("Invalid withdrawal amount")
+            givefalse
+        }
+        when amount > self.balance {
+            out("Insufficient funds")
+            givefalse
+        }
+        self.balance = self.balance - amount
+        self._log_transaction("Withdrawal", -amount)
+        out("Withdrew $" + amount + " from account " + self.account_number)
+        givetrue
+    }
+
+    task get_balance() {
+        giveself.balance
+    }
+
+    task get_statement() {
+        out("\n=== Statement for " + self.owner + " ===")
+        out("Account: " + self.account_number)
+        out("Current Balance: $" + self.balance)
+        out("\nTransactions:")
+        repeat t in self.transactions {
+            out("  " + t.type + ": $" + t.amount + " (Balance: $" + t.balance + ")")
+        }
+    }
+}
+
+# Create accounts
+let alice_account = BankAccount("ACC001", "Alice", 1000)
+let bob_account = BankAccount("ACC002", "Bob", 500)
+
+# Perform transactions
+alice_account.deposit(500)
+alice_account.withdraw(200)
+alice_account.withdraw(2000)  # Should fail (insufficient funds)
+alice_account.get_statement()
+
+bob_account.deposit(1000)
+bob_account.get_statement()</code></pre>
+            </div>
+        </section>
+
+        <!-- Reference -->
+        <section class="content-section" id="keyword-reference">
+            <h2>Reference</h2>
+            <h3>Keyword reference table</h3>
+            <p>Comparison of EZ keywords with equivalent Python and JavaScript:</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>EZ Keyword</th><th>Python</th><th>JavaScript</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>when</code></td><td><code>if</code></td><td><code>if</code></td></tr>
+                        <tr><td><code>other</code></td><td><code>elif</code></td><td><code>else if</code></td></tr>
+                        <tr><td><code>other</code></td><td><code>else</code></td><td><code>else</code></td></tr>
+                        <tr><td><code>repeat</code></td><td><code>while</code>/<code>for</code></td><td><code>while</code>/<code>for</code></td></tr>
+                        <tr><td><code>get</code></td><td><code>return</code></td><td><code>return</code></td></tr>
+                        <tr><td><code>out</code></td><td><code>print()</code></td><td><code>console.log()</code></td></tr>
+                        <tr><td><code>task</code></td><td><code>def</code></td><td><code>function</code></td></tr>
+                        <tr><td><code>model</code></td><td><code>class</code></td><td><code>class</code></td></tr>
+                        <tr><td><code>self</code></td><td><code>self</code></td><td><code>this</code></td></tr>
+                        <tr><td><code>let</code></td><td><code>=</code> (assignment)</td><td><code>var</code>/<code>let</code>/<code>const</code></td></tr>
+                        <tr><td><code>and</code></td><td><code>and</code></td><td><code>&&</code></td></tr>
+                        <tr><td><code>or</code></td><td><code>or</code></td><td><code>||</code></td></tr>
+                        <tr><td><code>not</code></td><td><code>not</code></td><td><code>!</code></td></tr>
+                        <tr><td><code>true/false</code></td><td><code>True/False</code></td><td><code>true/false</code></td></tr>
+                        <tr><td><code>nil</code></td><td><code>None</code></td><td><code>nil</code></td></tr>
+                        <tr><td><code>import</code></td><td><code>import</code></td><td><code>import</code></td></tr>
+                        <tr><td><code>escape</code></td><td><code>escape</code></td><td><code>escape</code></td></tr>
+                        <tr><td><code>skip</code></td><td><code>skip</code></td><td><code>skip</code></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="operator-precedence">
+            <h3>Operator precedence</h3>
+            <p>Operators are evaluated in the following order (highest to lowest):</p>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Precedence</th><th>Operators</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>1 (Highest)</td><td><code>()</code></td><td>Parentheses</td></tr>
+                        <tr><td>2</td><td><code>**</code></td><td>Exponentiation</td></tr>
+                        <tr><td>3</td><td><code>*</code>, <code>/</code>, <code>%</code></td><td>Multiplication, Division, Modulo</td></tr>
+                        <tr><td>4</td><td><code>+</code>, <code>-</code></td><td>Addition, Subtraction</td></tr>
+                        <tr><td>5</td><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td><td>Comparison</td></tr>
+                        <tr><td>6</td><td><code>not</code></td><td>Logical NOT</td></tr>
+                        <tr><td>7</td><td><code>and</code></td><td>Logical AND</td></tr>
+                        <tr><td>8 (Lowest)</td><td><code>or</code></td><td>Logical OR</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="error-messages">
+            <h3>Error messages guide</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th>Error</th><th>Meaning</th><th>Solution</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>Variable not found</code></td><td>Using undefined variable</td><td>Declare with <code>let</code> first</td></tr>
+                        <tr><td><code>Unexpected token</code></td><td>Syntax error</td><td>Check punctuation and braces</td></tr>
+                        <tr><td><code>Type mismatch</code></td><td>Wrong type for operation</td><td>Convert with <code>num()</code>, <code>str()</code>, etc.</td></tr>
+                        <tr><td><code>Index out of bounds</code></td><td>Invalid array index</td><td>Check index < array length</td></tr>
+                        <tr><td><code>Division by zero</code></td><td>Cannot divide by 0</td><td>Add check before division</td></tr>
+                        <tr><td><code>Database error</code></td><td>SQLite operation failed</td><td>Check SQL syntax and connection</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="content-section" id="comparison">
+            <h3>Comparison with Python/JS</h3>
+            <p><strong>EZ vs Python:</strong></p>
+            <ul>
+                <li>EZ uses braces <code>{}</code> for blocks instead of indentation</li>
+                <li>EZ has <code>get</code> instead of <code>return</code></li>
+                <li>EZ uses <code>when/other/other</code> instead of <code>if/elif/else</code></li>
+                <li>EZ arrays use <code>[]</code> like Python lists</li>
+            </ul>
+            <p><strong>EZ vs JavaScript:</strong></p>
+            <ul>
+                <li>EZ uses <code>let</code> for all variable declarations</li>
+                <li>EZ uses <code>task</code> instead of <code>function</code></li>
+                <li>EZ uses <code>model</code> instead of <code>class</code></li>
+                <li>EZ arrays have Python-style negative indexing</li>
+            </ul>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <div class="footer-logo">EZ Language</div>
+            <div class="footer-tagline">Programming made simple, readable, and EZ.</div>
+            <div class="footer-links">
+                <a href="https://github.com/imabd645/EZ-language" target="_blank">GitHub</a>
+                <a href="https://github.com/imabd645/EZ-language/issues" target="_blank">Report an Issue</a>
+                <a href="https://github.com/imabd645/EZ-language/blob/main/CONTRIBUTING.md" target="_blank">Contribute</a>
+            </div>
+            <div class="footer-license">Released under the MIT License</div>
+        </footer>
+
+        <button class="back-to-top" id="backToTop" aria-label="Back to top">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+        </button>
+
+    </main>
+
+    <script>
+        // Register EZ language for highlight.js
+        hljs.registerLanguage('ez', function() {
+            return {
+                keywords: {
+                    keyword: 'out in when other repeat to while use task give escape skip giveand or not true false yes no nil model init self hidden outn extends struct new super static numerface implements try catch throw',
+                    built_in: 'print input len push pop str num type typeOf substr substring split join floor ceil abs sqrt pow round rand randnum min max contains indexOf reverse sort upper lower toUpper toLower trim replace startsWith endsWith slice remove insert range map filter reduce forEach find every some keys values has_key dictRemove readFile writeFile appendFile readLines writeLine appendLine clock stop ord chr xor dbOpen dbExec dbQuery dbClose dbLastInsertId dbBegin dbCommit dbRollback server serveFile'
+                },
+                contains: [
+                    {
+                        className: 'comment',
+                        begin: '#',
+                        end: '$'
+                    },
+                    {
+                        className: 'string',
+                        begin: '"',
+                        end: '"',
+                        contains: [{begin: '\\.'}]
+                    },
+                    {
+                        className: 'number',
+                        begin: '\\b\\d+(\\.\\d+)?\\b'
+                    },
+                    {
+                        className: 'keyword',
+                        beginKeywords: 'task model'
+                    },
+                    {
+                        className: 'function',
+                        begin: '\\b[a-zA-Z_][a-zA-Z0-9_]*\\s*(?=\\()'
+                    }
+                ]
+            };
+        });
+
+        // Initialize syntax highlighting
+        hljs.highlightAll();
+
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const sunIcon = themeToggle.querySelector('.sun-icon');
+        const moonIcon = themeToggle.querySelector('.moon-icon');
+        
+        // Check for saved theme preference
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcons(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcons(newTheme);
+        });
+
+        function updateThemeIcons(theme) {
+            if (theme === 'dark') {
+                sunIcon.style.display = 'none';
+                moonIcon.style.display = 'block';
+            } else {
+                sunIcon.style.display = 'block';
+                moonIcon.style.display = 'none';
+            }
+        }
+
+        // Mobile menu
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+
+        mobileMenuBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            sidebarOverlay.classList.toggle('active');
+        });
+
+        sidebarOverlay.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            sidebarOverlay.classList.remove('active');
+        });
+
+        // Sidebar collapse/expand
+        document.querySelectorAll('.nav-section-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const section = header.parentElement;
+                section.classList.toggle('collapsed');
+                
+                // Save state
+                const sectionId = section.dataset.section;
+                const isCollapsed = section.classList.contains('collapsed');
+                localStorage.setItem('sidebar_' + sectionId, isCollapsed);
+            });
+        });
+
+        // Restore sidebar state
+        document.querySelectorAll('.nav-section').forEach(section => {
+            const sectionId = section.dataset.section;
+            const isCollapsed = localStorage.getItem('sidebar_' + sectionId) === 'true';
+            if (isCollapsed) {
+                section.classList.add('collapsed');
+            }
+        });
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        const navLinks = document.querySelectorAll('.nav-link');
+
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            
+            navLinks.forEach(link => {
+                const text = link.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    link.classList.remove('hidden');
+                    link.parentElement.parentElement.classList.remove('collapsed');
+                } else {
+                    link.classList.add('hidden');
+                }
+            });
+        });
+
+        // Active section highlighting on scroll
+        const sections = document.querySelectorAll('.content-section[id]');
+        const navLinkElements = document.querySelectorAll('.nav-link');
+
+        const observerOptions = {
+            root: nil,
+            rootMargin: '-20% 0px -60% 0px',
+            threshold: 0
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.getAttribute('id');
+                    navLinkElements.forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === '#' + id) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }, observerOptions);
+
+        sections.forEach(section => observer.observe(section));
+
+        // Copy buttons
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const code = btn.getAttribute('data-code');
+                navigator.clipboard.writeText(code).then(() => {
+                    btn.classList.add('copied');
+                    btn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        Copied!
+                    `;
+                    setTimeout(() => {
+                        btn.classList.remove('copied');
+                        btn.innerHTML = `
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            Copy
+                        `;
+                    }, 2000);
+                });
+            });
+        });
+
+        // Scroll progress bar
+        const scrollProgress = document.getElementById('scrollProgress');
+        window.addEventListener('scroll', () => {
+            const scrollTop = window.scrollY;
+            const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            const scrollPercent = (scrollTop / docHeight) * 100;
+            scrollProgress.style.width = scrollPercent + '%';
+        });
+
+        // Back to top button
+        const backToTop = document.getElementById('backToTop');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+                backToTop.classList.add('visible');
+            } else {
+                backToTop.classList.remove('visible');
+            }
+        });
+
+        backToTop.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>

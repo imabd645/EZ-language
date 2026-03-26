@@ -19,7 +19,7 @@ void runFile(const std::string& path) {
     buffer << file.rdbuf();
     std::string source = buffer.str();
     
-    Lexer lexer(source);
+    Lexer lexer(source, path);
     std::vector<Token> tokens = lexer.tokenize();
     
     if (lexer.hasError()) {
@@ -75,7 +75,7 @@ void runRepl() {
         }
         
         // Process the input
-        Lexer lexer(multiline);
+        Lexer lexer(multiline, "repl");
         std::vector<Token> tokens = lexer.tokenize();
         
         if (!lexer.hasError()) {

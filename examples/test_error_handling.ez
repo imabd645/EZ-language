@@ -1,0 +1,8 @@
+use "lib/error_test.ez"
+
+task main() {
+    out "Starting error test..."
+    midCall()
+}
+
+main()

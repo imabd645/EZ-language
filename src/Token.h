@@ -90,20 +90,21 @@ struct Token {
     TokenType type;
     std::string lexeme;
     std::variant<std::nullptr_t, double, std::string, bool> literal;
+    std::string filename;
     int line;
     int column;
 
-    Token(TokenType type, const std::string& lexeme, int line, int column)
-        : type(type), lexeme(lexeme), literal(nullptr), line(line), column(column) {}
+    Token(TokenType type, const std::string& lexeme, int line, int column, const std::string& file = "")
+        : type(type), lexeme(lexeme), literal(nullptr), filename(file), line(line), column(column) {}
 
-    Token(TokenType type, const std::string& lexeme, double value, int line, int column)
-        : type(type), lexeme(lexeme), literal(value), line(line), column(column) {}
+    Token(TokenType type, const std::string& lexeme, double value, int line, int column, const std::string& file = "")
+        : type(type), lexeme(lexeme), literal(value), filename(file), line(line), column(column) {}
 
-    Token(TokenType type, const std::string& lexeme, const std::string& value, int line, int column)
-        : type(type), lexeme(lexeme), literal(value), line(line), column(column) {}
+    Token(TokenType type, const std::string& lexeme, const std::string& value, int line, int column, const std::string& file = "")
+        : type(type), lexeme(lexeme), literal(value), filename(file), line(line), column(column) {}
 
-    Token(TokenType type, const std::string& lexeme, bool value, int line, int column)
-        : type(type), lexeme(lexeme), literal(value), line(line), column(column) {}
+    Token(TokenType type, const std::string& lexeme, bool value, int line, int column, const std::string& file = "")
+        : type(type), lexeme(lexeme), literal(value), filename(file), line(line), column(column) {}
 };
 
 inline std::string tokenTypeToString(TokenType type) {

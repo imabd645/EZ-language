@@ -1,0 +1,6 @@
+use "lib/gui.ez"
+win = gui.window("Test", 400, 300)
+t = win.tabs(10, 10, 300, 30, || { out "Changed" })
+t.add("Tab 1")
+t.add("Tab 2")
+win.run()

@@ -1,0 +1,28 @@
+use "lib/gui/main.ez"
+
+# Create a styled window
+win = gui.window("EZ Premium UI", 500, 400)
+
+# Set window background (Dark Mode)
+# setColor(h, bgR, bgG, bgB, textR, textG, textB)
+gui.setColor(win.handle, 30, 30, 30, 255, 255, 255)
+
+vbox = win.vbox(20)
+
+# Main Title with Custom Font
+title = vbox.addLabel("Modern Style Demo", 300, 40)
+gui.setFont(title, "Segoe UI", 24)
+gui.setColor(title, 30, 30, 30, 0, 200, 255) # Neon Blue Text
+
+# Input with styling
+vbox.addLabel("Enter something:", 200, 20)
+input = vbox.addInput(300, 30)
+gui.setColor(input, 50, 50, 50, 255, 255, 255) # Dark input field
+
+# Styled Button
+btn = vbox.addButton("Apply Theme", 120, 40, || {
+    gui.alert("Theme Applied!", "Your UI is now stylized.")
+})
+gui.setFont(btn, "Arial", 14)
+
+win.run()

@@ -1,0 +1,71 @@
+# Sidebar Navigation Demo
+# Showcases: Multiple Panels, Sidebar Layout, and Screen Switching
+
+use "lib/gui.ez"
+
+# Normal Light theme for this demo
+# But we will color the sidebar manually
+
+win = gui.window("EZ Sidebar Navigation", 800, 600)
+
+# 1. Sidebar Panel (Left)
+sidebar = win.panel(0, 0, 200, 600)
+sidebar.color("dark") # Darker background for sidebar
+
+sBox = sidebar.vbox(20)
+sTitle = sBox.label("EZ NAV", 160, 40)
+sTitle.color("neon").font("Segoe UI", 24)
+
+# 2. Views (Right Content Area)
+# All views are at x=200, y=0
+
+# -- Dashboard View --
+viewDash = win.panel(200, 0, 600, 600)
+dBox = viewDash.vbox(20)
+dBox.label("Main Dashboard", 300, 40).font("Segoe UI", 28)
+dBox.label("Welcome back, Abdullah!", 300, 30).color("gray")
+
+# -- Profile View --
+viewProf = win.panel(200, 0, 600, 600)
+viewProf.hide()
+pBox = viewProf.vbox(20)
+pBox.label("User Profile", 300, 40).font("Segoe UI", 28)
+pBox.label("Name: Abdullah Masood", 200, 30)
+pBox.label("Status: Developer", 200, 30)
+
+# -- Settings View --
+viewSett = win.panel(200, 0, 600, 600)
+viewSett.hide()
+settBox = viewSett.vbox(20)
+settBox.label("Application Settings", 300, 40).font("Segoe UI", 28)
+settBox.label("System Optimization: Enabled", 250, 30).color("green")
+settBox.button("Reset Configuration", 180, 40, || {
+    gui.alert("Settings", "Configuration reset to defaults.")
+})
+
+# 3. Sidebar Button Logic
+sBox.addSpace(40)
+
+btnDash = sBox.button("DASHBOARD", 160, 40, || {
+    viewDash.show()
+    viewProf.hide()
+    viewSett.hide()
+})
+btnDash.color("blue")
+
+btnProf = sBox.button("PROFILE", 160, 40, || {
+    viewDash.hide()
+    viewProf.show()
+    viewSett.hide()
+})
+btnProf.color("blue")
+
+btnSett = sBox.button("SETTINGS", 160, 40, || {
+    viewDash.hide()
+    viewProf.hide()
+    viewSett.show()
+})
+btnSett.color("blue")
+
+# Run the UI
+win.run()

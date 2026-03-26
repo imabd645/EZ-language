@@ -52,9 +52,11 @@ using ExprVariant = std::variant<
 
 struct Expr {
     int line;
+    std::string filename;
     ExprVariant variant;
     
-    Expr(int line, ExprVariant var) : line(line), variant(std::move(var)) {}
+    Expr(int line, const std::string& file, ExprVariant var) 
+        : line(line), filename(file), variant(std::move(var)) {}
 };
 
 // Literal expression (numbers, strings, booleans, nil)
@@ -234,9 +236,11 @@ using StmtVariant = std::variant<
 
 struct Stmt {
     int line;
+    std::string filename;
     StmtVariant variant;
     
-    Stmt(int line, StmtVariant var) : line(line), variant(std::move(var)) {}
+    Stmt(int line, const std::string& file, StmtVariant var) 
+        : line(line), filename(file), variant(std::move(var)) {}
 };
 
 // Expression statement
@@ -414,159 +418,159 @@ struct ThrowStmt {
 };
 
 // Helper functions to create expressions
-inline ExprPtr makeLiteralExpr(int line, std::nullptr_t) {
-    return std::make_shared<Expr>(line, std::make_shared<LiteralExpr>(nullptr));
+inline ExprPtr makeLiteralExpr(int line, const std::string& file, std::nullptr_t) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(nullptr));
 }
 
-inline ExprPtr makeLiteralExpr(int line, double val) {
-    return std::make_shared<Expr>(line, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(int line, const std::string& file, double val) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(val));
 }
 
-inline ExprPtr makeLiteralExpr(int line, const std::string& val) {
-    return std::make_shared<Expr>(line, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(int line, const std::string& file, const std::string& val) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(val));
 }
 
-inline ExprPtr makeLiteralExpr(int line, bool val) {
-    return std::make_shared<Expr>(line, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(int line, const std::string& file, bool val) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(val));
 }
 
-inline ExprPtr makeIdentifierExpr(int line, const std::string& name) {
-    return std::make_shared<Expr>(line, std::make_shared<IdentifierExpr>(name));
+inline ExprPtr makeIdentifierExpr(int line, const std::string& file, const std::string& name) {
+    return std::make_shared<Expr>(line, file, std::make_shared<IdentifierExpr>(name));
 }
 
-inline ExprPtr makeBinaryExpr(int line, ExprPtr left, TokenType op, ExprPtr right) {
-    return std::make_shared<Expr>(line, std::make_shared<BinaryExpr>(std::move(left), op, std::move(right)));
+inline ExprPtr makeBinaryExpr(int line, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
+    return std::make_shared<Expr>(line, file, std::make_shared<BinaryExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeUnaryExpr(int line, TokenType op, ExprPtr operand) {
-    return std::make_shared<Expr>(line, std::make_shared<UnaryExpr>(op, std::move(operand)));
+inline ExprPtr makeUnaryExpr(int line, const std::string& file, TokenType op, ExprPtr operand) {
+    return std::make_shared<Expr>(line, file, std::make_shared<UnaryExpr>(op, std::move(operand)));
 }
 
-inline ExprPtr makeCallExpr(int line, ExprPtr callee, std::vector<ExprPtr> args) {
-    return std::make_shared<Expr>(line, std::make_shared<CallExpr>(std::move(callee), std::move(args)));
+inline ExprPtr makeCallExpr(int line, const std::string& file, ExprPtr callee, std::vector<ExprPtr> args) {
+    return std::make_shared<Expr>(line, file, std::make_shared<CallExpr>(std::move(callee), std::move(args)));
 }
 
-inline ExprPtr makeIndexExpr(int line, ExprPtr object, ExprPtr index) {
-    return std::make_shared<Expr>(line, std::make_shared<IndexExpr>(std::move(object), std::move(index)));
+inline ExprPtr makeIndexExpr(int line, const std::string& file, ExprPtr object, ExprPtr index) {
+    return std::make_shared<Expr>(line, file, std::make_shared<IndexExpr>(std::move(object), std::move(index)));
 }
 
-inline ExprPtr makeArrayExpr(int line, std::vector<ExprPtr> elements) {
-    return std::make_shared<Expr>(line, std::make_shared<ArrayExpr>(std::move(elements)));
+inline ExprPtr makeArrayExpr(int line, const std::string& file, std::vector<ExprPtr> elements) {
+    return std::make_shared<Expr>(line, file, std::make_shared<ArrayExpr>(std::move(elements)));
 }
 
-inline ExprPtr makeAssignExpr(int line, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr) {
-    return std::make_shared<Expr>(line, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object)));
+inline ExprPtr makeAssignExpr(int line, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr) {
+    return std::make_shared<Expr>(line, file, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object)));
 }
 
-inline ExprPtr makeLogicalExpr(int line, ExprPtr left, TokenType op, ExprPtr right) {
-    return std::make_shared<Expr>(line, std::make_shared<LogicalExpr>(std::move(left), op, std::move(right)));
+inline ExprPtr makeLogicalExpr(int line, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LogicalExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeLambdaExpr(int line, std::vector<std::string> params, ExprPtr body) {
-    return std::make_shared<Expr>(line, std::make_shared<LambdaExpr>(std::move(params), std::move(body)));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, ExprPtr body) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(body)));
 }
 
-inline ExprPtr makeLambdaExpr(int line, std::vector<std::string> params, std::vector<StmtPtr> stmtBody) {
-    return std::make_shared<Expr>(line, std::make_shared<LambdaExpr>(std::move(params), std::move(stmtBody)));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<StmtPtr> stmtBody) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(stmtBody)));
 }
 
 // Helper functions to create statements
-inline StmtPtr makeExprStmt(int line, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, std::make_shared<ExprStmt>(std::move(expr)));
+inline StmtPtr makeExprStmt(int line, const std::string& file, ExprPtr expr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<ExprStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeOutStmt(int line, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, std::make_shared<OutStmt>(std::move(expr)));
+inline StmtPtr makeOutStmt(int line, const std::string& file, ExprPtr expr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<OutStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeVarDeclStmt(int line, const std::string& name, ExprPtr init) {
-    return std::make_shared<Stmt>(line, std::make_shared<VarDeclStmt>(name, std::move(init)));
+inline StmtPtr makeVarDeclStmt(int line, const std::string& file, const std::string& name, ExprPtr init) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<VarDeclStmt>(name, std::move(init)));
 }
 
-inline StmtPtr makeBlockStmt(int line, std::vector<StmtPtr> stmts) {
-    return std::make_shared<Stmt>(line, std::make_shared<BlockStmt>(std::move(stmts)));
+inline StmtPtr makeBlockStmt(int line, const std::string& file, std::vector<StmtPtr> stmts) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<BlockStmt>(std::move(stmts)));
 }
 
-inline StmtPtr makeWhenStmt(int line, ExprPtr cond, StmtPtr thenBr, StmtPtr elseBr = nullptr) {
-    return std::make_shared<Stmt>(line, std::make_shared<WhenStmt>(std::move(cond), std::move(thenBr), std::move(elseBr)));
+inline StmtPtr makeWhenStmt(int line, const std::string& file, ExprPtr cond, StmtPtr thenBr, StmtPtr elseBr = nullptr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<WhenStmt>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
-inline StmtPtr makeWhileStmt(int line, ExprPtr cond, StmtPtr body) {
-    return std::make_shared<Stmt>(line, std::make_shared<WhileStmt>(std::move(cond), std::move(body)));
+inline StmtPtr makeWhileStmt(int line, const std::string& file, ExprPtr cond, StmtPtr body) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<WhileStmt>(std::move(cond), std::move(body)));
 }
 
-inline StmtPtr makeRepeatStmt(int line, const std::string& var, ExprPtr start, ExprPtr end, StmtPtr body) {
-    return std::make_shared<Stmt>(line, std::make_shared<RepeatStmt>(var, std::move(start), std::move(end), std::move(body)));
+inline StmtPtr makeRepeatStmt(int line, const std::string& file, const std::string& var, ExprPtr start, ExprPtr end, StmtPtr body) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<RepeatStmt>(var, std::move(start), std::move(end), std::move(body)));
 }
 
-inline StmtPtr makeGetStmt(int line, const std::string& var, ExprPtr iter, StmtPtr body) {
-    return std::make_shared<Stmt>(line, std::make_shared<GetStmt>(var, std::move(iter), std::move(body)));
+inline StmtPtr makeGetStmt(int line, const std::string& file, const std::string& var, ExprPtr iter, StmtPtr body) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<GetStmt>(var, std::move(iter), std::move(body)));
 }
 
-inline StmtPtr makeTaskStmt(int line, const std::string& name, std::vector<std::string> params, 
+inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, 
                             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body) {
-    return std::make_shared<Stmt>(line, std::make_shared<TaskStmt>(name, std::move(params), 
-                                                                    std::move(defaultValues), std::move(body)));
+    return std::make_shared<Stmt>(line, file, std::make_shared<TaskStmt>(name, std::move(params), 
+                                                                     std::move(defaultValues), std::move(body)));
 }
 
-inline StmtPtr makeGiveStmt(int line, ExprPtr val = nullptr) {
-    return std::make_shared<Stmt>(line, std::make_shared<GiveStmt>(std::move(val)));
+inline StmtPtr makeGiveStmt(int line, const std::string& file, ExprPtr val = nullptr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<GiveStmt>(std::move(val)));
 }
 
-inline StmtPtr makeEscapeStmt(int line) {
-    return std::make_shared<Stmt>(line, std::make_shared<EscapeStmt>());
+inline StmtPtr makeEscapeStmt(int line, const std::string& file) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<EscapeStmt>());
 }
 
-inline StmtPtr makeSkipStmt(int line) {
-    return std::make_shared<Stmt>(line, std::make_shared<SkipStmt>());
+inline StmtPtr makeSkipStmt(int line, const std::string& file) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<SkipStmt>());
 }
 
-inline ExprPtr makePropertyAccessExpr(int line, ExprPtr object, const std::string& property) {
-    return std::make_shared<Expr>(line, std::make_shared<PropertyAccessExpr>(std::move(object), property));
+inline ExprPtr makePropertyAccessExpr(int line, const std::string& file, ExprPtr object, const std::string& property) {
+    return std::make_shared<Expr>(line, file, std::make_shared<PropertyAccessExpr>(std::move(object), property));
 }
 
-inline ExprPtr makeSelfExpr(int line) {
-    return std::make_shared<Expr>(line, std::make_shared<SelfExpr>());
+inline ExprPtr makeSelfExpr(int line, const std::string& file) {
+    return std::make_shared<Expr>(line, file, std::make_shared<SelfExpr>());
 }
 
-inline ExprPtr makeNewExpr(int line, const std::string& className, std::vector<ExprPtr> args) {
-    return std::make_shared<Expr>(line, std::make_shared<NewExpr>(className, std::move(args)));
+inline ExprPtr makeNewExpr(int line, const std::string& file, const std::string& className, std::vector<ExprPtr> args) {
+    return std::make_shared<Expr>(line, file, std::make_shared<NewExpr>(className, std::move(args)));
 }
 
-inline ExprPtr makeSetExpr(int line, ExprPtr object, const std::string& name, ExprPtr value) {
-    return std::make_shared<Expr>(line, std::make_shared<SetExpr>(std::move(object), name, std::move(value)));
+inline ExprPtr makeSetExpr(int line, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value) {
+    return std::make_shared<Expr>(line, file, std::make_shared<SetExpr>(std::move(object), name, std::move(value)));
 }
 
-inline ExprPtr makeDictionaryExpr(int line, std::vector<std::pair<ExprPtr, ExprPtr>> pairs) {
-    return std::make_shared<Expr>(line, std::make_shared<DictionaryExpr>(std::move(pairs)));
+inline ExprPtr makeDictionaryExpr(int line, const std::string& file, std::vector<std::pair<ExprPtr, ExprPtr>> pairs) {
+    return std::make_shared<Expr>(line, file, std::make_shared<DictionaryExpr>(std::move(pairs)));
 }
 
-inline StmtPtr makeInterfaceStmt(int line, const std::string& name, std::vector<std::string> methods) {
-    return std::make_shared<Stmt>(line, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
+inline StmtPtr makeInterfaceStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> methods) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
 }
 
-inline StmtPtr makeModelStmt(int line, const std::string& name, const std::string& parent,
+inline StmtPtr makeModelStmt(int line, const std::string& file, const std::string& name, const std::string& parent,
                              std::vector<std::string> interfaces,
                              std::vector<std::string> initParams, std::vector<StmtPtr> initBody,
                              std::vector<ModelMember> members) {
-    return std::make_shared<Stmt>(line, std::make_shared<ModelStmt>(
+    return std::make_shared<Stmt>(line, file, std::make_shared<ModelStmt>(
         line, name, parent, std::move(interfaces), std::move(initParams), std::move(initBody), std::move(members)));
 }
 
-inline StmtPtr makeStructStmt(int line, const std::string& name, std::vector<std::string> fields) {
-    return std::make_shared<Stmt>(line, std::make_shared<StructStmt>(name, std::move(fields)));
+inline StmtPtr makeStructStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> fields) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<StructStmt>(name, std::move(fields)));
 }
 
-inline StmtPtr makeUseStmt(int line, const std::string& path) {
-    return std::make_shared<Stmt>(line, std::make_shared<UseStmt>(path));
+inline StmtPtr makeUseStmt(int line, const std::string& file, const std::string& path) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<UseStmt>(path));
 }
 
-inline StmtPtr makeTryStmt(int line, StmtPtr tryBlk, const std::string& var, StmtPtr catchBlk) {
-    return std::make_shared<Stmt>(line, std::make_shared<TryStmt>(std::move(tryBlk), var, std::move(catchBlk)));
+inline StmtPtr makeTryStmt(int line, const std::string& file, StmtPtr tryBlk, const std::string& var, StmtPtr catchBlk) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<TryStmt>(std::move(tryBlk), var, std::move(catchBlk)));
 }
 
-inline StmtPtr makeThrowStmt(int line, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, std::make_shared<ThrowStmt>(std::move(expr)));
+inline StmtPtr makeThrowStmt(int line, const std::string& file, ExprPtr expr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<ThrowStmt>(std::move(expr)));
 }
 
 #endif // AST_H

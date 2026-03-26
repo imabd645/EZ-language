@@ -86,7 +86,7 @@ void Parser::consumeNewlines() {
 
 void Parser::error(const Token& token, const std::string& message) {
     hadError = true;
-    std::cerr << "[Line " << token.line << "] Error";
+    std::cerr << "[" << token.filename << ":" << token.line << "] Error";
     if (token.type == TokenType::END_OF_FILE) {
         std::cerr << " at end";
     } else {
@@ -154,9 +154,9 @@ StmtPtr Parser::statement() {
 }
 
 StmtPtr Parser::outStatement() {
-    int line = previous().line;
+    Token op = previous();
     ExprPtr value = expression();
-    return makeOutStmt(line, value);
+    return makeOutStmt(op.line, op.filename, value);
 }
 
 StmtPtr Parser::whenStatement() {
@@ -195,7 +195,7 @@ StmtPtr Parser::whenStatement() {
         if (thenStmts.size() == 1) {
             thenBranch = thenStmts[0];
         } else {
-            thenBranch = makeBlockStmt(line, thenStmts);
+            thenBranch = makeBlockStmt(line, peek().filename, thenStmts);
         }
     }
     
@@ -215,7 +215,7 @@ StmtPtr Parser::whenStatement() {
         }
     }
     
-    return makeWhenStmt(line, condition, thenBranch, elseBranch);
+    return makeWhenStmt(line, peek().filename, condition, thenBranch, elseBranch);
 }
 
 StmtPtr Parser::whileStatement() {
@@ -231,7 +231,7 @@ StmtPtr Parser::whileStatement() {
         body = statement();
     }
     
-    return makeWhileStmt(line, condition, body);
+    return makeWhileStmt(line, peek().filename, condition, body);
 }
 
 StmtPtr Parser::repeatStatement() {
@@ -258,7 +258,7 @@ StmtPtr Parser::repeatStatement() {
         body = statement();
     }
     
-    return makeRepeatStmt(line, varName, startValue, endValue, body);
+    return makeRepeatStmt(line, varToken.filename, varName, startValue, endValue, body);
 }
 
 StmtPtr Parser::getStatement() {
@@ -281,7 +281,7 @@ StmtPtr Parser::getStatement() {
         body = statement();
     }
     
-    return makeGetStmt(line, varName, iterable, body);
+    return makeGetStmt(line, varToken.filename, varName, iterable, body);
 }
 
 StmtPtr Parser::taskStatement() {
@@ -333,7 +333,7 @@ StmtPtr Parser::taskStatement() {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, name, params, defaultValues, body);
+    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -344,17 +344,17 @@ StmtPtr Parser::giveStatement() {
         value = expression();
     }
     
-    return makeGiveStmt(line, value);
+    return makeGiveStmt(line, peek().filename, value);
 }
 
 StmtPtr Parser::escapeStatement() {
-    int line = previous().line;
-    return makeEscapeStmt(line);
+    Token op = previous();
+    return makeEscapeStmt(op.line, op.filename);
 }
 
 StmtPtr Parser::skipStatement() {
-    int line = previous().line;
-    return makeSkipStmt(line);
+    Token op = previous();
+    return makeSkipStmt(op.line, op.filename);
 }
 
 StmtPtr Parser::tryStatement() {
@@ -370,15 +370,13 @@ StmtPtr Parser::tryStatement() {
     consume(TokenType::LBRACE, "Expected '{' after catch variable");
     StmtPtr catchBlock = blockStatement();
     
-    return makeTryStmt(line, tryBlock, catchVar, catchBlock);
+    return makeTryStmt(line, varToken.filename, tryBlock, catchVar, catchBlock);
 }
 
 StmtPtr Parser::throwStatement() {
-    int line = previous().line;
-    
+    Token op = previous();
     ExprPtr expr = expression();
-    
-    return makeThrowStmt(line, expr);
+    return makeThrowStmt(op.line, op.filename, expr);
 }
 
 StmtPtr Parser::blockStatement() {
@@ -395,7 +393,7 @@ StmtPtr Parser::blockStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after block");
     
-    return makeBlockStmt(line, statements);
+    return makeBlockStmt(line, peek().filename, statements);
 }
 
 StmtPtr Parser::expressionStatement() {
@@ -407,12 +405,12 @@ StmtPtr Parser::expressionStatement() {
         if (auto* assignExpr = std::get_if<std::shared_ptr<AssignExpr>>(&exprNode->variant)) {
             if (!(*assignExpr)->index) {
                 // Simple assignment, treat as var declaration
-                return makeVarDeclStmt(line, (*assignExpr)->name, (*assignExpr)->value);
+                return makeVarDeclStmt(line, peek().filename, (*assignExpr)->name, (*assignExpr)->value);
             }
         }
     }
     
-    return makeExprStmt(line, expr);
+    return makeExprStmt(line, peek().filename, expr);
 }
 
 StmtPtr Parser::structStatement() {
@@ -438,7 +436,7 @@ StmtPtr Parser::structStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
     
-    return makeStructStmt(line, name, fields);
+    return makeStructStmt(line, nameToken.filename, name, fields);
 }
 
 StmtPtr Parser::useStatement() {
@@ -446,8 +444,9 @@ StmtPtr Parser::useStatement() {
     if (!match(TokenType::STRING)) {
         throw ParseError("Expected string path after 'use'", peek().line);
     }
-    std::string path = std::get<std::string>(previous().literal);
-    return makeUseStmt(line, path);
+    Token pathToken = previous();
+    std::string path = std::get<std::string>(pathToken.literal);
+    return makeUseStmt(line, pathToken.filename, path);
 }
 
 // ============ Expression Parsing ============
@@ -474,19 +473,19 @@ ExprPtr Parser::assignment() {
                 case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
                 default: binOp = TokenType::PLUS; break;
             }
-            value = makeBinaryExpr(op.line, expr, binOp, value);
+            value = makeBinaryExpr(op.line, op.filename, expr, binOp, value);
         }
         
         if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr->variant)) {
             std::string name = std::get<std::shared_ptr<IdentifierExpr>>(expr->variant)->name;
-            return makeAssignExpr(op.line, name, value);
+            return makeAssignExpr(op.line, op.filename, name, value);
         } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(expr->variant)) {
             auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(expr->variant);
             // Handle obj[idx] = val where obj can be complex
-            return makeAssignExpr(op.line, "", value, indexExpr->index, indexExpr->object);
+            return makeAssignExpr(op.line, op.filename, "", value, indexExpr->index, indexExpr->object);
         } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr->variant)) {
             auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(expr->variant);
-            return makeSetExpr(op.line, propExpr->object, propExpr->property, value);
+            return makeSetExpr(op.line, op.filename, propExpr->object, propExpr->property, value);
         }
         
         error(op, "Invalid assignment target");
@@ -501,7 +500,7 @@ ExprPtr Parser::logicalOr() {
     while (match(TokenType::OR)) {
         Token op = previous();
         ExprPtr right = logicalAnd();
-        expr = makeLogicalExpr(op.line, expr, TokenType::OR, right);
+        expr = makeLogicalExpr(op.line, op.filename, expr, TokenType::OR, right);
     }
     
     return expr;
@@ -513,7 +512,7 @@ ExprPtr Parser::logicalAnd() {
     while (match(TokenType::AND)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = makeLogicalExpr(op.line, expr, TokenType::AND, right);
+        expr = makeLogicalExpr(op.line, op.filename, expr, TokenType::AND, right);
     }
     
     return expr;
@@ -525,7 +524,7 @@ ExprPtr Parser::equality() {
     while (match({TokenType::EQUAL_EQUAL, TokenType::BANG_EQUAL})) {
         Token op = previous();
         ExprPtr right = comparison();
-        expr = makeBinaryExpr(op.line, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -538,7 +537,7 @@ ExprPtr Parser::comparison() {
                   TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
         Token op = previous();
         ExprPtr right = term();
-        expr = makeBinaryExpr(op.line, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -550,7 +549,7 @@ ExprPtr Parser::term() {
     while (match({TokenType::PLUS, TokenType::MINUS})) {
         Token op = previous();
         ExprPtr right = factor();
-        expr = makeBinaryExpr(op.line, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -562,7 +561,7 @@ ExprPtr Parser::factor() {
     while (match({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
         Token op = previous();
         ExprPtr right = unary();
-        expr = makeBinaryExpr(op.line, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -572,7 +571,7 @@ ExprPtr Parser::unary() {
     if (match({TokenType::BANG, TokenType::MINUS, TokenType::NOT})) {
         Token op = previous();
         ExprPtr right = unary();
-        return makeUnaryExpr(op.line, op.type, right);
+        return makeUnaryExpr(op.line, op.filename, op.type, right);
     }
     
     return call();
@@ -585,15 +584,15 @@ ExprPtr Parser::call() {
         if (match(TokenType::LPAREN)) {
             expr = finishCall(expr);
         } else if (match(TokenType::LBRACKET)) {
-            int line = previous().line;
+            Token op = previous();
             ExprPtr index = expression();
             consume(TokenType::RBRACKET, "Expected ']' after index");
-            expr = makeIndexExpr(line, expr, index);
+            expr = makeIndexExpr(op.line, op.filename, expr, index);
         } else if (match(TokenType::DOT)) {
             // Allow keywords as property names
             advance();
             Token name = previous();
-            expr = makePropertyAccessExpr(name.line, expr, name.lexeme);
+            expr = makePropertyAccessExpr(name.line, name.filename, expr, name.lexeme);
         } else {
             break;
         }
@@ -614,41 +613,48 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
     
     consume(TokenType::RPAREN, "Expected ')' after arguments");
     
-    return makeCallExpr(line, callee, arguments);
+    return makeCallExpr(line, peek().filename, callee, arguments);
 }
 
 ExprPtr Parser::primary() {
     int line = peek().line;
+    std::string filename = peek().filename;
     
-    if (match(TokenType::FALSE)) return makeLiteralExpr(line, false);
-    if (match(TokenType::TRUE)) return makeLiteralExpr(line, true);
-    if (match(TokenType::NIL)) return makeLiteralExpr(line, nullptr);
+    if (match(TokenType::FALSE)) return makeLiteralExpr(line, filename, false);
+    if (match(TokenType::TRUE)) return makeLiteralExpr(line, filename, true);
+    if (match(TokenType::NIL)) return makeLiteralExpr(line, filename, nullptr);
     
     if (match(TokenType::NUMBER)) {
-        return makeLiteralExpr(line, std::get<double>(previous().literal));
+        Token t = previous();
+        return makeLiteralExpr(t.line, t.filename, std::get<double>(t.literal));
     }
     
     if (match(TokenType::STRING)) {
-        return makeLiteralExpr(line, std::get<std::string>(previous().literal));
+        Token t = previous();
+        return makeLiteralExpr(t.line, t.filename, std::get<std::string>(t.literal));
     }
     
     if (match(TokenType::IDENTIFIER)) {
-        return makeIdentifierExpr(line, previous().lexeme);
+        Token t = previous();
+        return makeIdentifierExpr(t.line, t.filename, t.lexeme);
     }
     
     if (match(TokenType::SUPER)) {
-        return makeIdentifierExpr(line, "super");
+        Token t = previous();
+        return makeIdentifierExpr(t.line, t.filename, "super");
     }
     
     // Self reference
     if (match(TokenType::SELF)) {
-        return makeSelfExpr(line);
+        Token t = previous();
+        return makeSelfExpr(t.line, t.filename);
     }
     
     if (match(TokenType::IN)) {
+        Token t = previous();
         // Special case for 'in' keyword used alone (not as operator)
         // Historically mapped to __input__
-        return makeCallExpr(line, makeIdentifierExpr(line, "__input__"), {});
+        return makeCallExpr(t.line, t.filename, makeIdentifierExpr(t.line, t.filename, "__input__"), {});
     }
     
     // Lambda expression: |params| => expr or |params| { body }
@@ -669,7 +675,7 @@ ExprPtr Parser::primary() {
         }
         
         consume(TokenType::RBRACKET, "Expected ']' after array elements");
-        return makeArrayExpr(line, elements);
+        return makeArrayExpr(line, filename, elements);
     }
     
     // Dictionary literal
@@ -683,7 +689,7 @@ ExprPtr Parser::primary() {
             
             if (std::holds_alternative<std::shared_ptr<AssignExpr>>(expr->variant)) {
                  auto assign = std::get<std::shared_ptr<AssignExpr>>(expr->variant);
-                 ExprPtr key = makeLiteralExpr(expr->line, assign->name);
+                 ExprPtr key = makeLiteralExpr(expr->line, expr->filename, assign->name);
                  pairs.push_back({key, assign->value});
             } else {
                  ExprPtr key = expr;
@@ -697,7 +703,7 @@ ExprPtr Parser::primary() {
                  // If the key is an identifier, convert it to a string literal
                  if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(key->variant)) {
                       auto ident = std::get<std::shared_ptr<IdentifierExpr>>(key->variant);
-                      key = makeLiteralExpr(key->line, ident->name);
+                      key = makeLiteralExpr(key->line, key->filename, ident->name);
                  }
                  
                  ExprPtr value = expression();
@@ -712,7 +718,7 @@ ExprPtr Parser::primary() {
         }
         
         consume(TokenType::RBRACE, "Expected '}' after dictionary");
-        return makeDictionaryExpr(line, pairs);
+        return makeDictionaryExpr(line, filename, pairs);
     }
     
     if (match(TokenType::LPAREN)) {
@@ -747,7 +753,7 @@ ExprPtr Parser::lambdaExpression() {
         // Expression body
         skipNewlines();
         ExprPtr body = expression();
-        return makeLambdaExpr(line, params, body);
+        return makeLambdaExpr(line, peek().filename, params, body);
     } else if (match(TokenType::LBRACE)) {
         // Statement body
         skipNewlines();
@@ -758,11 +764,11 @@ ExprPtr Parser::lambdaExpression() {
             skipNewlines();
         }
         consume(TokenType::RBRACE, "Expected '}' after lambda body");
-        return makeLambdaExpr(line, params, stmtBody);
+        return makeLambdaExpr(line, peek().filename, params, stmtBody);
     } else {
         // Default: treat as expression body without arrow
         ExprPtr body = expression();
-        return makeLambdaExpr(line, params, body);
+        return makeLambdaExpr(line, peek().filename, params, body);
     }
 }
 
@@ -901,7 +907,8 @@ StmtPtr Parser::modelStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
-    return makeModelStmt(line, name, parentName, interfaces, initParams, initBody, members);
+    // Use the peek().filename or current filename
+    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initBody, members);
 }
 
 // Interface definition
@@ -925,5 +932,6 @@ StmtPtr Parser::interfaceStatement() {
         skipNewlines();
     }
     consume(TokenType::RBRACE, "Expected '}' after interface body");
-    return makeInterfaceStmt(line, nameToken.lexeme, methods);
+    
+    return makeInterfaceStmt(line, nameToken.filename, nameToken.lexeme, methods);
 }

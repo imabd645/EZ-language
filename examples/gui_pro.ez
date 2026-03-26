@@ -1,0 +1,72 @@
+# Professional GUI Navigation Demo
+# Showcases: Dark Mode, Tabs, Panels, and Modern Skinning
+
+use "lib/gui.ez"
+
+# Enable modern dark theme
+gui.setTheme("dark")
+
+# Main Window
+win = gui.window("EZ Professional Dashboard", 600, 500)
+
+# 1. Navigation Tabs
+# Positioned at the top
+tabs = win.tabs(10, 10, 580, 40, || {
+    selected = tabs.selected()
+    out "Switched to tab: " + selected
+    
+    when selected == 0 {
+        dashPanel.show()
+        settingsPanel.hide()
+    } other {
+        dashPanel.hide()
+        settingsPanel.show()
+    }
+})
+
+tabs.add("Dashboard")
+tabs.add("Settings")
+
+# 2. Dashboard Panel
+dashPanel = win.panel(10, 60, 580, 420)
+vbox = dashPanel.vbox(10)
+
+title = vbox.label("Main Dashboard", 200, 40)
+title.color("neon").font("Segoe UI", 24)
+
+# Stats row
+vbox.label("System Status: Online", 200, 25).color("green")
+vbox.label("Active Users: 1,284", 200, 25)
+
+# Action button
+btn = vbox.button("Execute Process", 150, 35, || {
+    gui.alert("Dashboard", "Process started successfully!")
+})
+btn.color("blue")
+
+# 3. Settings Panel
+settingsPanel = win.panel(10, 60, 580, 420)
+settingsPanel.hide() # Hidden by default
+sBox = settingsPanel.vbox(10)
+
+sTitle = sBox.label("App Settings", 200, 40)
+sTitle.color("yellow").font("Segoe UI", 24)
+
+sBox.label("User Profile Name:", 200, 25)
+nameInput = sBox.input(300, 30)
+nameInput.text("Abdullah Masood")
+
+sBox.addSpace(20)
+sBox.label("Theme Mode:", 200, 25)
+themeDrop = sBox.dropdown(200, 30)
+themeDrop.add("Dark (Default)")
+themeDrop.add("Light")
+themeDrop.add("System")
+
+saveBtn = sBox.button("Save Changes", 150, 35, || {
+    gui.alert("Settings", "Settings saved for " + nameInput.value())
+})
+saveBtn.color("orange")
+
+# Run the application
+win.run()

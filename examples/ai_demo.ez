@@ -1,0 +1,65 @@
+# EZ-AI Demo
+# Make sure to install the ai package first: ez install ai
+# Or place the ai/ folder in C:/ezlib/
+
+use "ai"
+
+# ============================================================
+# SETUP: Replace with your actual API key
+# ============================================================
+
+API_KEY = "YOUR-API-KEY-HERE"
+
+# ============================================================
+# Example 1: One-liner with ask()
+# ============================================================
+
+out "=== Example 1: ask() ==="
+out ""
+
+response = ask("What are the three laws of robotics?", API_KEY)
+when response != nil {
+    out response
+}
+
+# ============================================================
+# Example 2: Provider-specific call
+# ============================================================
+
+out ""
+out "=== Example 2: OpenAI with system prompt ==="
+out ""
+
+response = openai_full(
+    "Write a haiku about programming",
+    API_KEY,
+    "gpt-4o-mini",
+    "You are a poet. Always respond in haiku format."
+)
+when response != nil {
+    out response
+}
+
+# ============================================================
+# Example 3: Multi-turn chat session
+# ============================================================
+
+out ""
+out "=== Example 3: Chat Session ==="
+out ""
+
+chat = new_chat_with_system("openai", API_KEY, "You are a helpful math tutor. Be concise.")
+
+r1 = chat_send(chat, "What is the Pythagorean theorem?")
+out "Tutor: " + str(r1)
+out ""
+
+r2 = chat_send(chat, "Can you give me an example with numbers?")
+out "Tutor: " + str(r2)
+out ""
+
+r3 = chat_send(chat, "What about in 3D?")
+out "Tutor: " + str(r3)
+
+out ""
+out "=== Demo Complete ==="

@@ -1,0 +1,5 @@
+out "Abdullah Masood"
+x=5
+x+=1
+z+=1
+out z

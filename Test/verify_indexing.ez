@@ -1,0 +1,18 @@
+model Rep {
+    init() { give self }
+    task tableHeader(headers, xPos) {
+        i = 0
+        get h in headers {
+            out "Header: " + h + " at " + str(xPos[i])
+            i = i + 1
+        }
+    }
+}
+
+r = Rep()
+h = ["ID", "Name", "Total"]
+x = [10, 50, 200]
+
+out "Testing indexing with new engine..."
+r.tableHeader(h, x)
+out "Success."

@@ -20,9 +20,11 @@ public:
     std::shared_ptr<Environment> parent;
     std::unordered_map<std::string, Value> variables;
     mutable std::shared_mutex mutex;
+    bool isStatic = false;
     
     Environment() : parent(nullptr) {}
-    explicit Environment(std::shared_ptr<Environment> parent) : parent(parent) {}
+    explicit Environment(std::shared_ptr<Environment> parent, bool isStatic = false) 
+        : parent(parent), isStatic(isStatic) {}
     
     // Define a new variable in current scope
     void define(const std::string& name, const Value& value) {
@@ -42,7 +44,7 @@ public:
             return parent->get(name, line);
         }
         
-        throw RuntimeError("Undefined variable '" + name + "'", line);
+        return Value(); // Return nil, let Interpreter handle undefined error
     }
     
     // Check if variable exists

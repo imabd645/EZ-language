@@ -44,14 +44,44 @@ void Interpreter::runtimeError(const std::string& message, int line, const std::
     std::cerr << "Runtime Error: " << message << std::endl;
     std::cerr << "  at [line " << line << "] in " << (filename.empty() ? "main" : filename) << std::endl;
     
+    printStackTrace();
+    
+    throw RuntimeError(message, line);
+}
+
+void Interpreter::printStackTrace() const {
     // Print stack trace
     for (auto it = callStack.rbegin(); it != callStack.rend(); ++it) {
         std::cerr << "  at " << it->functionName << "() in " 
                   << (it->filename.empty() ? "main" : it->filename) 
                   << ":" << it->line << std::endl;
     }
+}
+
+EZFunction::EZFunction(const std::string& name, 
+                       const std::vector<std::string>& params,
+                       const std::vector<ExprPtr>& defaultValues,
+                       const std::vector<StmtPtr>& body,
+                       std::shared_ptr<Environment> closure)
+    : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure) {
+    staticEnv = std::make_shared<Environment>(closure, true); // Important: set isStatic = true
+}
+
+void Interpreter::visitStaticStmt(const std::shared_ptr<StaticStmt>& stmt, int line, const std::string& filename) {
+    auto env = currentEnv;
+    while (env && !env->isStatic) {
+        env = env->parent;
+    }
     
-    throw RuntimeError(message, line);
+    if (env) {
+        if (env->variables.find(stmt->name) == env->variables.end()) {
+            env->define(stmt->name, evaluate(stmt->initializer));
+        }
+    } else {
+        if (currentEnv->variables.find(stmt->name) == currentEnv->variables.end()) {
+           currentEnv->define(stmt->name, evaluate(stmt->initializer));
+        }
+    }
 }
 
 void Interpreter::interpret(const std::vector<StmtPtr>& statements) {
@@ -60,6 +90,7 @@ void Interpreter::interpret(const std::vector<StmtPtr>& statements) {
             execute(stmt);
         }
     } catch (const RuntimeError&) {
+        throw;
         // Error already printed by runtimeError()
     } catch (const ReturnException&) {
         // Top-level return, just ignore
@@ -154,6 +185,8 @@ void Interpreter::execute(const StmtPtr& stmt) {
             visitTryStmt(arg, line, filename);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<ThrowStmt>>) {
             visitThrowStmt(arg, line, filename);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<StaticStmt>>) {
+            visitStaticStmt(arg, line, filename);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<InterfaceStmt>>) {
             visitInterfaceStmt(arg, line, filename);
         }
@@ -190,6 +223,30 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
     Value left = evaluate(expr->left);
     Value right = evaluate(expr->right);
     
+    bool handled = false;
+    Value overloadResult;
+    std::string opStr;
+    
+    switch (expr->op) {
+        case TokenType::PLUS: opStr = "+"; break;
+        case TokenType::MINUS: opStr = "-"; break;
+        case TokenType::STAR: opStr = "*"; break;
+        case TokenType::SLASH: opStr = "/"; break;
+        case TokenType::PERCENT: opStr = "%"; break;
+        case TokenType::EQUAL_EQUAL: opStr = "=="; break;
+        case TokenType::BANG_EQUAL: opStr = "!="; break;
+        case TokenType::LESS: opStr = "<"; break;
+        case TokenType::LESS_EQUAL: opStr = "<="; break;
+        case TokenType::GREATER: opStr = ">"; break;
+        case TokenType::GREATER_EQUAL: opStr = ">="; break;
+        default: break;
+    }
+    
+    if (!opStr.empty()) {
+        overloadResult = lookupAndCallBinaryOperator(left, right, opStr, line, filename, handled);
+        if (handled) return overloadResult;
+    }
+
     switch (expr->op) {
         case TokenType::PLUS:
             if (left.isNumber() && right.isNumber()) return left.asNumber() + right.asNumber();
@@ -267,6 +324,16 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
 
 Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, const std::string& filename) {
     Value operand = evaluate(expr->operand);
+    
+    bool handled = false;
+    Value overloadResult;
+    if (expr->op == TokenType::MINUS) {
+        overloadResult = lookupAndCallUnaryOperator(operand, "unary-", line, filename, handled);
+    } else if (expr->op == TokenType::BANG || expr->op == TokenType::NOT) {
+        overloadResult = lookupAndCallUnaryOperator(operand, "not", line, filename, handled);
+    }
+    
+    if (handled) return overloadResult;
     
     switch (expr->op) {
         case TokenType::MINUS:
@@ -373,10 +440,10 @@ Value Interpreter::visitAssign(const std::shared_ptr<AssignExpr>& expr, int line
             
             Value indexVal = evaluate(expr->index);
             if (targetPtr->isArray()) {
-                if (!indexVal.isNumber()) throw RuntimeError("Array index must be a number", line);
+                if (!indexVal.isNumber()) runtimeError("Array index must be a number", line, filename);
                 int idx = static_cast<int>(indexVal.asNumber());
                 auto& arr = targetPtr->asArray();
-                if (idx < 0 || idx >= static_cast<int>(arr.size())) throw RuntimeError("Array index out of bounds", line);
+                if (idx < 0 || idx >= static_cast<int>(arr.size())) runtimeError("Array index out of bounds", line, filename);
                 arr[idx] = value;
             } else if (targetPtr->isDictionary()) {
                 targetPtr->asDictionary().map[indexVal.toString()] = value;
@@ -568,10 +635,10 @@ void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt, int line, c
 }
 
 void Interpreter::visitTaskStmt(const std::shared_ptr<TaskStmt>& stmt, int line, const std::string& filename) {
-    Value function = Value::makeFunction(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv);
+    auto func = std::make_shared<EZFunction>(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv);
+    Value function(func);
     currentEnv->define(stmt->name, function);
 }
-
 void Interpreter::visitGiveStmt(const std::shared_ptr<GiveStmt>& stmt, int line, const std::string& filename) {
     Value value;
     if (stmt->value) {
@@ -645,16 +712,17 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
                          " arguments but got " + std::to_string(finalArgs.size()), line, filename);
         }
         
-        auto funcEnv = std::make_shared<Environment>(func->closure);
+        // Create environment chain: global -> closure -> staticEnv -> callEnv
+        auto callEnv = func->staticEnv->createChild();
         for (size_t i = 0; i < func->params.size(); i++) {
-            funcEnv->define(func->params[i], finalArgs[i]);
+            callEnv->define(func->params[i], finalArgs[i]);
         }
         
         // Push frame
         callStack.push_back({func->name, filename, line});
         
         try {
-            executeBlock(func->body, funcEnv);
+            executeBlock(func->body, callEnv);
             callStack.pop_back();
         } catch (const ReturnException& e) {
             callStack.pop_back();
@@ -765,13 +833,13 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
 
 void Interpreter::checkNumberOperand(TokenType op, const Value& operand, int line, const std::string& filename) {
     if (!operand.isNumber()) {
-        throw RuntimeError("Operand must be a number", line);
+        runtimeError("Operand must be a number", line, filename);
     }
 }
 
 void Interpreter::checkNumberOperands(TokenType op, const Value& left, const Value& right, int line, const std::string& filename) {
     if (!left.isNumber() || !right.isNumber()) {
-        throw RuntimeError("Operands must be numbers", line);
+        runtimeError("Operands must be numbers", line, filename);
     }
 }
 
@@ -814,7 +882,7 @@ Value Interpreter::visitSelf(const std::shared_ptr<SelfExpr>& expr, int line, co
 Value Interpreter::visitNew(const std::shared_ptr<NewExpr>& expr, int line, const std::string& filename) {
     Value classVal = globalEnv->get(expr->className, line);
     if (!classVal.isClass()) {
-        throw RuntimeError("'" + expr->className + "' is not a model", line);
+        runtimeError("'" + expr->className + "' is not a model", line, filename);
     }
     
     auto klass = classVal.asClass();
@@ -887,7 +955,7 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
             }
             return member;
         }
-        throw RuntimeError("Undefined static property '" + expr->property + "'", line);
+        runtimeError("Undefined static property '" + expr->property + "'", line, filename);
     }
     
     // Get property
@@ -905,13 +973,14 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
                         if (currentEnv->contains("self")) {
                             Value self = currentEnv->get("self");
                             if (!self.isInstance() || self.asInstance() != instance) {
-                                throw RuntimeError("Cannot access hidden member '" + expr->property + "'", line);
+                                runtimeError("Cannot access hidden member '" + expr->property + "'", line, filename);
                             }
                         } else {
-                            throw RuntimeError("Cannot access hidden member '" + expr->property + "'", line);
+                            runtimeError("Cannot access hidden member '" + expr->property + "'", line, filename);
                         }
                     } catch (const RuntimeError&) {
-                        throw RuntimeError("Cannot access hidden member '" + expr->property + "'", line);
+        throw;
+                        runtimeError("Cannot access hidden member '" + expr->property + "'", line, filename);
                     }
                 }
                 break; // Found declaration, visibility checked
@@ -943,7 +1012,7 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
             klass = klass->parent;
         }
         
-        throw RuntimeError("Undefined property '" + expr->property + "'", line);
+        runtimeError("Undefined property '" + expr->property + "'", line, filename);
     } else if (object.isSuper()) {
         auto superObj = object.asSuper();
         auto klass = superObj->parentKlass;
@@ -965,7 +1034,7 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
             }
             klass = klass->parent;
         }
-        throw RuntimeError("Undefined property '" + expr->property + "' on super", line);
+        runtimeError("Undefined property '" + expr->property + "' on super", line, filename);
     } else if (object.isArray() && expr->property == "len") {
         return Value(static_cast<double>(object.asArray().size()));
     } else if (object.isString() && expr->property == "len") {
@@ -977,7 +1046,8 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
         return Value(); // nil if not found
     }
     
-    throw RuntimeError("Only objects have properties", line);
+    runtimeError("Only objects have properties", line, filename);
+    return Value();
 }
 
 void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int line, const std::string& filename) {
@@ -987,7 +1057,7 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int lin
     if (!stmt->parentName.empty()) {
         Value parentVal = globalEnv->get(stmt->parentName, stmt->line);
         if (!parentVal.isClass()) {
-            throw RuntimeError("Parent '" + stmt->parentName + "' must be a model", stmt->line);
+            runtimeError("Parent '" + stmt->parentName + "' must be a model", stmt->line, filename);
         }
         klass->parent = parentVal.asClass();
     }
@@ -1049,7 +1119,7 @@ Value Interpreter::visitSet(const std::shared_ptr<SetExpr>& expr, int line, cons
     Value object = evaluate(expr->object);
     
     if (!object.isInstance() && !object.isDictionary() && !object.isClass()) {
-        throw RuntimeError("Only instances, dictionaries, or classes have fields", line);
+        runtimeError("Only instances, dictionaries, or classes have fields", line, filename);
     }
     
     Value value = evaluate(expr->value);
@@ -1079,13 +1149,14 @@ Value Interpreter::visitSet(const std::shared_ptr<SetExpr>& expr, int line, cons
                      if (currentEnv->contains("self")) {
                         Value self = currentEnv->get("self");
                         if (!self.isInstance() || self.asInstance() != instance) {
-                            throw RuntimeError("Cannot modify hidden member '" + expr->name + "'", line);
+                            runtimeError("Cannot modify hidden member '" + expr->name + "'", line, filename);
                         }
                      } else {
-                         throw RuntimeError("Cannot modify hidden member '" + expr->name + "'", line);
+                         runtimeError("Cannot modify hidden member '" + expr->name + "'", line, filename);
                      }
                  } catch (const RuntimeError&) {
-                     throw RuntimeError("Cannot modify hidden member '" + expr->name + "'", line);
+        throw;
+                     runtimeError("Cannot modify hidden member '" + expr->name + "'", line, filename);
                  }
             }
             break; // Found declaration, stop checking parents
@@ -1133,14 +1204,35 @@ void Interpreter::visitStructStmt(const std::shared_ptr<StructStmt>& stmt, int l
     defineGlobal(stmt->name, Value(klass));
 }
 
+static std::string getDirectoryName(const std::string& path) {
+    size_t pos = path.find_last_of("/\\");
+    if (pos == std::string::npos) return ".";
+    return path.substr(0, pos);
+}
+
 void Interpreter::visitUseStmt(const std::shared_ptr<UseStmt>& stmt, int line, const std::string& filename) {
     std::string path = stmt->path;
-    std::ifstream file(path);
+    std::string absolutePath = path;
+    
+    // Attempt to resolve relative to the script's directory first
+    if (!filename.empty() && filename != "main") {
+        std::string dir = getDirectoryName(filename);
+        if (dir != ".") {
+            absolutePath = dir + "/" + path;
+        }
+    }
+    
+    std::ifstream file(absolutePath);
     
     // Check local file
     if (!file.is_open()) {
-        // Check C:/ezlib
-        std::string libPath = "C:/ezlib/" + path;
+        // Fallback to exactly what the user typed (if it works from CWD)
+        file.open(path);
+        if (file.is_open()) {
+            absolutePath = path;
+        } else {
+            // Check C:/ezlib
+            std::string libPath = "C:/ezlib/" + path;
         file.open(libPath);
         
         if (file.is_open()) {
@@ -1182,6 +1274,7 @@ void Interpreter::visitUseStmt(const std::shared_ptr<UseStmt>& stmt, int line, c
                      }
                  }
              }
+        }
         }
     }
     
@@ -1229,4 +1322,65 @@ void Interpreter::visitTryStmt(const std::shared_ptr<TryStmt>& stmt, int line, c
 void Interpreter::visitThrowStmt(const std::shared_ptr<ThrowStmt>& stmt, int line, const std::string& filename) {
     Value value = evaluate(stmt->expression);
     runtimeError(stringify(value, line, filename), line, filename);
+}
+
+
+Value Interpreter::lookupAndCallBinaryOperator(const Value& left, const Value& right, const std::string& op, int line, const std::string& filename, bool& handled) {
+    handled = false;
+    if (!left.isInstance()) return Value();
+    
+    auto instance = left.asInstance();
+    auto klass = instance->klass;
+    
+    while (klass) {
+        auto it = klass->methods.find(op);
+        if (it != klass->methods.end()) {
+            Value method = it->second;
+            if (!method.isFunction()) return method; 
+            
+            auto func = method.asFunction();
+            auto boundEnv = func->closure->createChild();
+            boundEnv->define("self", left);
+            if (klass->parent) {
+                boundEnv->define("super", Value::makeSuper(instance, klass->parent));
+            }
+            
+            Value boundMethod = Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
+            handled = true;
+            return callFunction(boundMethod, {right}, line, filename);
+        }
+        klass = klass->parent;
+    }
+    
+    return Value();
+}
+
+Value Interpreter::lookupAndCallUnaryOperator(const Value& operand, const std::string& op, int line, const std::string& filename, bool& handled) {
+    handled = false;
+    if (!operand.isInstance()) return Value();
+    
+    auto instance = operand.asInstance();
+    auto klass = instance->klass;
+    
+    while (klass) {
+        auto it = klass->methods.find(op);
+        if (it != klass->methods.end()) {
+            Value method = it->second;
+            if (!method.isFunction()) return method;
+            
+            auto func = method.asFunction();
+            auto boundEnv = func->closure->createChild();
+            boundEnv->define("self", operand);
+            if (klass->parent) {
+                boundEnv->define("super", Value::makeSuper(instance, klass->parent));
+            }
+            
+            Value boundMethod = Value::makeFunction(func->name, func->params, func->defaultValues, func->body, boundEnv);
+            handled = true;
+            return callFunction(boundMethod, {}, line, filename);
+        }
+        klass = klass->parent;
+    }
+    
+    return Value();
 }

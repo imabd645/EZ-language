@@ -1,0 +1,48 @@
+model Vector {
+    init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    # Binary overload for +
+    task +(otr) {
+        give Vector(self.x + otr.x, self.y + otr.y)
+    }
+
+    # Binary overload for ==
+    task ==(otr) {
+        give self.x == otr.x and self.y == otr.y
+    }
+
+    # Unary overload for - (negation)
+    task neg() {
+        give Vector(-self.x, -self.y)
+    }
+
+    task toString() {
+        give "Vector(" + str(self.x) + ", " + str(self.y) + ")"
+    }
+}
+
+out "--- Testing Operator Overloading ---"
+
+v1 = Vector(10, 20)
+v2 = Vector(5, 5)
+
+# Test +
+v3 = v1 + 
+out "v1 + v2 = " + v3.toString() 
+
+# Test += (desugared to +)
+v1 += v2
+out "v1 += v2 => " + v1.toString()
+
+# Test ==
+out "v1 == v3? " + str(v1 == v3)
+out "v1 == v2? " + str(v1 == v2)
+
+# Test unary -
+v4 = -v2
+out "-v2 = " + v4.toString()
+
+out "Operator overloading test completed successfully!"

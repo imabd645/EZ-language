@@ -22,10 +22,105 @@
 #include <thread>
 #include <future>
 
+#include <future>
+#include <iomanip>
+
+struct SimplePDF {
+    std::string filename;
+    std::vector<long> offsets;
+    std::stringstream body;
+    std::stringstream currentStream;
+    int pageCount = 0;
+    std::vector<int> pageIds;
+    std::vector<int> contentIds;
+    int catalogId, pagesId, fontId;
+
+    void begin(const std::string& fname) {
+        filename = fname;
+        body.str(""); body.clear();
+        currentStream.str(""); currentStream.clear();
+        offsets.clear();
+        pageIds.clear();
+        contentIds.clear();
+        pageCount = 0;
+        body << "%PDF-1.4\n";
+    }
+
+    int reserveId() {
+        offsets.push_back(0);
+        return (int)offsets.size();
+    }
+
+    void startObject(int id) {
+        offsets[id - 1] = (long)body.tellp();
+        body << id << " 0 obj\n";
+    }
+
+    void addPage() {
+        if (pageCount > 0) finalizePage();
+        pageCount++;
+        pageIds.push_back(reserveId());
+        contentIds.push_back(reserveId());
+        currentStream.str(""); currentStream.clear();
+    }
+
+    void finalizePage() {
+        int cId = contentIds.back();
+        startObject(cId);
+        std::string s = currentStream.str();
+        body << "<< /Length " << s.length() << " >>\nstream\n" << s << "\nendstream\nendobj\n";
+    }
+
+    void save() {
+        if (pageCount == 0) addPage();
+        finalizePage();
+
+        catalogId = reserveId();
+        pagesId = reserveId();
+        fontId = reserveId();
+
+        // 1. Catalog
+        startObject(catalogId);
+        body << "<< /Type /Catalog /Pages " << pagesId << " 0 R >>\nendobj\n";
+
+        // 2. Pages Root
+        startObject(pagesId);
+        body << "<< /Type /Pages /Kids [";
+        for (int id : pageIds) body << id << " 0 R ";
+        body << "] /Count " << pageCount << " >>\nendobj\n";
+
+        // 3. Font
+        startObject(fontId);
+        body << "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Name /F1 >>\nendobj\n";
+
+        // 4. Page Objects
+        for (size_t i = 0; i < pageIds.size(); ++i) {
+            startObject(pageIds[i]);
+            body << "<< /Type /Page /Parent " << pagesId << " 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 " << fontId << " 0 R >> >> /Contents " << contentIds[i] << " 0 R >>\nendobj\n";
+        }
+
+        // 5. xref
+        long startXref = (long)body.tellp();
+        body << "xref\n0 " << (offsets.size() + 1) << "\n0000000000 65535 f \n";
+        for (long off : offsets) {
+            body << std::setw(10) << std::setfill('0') << off << " 00000 n \n";
+        }
+
+        // 6. trailer
+        body << "trailer\n<< /Size " << (offsets.size() + 1) << " /Root " << catalogId << " 0 R >>\nstartxref\n" << startXref << "\n%%EOF";
+
+        std::ofstream out(filename, std::ios::binary);
+        out << body.str();
+        out.close();
+    }
+};
+
+static SimplePDF g_pdf;
+
 void registerBuiltins(Interpreter& interp) {
     // clock() - returns milliseconds since epoch
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now.time_since_epoch()
@@ -35,7 +130,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // Input function
     interp.defineGlobal("__input__", Value::makeNativeFunction("input", 0, 
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             std::string line;
             std::getline(std::cin, line);
             return Value(line);
@@ -43,7 +138,7 @@ void registerBuiltins(Interpreter& interp) {
     
     // len(x) - length of string or array
     interp.defineGlobal("len", Value::makeNativeFunction("len", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 return Value(static_cast<double>(args[0].asString().length()));
             }
@@ -53,15 +148,15 @@ void registerBuiltins(Interpreter& interp) {
             if (args[0].isDictionary()) {
                 return Value(static_cast<double>(args[0].asDictionary().map.size()));
             }
-            throw RuntimeError("len() expects string or array");
-        }));
+            { interp.runtimeError("len() expects string or array", 0, ""); return Value();
+         }}));
     
     // push(arr, val) - add element to array
     interp.defineGlobal("push", Value::makeNativeFunction("push", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("push() expects array as first argument");
-            }
+                { interp.runtimeError("push() expects array as first argument", 0, ""); return Value();
+             }}
             auto arr = args[0].asArrayPtr();
             arr->push_back(args[1]);
             return Value(arr);
@@ -69,14 +164,14 @@ void registerBuiltins(Interpreter& interp) {
     
     // pop(arr) - remove and return last element
     interp.defineGlobal("pop", Value::makeNativeFunction("pop", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("pop() expects array");
-            }
+                { interp.runtimeError("pop() expects array", 0, ""); return Value();
+             }}
             auto& arr = *args[0].asArrayPtr();
             if (arr.empty()) {
-                throw RuntimeError("pop() on empty array");
-            }
+                { interp.runtimeError("pop() on empty array", 0, ""); return Value();
+             }}
             Value last = arr.back();
             arr.pop_back();
             return last;
@@ -90,36 +185,36 @@ void registerBuiltins(Interpreter& interp) {
     
     // num(x) - convert to number
     interp.defineGlobal("num", Value::makeNativeFunction("num", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isNumber()) return args[0];
             if (args[0].isString()) {
                 try {
                     return Value(std::stod(args[0].asString()));
                 } catch (...) {
-                    throw RuntimeError("Cannot convert '" + args[0].asString() + "' to number");
-                }
+                    { interp.runtimeError("Cannot convert '" + args[0].asString() + "' to number", 0, ""); return Value();
+                 }}
             }
             if (args[0].isBool()) {
                 return Value(args[0].asBool() ? 1.0 : 0.0);
             }
-            throw RuntimeError("Cannot convert " + args[0].typeName() + " to number");
-        }));
+            { interp.runtimeError("Cannot convert " + args[0].typeName() + " to number", 0, ""); return Value();
+         }}));
     
     // type(x) - get type name
     interp.defineGlobal("type", Value::makeNativeFunction("type", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             return Value(args[0].typeName());
         }));
     
     // substr(s, start, len) - get substring
     interp.defineGlobal("substr", Value::makeNativeFunction("substr", 3,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("substr() expects string as first argument");
-            }
+                { interp.runtimeError("substr() expects string as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isNumber() || !args[2].isNumber()) {
-                throw RuntimeError("substr() expects numbers for start and length");
-            }
+                { interp.runtimeError("substr() expects numbers for start and length", 0, ""); return Value();
+             }}
             const std::string& str = args[0].asString();
             int start = static_cast<int>(args[1].asNumber());
             int len = static_cast<int>(args[2].asNumber());
@@ -133,10 +228,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // split(s, delim) - split string into array
     interp.defineGlobal("split", Value::makeNativeFunction("split", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) {
-                throw RuntimeError("split() expects two strings");
-            }
+                { interp.runtimeError("split() expects two strings", 0, ""); return Value();
+             }}
             
             const std::string& str = args[0].asString();
             const std::string& delim = args[1].asString();
@@ -164,13 +259,13 @@ void registerBuiltins(Interpreter& interp) {
     
     // join(arr, delim) - join array into string
     interp.defineGlobal("join", Value::makeNativeFunction("join", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("join() expects array as first argument");
-            }
+                { interp.runtimeError("join() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isString()) {
-                throw RuntimeError("join() expects string as delimiter");
-            }
+                { interp.runtimeError("join() expects string as delimiter", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             const std::string& delim = args[1].asString();
@@ -186,65 +281,65 @@ void registerBuiltins(Interpreter& interp) {
     
     // floor(x)
     interp.defineGlobal("floor", Value::makeNativeFunction("floor", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
-                throw RuntimeError("floor() expects number");
-            }
+                { interp.runtimeError("floor() expects number", 0, ""); return Value();
+             }}
             return Value(std::floor(args[0].asNumber()));
         }));
     
     // ceil(x)
     interp.defineGlobal("ceil", Value::makeNativeFunction("ceil", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
-                throw RuntimeError("ceil() expects number");
-            }
+                { interp.runtimeError("ceil() expects number", 0, ""); return Value();
+             }}
             return Value(std::ceil(args[0].asNumber()));
         }));
     
     // abs(x)
     interp.defineGlobal("abs", Value::makeNativeFunction("abs", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
-                throw RuntimeError("abs() expects number");
-            }
+                { interp.runtimeError("abs() expects number", 0, ""); return Value();
+             }}
             return Value(std::abs(args[0].asNumber()));
         }));
     
     // sqrt(x)
     interp.defineGlobal("sqrt", Value::makeNativeFunction("sqrt", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
-                throw RuntimeError("sqrt() expects number");
-            }
+                { interp.runtimeError("sqrt() expects number", 0, ""); return Value();
+             }}
             double val = args[0].asNumber();
             if (val < 0) {
-                throw RuntimeError("sqrt() of negative number");
-            }
+                { interp.runtimeError("sqrt() of negative number", 0, ""); return Value();
+             }}
             return Value(std::sqrt(val));
         }));
     
     // pow(base, exp)
     interp.defineGlobal("pow", Value::makeNativeFunction("pow", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber() || !args[1].isNumber()) {
-                throw RuntimeError("pow() expects two numbers");
-            }
+                { interp.runtimeError("pow() expects two numbers", 0, ""); return Value();
+             }}
             return Value(std::pow(args[0].asNumber(), args[1].asNumber()));
         }));
     
     // rand() - random number 0-1
     interp.defineGlobal("rand", Value::makeNativeFunction("rand", 0,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             return Value(static_cast<double>(std::rand()) / RAND_MAX);
         }));
     
     // randint(min, max) - random integer in range
     interp.defineGlobal("randint", Value::makeNativeFunction("randint", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber() || !args[1].isNumber()) {
-                throw RuntimeError("randint() expects two numbers");
-            }
+                { interp.runtimeError("randint() expects two numbers", 0, ""); return Value();
+             }}
             int min = static_cast<int>(args[0].asNumber());
             int max = static_cast<int>(args[1].asNumber());
             return Value(static_cast<double>(min + std::rand() % (max - min + 1)));
@@ -252,38 +347,38 @@ void registerBuiltins(Interpreter& interp) {
     
     // round(x)
     interp.defineGlobal("round", Value::makeNativeFunction("round", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
-                throw RuntimeError("round() expects number");
-            }
+                { interp.runtimeError("round() expects number", 0, ""); return Value();
+             }}
             return Value(std::round(args[0].asNumber()));
         }));
     
     // min(a, b)
     interp.defineGlobal("min", Value::makeNativeFunction("min", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber() || !args[1].isNumber()) {
-                throw RuntimeError("min() expects two numbers");
-            }
+                { interp.runtimeError("min() expects two numbers", 0, ""); return Value();
+             }}
             return Value(std::min(args[0].asNumber(), args[1].asNumber()));
         }));
     
     // max(a, b)
     interp.defineGlobal("max", Value::makeNativeFunction("max", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber() || !args[1].isNumber()) {
-                throw RuntimeError("max() expects two numbers");
-            }
+                { interp.runtimeError("max() expects two numbers", 0, ""); return Value();
+             }}
             return Value(std::max(args[0].asNumber(), args[1].asNumber()));
         }));
     
     // contains(str/arr, item) - check if string/array contains item
     interp.defineGlobal("contains", Value::makeNativeFunction("contains", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 if (!args[1].isString()) {
-                    throw RuntimeError("contains() with string expects string to search for");
-                }
+                    { interp.runtimeError("contains() with string expects string to search for", 0, ""); return Value();
+                 }}
                 return Value(args[0].asString().find(args[1].asString()) != std::string::npos);
             }
             if (args[0].isArray()) {
@@ -300,16 +395,16 @@ void registerBuiltins(Interpreter& interp) {
                 const auto& dict = args[0].asDictionary();
                 return Value(dict.map.find(key) != dict.map.end());
             }
-            throw RuntimeError("contains() expects string, array, or dictionary");
-        }));
+            { interp.runtimeError("contains() expects string, array, or dictionary", 0, ""); return Value();
+         }}));
     
     // indexOf(str/arr, item) - find index of item
     interp.defineGlobal("indexOf", Value::makeNativeFunction("indexOf", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 if (!args[1].isString()) {
-                    throw RuntimeError("indexOf() with string expects string to search for");
-                }
+                    { interp.runtimeError("indexOf() with string expects string to search for", 0, ""); return Value();
+                 }}
                 size_t pos = args[0].asString().find(args[1].asString());
                 if (pos == std::string::npos) return Value(-1.0);
                 return Value(static_cast<double>(pos));
@@ -323,12 +418,12 @@ void registerBuiltins(Interpreter& interp) {
                 }
                 return Value(-1.0);
             }
-            throw RuntimeError("indexOf() expects string or array");
-        }));
+            { interp.runtimeError("indexOf() expects string or array", 0, ""); return Value();
+         }}));
     
     // reverse(arr/str) - reverse array or string
     interp.defineGlobal("reverse", Value::makeNativeFunction("reverse", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 std::string s = args[0].asString();
                 std::reverse(s.begin(), s.end());
@@ -339,15 +434,15 @@ void registerBuiltins(Interpreter& interp) {
                 std::reverse(arr.begin(), arr.end());
                 return Value::makeArray(arr);
             }
-            throw RuntimeError("reverse() expects string or array");
-        }));
+            { interp.runtimeError("reverse() expects string or array", 0, ""); return Value();
+         }}));
     
     // sort(arr) - sort array
     interp.defineGlobal("sort", Value::makeNativeFunction("sort", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("sort() expects array");
-            }
+                { interp.runtimeError("sort() expects array", 0, ""); return Value();
+             }}
             auto arr = args[0].asArray();
             std::sort(arr.begin(), arr.end(), [](const Value& a, const Value& b) {
                 if (a.isNumber() && b.isNumber()) {
@@ -360,10 +455,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // upper(str) - uppercase
     interp.defineGlobal("upper", Value::makeNativeFunction("upper", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("upper() expects string");
-            }
+                { interp.runtimeError("upper() expects string", 0, ""); return Value();
+             }}
             std::string s = args[0].asString();
             std::transform(s.begin(), s.end(), s.begin(), ::toupper);
             return Value(s);
@@ -371,10 +466,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // lower(str) - lowercase
     interp.defineGlobal("lower", Value::makeNativeFunction("lower", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("lower() expects string");
-            }
+                { interp.runtimeError("lower() expects string", 0, ""); return Value();
+             }}
             std::string s = args[0].asString();
             std::transform(s.begin(), s.end(), s.begin(), ::tolower);
             return Value(s);
@@ -382,10 +477,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // trim(str) - trim whitespace
     interp.defineGlobal("trim", Value::makeNativeFunction("trim", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("trim() expects string");
-            }
+                { interp.runtimeError("trim() expects string", 0, ""); return Value();
+             }}
             std::string s = args[0].asString();
             s.erase(0, s.find_first_not_of(" \t\n\r"));
             s.erase(s.find_last_not_of(" \t\n\r") + 1);
@@ -394,10 +489,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // replace(str, old, new) - replace substring
     interp.defineGlobal("replace", Value::makeNativeFunction("replace", 3,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString() || !args[2].isString()) {
-                throw RuntimeError("replace() expects three strings");
-            }
+                { interp.runtimeError("replace() expects three strings", 0, ""); return Value();
+             }}
             std::string s = args[0].asString();
             const std::string& from = args[1].asString();
             const std::string& to = args[2].asString();
@@ -414,10 +509,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // startsWith(str, prefix) - check if string starts with prefix
     interp.defineGlobal("startsWith", Value::makeNativeFunction("startsWith", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) {
-                throw RuntimeError("startsWith() expects two strings");
-            }
+                { interp.runtimeError("startsWith() expects two strings", 0, ""); return Value();
+             }}
             const std::string& str = args[0].asString();
             const std::string& prefix = args[1].asString();
             if (prefix.length() > str.length()) return Value(false);
@@ -426,10 +521,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // endsWith(str, suffix) - check if string ends with suffix
     interp.defineGlobal("endsWith", Value::makeNativeFunction("endsWith", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) {
-                throw RuntimeError("endsWith() expects two strings");
-            }
+                { interp.runtimeError("endsWith() expects two strings", 0, ""); return Value();
+             }}
             const std::string& str = args[0].asString();
             const std::string& suffix = args[1].asString();
             if (suffix.length() > str.length()) return Value(false);
@@ -438,10 +533,10 @@ void registerBuiltins(Interpreter& interp) {
     
     // has_key(dict, key) - check if dictionary contains a key
     interp.defineGlobal("has_key", Value::makeNativeFunction("has_key", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) {
-                throw RuntimeError("has_key() expects dictionary as first argument");
-            }
+                { interp.runtimeError("has_key() expects dictionary as first argument", 0, ""); return Value();
+             }}
             std::string key = args[1].toString();
             const auto& map = args[0].asDictionary().map;
             return Value(map.find(key) != map.end());
@@ -449,18 +544,18 @@ void registerBuiltins(Interpreter& interp) {
     
     // remove(arr, index) - remove element at index, returns removed value
     interp.defineGlobal("remove", Value::makeNativeFunction("remove", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("remove() expects array as first argument");
-            }
+                { interp.runtimeError("remove() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isNumber()) {
-                throw RuntimeError("remove() expects number index as second argument");
-            }
+                { interp.runtimeError("remove() expects number index as second argument", 0, ""); return Value();
+             }}
             auto& arr = *args[0].asArrayPtr();
             int index = static_cast<int>(args[1].asNumber());
             if (index < 0 || index >= static_cast<int>(arr.size())) {
-                throw RuntimeError("remove() index out of bounds");
-            }
+                { interp.runtimeError("remove() index out of bounds", 0, ""); return Value();
+             }}
             Value removed = arr[index];
             arr.erase(arr.begin() + index);
             return removed;
@@ -468,28 +563,28 @@ void registerBuiltins(Interpreter& interp) {
     
     // insert(arr, index, value) - insert element at index
     interp.defineGlobal("insert", Value::makeNativeFunction("insert", 3,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("insert() expects array as first argument");
-            }
+                { interp.runtimeError("insert() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isNumber()) {
-                throw RuntimeError("insert() expects number index as second argument");
-            }
+                { interp.runtimeError("insert() expects number index as second argument", 0, ""); return Value();
+             }}
             auto& arr = *args[0].asArrayPtr();
             int index = static_cast<int>(args[1].asNumber());
             if (index < 0 || index > static_cast<int>(arr.size())) {
-                throw RuntimeError("insert() index out of bounds");
-            }
+                { interp.runtimeError("insert() index out of bounds", 0, ""); return Value();
+             }}
             arr.insert(arr.begin() + index, args[2]);
             return args[0];
         }));
     
     // slice(arr/str, start, end) - get slice
     interp.defineGlobal("slice", Value::makeNativeFunction("slice", 3,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[1].isNumber() || !args[2].isNumber()) {
-                throw RuntimeError("slice() expects numbers for start and end");
-            }
+                { interp.runtimeError("slice() expects numbers for start and end", 0, ""); return Value();
+             }}
             int start = static_cast<int>(args[1].asNumber());
             int end = static_cast<int>(args[2].asNumber());
             
@@ -513,12 +608,12 @@ void registerBuiltins(Interpreter& interp) {
                 if (start >= end) return Value::makeArray({});
                 return Value::makeArray(std::vector<Value>(arr.begin() + start, arr.begin() + end));
             }
-            throw RuntimeError("slice() expects string or array");
-        }));
+            { interp.runtimeError("slice() expects string or array", 0, ""); return Value();
+         }}));
     
     // print (alias for out but as function)
     interp.defineGlobal("print", Value::makeNativeFunction("print", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             for (size_t i = 0; i < args.size(); i++) {
                 if (i > 0) std::cout << " ";
                 std::cout << args[i].toString();
@@ -529,7 +624,7 @@ void registerBuiltins(Interpreter& interp) {
     
     // input(prompt) - input with optional prompt
     interp.defineGlobal("input", Value::makeNativeFunction("input", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args.empty()) {
                 std::cout << args[0].toString();
             }
@@ -540,19 +635,19 @@ void registerBuiltins(Interpreter& interp) {
     
     // range(end) or range(start, end) - create array from range
     interp.defineGlobal("range", Value::makeNativeFunction("range", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (args.empty() || args.size() > 2) {
-                throw RuntimeError("range() expects 1 or 2 arguments");
-            }
+                { interp.runtimeError("range() expects 1 or 2 arguments", 0, ""); return Value();
+             }}
             
             int start = 0, end = 0;
             if (args.size() == 1) {
-                if (!args[0].isNumber()) throw RuntimeError("range() expects number");
-                end = static_cast<int>(args[0].asNumber());
+                if (!args[0].isNumber()) { interp.runtimeError("range() expects number", 0, ""); return Value();
+                 }end = static_cast<int>(args[0].asNumber());
             } else {
                 if (!args[0].isNumber() || !args[1].isNumber()) {
-                    throw RuntimeError("range() expects numbers");
-                }
+                    { interp.runtimeError("range() expects numbers", 0, ""); return Value();
+                 }}
                 start = static_cast<int>(args[0].asNumber());
                 end = static_cast<int>(args[1].asNumber());
             }
@@ -568,11 +663,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("map", Value::makeNativeFunction("map", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("map() expects array as first argument");
-            }
+                { interp.runtimeError("map() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("map() expects function as second argument");
-            }
+                { interp.runtimeError("map() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             std::vector<Value> result;
@@ -588,11 +683,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("filter", Value::makeNativeFunction("filter", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("filter() expects array as first argument");
-            }
+                { interp.runtimeError("filter() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("filter() expects function as second argument");
-            }
+                { interp.runtimeError("filter() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             std::vector<Value> result;
@@ -611,11 +706,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("reduce", Value::makeNativeFunction("reduce", 3,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("reduce() expects array as first argument");
-            }
+                { interp.runtimeError("reduce() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("reduce() expects function as second argument");
-            }
+                { interp.runtimeError("reduce() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             Value acc = args[2];
@@ -631,11 +726,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("forEach", Value::makeNativeFunction("forEach", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("forEach() expects array as first argument");
-            }
+                { interp.runtimeError("forEach() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("forEach() expects function as second argument");
-            }
+                { interp.runtimeError("forEach() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             
@@ -650,11 +745,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("find", Value::makeNativeFunction("find", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("find() expects array as first argument");
-            }
+                { interp.runtimeError("find() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("find() expects function as second argument");
-            }
+                { interp.runtimeError("find() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             
@@ -672,11 +767,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("every", Value::makeNativeFunction("every", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("every() expects array as first argument");
-            }
+                { interp.runtimeError("every() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("every() expects function as second argument");
-            }
+                { interp.runtimeError("every() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             
@@ -694,11 +789,11 @@ void registerBuiltins(Interpreter& interp) {
     interp.defineGlobal("some", Value::makeNativeFunction("some", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {
-                throw RuntimeError("some() expects array as first argument");
-            }
+                { interp.runtimeError("some() expects array as first argument", 0, ""); return Value();
+             }}
             if (!args[1].isCallable()) {
-                throw RuntimeError("some() expects function as second argument");
-            }
+                { interp.runtimeError("some() expects function as second argument", 0, ""); return Value();
+             }}
             
             const auto& arr = args[0].asArray();
             
@@ -714,15 +809,15 @@ void registerBuiltins(Interpreter& interp) {
     
     // readFile(path) - read file content as string
     interp.defineGlobal("readFile", Value::makeNativeFunction("readFile", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("readFile() expects string path");
-            }
+                { interp.runtimeError("readFile() expects string path", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::ifstream file(path);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "'");
-            }
+                { interp.runtimeError("Could not open file '" + path + "'", 0, ""); return Value();
+             }}
             std::stringstream buffer;
             buffer << file.rdbuf();
             return Value(buffer.str());
@@ -730,55 +825,55 @@ void registerBuiltins(Interpreter& interp) {
     
     // writeFile(path, content) - write string to file
     interp.defineGlobal("writeFile", Value::makeNativeFunction("writeFile", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("writeFile() expects string path");
-            }
+                { interp.runtimeError("writeFile() expects string path", 0, ""); return Value();
+             }}
             if (!args[1].isString()) {
-                throw RuntimeError("writeFile() expects string content");
-            }
+                { interp.runtimeError("writeFile() expects string content", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
             std::ofstream file(path);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "' for writing");
-            }
+                { interp.runtimeError("Could not open file '" + path + "' for writing", 0, ""); return Value();
+             }}
             file << content;
             return Value(true);
         }));
     
     // appendFile(path, content) - append string to file
     interp.defineGlobal("appendFile", Value::makeNativeFunction("appendFile", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("appendFile() expects string path");
-            }
+                { interp.runtimeError("appendFile() expects string path", 0, ""); return Value();
+             }}
             if (!args[1].isString()) {
-                throw RuntimeError("appendFile() expects string content");
-            }
+                { interp.runtimeError("appendFile() expects string content", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
             std::ofstream file(path, std::ios::app);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "' for appending");
-            }
+                { interp.runtimeError("Could not open file '" + path + "' for appending", 0, ""); return Value();
+             }}
             file << content;
             return Value(true);
         }));
     
     // readLines(path) - read file into array of lines
     interp.defineGlobal("readLines", Value::makeNativeFunction("readLines", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("readLines() expects string path");
-            }
+                { interp.runtimeError("readLines() expects string path", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::ifstream file(path);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "'");
-            }
+                { interp.runtimeError("Could not open file '" + path + "'", 0, ""); return Value();
+             }}
             std::vector<Value> lines;
             std::string line;
             while (std::getline(file, line)) {
@@ -789,49 +884,49 @@ void registerBuiltins(Interpreter& interp) {
     
     // writeLine(path, content) - write string with newline to file
     interp.defineGlobal("writeLine", Value::makeNativeFunction("writeLine", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("writeLine() expects string path");
-            }
+                { interp.runtimeError("writeLine() expects string path", 0, ""); return Value();
+             }}
             if (!args[1].isString()) {
-                throw RuntimeError("writeLine() expects string content");
-            }
+                { interp.runtimeError("writeLine() expects string content", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
             std::ofstream file(path);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "' for writing");
-            }
+                { interp.runtimeError("Could not open file '" + path + "' for writing", 0, ""); return Value();
+             }}
             file << content << std::endl;
             return Value(true);
         }));
     
     // appendLine(path, content) - append string with newline to file
     interp.defineGlobal("appendLine", Value::makeNativeFunction("appendLine", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) {
-                throw RuntimeError("appendLine() expects string path");
-            }
+                { interp.runtimeError("appendLine() expects string path", 0, ""); return Value();
+             }}
             if (!args[1].isString()) {
-                throw RuntimeError("appendLine() expects string content");
-            }
+                { interp.runtimeError("appendLine() expects string content", 0, ""); return Value();
+             }}
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
             std::ofstream file(path, std::ios::app);
             if (!file.is_open()) {
-                throw RuntimeError("Could not open file '" + path + "' for appending");
-            }
+                { interp.runtimeError("Could not open file '" + path + "' for appending", 0, ""); return Value();
+             }}
             file << content << std::endl;
             return Value(true);
         }));
     
     // keys(dict)
     interp.defineGlobal("keys", Value::makeNativeFunction("keys", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isDictionary()) throw RuntimeError("keys() expects dictionary");
-            const auto& map = args[0].asDictionary().map;
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) { interp.runtimeError("keys() expects dictionary", 0, ""); return Value();
+             }const auto& map = args[0].asDictionary().map;
             std::vector<Value> keys;
             for (const auto& kv : map) {
                 keys.push_back(Value(kv.first));
@@ -841,9 +936,9 @@ void registerBuiltins(Interpreter& interp) {
     
     // values(dict)
     interp.defineGlobal("values", Value::makeNativeFunction("values", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isDictionary()) throw RuntimeError("values() expects dictionary");
-            const auto& map = args[0].asDictionary().map;
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) { interp.runtimeError("values() expects dictionary", 0, ""); return Value();
+             }const auto& map = args[0].asDictionary().map;
             std::vector<Value> vals;
             for (const auto& kv : map) {
                 vals.push_back(kv.second);
@@ -855,22 +950,22 @@ void registerBuiltins(Interpreter& interp) {
     // server(port, handler) - Windows-only web server
     interp.defineGlobal("server", Value::makeNativeFunction("server", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("server() port must be a number");
-            if (!args[1].isFunction()) throw RuntimeError("server() handler must be a function");
+            if (!args[0].isNumber()) { interp.runtimeError("server() port must be a number", 0, ""); return Value();
+             }if (!args[1].isFunction()) { interp.runtimeError("server() handler must be a function", 0, ""); return Value();
             
-            int port = static_cast<int>(args[0].asNumber());
+             }int port = static_cast<int>(args[0].asNumber());
             Value handler = args[1];
 
             WSADATA wsaData;
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-                throw RuntimeError("WSAStartup failed");
-            }
+                { interp.runtimeError("WSAStartup failed", 0, ""); return Value();
+             }}
 
             SOCKET listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
             if (listenSocket == INVALID_SOCKET) {
                 WSACleanup();
-                throw RuntimeError("Socket creation failed");
-            }
+                { interp.runtimeError("Socket creation failed", 0, ""); return Value();
+             }}
 
             sockaddr_in serverAddr;
             serverAddr.sin_family = AF_INET;
@@ -880,14 +975,14 @@ void registerBuiltins(Interpreter& interp) {
             if (bind(listenSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
                 closesocket(listenSocket);
                 WSACleanup();
-                throw RuntimeError("Bind failed");
-            }
+                { interp.runtimeError("Bind failed", 0, ""); return Value();
+             }}
 
             if (listen(listenSocket, SOMAXCONN) == SOCKET_ERROR) {
                 closesocket(listenSocket);
                 WSACleanup();
-                throw RuntimeError("Listen failed");
-            }
+                { interp.runtimeError("Listen failed", 0, ""); return Value();
+             }}
 
             while (true) {
                 SOCKET clientSocket = accept(listenSocket, nullptr, nullptr);
@@ -1108,16 +1203,16 @@ void registerBuiltins(Interpreter& interp) {
         }));
 #else
     interp.defineGlobal("server", Value::makeNativeFunction("server", 2,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
-            throw RuntimeError("server() is only supported on Windows");
-        }));
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+            { interp.runtimeError("server() is only supported on Windows", 0, ""); return Value();
+         }}));
 #endif
 
     // serveFile(path) - helper to serve a file with correct headers
     interp.defineGlobal("serveFile", Value::makeNativeFunction("serveFile", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("serveFile() expects string path");
-            std::string path = args[0].asString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("serveFile() expects string path", 0, ""); return Value();
+             }std::string path = args[0].asString();
             
             std::ifstream file(path, std::ios::binary);
             if (!file.is_open()) {
@@ -1161,17 +1256,17 @@ void registerBuiltins(Interpreter& interp) {
 
     // dbOpen(path)
     interp.defineGlobal("dbOpen", Value::makeNativeFunction("dbOpen", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("dbOpen() expects string path");
-            std::string path = args[0].asString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("dbOpen() expects string path", 0, ""); return Value();
+             }std::string path = args[0].asString();
             
             sqlite3* db;
             int rc = sqlite3_open(path.c_str(), &db);
             if (rc != SQLITE_OK) {
                 std::string err = sqlite3_errmsg(db);
                 sqlite3_close(db);
-                throw RuntimeError("sqlite3_open failed: " + err);
-            }
+                { interp.runtimeError("sqlite3_open failed: " + err, 0, ""); return Value();
+             }}
             
             int handle = nextDbHandle++;
             dbConnections[handle] = db;
@@ -1180,21 +1275,21 @@ void registerBuiltins(Interpreter& interp) {
 
     // dbExec(handle, sql, [params])
     interp.defineGlobal("dbExec", Value::makeNativeFunction("dbExec", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2) throw RuntimeError("dbExec() expects at least 2 arguments");
-            if (!args[0].isNumber()) throw RuntimeError("dbExec() expects number handle");
-            if (!args[1].isString()) throw RuntimeError("dbExec() expects string SQL");
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2) { interp.runtimeError("dbExec() expects at least 2 arguments", 0, ""); return Value();
+             }if (!args[0].isNumber()) { interp.runtimeError("dbExec() expects number handle", 0, ""); return Value();
+             }if (!args[1].isString()) { interp.runtimeError("dbExec() expects string SQL", 0, ""); return Value();
             
-            int handle = (int)args[0].asNumber();
+             }int handle = (int)args[0].asNumber();
             if (dbConnections.find(handle) == dbConnections.end()) {
-                throw RuntimeError("Invalid database handle");
-            }
+                { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }}
             
             sqlite3* db = dbConnections[handle];
             sqlite3_stmt* stmt;
             if (sqlite3_prepare_v2(db, args[1].asString().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-                throw RuntimeError("sqlite3_prepare_v2 failed: " + std::string(sqlite3_errmsg(db)));
-            }
+                { interp.runtimeError("sqlite3_prepare_v2 failed: " + std::string(sqlite3_errmsg(db)), 0, ""); return Value();
+             }}
             
             // Bind parameters
             if (args.size() > 2 && args[2].isArray()) {
@@ -1214,29 +1309,29 @@ void registerBuiltins(Interpreter& interp) {
             sqlite3_finalize(stmt);
             
             if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
-                throw RuntimeError("sqlite3_step failed: " + std::string(sqlite3_errmsg(db)));
-            }
+                { interp.runtimeError("sqlite3_step failed: " + std::string(sqlite3_errmsg(db)), 0, ""); return Value();
+             }}
             
             return Value(true);
         }));
 
     // dbQuery(handle, sql, [params])
     interp.defineGlobal("dbQuery", Value::makeNativeFunction("dbQuery", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2) throw RuntimeError("dbQuery() expects at least 2 arguments");
-            if (!args[0].isNumber()) throw RuntimeError("dbQuery() expects number handle");
-            if (!args[1].isString()) throw RuntimeError("dbQuery() expects string SQL");
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2) { interp.runtimeError("dbQuery() expects at least 2 arguments", 0, ""); return Value();
+             }if (!args[0].isNumber()) { interp.runtimeError("dbQuery() expects number handle", 0, ""); return Value();
+             }if (!args[1].isString()) { interp.runtimeError("dbQuery() expects string SQL", 0, ""); return Value();
             
-            int handle = (int)args[0].asNumber();
+             }int handle = (int)args[0].asNumber();
             if (dbConnections.find(handle) == dbConnections.end()) {
-                throw RuntimeError("Invalid database handle");
-            }
+                { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }}
             
             sqlite3* db = dbConnections[handle];
             sqlite3_stmt* stmt;
             if (sqlite3_prepare_v2(db, args[1].asString().c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-                throw RuntimeError("sqlite3_prepare_v2 failed: " + std::string(sqlite3_errmsg(db)));
-            }
+                { interp.runtimeError("sqlite3_prepare_v2 failed: " + std::string(sqlite3_errmsg(db)), 0, ""); return Value();
+             }}
             
             // Bind parameters
             if (args.size() > 2 && args[2].isArray()) {
@@ -1287,10 +1382,10 @@ void registerBuiltins(Interpreter& interp) {
 
     // dbClose(handle)
     interp.defineGlobal("dbClose", Value::makeNativeFunction("dbClose", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("dbClose() expects number handle");
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("dbClose() expects number handle", 0, ""); return Value();
             
-            int handle = (int)args[0].asNumber();
+             }int handle = (int)args[0].asNumber();
             auto it = dbConnections.find(handle);
             if (it != dbConnections.end()) {
                 sqlite3_close(it->second);
@@ -1301,77 +1396,111 @@ void registerBuiltins(Interpreter& interp) {
 
     // dbLastInsertId(handle)
     interp.defineGlobal("dbLastInsertId", Value::makeNativeFunction("dbLastInsertId", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("dbLastInsertId() expects number handle");
-            int handle = (int)args[0].asNumber();
-            if (dbConnections.find(handle) == dbConnections.end()) throw RuntimeError("Invalid database handle");
-            return Value((double)sqlite3_last_insert_rowid(dbConnections[handle]));
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("dbLastInsertId() expects number handle", 0, ""); return Value();
+             }int handle = (int)args[0].asNumber();
+            if (dbConnections.find(handle) == dbConnections.end()) { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }return Value((double)sqlite3_last_insert_rowid(dbConnections[handle]));
         }));
 
     // dbBegin(handle)
     interp.defineGlobal("dbBegin", Value::makeNativeFunction("dbBegin", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("dbBegin() expects number handle");
-            int handle = (int)args[0].asNumber();
-            if (dbConnections.find(handle) == dbConnections.end()) throw RuntimeError("Invalid database handle");
-            sqlite3_exec(dbConnections[handle], "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("dbBegin() expects number handle", 0, ""); return Value();
+             }int handle = (int)args[0].asNumber();
+            if (dbConnections.find(handle) == dbConnections.end()) { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }sqlite3_exec(dbConnections[handle], "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
             return Value(true);
         }));
 
     // dbCommit(handle)
     interp.defineGlobal("dbCommit", Value::makeNativeFunction("dbCommit", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("dbCommit() expects number handle");
-            int handle = (int)args[0].asNumber();
-            if (dbConnections.find(handle) == dbConnections.end()) throw RuntimeError("Invalid database handle");
-            sqlite3_exec(dbConnections[handle], "COMMIT", nullptr, nullptr, nullptr);
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("dbCommit() expects number handle", 0, ""); return Value();
+             }int handle = (int)args[0].asNumber();
+            if (dbConnections.find(handle) == dbConnections.end()) { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }sqlite3_exec(dbConnections[handle], "COMMIT", nullptr, nullptr, nullptr);
             return Value(true);
         }));
 
     // dbRollback(handle)
     interp.defineGlobal("dbRollback", Value::makeNativeFunction("dbRollback", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("dbRollback() expects number handle");
-            int handle = (int)args[0].asNumber();
-            if (dbConnections.find(handle) == dbConnections.end()) throw RuntimeError("Invalid database handle");
-            sqlite3_exec(dbConnections[handle], "ROLLBACK", nullptr, nullptr, nullptr);
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("dbRollback() expects number handle", 0, ""); return Value();
+             }int handle = (int)args[0].asNumber();
+            if (dbConnections.find(handle) == dbConnections.end()) { interp.runtimeError("Invalid database handle", 0, ""); return Value();
+             }sqlite3_exec(dbConnections[handle], "ROLLBACK", nullptr, nullptr, nullptr);
             return Value(true);
         }));
 
     // ord(str) - returns ASCII value of first char
     interp.defineGlobal("ord", Value::makeNativeFunction("ord", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("ord() expects string");
-            std::string s = args[0].asString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("ord() expects string", 0, ""); return Value();
+             }std::string s = args[0].asString();
             if (s.empty()) return Value(0.0);
             return Value((double)(unsigned char)s[0]);
         }));
 
     // chr(num) - returns char from ASCII value
     interp.defineGlobal("chr", Value::makeNativeFunction("chr", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("chr() expects number");
-            char c = (char)(int)args[0].asNumber();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("chr() expects number", 0, ""); return Value();
+             }char c = (char)(int)args[0].asNumber();
             return Value(std::string(1, c));
+        }));
+
+    // pdf_text(size, x, y, text)
+    interp.defineGlobal("pdf_text", Value::makeNativeFunction("pdf_text", 4,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("pdf_text() expects number size", 0, ""); return Value();
+             }if (!args[1].isNumber()) { interp.runtimeError("pdf_text() expects number x", 0, ""); return Value();
+             }if (!args[2].isNumber()) { interp.runtimeError("pdf_text() expects number y", 0, ""); return Value();
+             }if (!args[3].isString()) { interp.runtimeError("pdf_text() expects string text", 0, ""); return Value();
+
+             }int size = (int)args[0].asNumber();
+            int x = (int)args[1].asNumber();
+            int y = (int)args[2].asNumber();
+            std::string text = args[3].asString();
+
+            // For now, we append to a global stream that the last page uses
+            // In a better impl, we'd have a currentStream
+            g_pdf.currentStream << "BT /F1 " << size << " Tf " << x << " " << y << " Td (" << text << ") Tj ET\n";
+            return Value();
+        }));
+
+    interp.defineGlobal("pdf_line", Value::makeNativeFunction("pdf_line", 4,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("pdf_line() expects number x1", 0, ""); return Value();
+             }if (!args[1].isNumber()) { interp.runtimeError("pdf_line() expects number y1", 0, ""); return Value();
+             }if (!args[2].isNumber()) { interp.runtimeError("pdf_line() expects number x2", 0, ""); return Value();
+             }if (!args[3].isNumber()) { interp.runtimeError("pdf_line() expects number y2", 0, ""); return Value();
+
+             }int x1 = (int)args[0].asNumber();
+            int y1 = (int)args[1].asNumber();
+            int x2 = (int)args[2].asNumber();
+            int y2 = (int)args[3].asNumber();
+            g_pdf.currentStream << x1 << " " << y1 << " m " << x2 << " " << y2 << " l s\n";
+            return Value();
         }));
 
     // xor(a, b) - bitwise XOR
     interp.defineGlobal("xor", Value::makeNativeFunction("xor", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber() || !args[1].isNumber()) throw RuntimeError("xor() expects numbers");
-            int a = (int)args[0].asNumber();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber() || !args[1].isNumber()) { interp.runtimeError("xor() expects numbers", 0, ""); return Value();
+             }int a = (int)args[0].asNumber();
             int b = (int)args[1].asNumber();
             return Value((double)(a ^ b));
         }));
 
     // substring(str, start, [len])
     interp.defineGlobal("substring", Value::makeNativeFunction("substring", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2 || args.size() > 3) throw RuntimeError("substring() expects 2 or 3 arguments");
-            if (!args[0].isString()) throw RuntimeError("substring() first arg must be string");
-            if (!args[1].isNumber()) throw RuntimeError("substring() start must be number");
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2 || args.size() > 3) { interp.runtimeError("substring() expects 2 or 3 arguments", 0, ""); return Value();
+             }if (!args[0].isString()) { interp.runtimeError("substring() first arg must be string", 0, ""); return Value();
+             }if (!args[1].isNumber()) { interp.runtimeError("substring() start must be number", 0, ""); return Value();
             
-            std::string s = args[0].asString();
+             }std::string s = args[0].asString();
             int start = (int)args[1].asNumber();
             int len = (args.size() == 3 && args[2].isNumber()) ? (int)args[2].asNumber() : (int)s.length() - start;
             
@@ -1387,33 +1516,33 @@ void registerBuiltins(Interpreter& interp) {
 
     // toLower(str)
     interp.defineGlobal("toLower", Value::makeNativeFunction("toLower", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("toLower() expects string");
-            std::string s = args[0].asString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("toLower() expects string", 0, ""); return Value();
+             }std::string s = args[0].asString();
             for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             return Value(s);
         }));
 
     // toUpper(str)
     interp.defineGlobal("toUpper", Value::makeNativeFunction("toUpper", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("toUpper() expects string");
-            std::string s = args[0].asString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("toUpper() expects string", 0, ""); return Value();
+             }std::string s = args[0].asString();
             for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
             return Value(s);
         }));
 
     // typeOf(val)
     interp.defineGlobal("typeOf", Value::makeNativeFunction("typeOf", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             return Value(args[0].typeName());
         }));
 
     // dictRemove(dict, key)
     interp.defineGlobal("dictRemove", Value::makeNativeFunction("dictRemove", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isDictionary()) throw RuntimeError("dictRemove() expects dictionary");
-            std::string key = args[1].toString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) { interp.runtimeError("dictRemove() expects dictionary", 0, ""); return Value();
+             }std::string key = args[1].toString();
             args[0].asDictionaryPtr()->map.erase(key);
             return args[0];
         }));
@@ -1422,21 +1551,21 @@ void registerBuiltins(Interpreter& interp) {
 
     // stop(ms) - Sleep for specified milliseconds
     interp.defineGlobal("stop", Value::makeNativeFunction("stop", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("stop() expects number");
-            std::this_thread::sleep_for(std::chrono::milliseconds((int)args[0].asNumber()));
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("stop() expects number", 0, ""); return Value();
+             }std::this_thread::sleep_for(std::chrono::milliseconds((int)args[0].asNumber()));
             return Value();
         }));
 
     // parse_json(str) - Convert JSON string to EZ value
     interp.defineGlobal("parse_json", Value::makeNativeFunction("parse_json", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) throw RuntimeError("parse_json() expects string");
-            MiniJson::Value root;
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("parse_json() expects string", 0, ""); return Value();
+             }MiniJson::Value root;
             MiniJson::Reader reader;
             if (!reader.parse(args[0].asString(), root)) {
-                throw RuntimeError("Failed to parse JSON");
-            }
+                { interp.runtimeError("Failed to parse JSON", 0, ""); return Value();
+             }}
             
             std::function<Value(const MiniJson::Value&)> convert;
             convert = [&](const MiniJson::Value& mv) -> Value {
@@ -1472,7 +1601,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // to_json(val) - Convert EZ value to JSON string
     interp.defineGlobal("to_json", Value::makeNativeFunction("to_json", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             std::function<MiniJson::Value(const Value&)> convert;
             convert = [&](const Value& v) -> MiniJson::Value {
                 if (v.isDictionary()) {
@@ -1503,7 +1632,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // term_clear() - Clears the terminal screen (Windows)
     interp.defineGlobal("clear", Value::makeNativeFunction("clear", 0,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             system("cls");
             return Value();
         }));
@@ -1511,9 +1640,9 @@ void registerBuiltins(Interpreter& interp) {
     // term_color(code) - Sets terminal text color (Windows)
     // 0-15: Standard Windows colors
     interp.defineGlobal("color", Value::makeNativeFunction("color", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) throw RuntimeError("color() expects a number code (0-15)");
-            int code = (int)args[0].asNumber();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) { interp.runtimeError("color() expects a number code (0-15)", 0, ""); return Value();
+             }int code = (int)args[0].asNumber();
             HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
             SetConsoleTextAttribute(hConsole, (WORD)code);
             return Value();
@@ -1521,7 +1650,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // term_reset() - Resets terminal color to default
     interp.defineGlobal("reset", Value::makeNativeFunction("reset", 0,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
             SetConsoleTextAttribute(hConsole, 7); // Default light gray/white
             return Value();
@@ -1529,10 +1658,10 @@ void registerBuiltins(Interpreter& interp) {
 
     // gotoxy(x, y) - Moves terminal cursor to coordinates
     interp.defineGlobal("gotoxy", Value::makeNativeFunction("gotoxy", 2,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber() || !args[1].isNumber()) 
-                throw RuntimeError("gotoxy() expects two numbers (x, y)");
-            int x = (int)args[0].asNumber();
+                { interp.runtimeError("gotoxy() expects two numbers (x, y)", 0, ""); return Value();
+             }int x = (int)args[0].asNumber();
             int y = (int)args[1].asNumber();
             HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
             COORD pos = { (SHORT)x, (SHORT)y };
@@ -1542,7 +1671,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // getch() - Waits for and returns a single character
     interp.defineGlobal("getch", Value::makeNativeFunction("getch", 0,
-        [](Interpreter&, const std::vector<Value>&) -> Value {
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
             int c = _getch();
             return Value(std::string(1, (char)c));
         }));
@@ -1551,7 +1680,7 @@ void registerBuiltins(Interpreter& interp) {
     static int curl_init_checker = []() { curl_global_init(CURL_GLOBAL_DEFAULT); return 0; }();
     (void)curl_init_checker;
     interp.defineGlobal("url_encode", Value::makeNativeFunction("url_encode", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             std::string s = args[0].toString();
             CURL* curl = curl_easy_init();
             char* output = curl_easy_escape(curl, s.c_str(), (int)s.length());
@@ -1563,7 +1692,7 @@ void registerBuiltins(Interpreter& interp) {
 
     // url_decode(str)
     interp.defineGlobal("url_decode", Value::makeNativeFunction("url_decode", 1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             std::string s = args[0].toString();
             CURL* curl = curl_easy_init();
             int outlen;
@@ -1582,12 +1711,12 @@ void registerBuiltins(Interpreter& interp) {
 
     // http_get(url, [headers])
     interp.defineGlobal("http_get", Value::makeNativeFunction("http_get", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.empty()) throw RuntimeError("http_get() expects URL");
-            std::string url = args[0].toString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty()) { interp.runtimeError("http_get() expects URL", 0, ""); return Value();
+             }std::string url = args[0].toString();
             CURL* curl = curl_easy_init();
-            if (!curl) throw RuntimeError("CURL init failed");
-            std::string res;
+            if (!curl) { interp.runtimeError("CURL init failed", 0, ""); return Value();
+             }std::string res;
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))HttpWriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &res);
@@ -1603,19 +1732,19 @@ void registerBuiltins(Interpreter& interp) {
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-            if (code != CURLE_OK) throw RuntimeError("http_get failed: " + std::string(curl_easy_strerror(code)));
-            return Value(res);
+            if (code != CURLE_OK) { interp.runtimeError("http_get failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value();
+             }return Value(res);
         }));
 
     // http_post(url, body, [headers])
     interp.defineGlobal("http_post", Value::makeNativeFunction("http_post", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2) throw RuntimeError("http_post() expects URL and body");
-            std::string url = args[0].toString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2) { interp.runtimeError("http_post() expects URL and body", 0, ""); return Value();
+             }std::string url = args[0].toString();
             std::string body = args[1].toString();
             CURL* curl = curl_easy_init();
-            if (!curl) throw RuntimeError("CURL init failed");
-            std::string res;
+            if (!curl) { interp.runtimeError("CURL init failed", 0, ""); return Value();
+             }std::string res;
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))HttpWriteCallback);
@@ -1641,8 +1770,8 @@ void registerBuiltins(Interpreter& interp) {
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-            if (code != CURLE_OK) throw RuntimeError("http_post failed: " + std::string(curl_easy_strerror(code)));
-            return Value(res);
+            if (code != CURLE_OK) { interp.runtimeError("http_post failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value();
+             }return Value(res);
         }));
 
     // Database Aliases
@@ -1659,12 +1788,12 @@ void registerBuiltins(Interpreter& interp) {
 
     // spawn(fn, args...)
     interp.defineGlobal("spawn", Value::makeNativeFunction("spawn", -1,
-        [](Interpreter& parentInterp, const std::vector<Value>& args) -> Value {
-            if (args.empty() || !args[0].isCallable()) throw RuntimeError("spawn() expects function");
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isCallable()) { interp.runtimeError("spawn() expects function", 0, ""); return Value();
             
-            Value func = args[0];
+             }Value func = args[0];
             std::vector<Value> fnArgs(args.begin() + 1, args.end());
-            auto globalEnv = parentInterp.getGlobalEnv();
+            auto globalEnv = interp.getGlobalEnv();
             
             // Launch async task
             std::shared_future<Value> fut = std::async(std::launch::async, 
@@ -1678,9 +1807,9 @@ void registerBuiltins(Interpreter& interp) {
         }));
 
     // await(future)
-    auto awaitFn = [](Interpreter&, const std::vector<Value>& args) -> Value {
-        if (!args[0].isFuture()) throw RuntimeError("await() expects future");
-        auto fut = args[0].asFuture();
+    auto awaitFn = [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        if (!args[0].isFuture()) { interp.runtimeError("await() expects future", 0, ""); return Value();
+         }auto fut = args[0].asFuture();
         fut->wait();
         return fut->get();
     };
@@ -1689,19 +1818,19 @@ void registerBuiltins(Interpreter& interp) {
 
     // fetch(url, [options])
     interp.defineGlobal("fetch", Value::makeNativeFunction("fetch", -1,
-        [](Interpreter&, const std::vector<Value>& args) -> Value {
-            if (args.empty()) throw RuntimeError("fetch() expects URL");
-            std::string url = args[0].toString();
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty()) { interp.runtimeError("fetch() expects URL", 0, ""); return Value();
+             }std::string url = args[0].toString();
             Value options;
             if (args.size() > 1) options = args[1];
             
             // Capture args by value for thread
             std::shared_future<Value> fut = std::async(std::launch::async, 
-                [url, options]() -> Value {
+                [url, options, &interp]() -> Value {
                     CURL* curl = curl_easy_init();
-                    if (!curl) throw RuntimeError("CURL init failed");
+                    if (!curl) { interp.runtimeError("CURL init failed", 0, ""); return Value();
                     
-                    std::string response;
+                     }std::string response;
                     std::string method = "GET";
                     std::string body;
                     struct curl_slist* headers = nullptr;
@@ -1743,8 +1872,8 @@ void registerBuiltins(Interpreter& interp) {
                     curl_easy_cleanup(curl);
                     
                     if (res != CURLE_OK) {
-                         throw RuntimeError("Fetch failed: " + std::string(curl_easy_strerror(res)));
-                    }
+                         { interp.runtimeError("Fetch failed: " + std::string(curl_easy_strerror(res)), 0, ""); return Value();
+                     }}
                     
                     return Value(response);
                 }).share();
@@ -1752,4 +1881,42 @@ void registerBuiltins(Interpreter& interp) {
             return Value::makeFuture(fut);
         }));
 
+    // --- PDF Built-ins ---
+    interp.defineGlobal("pdf_begin", Value::makeNativeFunction("pdf_begin", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            g_pdf.begin(args[0].toString());
+            return Value();
+        }));
+
+    interp.defineGlobal("pdf_add_page", Value::makeNativeFunction("pdf_add_page", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+            g_pdf.addPage();
+            return Value();
+        }));
+
+    interp.defineGlobal("pdf_text", Value::makeNativeFunction("pdf_text", 4,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            int size = (int)args[0].asNumber();
+            int x = (int)args[1].asNumber();
+            int y = (int)args[2].asNumber();
+            std::string text = args[3].asString();
+            g_pdf.currentStream << "BT /F1 " << size << " Tf " << x << " " << y << " Td (" << text << ") Tj ET\n";
+            return Value();
+        }));
+
+    interp.defineGlobal("pdf_line", Value::makeNativeFunction("pdf_line", 4,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            int x1 = (int)args[0].asNumber();
+            int y1 = (int)args[1].asNumber();
+            int x2 = (int)args[2].asNumber();
+            int y2 = (int)args[3].asNumber();
+            g_pdf.currentStream << x1 << " " << y1 << " m " << x2 << " " << y2 << " l s\n";
+            return Value();
+        }));
+
+    interp.defineGlobal("pdf_save", Value::makeNativeFunction("pdf_save", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+            g_pdf.save();
+            return Value();
+        }));
 }

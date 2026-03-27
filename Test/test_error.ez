@@ -1,0 +1,14 @@
+out "Testing error tracing..."
+
+task faultyTask() {
+    x = 10
+    out x[5] # This should throw a runtime error
+}
+
+task midLevelTask() {
+    faultyTask()
+}
+
+midLevelTask()
+
+out "This should not be reached"

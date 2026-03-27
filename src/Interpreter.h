@@ -54,6 +54,9 @@ public:
     // Define global variable (for built-ins)
     void defineGlobal(const std::string& name, const Value& value);
     
+    // Print current stack trace
+    void printStackTrace() const;
+    
 private:
     std::shared_ptr<Environment> globalEnv;
     std::shared_ptr<Environment> currentEnv;
@@ -94,6 +97,7 @@ private:
     void visitEscapeStmt(const std::shared_ptr<EscapeStmt>& stmt, int line, const std::string& filename);
     void visitSkipStmt(const std::shared_ptr<SkipStmt>& stmt, int line, const std::string& filename);
     void visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int line, const std::string& filename);
+    void visitStaticStmt(const std::shared_ptr<StaticStmt>& stmt, int line, const std::string& filename);
     void visitInterfaceStmt(const std::shared_ptr<InterfaceStmt>& stmt, int line, const std::string& filename);
     void visitStructStmt(const std::shared_ptr<StructStmt>& stmt, int line, const std::string& filename);
     void visitUseStmt(const std::shared_ptr<UseStmt>& stmt, int line, const std::string& filename);
@@ -104,6 +108,10 @@ private:
     void executeBlock(const std::vector<StmtPtr>& statements, std::shared_ptr<Environment> env);
     void checkNumberOperand(TokenType op, const Value& operand, int line, const std::string& filename);
     void checkNumberOperands(TokenType op, const Value& left, const Value& right, int line, const std::string& filename);
+    
+    // Operator Overloading
+    Value lookupAndCallBinaryOperator(const Value& left, const Value& right, const std::string& op, int line, const std::string& filename, bool& handled);
+    Value lookupAndCallUnaryOperator(const Value& operand, const std::string& op, int line, const std::string& filename, bool& handled);
 };
 
 #endif // INTERPRETER_H

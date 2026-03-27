@@ -1,0 +1,24 @@
+model SimplePDF {
+    init() { give self }
+    
+    task tableHeader(y, columns, xPos) {
+        i = 0
+        get col in columns {
+            px = xPos[i]
+            out "Col: " + str(col) + " at " + str(px)
+            i = i + 1
+        }
+    }
+}
+
+rep = SimplePDF()
+headers = ["A", "B"]
+xPos = [10, 20]
+
+# Simulate app.ez behavior
+push(headers, "C")
+push(xPos, 30)
+
+out "Testing with pushed values..."
+rep.tableHeader(700, headers, xPos)
+out "Done."

@@ -51,6 +51,7 @@ private:
     StmtPtr whileStatement();
     StmtPtr repeatStatement();
     StmtPtr getStatement();
+    StmtPtr staticStatement();
     StmtPtr taskStatement();
     StmtPtr giveStatement();
     StmtPtr escapeStatement();

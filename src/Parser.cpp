@@ -139,6 +139,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::WHILE)) return whileStatement();
     if (match(TokenType::REPEAT)) return repeatStatement();
     if (match(TokenType::GET)) return getStatement();
+    if (match(TokenType::STATIC)) return staticStatement();
     if (match(TokenType::TASK)) return taskStatement();
     if (match(TokenType::GIVE)) return giveStatement();
     if (match(TokenType::ESCAPE)) return escapeStatement();
@@ -287,7 +288,9 @@ StmtPtr Parser::getStatement() {
 StmtPtr Parser::taskStatement() {
     int line = previous().line;
     
-    Token nameToken = consume(TokenType::IDENTIFIER, "Expected function name after 'task'");
+    // Allow any token as function name (for operator overloading)
+    advance();
+    Token nameToken = previous();
     std::string name = nameToken.lexeme;
     
     consume(TokenType::LPAREN, "Expected '(' after function name");
@@ -298,7 +301,10 @@ StmtPtr Parser::taskStatement() {
     
     if (!check(TokenType::RPAREN)) {
         do {
-            Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
+            Token paramToken = advance();
+            if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
+                throw ParseError("Expected parameter name", paramToken.line);
+            }
             params.push_back(paramToken.lexeme);
             
             // Check for default value: param = expr
@@ -355,6 +361,14 @@ StmtPtr Parser::escapeStatement() {
 StmtPtr Parser::skipStatement() {
     Token op = previous();
     return makeSkipStmt(op.line, op.filename);
+}
+
+StmtPtr Parser::staticStatement() {
+    Token op = previous();
+    Token nameToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'static'");
+    consume(TokenType::EQUAL, "Expected '=' after static variable name");
+    ExprPtr value = expression();
+    return makeStaticStmt(op.line, op.filename, nameToken.lexeme, value);
 }
 
 StmtPtr Parser::tryStatement() {
@@ -594,7 +608,23 @@ ExprPtr Parser::call() {
             Token name = previous();
             expr = makePropertyAccessExpr(name.line, name.filename, expr, name.lexeme);
         } else {
-            break;
+            // Check if next non-newline token is a DOT (Multi-line chaining support)
+            size_t temp = current;
+            while (temp < tokens.size() && tokens[temp].type == TokenType::NEWLINE) {
+                temp++;
+            }
+            if (temp < tokens.size() && tokens[temp].type == TokenType::DOT) {
+                current = temp; // Skip newlines
+                advance(); // Consume DOT
+                
+                // Now must have an identifier (or keyword)
+                if (isAtEnd()) throw ParseError("Expected property name after '.'", peek().line);
+                advance(); 
+                Token name = previous();
+                expr = makePropertyAccessExpr(name.line, name.filename, expr, name.lexeme);
+            } else {
+                break;
+            }
         }
     }
     
@@ -853,7 +883,10 @@ StmtPtr Parser::modelStatement() {
             std::vector<std::string> params;
             if (!check(TokenType::RPAREN)) {
                 do {
-                    Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
+                    Token paramToken = advance();
+                    if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
+                        throw ParseError("Expected parameter name", paramToken.line);
+                    }
                     params.push_back(paramToken.lexeme);
                 } while (match(TokenType::COMMA));
             }

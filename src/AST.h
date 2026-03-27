@@ -212,6 +212,7 @@ struct InterfaceStmt;
 struct UseStmt;
 struct TryStmt;
 struct ThrowStmt;
+struct StaticStmt;
 
 using StmtVariant = std::variant<
     std::shared_ptr<ExprStmt>,
@@ -231,7 +232,8 @@ using StmtVariant = std::variant<
     std::shared_ptr<UseStmt>,
     std::shared_ptr<TryStmt>,
     std::shared_ptr<ThrowStmt>,
-    std::shared_ptr<InterfaceStmt>
+    std::shared_ptr<InterfaceStmt>,
+    std::shared_ptr<StaticStmt>
 >;
 
 struct Stmt {
@@ -354,6 +356,15 @@ struct ModelMember {
     ExprPtr initializer;  // For properties
     std::vector<std::string> params;  // For methods
     std::vector<StmtPtr> body;  // For methods
+};
+
+// Static variable declaration (persistent across task calls)
+struct StaticStmt {
+    std::string name;
+    ExprPtr initializer;
+    
+    StaticStmt(const std::string& name, ExprPtr init)
+        : name(name), initializer(std::move(init)) {}
 };
 
 // Interface definition
@@ -571,6 +582,10 @@ inline StmtPtr makeTryStmt(int line, const std::string& file, StmtPtr tryBlk, co
 
 inline StmtPtr makeThrowStmt(int line, const std::string& file, ExprPtr expr) {
     return std::make_shared<Stmt>(line, file, std::make_shared<ThrowStmt>(std::move(expr)));
+}
+
+inline StmtPtr makeStaticStmt(int line, const std::string& file, const std::string& name, ExprPtr init) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<StaticStmt>(name, std::move(init)));
 }
 
 #endif // AST_H

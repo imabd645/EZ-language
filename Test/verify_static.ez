@@ -1,0 +1,10 @@
+task inc()
+{
+    static x = 0
+    x += 1
+    give x
+}
+
+out "First call: " + str(inc())
+out "Second call: " + str(inc())
+out "Third call: " + str(inc())

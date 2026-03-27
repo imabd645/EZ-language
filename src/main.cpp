@@ -34,7 +34,17 @@ void runFile(const std::string& path) {
     }
     
     Interpreter interpreter;
-    interpreter.interpret(statements);
+    try {
+        interpreter.interpret(statements);
+    } catch (const RuntimeError& e) {
+        // Some errors are printed by Interpreter::runtimeError, others (like undefined vars) 
+        // are thrown directly from Environment/Builtins. We ensure it's always visible.
+        std::cerr << "Fatal Error: " << e.what() << std::endl;
+        exit(70); 
+    } catch (const std::exception& e) {
+        std::cerr << "Internal Error: " << e.what() << std::endl;
+        exit(70);
+    }
 }
 
 void runRepl() {

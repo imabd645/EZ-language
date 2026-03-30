@@ -1,0 +1,53 @@
+use "fs"
+
+out "=== EZ Advanced File System Test ==="
+
+# 1. Directory creation
+testDir = "fs_test_dir"
+out "Creating directory: " + testDir
+fs.mkdir(testDir)
+
+when fs.exists(testDir) {
+    out "Directory created successfully!"
+} other {
+    out "Failed to create directory."
+}
+
+# 2. isDir check
+out "Is it a directory? " + str(fs.isDir(testDir))
+
+# 3. Create a test file inside the directory
+testFile = testDir + "/hello.txt"
+out "Writing a test file..."
+write(testFile, "Hello, EZ File System!")
+
+# 4. File metadata
+out "Does file exist? " + str(fs.exists(testFile))
+out "File size: " + str(fs.size(testFile)) + " bytes"
+out "Last modified: " + str(fs.modifiedTime(testFile))
+
+# 5. List directory
+out "\nContents of " + testDir + ":"
+files = fs.listDir(testDir)
+repeat i = 0 to files.len - 1 {
+    out " - " + files[i]
+}
+
+# 6. Copy and Move
+copyFile = testDir + "/hello_copy.txt"
+out "\nCopying file to " + copyFile
+fs.copy(testFile, copyFile)
+out "Does copy exist? " + str(fs.exists(copyFile))
+
+movedFile = "hello_moved.txt"
+out "Moving copy out of directory to " + movedFile
+fs.move(copyFile, movedFile)
+
+# 7. Cleanup
+out "\nCleaning up..."
+fs.remove(testDir)
+fs.remove(movedFile)
+
+when not fs.exists(testDir) {
+    out "Cleanup successful! All fs features are working perfectly."
+}

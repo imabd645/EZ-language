@@ -1,4 +1,5 @@
 #include "Interpreter.h"
+#include "GC.h"
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
@@ -145,6 +146,9 @@ Value Interpreter::evaluate(const ExprPtr& expr) {
 void Interpreter::execute(const StmtPtr& stmt) {
     if (!stmt) return;
     
+    // GC safe-point: trigger collection if threshold reached
+    GarbageCollector::instance().collectIfThresholdReached(currentEnv, &envStack);
+    
     int line = stmt->line;
     const std::string& filename = stmt->filename;
     
@@ -252,9 +256,11 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
             if (left.isNumber() && right.isNumber()) return left.asNumber() + right.asNumber();
             if (left.isString() || right.isString()) return stringify(left, line) + stringify(right, line);
             if (left.isArray() && right.isArray()) {
-                auto newArr = std::make_shared<Value::ArrayType>(left.asArray());
-                newArr->insert(newArr->end(), right.asArray().begin(), right.asArray().end());
-                return Value(newArr);
+                auto& leftArr = left.asArray();
+                auto& rightArr = right.asArray();
+                std::vector<Value> combined(leftArr.begin(), leftArr.end());
+                combined.insert(combined.end(), rightArr.begin(), rightArr.end());
+                return Value(makeGCArray(combined));
             }
             runtimeError("Operands must be numbers, strings or arrays", line, filename);
             break;
@@ -548,34 +554,42 @@ void Interpreter::visitRepeatStmt(const std::shared_ptr<RepeatStmt>& stmt, int l
     
     auto loopEnv = currentEnv->createChild();
     auto prevEnv = currentEnv;
+    envStack.push_back(prevEnv);
     currentEnv = loopEnv;
     
-    // Support both upward and downward loops
-    if (start <= end) {
-        for (int i = start; i <= end; i++) {
-            loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
-            try {
-                execute(stmt->body);
-            } catch (const BreakException&) {
-                break;
-            } catch (const ContinueException&) {
-                continue;
+    try {
+        // Support both upward and downward loops
+        if (start <= end) {
+            for (int i = start; i <= end; i++) {
+                loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
+                try {
+                    execute(stmt->body);
+                } catch (const BreakException&) {
+                    break;
+                } catch (const ContinueException&) {
+                    continue;
+                }
+            }
+        } else {
+            for (int i = start; i >= end; i--) {
+                loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
+                try {
+                    execute(stmt->body);
+                } catch (const BreakException&) {
+                    break;
+                } catch (const ContinueException&) {
+                    continue;
+                }
             }
         }
-    } else {
-        for (int i = start; i >= end; i--) {
-            loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
-            try {
-                execute(stmt->body);
-            } catch (const BreakException&) {
-                break;
-            } catch (const ContinueException&) {
-                continue;
-            }
-        }
+    } catch (...) {
+        currentEnv = prevEnv;
+        envStack.pop_back();
+        throw;
     }
     
     currentEnv = prevEnv;
+    envStack.pop_back();
 }
 
 void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt, int line, const std::string& filename) {
@@ -587,51 +601,59 @@ void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt, int line, c
     
     auto loopEnv = currentEnv->createChild();
     auto prevEnv = currentEnv;
+    envStack.push_back(prevEnv);
     currentEnv = loopEnv;
     
-    if (iterable.isArray()) {
-        for (const auto& elem : iterable.asArray()) {
-            loopEnv->define(stmt->variable, elem);
+    try {
+        if (iterable.isArray()) {
+            for (const auto& elem : iterable.asArray()) {
+                loopEnv->define(stmt->variable, elem);
+                
+                try {
+                    execute(stmt->body);
+                } catch (const BreakException&) {
+                    break;
+                } catch (const ContinueException&) {
+                    continue;
+                }
+            }
+        } else if (iterable.isDictionary()) {
+            const auto& map = iterable.asDictionary().map;
+            std::vector<std::string> keys;
+            for (const auto& pair : map) keys.push_back(pair.first);
             
-            try {
-                execute(stmt->body);
-            } catch (const BreakException&) {
-                break;
-            } catch (const ContinueException&) {
-                continue;
+            for (const auto& key : keys) {
+                loopEnv->define(stmt->variable, Value(key));
+                try {
+                    execute(stmt->body);
+                } catch (const BreakException&) {
+                    break;
+                } catch (const ContinueException&) {
+                    continue;
+                }
+            }
+        } else {
+            const std::string& str = iterable.asString();
+            for (char c : str) {
+                loopEnv->define(stmt->variable, Value(std::string(1, c)));
+                
+                try {
+                    execute(stmt->body);
+                } catch (const BreakException&) {
+                    break;
+                } catch (const ContinueException&) {
+                    continue;
+                }
             }
         }
-    } else if (iterable.isDictionary()) {
-        const auto& map = iterable.asDictionary().map;
-        std::vector<std::string> keys;
-        for (const auto& pair : map) keys.push_back(pair.first);
-        
-        for (const auto& key : keys) {
-            loopEnv->define(stmt->variable, Value(key));
-            try {
-                execute(stmt->body);
-            } catch (const BreakException&) {
-                break;
-            } catch (const ContinueException&) {
-                continue;
-            }
-        }
-    } else {
-        const std::string& str = iterable.asString();
-        for (char c : str) {
-            loopEnv->define(stmt->variable, Value(std::string(1, c)));
-            
-            try {
-                execute(stmt->body);
-            } catch (const BreakException&) {
-                break;
-            } catch (const ContinueException&) {
-                continue;
-            }
-        }
+    } catch (...) {
+        currentEnv = prevEnv;
+        envStack.pop_back();
+        throw;
     }
     
     currentEnv = prevEnv;
+    envStack.pop_back();
 }
 
 void Interpreter::visitTaskStmt(const std::shared_ptr<TaskStmt>& stmt, int line, const std::string& filename) {
@@ -659,6 +681,7 @@ void Interpreter::visitSkipStmt(const std::shared_ptr<SkipStmt>&, int line, cons
 
 void Interpreter::executeBlock(const std::vector<StmtPtr>& statements, std::shared_ptr<Environment> env) {
     auto prevEnv = currentEnv;
+    envStack.push_back(prevEnv);
     currentEnv = env;
     
     try {
@@ -667,13 +690,23 @@ void Interpreter::executeBlock(const std::vector<StmtPtr>& statements, std::shar
         }
     } catch (...) {
         currentEnv = prevEnv;
+        envStack.pop_back();
         throw;
     }
     
     currentEnv = prevEnv;
+    envStack.pop_back();
 }
 
 Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& args, int line, const std::string& filename) {
+    // Stack overflow guard
+    if (++callDepth > MAX_CALL_DEPTH) {
+        callDepth--;
+        runtimeError("Stack overflow: maximum call depth (" + std::to_string(MAX_CALL_DEPTH) + ") exceeded", line, filename);
+    }
+    // RAII guard to decrement on ANY exit
+    struct DepthGuard { int& d; ~DepthGuard() { d--; } } guard{callDepth};
+    
     if (callee.isNativeFunction()) {
         auto nativeFn = callee.asNativeFunction();
         if (nativeFn->arity != -1 && static_cast<int>(args.size()) != nativeFn->arity) {
@@ -1307,15 +1340,18 @@ void Interpreter::visitTryStmt(const std::shared_ptr<TryStmt>& stmt, int line, c
         catchEnv->define(stmt->catchVar, Value(std::string(e.what())));
         
         auto prevEnv = currentEnv;
+        envStack.push_back(prevEnv);
         currentEnv = catchEnv;
         
         try {
             execute(stmt->catchBlock);
         } catch (...) {
             currentEnv = prevEnv;
+            envStack.pop_back();
             throw;
         }
         currentEnv = prevEnv;
+        envStack.pop_back();
     }
 }
 

@@ -1,0 +1,85 @@
+use "orm"
+
+# Initialize database connection
+out "Connecting to Database..."
+db = Database("test_users.db")
+
+# Define our User model (table and schema)
+out "Defining User schema..."
+User = db.define("users", {
+    "name": "TEXT",
+    "email": "TEXT",
+    "age": "INTEGER",
+    "is_active": "INTEGER"
+})
+
+# Clean up before testing
+User.deleteWhere({})
+out "Table cleared."
+
+# 1. CREATE (Insert)
+out "\n--- INSERTING USERS ---"
+id1 = User.insert({
+    "name": "Abdullah",
+    "email": "abdullah@ezlang.org",
+    "age": 21,
+    "is_active": 1
+})
+out "Inserted Abdullah with ID: " + str(id1)
+
+id2 = User.insert({
+    "name": "Sara",
+    "email": "sara@example.com",
+    "age": 24,
+    "is_active": 1
+})
+out "Inserted Sara with ID: " + str(id2)
+
+id3 = User.insert({
+    "name": "Ghost",
+    "email": "ghost@nowhere.com",
+    "age": 99,
+    "is_active": 0
+})
+out "Inserted Ghost with ID: " + str(id3)
+
+out "Total users in DB: " + str(User.count())
+
+# 2. READ (Find, FindOne, FindById)
+out "\n--- READING DATA ---"
+
+user1 = User.findById(id1)
+out "Found by ID: " + user1["name"] + " (" + user1["email"] + ")"
+
+activeUsers = User.find({"is_active": 1})
+out "Found " + str(activeUsers.len) + " active users:"
+repeat i = 0 to activeUsers.len - 1 {
+    u = activeUsers[i]
+    out " - " + u["name"] + " (Age: " + str(u["age"]) + ")"
+}
+
+# 3. UPDATE
+out "\n--- UPDATING DATA ---"
+out "Updating Sara's age to 25..."
+User.update(id2, {"age": 25})
+
+updatedSara = User.findById(id2)
+out "Sara's new age: " + str(updatedSara["age"])
+
+# 4. DELETE
+out "\n--- DELETING DATA ---"
+out "Deleting inactive users (Ghost)..."
+User.deleteWhere({"is_active": 0})
+
+out "Total users remaining: " + str(User.count())
+
+allUsers = User.all()
+out "Final User List:"
+repeat i = 0 to allUsers.len - 1 {
+    u = allUsers[i]
+    out " -> " + u["name"]
+}
+
+# Close DB
+db.close()
+out "\nORM test completed successfully!"

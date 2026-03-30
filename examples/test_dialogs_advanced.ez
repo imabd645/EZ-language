@@ -1,0 +1,91 @@
+use "gui"
+
+# ============================================
+# EZ Advanced GUI & Dialogs Showcase
+# ============================================
+
+gui.setTheme("neon")
+win = gui.window("Advanced Widgets & Dialogs", 700, 600)
+
+win.label("Advanced Widgets & Dialogs", 20, 10, 400, 30).font("Segoe UI", 22).color("neon")
+statusLabel = win.label("Ready.", 20, 50, 400, 25).font("Segoe UI", 12).color("yellow")
+
+# --- Dialog Helpers ---
+btnConfirm = win.button("Confirm Dialog", 20, 90, 150, 30, || {
+    res = gui.dialog.confirm("Question", "Do you like the EZ language?")
+    when res { statusLabel.text("You clicked YES!") }
+    other { statusLabel.text("You clicked NO!") }
+})
+
+btnOpenFile = win.button("Open File", 180, 90, 150, 30, || {
+    f = gui.dialog.openFile("Select an image", "*.png;*.jpg")
+    when f != "" { statusLabel.text("Selected file: " + f) }
+    other { statusLabel.text("File selection cancelled.") }
+})
+
+btnOpenFolder = win.button("Open Folder", 340, 90, 150, 30, || {
+    f = gui.dialog.openFolder()
+    when f != "" { statusLabel.text("Selected folder: " + f) }
+    other { statusLabel.text("Folder selection cancelled.") }
+})
+
+btnThemeColors = win.button("Theme Previews", 500, 90, 150, 30, || {
+    # We toggle themes just to show off
+    gui.setTheme("retro")
+    statusLabel.text("Changed theme to Retro!")
+})
+
+# --- TreeView ---
+win.label("TreeView (Explorer):", 20, 140, 200, 20).color("neon")
+tv = win.treeView(20, 165, 250, 200)
+
+root1 = tv.add(0, "Local Disk (C:)")
+c_windows = tv.add(root1, "Windows")
+tv.add(c_windows, "System32")
+tv.add(c_windows, "Fonts")
+
+c_users = tv.add(root1, "Users")
+tv.add(c_users, "Public")
+tv.add(c_users, "Admin")
+
+root2 = tv.add(0, "Local Disk (D:)")
+tv.add(root2, "Games")
+tv.add(root2, "Work")
+
+btnGetTree = win.button("Get Selected Node", 20, 375, 250, 30, || {
+    sel = tv.selected()
+    when sel != "" { statusLabel.text("Selected node: " + sel) }
+    other { statusLabel.text("No node selected!") }
+})
+
+# --- DatePicker ---
+win.label("DatePicker:", 300, 140, 150, 20).color("neon")
+dp = win.datePicker(300, 165, 150, 30)
+
+btnGetDate = win.button("Get Date", 460, 165, 100, 30, || {
+    statusLabel.text("Selected date: " + dp.value())
+})
+
+# --- Spinner (NumericUpDown) ---
+win.label("Spinner (Age):", 300, 210, 150, 20).color("neon")
+sp = win.spinner(300, 235, 100, 30, 0, 120)
+sp.setValue(25)
+
+btnGetSpinner = win.button("Get Age", 410, 235, 100, 30, || {
+    statusLabel.text("Age value: " + str(sp.value()))
+})
+
+# --- Image Widget ---
+# Just a placeholder frame since we don't have a guaranteed image path
+win.label("Image Box (Load via Button):", 300, 280, 250, 20).color("neon")
+imgBox = win.image("", 300, 305, 150, 150)
+
+btnLoadImg = win.button("Load Image", 460, 305, 120, 30, || {
+    f = gui.dialog.openFile("Select Image", "*.bmp")
+    when f != "" { 
+        imgBox.load(f)
+        statusLabel.text("Loaded: " + f)
+    }
+})
+
+win.run()

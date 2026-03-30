@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <shared_mutex>
 #include "Value.h"
+#include "GCObject.h"
 
 class RuntimeError : public std::runtime_error {
 public:
@@ -15,12 +16,15 @@ public:
         : std::runtime_error(message), line(line) {}
 };
 
-class Environment : public std::enable_shared_from_this<Environment> {
+class Environment : public GCObject, public std::enable_shared_from_this<Environment> {
 public:
     std::shared_ptr<Environment> parent;
     std::unordered_map<std::string, Value> variables;
     mutable std::shared_mutex mutex;
     bool isStatic = false;
+
+    void gc_mark() override;
+    void gc_clear() override { variables.clear(); parent = nullptr; }
     
     Environment() : parent(nullptr) {}
     explicit Environment(std::shared_ptr<Environment> parent, bool isStatic = false) 
@@ -61,33 +65,21 @@ public:
     
     // Assign to existing variable (walks up parent chain)
     void assign(const std::string& name, const Value& value, int line = 0) {
-        std::unique_lock<std::shared_mutex> lock(mutex);
-        auto it = variables.find(name);
-        if (it != variables.end()) {
-            it->second = value;
-            return;
-        }
-        
-        // Don't hold lock while calling parent to avoid deadlocks (though recursive mutex handles re-entry, 
-        // passing across different environment locks needs care. 
-        // But here we simply recurse. 'parent' is safe because it's a shared_ptr, 
-        // but locking order matters. Here we're locking 'this' then 'parent'.
-        // As long as we always go child->parent, it's fine.
+        {
+            std::unique_lock<std::shared_mutex> lock(mutex);
+            auto it = variables.find(name);
+            if (it != variables.end()) {
+                it->second = value;
+                return;
+            }
+        } // Release lock before recursing or defining
+
         if (parent) {
-            lock.unlock(); // checking parent doesn't need our lock held if we didn't find it here? 
-            // Actually, if we unlock, someone might define it here. 
-            // Standard discipline: hold lock. 
-            // Using recursive mutex on parent is fine if order is consistent.
             parent->assign(name, value, line);
             return;
         }
-        
-        lock.unlock(); // Unlock before define? OR define handles its own lock.
-        // Actually recursive mutex lets us keep it. 
-        // But if 'define' locks 'mutex', we are fine.
-        
-        // If variable doesn't exist, define it in current scope
-        define(name, value);
+
+        define(name, value); // define() handles its own lock
     }
     
     // Get pointer to variable for modification (e.g., array indexing)
@@ -113,9 +105,8 @@ public:
     }
     
     // Create a child scope
-    std::shared_ptr<Environment> createChild() {
-        return std::make_shared<Environment>(shared_from_this());
-    }
+    std::shared_ptr<Environment> createChild();
+
 };
 
 #endif // ENVIRONMENT_H

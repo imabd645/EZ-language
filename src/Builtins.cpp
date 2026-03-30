@@ -24,6 +24,7 @@
 
 #include <future>
 #include <iomanip>
+#include <filesystem>
 
 struct SimplePDF {
     std::string filename;
@@ -1918,5 +1919,73 @@ void registerBuiltins(Interpreter& interp) {
         [](Interpreter& interp, const std::vector<Value>&) -> Value {
             g_pdf.save();
             return Value();
+        }));
+    // --- File System Built-ins ---
+    interp.defineGlobal("fs_mkdir", Value::makeNativeFunction("fs_mkdir", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { return Value(std::filesystem::create_directories(args[0].toString())); }
+            catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("fs_exists", Value::makeNativeFunction("fs_exists", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { return Value(std::filesystem::exists(args[0].toString())); }
+            catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("fs_is_dir", Value::makeNativeFunction("fs_is_dir", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { return Value(std::filesystem::is_directory(args[0].toString())); }
+            catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("fs_list_dir", Value::makeNativeFunction("fs_list_dir", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try {
+                std::vector<Value> result;
+                for (const auto& entry : std::filesystem::directory_iterator(args[0].toString())) {
+                    result.push_back(Value(entry.path().filename().string()));
+                }
+                return Value::makeArray(result);
+            } catch (...) { return Value::makeArray({}); }
+        }));
+
+    interp.defineGlobal("fs_copy", Value::makeNativeFunction("fs_copy", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { 
+                std::filesystem::copy(args[0].toString(), args[1].toString(), std::filesystem::copy_options::overwrite_existing); 
+                return Value(true);
+            } catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("fs_move", Value::makeNativeFunction("fs_move", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { 
+                std::filesystem::rename(args[0].toString(), args[1].toString()); 
+                return Value(true);
+            } catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("fs_remove", Value::makeNativeFunction("fs_remove", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { return Value((double)std::filesystem::remove_all(args[0].toString())); }
+            catch (...) { return Value(0.0); }
+        }));
+
+    interp.defineGlobal("fs_size", Value::makeNativeFunction("fs_size", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { return Value((double)std::filesystem::file_size(args[0].toString())); }
+            catch (...) { return Value(-1.0); }
+        }));
+
+    interp.defineGlobal("fs_modified_time", Value::makeNativeFunction("fs_modified_time", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { 
+                auto ftime = std::filesystem::last_write_time(args[0].toString());
+                // Convert file_time to system_clock time to get epoch ms
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+                long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
+                return Value((double)ms);
+            } catch (...) { return Value(-1.0); }
         }));
 }

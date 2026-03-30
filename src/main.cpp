@@ -7,6 +7,7 @@
 #include "Parser.h"
 #include "Interpreter.h"
 #include "PackageManager.h"
+#include<windows.h>
 
 void runFile(const std::string& path) {
     std::ifstream file(path);
@@ -143,6 +144,7 @@ void showHelp() {
 }
 
 int main(int argc, char* argv[]) {
+    
     if (argc > 1) {
         std::string cmd = argv[1];
         

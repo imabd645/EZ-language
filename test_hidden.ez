@@ -1,0 +1,11 @@
+model Person
+{
+    hidden name=""
+    init(name)
+    {
+        self.name=name
+    }
+}
+
+p=Person("Abdullah Masood")
+out p.name

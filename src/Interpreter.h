@@ -62,6 +62,11 @@ private:
     std::shared_ptr<Environment> currentEnv;
     std::vector<CallFrame> callStack;
     std::unordered_map<std::string, std::vector<std::string>> definedInterfaces;
+    int callDepth = 0;
+    static constexpr int MAX_CALL_DEPTH = 500;
+    
+    // Saved environment stack — these are GC roots
+    std::vector<std::shared_ptr<Environment>> envStack;
     
     // Initialization
     void initBuiltins();

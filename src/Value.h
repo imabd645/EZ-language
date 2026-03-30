@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <future>
 #include "AST.h"
+#include "GCObject.h"
 
 // Forward declarations
 class Environment;
@@ -42,7 +43,7 @@ enum class ValueType {
     SUPER
 };
 
-struct EZFunction {
+struct EZFunction : public GCObject {
     std::string name;
     std::vector<std::string> params;
     std::vector<ExprPtr> defaultValues;
@@ -55,6 +56,9 @@ struct EZFunction {
                const std::vector<ExprPtr>& defaultValues,
                const std::vector<StmtPtr>& body,
                std::shared_ptr<Environment> closure);
+
+    void gc_mark() override;
+    void gc_clear() override { closure = nullptr; staticEnv = nullptr; }
 };
 
 // Native (built-in) function
@@ -67,11 +71,36 @@ struct NativeFunction {
         : name(name), arity(arity), function(fn) {}
 };
 
+struct EZArray : public GCObject {
+    std::vector<Value> elements;
+    EZArray(const std::vector<Value>& e = {}) : elements(e) {}
+    void gc_mark() override;
+    void gc_clear() override { elements.clear(); }
+    
+    size_t size() const { return elements.size(); }
+    bool empty() const { return elements.empty(); }
+    void push_back(const Value& v) { elements.push_back(v); }
+    void pop_back() { elements.pop_back(); }
+    Value& back() { return elements.back(); }
+    Value& operator[](size_t i) { return elements[i]; }
+    const Value& operator[](size_t i) const { return elements[i]; }
+    auto begin() { return elements.begin(); }
+    auto end() { return elements.end(); }
+    void insert(std::vector<Value>::iterator it, const Value& v) { elements.insert(it, v); }
+    void erase(std::vector<Value>::iterator it) { elements.erase(it); }
+};
+
+struct EZDictionary : public GCObject {
+    std::unordered_map<std::string, Value> map;
+    void gc_mark() override;
+    void gc_clear() override { map.clear(); }
+};
+
 // The main Value struct - dynamically typed
 struct Value {
     using ArrayType = std::vector<Value>;
     using StringPtr = std::shared_ptr<std::string>;
-    using ArrayPtr = std::shared_ptr<ArrayType>;
+    using ArrayPtr = std::shared_ptr<EZArray>;
     using FunctionPtr = std::shared_ptr<EZFunction>;
     using NativeFnPtr = std::shared_ptr<NativeFunction>;
     using ClassPtr = std::shared_ptr<EZClass>;
@@ -150,8 +179,8 @@ struct Value {
     StringPtr asStringPtr() const { return std::get<StringPtr>(data); }
     const std::string& asString() const { return *std::get<StringPtr>(data); }
     ArrayPtr asArrayPtr() const { return std::get<ArrayPtr>(data); }
-    ArrayType& asArray() { return *std::get<ArrayPtr>(data); }
-    const ArrayType& asArray() const { return *std::get<ArrayPtr>(data); }
+    std::vector<Value>& asArray() { return std::get<ArrayPtr>(data)->elements; }
+    const std::vector<Value>& asArray() const { return std::get<ArrayPtr>(data)->elements; }
     FunctionPtr asFunction() const { return std::get<FunctionPtr>(data); }
     NativeFnPtr asNativeFunction() const { return std::get<NativeFnPtr>(data); }
     ClassPtr asClass() const { return std::get<ClassPtr>(data); }
@@ -202,7 +231,7 @@ struct Value {
     
     // Create array
     static Value makeArray(const std::vector<Value>& elements = {}) {
-        return Value(std::make_shared<ArrayType>(elements));
+        return Value(std::make_shared<EZArray>(elements));
     }
     
     // Create function
@@ -232,7 +261,7 @@ struct Value {
 };
 
 // EZ Class definition (model)
-struct EZClass {
+struct EZClass : public GCObject {
     std::string name;
     std::shared_ptr<EZClass> parent;
     std::vector<std::string> initParams;
@@ -242,10 +271,12 @@ struct EZClass {
     std::unordered_map<std::string, bool> visibility;  // true = public (shown)
     
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
+    void gc_mark() override;
+    void gc_clear() override { parent = nullptr; methods.clear(); staticMembers.clear(); }
 };
 
 // EZ Instance (object created from model)
-struct EZInstance {
+struct EZInstance : public GCObject {
     std::shared_ptr<EZClass> klass;
     std::unordered_map<std::string, Value> properties;
     
@@ -264,6 +295,8 @@ struct EZInstance {
     void setProperty(const std::string& name, const Value& value) {
         properties[name] = value;
     }
+    void gc_mark() override;
+    void gc_clear() override { properties.clear(); klass = nullptr; }
 };
 
 struct EZSuper {
@@ -274,9 +307,12 @@ struct EZSuper {
         : instance(instance), parentKlass(parentKlass) {}
 };
 
+// EZDictionary is already handled above as a GCObject proxy. Removing the old struct.
+#if 0
 struct EZDictionary {
     std::unordered_map<std::string, Value> map;
 };
+#endif
 
 inline EZDictionary& Value::asDictionary() { return *std::get<DictionaryPtr>(data); }
 inline const EZDictionary& Value::asDictionary() const { return *std::get<DictionaryPtr>(data); }

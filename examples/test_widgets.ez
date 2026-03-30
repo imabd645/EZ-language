@@ -1,0 +1,153 @@
+use "gui"
+use "datetime"
+
+# ============================================
+# EZ GUI Widget Showcase
+# ============================================
+
+win = gui.window("EZ Widget Showcase", 700, 620)
+gui.setTheme("dark")
+
+# --- Title ---
+win.label("EZ Widget Showcase", 20, 10, 400, 30).font("Segoe UI", 22).color("neon")
+
+# --- Clock (Timer test) ---
+clockLabel = win.label("", 500, 10, 180, 30).font("Segoe UI", 18).color("green")
+task updateClock() {
+    clockLabel.setText(timeNow(5))
+}
+updateClock()
+win.setTimer(1000, updateClock)
+
+# --- Button with click callback ---
+statusLabel = win.label("Click a button!", 20, 50, 350, 25).font("Segoe UI", 12).color("yellow")
+
+win.button("Say Hello", 20, 80, 120, 30, || {
+    statusLabel.setText("Hello from EZ!")
+})
+
+win.button("Say Goodbye", 150, 80, 120, 30, || {
+    statusLabel.setText("Goodbye! See you soon!")
+})
+
+# --- Checkboxes ---
+win.label("Checkboxes:", 20, 130, 100, 20).color("neon")
+cb1 = win.checkbox("Dark Mode", 20, 155, 120, 25)
+cb2 = win.checkbox("Notifications", 150, 155, 140, 25)
+cb3 = win.checkbox("Auto-save", 300, 155, 120, 25)
+
+cb1.onChange(|| {
+    when cb1.checked() {
+        statusLabel.setText("Dark mode: ON")
+    } other {
+        statusLabel.setText("Dark mode: OFF")
+    }
+})
+
+cb2.onChange(|| {
+    when cb2.checked() {
+        statusLabel.setText("Notifications: ON")
+    } other {
+        statusLabel.setText("Notifications: OFF")
+    }
+})
+
+# --- Radio Buttons ---
+win.label("Choose Language:", 20, 200, 150, 20).color("neon")
+r1 = win.radio("EZ", 20, 225, 80, 25, 1)
+r2 = win.radio("Python", 110, 225, 80, 25, 0)
+r3 = win.radio("C++", 200, 225, 80, 25, 0)
+
+r1.select()
+
+r1.onChange(|| { statusLabel.setText("Selected: EZ Language") })
+r2.onChange(|| { statusLabel.setText("Selected: Python") })
+r3.onChange(|| { statusLabel.setText("Selected: C++") })
+
+# --- Slider ---
+win.label("Volume:", 20, 270, 80, 20).color("neon")
+sliderValLabel = win.label("50", 550, 270, 50, 20).color("yellow")
+sl = win.slider(100, 268, 440, 30, 0, 100)
+sl.setValue(50)
+
+sl.onChange(|| {
+    v = sl.value()
+    sliderValLabel.setText(str(v))
+    statusLabel.setText("Volume: " + str(v) + "%")
+})
+
+# --- Progress Bar ---
+win.label("Progress:", 20, 310, 80, 20).color("neon")
+pb = win.progressBar(100, 310, 440, 22)
+pb.setValue(0)
+progressVal = 0
+
+win.button("+10%", 550, 308, 60, 25, || {
+    progressVal = progressVal + 10
+    when progressVal > 100 { progressVal = 100 }
+    pb.setValue(progressVal)
+    statusLabel.setText("Progress: " + str(progressVal) + "%")
+})
+
+win.button("Reset", 620, 308, 60, 25, || {
+    progressVal = 0
+    pb.setValue(0)
+    statusLabel.setText("Progress reset!")
+})
+
+# --- ListView / Table ---
+win.label("Student Records:", 20, 350, 150, 20).color("neon")
+lv = win.listView(20, 375, 500, 150)
+lv.addColumn("Name", 150)
+lv.addColumn("Age", 60)
+lv.addColumn("Grade", 80)
+lv.addColumn("Language", 100)
+
+lv.addRow(["Abdullah", "21", "A+", "EZ"])
+lv.addRow(["Ali", "22", "A", "Python"])
+lv.addRow(["Sara", "20", "A+", "C++"])
+lv.addRow(["Omar", "23", "B+", "Java"])
+lv.addRow(["Fatima", "21", "A", "EZ"])
+
+win.button("Get Selected", 530, 375, 120, 30, || {
+    idx = lv.selected()
+    when idx >= 0 {
+        row = lv.getRow(idx)
+        statusLabel.setText("Selected: " + row[0] + " | " + row[3])
+    } other {
+        statusLabel.setText("No row selected!")
+    }
+})
+
+win.button("Add Row", 530, 415, 120, 30, || {
+    lv.addRow(["New Student", "20", "B", "EZ"])
+    statusLabel.setText("Row added!")
+})
+
+win.button("Remove Selected", 530, 455, 120, 30, || {
+    idx = lv.selected()
+    when idx >= 0 {
+        lv.removeRow(idx)
+        statusLabel.setText("Row removed!")
+    } other {
+        statusLabel.setText("Select a row first!")
+    }
+})
+
+win.button("Clear Table", 530, 495, 120, 30, || {
+    lv.clear()
+    statusLabel.setText("Table cleared!")
+})
+
+# --- Input + Dynamic Button ---
+win.label("Your Name:", 20, 545, 90, 25).color("neon")
+nameInput = win.input(110, 545, 200, 25)
+
+win.button("Greet Me", 320, 545, 100, 25, || {
+    name = nameInput.getText()
+    when name == "" { name = "stranger" }
+    statusLabel.setText("Welcome, " + name + "! Enjoy EZ!")
+})
+
+# --- Run ---
+win.run()

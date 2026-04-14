@@ -258,13 +258,14 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // Native Function Map
     
-    // gui_create_window(title, w, h)
-    interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", 3,
+    // gui_create_window(title, x, y, w, h)
+    interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", 5,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             std::string title = vStr(args[0]);
-            int w = (int)vNum(args[1]), h = (int)vNum(args[2]);
+            int x = (int)vNum(args[1]), y = (int)vNum(args[2]);
+            int w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                CW_USEDEFAULT, CW_USEDEFAULT, w, h, NULL, NULL, g_gui.hInstance, NULL);
+                x, y, w, h, NULL, NULL, g_gui.hInstance, NULL);
             
             if (g_gui.mainWindow == NULL) {
                 g_gui.mainWindow = hwnd;
@@ -1112,6 +1113,101 @@ void registerGUIBuiltins(Interpreter& interp) {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
+            return Value();
+        }));
+
+    // ===== GAME / DRAWING PRIMITIVES =====
+
+    // gui_is_key_down(vkCode)
+    interp.defineGlobal("gui_is_key_down", Value::makeNativeFunction("gui_is_key_down", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            int vk = (int)vNum(args[0]);
+            return Value((double)((GetAsyncKeyState(vk) & 0x8000) ? 1 : 0));
+        }));
+
+    // gui_draw_rect(handle, x, y, w, h, r, g, b)
+    interp.defineGlobal("gui_draw_rect", Value::makeNativeFunction("gui_draw_rect", 8,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
+            COLORREF color = RGB((int)vNum(args[5]), (int)vNum(args[6]), (int)vNum(args[7]));
+            
+            HDC hdc = GetDC(hwnd);
+            HBRUSH brush = CreateSolidBrush(color);
+            RECT rect = { x, y, x + w, y + h };
+            FillRect(hdc, &rect, brush);
+            DeleteObject(brush);
+            ReleaseDC(hwnd, hdc);
+            return Value();
+        }));
+
+    // gui_draw_circle(handle, x, y, r, r2, g, b)
+    interp.defineGlobal("gui_draw_circle", Value::makeNativeFunction("gui_draw_circle", 7,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            int x = (int)vNum(args[1]), y = (int)vNum(args[2]), radius = (int)vNum(args[3]);
+            COLORREF color = RGB((int)vNum(args[4]), (int)vNum(args[5]), (int)vNum(args[6]));
+            
+            HDC hdc = GetDC(hwnd);
+            HBRUSH brush = CreateSolidBrush(color);
+            HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, brush);
+            HPEN pen = CreatePen(PS_SOLID, 1, color);
+            HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+            
+            Ellipse(hdc, x - radius, y - radius, x + radius, y + radius);
+            
+            SelectObject(hdc, oldBrush);
+            DeleteObject(brush);
+            SelectObject(hdc, oldPen);
+            DeleteObject(pen);
+            ReleaseDC(hwnd, hdc);
+            return Value();
+        }));
+
+    // gui_clear(handle, r, g, b)
+    interp.defineGlobal("gui_clear", Value::makeNativeFunction("gui_clear", 4,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            COLORREF color = RGB((int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]));
+            
+            HDC hdc = GetDC(hwnd);
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+            HBRUSH brush = CreateSolidBrush(color);
+            FillRect(hdc, &rect, brush);
+            DeleteObject(brush);
+            ReleaseDC(hwnd, hdc);
+            return Value();
+        }));
+
+    // gui_get_client_size(handle) -> [w, h]
+    interp.defineGlobal("gui_get_client_size", Value::makeNativeFunction("gui_get_client_size", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+            std::vector<Value> size = { Value((double)rect.right), Value((double)rect.bottom) };
+            return Value::makeArray(size);
+        }));
+
+    // gui_draw_text(handle, text, x, y, size, r, g, b)
+    interp.defineGlobal("gui_draw_text", Value::makeNativeFunction("gui_draw_text", 8,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            std::string text = vStr(args[1]);
+            int x = (int)vNum(args[2]), y = (int)vNum(args[3]), size = (int)vNum(args[4]);
+            COLORREF color = RGB((int)vNum(args[5]), (int)vNum(args[6]), (int)vNum(args[7]));
+            
+            HDC hdc = GetDC(hwnd);
+            HFONT hFont = CreateFont(-(int)size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
+            HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+            SetTextColor(hdc, color);
+            SetBkMode(hdc, TRANSPARENT);
+            TextOut(hdc, x, y, text.c_str(), (int)text.length());
+            
+            SelectObject(hdc, oldFont);
+            DeleteObject(hFont);
+            ReleaseDC(hwnd, hdc);
             return Value();
         }));
 }

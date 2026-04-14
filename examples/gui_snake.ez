@@ -1,0 +1,135 @@
+use "ezgame"
+use "log"
+
+# Game Constants
+BLOCK_SIZE = 20
+WIDTH = 600
+HEIGHT = 400
+
+app = createGame("EZ Snake Pro - Pause/Restart", WIDTH, HEIGHT)
+app.setFPS(8)
+
+# Game State Variables
+snake = []
+dir = [1, 0]
+food = [15, 10]
+score = 0
+gameOver = false
+paused = false
+wasSpaceDown = false
+
+# --- Game Reset Logic ---
+task resetGame() {
+    snake = [[5, 10], [6, 10], [7, 10]]
+    dir = [1, 0]
+    food = [15, 10]
+    score = 0
+    gameOver = false
+    paused = false
+    log.info("Game Restarted!")
+}
+
+# Initial start
+resetGame()
+
+# --- Input Handling ---
+task updateInput() {
+    changed = false
+    # 1. Directional Input
+    when not paused and not gameOver {
+        when app.isKeyDown(KEYS.UP) and dir[1] == 0 { dir = [0, -1] changed = true }
+        other when not changed and app.isKeyDown(KEYS.DOWN) and dir[1] == 0 { dir = [0, 1] changed = true }
+        other when not changed and app.isKeyDown(KEYS.LEFT) and dir[0] == 0 { dir = [-1, 0] changed = true }
+        other when not changed and app.isKeyDown(KEYS.RIGHT) and dir[0] == 0 { dir = [1, 0] changed = true }
+    }
+    
+    # 2. Space Key (Pause/Restart)
+    isSpaceDown = app.isKeyDown(KEYS.SPACE)
+    when isSpaceDown and not wasSpaceDown {
+        when gameOver {
+            resetGame()
+        } other {
+            paused = not paused
+        }
+    }
+    wasSpaceDown = isSpaceDown
+}
+
+# --- Game Logic Loop ---
+app.onUpdateCall(|| {
+    updateInput()
+    
+    when gameOver or paused { give false }
+    
+    # 1. Calculate New Head
+    head = snake[len(snake)-1]
+    newHead = [head[0] + dir[0], head[1] + dir[1]]
+    
+    # 2. Check Wall Collision
+    gridW = WIDTH / BLOCK_SIZE
+    gridH = HEIGHT / BLOCK_SIZE
+    when newHead[0] < 0 or newHead[0] >= gridW or newHead[1] < 0 or newHead[1] >= gridH {
+        gameOver = true
+        log.error("Hit Wall! Press SPACE to Restart.")
+        give false
+    }
+    
+    # 3. Check Self Collision
+    collision = false
+    get seg in snake {
+        when seg[0] == newHead[0] and seg[1] == newHead[1] { collision = true }
+    }
+    when collision {
+        gameOver = true
+        log.error("Hit Self! Press SPACE to Restart.")
+        give false
+    }
+    
+    # 4. Move Snake
+    push(snake, newHead)
+    
+    # 5. Check Food
+    when newHead[0] == food[0] and newHead[1] == food[1] {
+        score = score + 1
+        food = [floor(clock() % gridW), floor((clock() / 1.5) % gridH)]
+    } other {
+        # Tail Shift
+        newSnake = []
+        repeat i = 1 to len(snake) - 1 {
+            push(newSnake, snake[i])
+        }
+        snake = newSnake
+    }
+})
+
+# --- Rendering Loop ---
+app.onDrawCall(|| {
+    # 1. Clear Canvas
+    app.clear(20, 20, 25)
+    
+    # 2. Draw Food
+    app.drawRect(food[0] * BLOCK_SIZE, food[1] * BLOCK_SIZE, BLOCK_SIZE - 2, BLOCK_SIZE - 2, 255, 80, 80)
+    
+    # 3. Draw Snake
+    get seg in snake {
+        app.drawRect(seg[0] * BLOCK_SIZE, seg[1] * BLOCK_SIZE, BLOCK_SIZE - 2, BLOCK_SIZE - 2, 80, 255, 80)
+    }
+    
+    # 4. Draw HUD (Score)
+    app.drawText("SCORE: " + str(score), 15, 15, 20, 255, 255, 255)
+    
+    # 5. Overlays
+    when paused {
+        app.drawRect(WIDTH/2 - 100, HEIGHT/2 - 30, 200, 60, 40, 40, 60)
+        app.drawText("PAUSED", WIDTH/2 - 50, HEIGHT/2 - 15, 30, 255, 255, 255)
+    }
+    
+    when gameOver {
+        app.drawRect(WIDTH/10, HEIGHT/3, WIDTH * 8/10, HEIGHT/3, 150, 0, 0)
+        app.drawText("GAME OVER!", WIDTH/2 - 100, HEIGHT/2 - 30, 40, 255, 255, 255)
+        app.drawText("Press SPACE to Restart", WIDTH/2 - 110, HEIGHT/2 + 20, 20, 255, 255, 255)
+    }
+})
+
+log.info("Launching EZ Snake Pro...")
+app.run()

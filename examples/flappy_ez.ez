@@ -1,0 +1,149 @@
+use "game"
+use "log"
+
+# Game Constants
+WIDTH = 400
+HEIGHT = 600
+BIRD_X = 50
+PIPE_WIDTH = 60
+PIPE_GAP = 150
+PIPE_SPEED = 4
+
+app = createGame("Flappy EZ 🐦", WIDTH, HEIGHT)
+app.setFPS(60) # High FPS for smooth physics
+
+# Game State
+birdY = 300
+velocity = 0
+gravity = 0.5
+lift = -10
+score = 0
+gameOver = false
+paused = false
+wasSpaceDown = false
+
+# Pipes: [[x, gapY], ...]
+pipes = []
+
+task addPipe() {
+    # Random gap between 150 and 450
+    gap = 150 + (clock() % 300)
+    push(pipes, [WIDTH, gap])
+}
+
+task resetGame() {
+    birdY = 300
+    velocity = 0
+    score = 0
+    gameOver = false
+    paused = false
+    pipes = []
+    addPipe()
+    log.info("Flappy Reset!")
+}
+
+resetGame()
+
+# --- Input ---
+task updateInput() {
+    isSpaceDown = app.isKeyDown(KEYS.SPACE)
+    when isSpaceDown and not wasSpaceDown {
+        when gameOver {
+            resetGame()
+        } other {
+            # Jump!
+            velocity = lift
+            paused = false
+        }
+    }
+    wasSpaceDown = isSpaceDown
+}
+
+# --- Physics & Logic ---
+app.onUpdateCall(|| {
+    updateInput()
+    when gameOver or paused { give false }
+    
+    # 1. Update Physics
+    velocity = velocity + gravity
+    birdY = birdY + velocity
+    
+    # 2. Check Ground/Ceiling
+    when birdY < 0 or birdY > HEIGHT {
+        gameOver = true
+        log.error("Out of bounds!")
+    }
+    
+    # 3. Update Pipes
+    newPipes = []
+    get pipe in pipes {
+        px = pipe[0]
+        py = pipe[1]
+        
+        # Move pipe left
+        px = px - PIPE_SPEED
+        
+        # Check Collision
+        # Bird is at [BIRD_X, birdY] Radius 15
+        when px < BIRD_X + 15 and px + PIPE_WIDTH > BIRD_X - 15 {
+            # Gap check
+            when birdY - 15 < py - PIPE_GAP / 2 or birdY + 15 > py + PIPE_GAP / 2 {
+                gameOver = true
+                log.error("Hit a pipe!")
+            }
+        }
+        
+        # Scored?
+        when px + PIPE_WIDTH < BIRD_X and pipe[0] + PIPE_WIDTH >= BIRD_X {
+            score = score + 1
+            log.info("Score: " + str(score))
+        }
+        
+        # Keep pipe if on screen
+        when px > -PIPE_WIDTH {
+            push(newPipes, [px, py])
+        }
+    }
+    pipes = newPipes
+    
+    # Add new pipe if needed
+    when len(pipes) > 0 {
+        lastPipe = pipes[len(pipes)-1]
+        when lastPipe[0] < WIDTH - 200 {
+            addPipe()
+        }
+    }
+})
+
+# --- Graphics ---
+app.onDrawCall(|| {
+    # 1. Background (Sky Blue)
+    app.clear(135, 206, 235)
+    
+    # 2. Draw Pipes (Green)
+    get pipe in pipes {
+        px = pipe[0]
+        py = pipe[1]
+        
+        # Top Pipe
+        app.drawRect(px, 0, PIPE_WIDTH, py - PIPE_GAP / 2, 34, 139, 34)
+        # Bottom Pipe
+        app.drawRect(px, py + PIPE_GAP / 2, PIPE_WIDTH, HEIGHT - py - PIPE_GAP / 2, 34, 139, 34)
+    }
+    
+    # 3. Draw Bird (Yellow Circle)
+    app.drawCircle(BIRD_X, birdY, 15, 255, 215, 0)
+    
+    # 4. HUD
+    app.drawText("SCORE: " + str(score), 20, 20, 25, 255, 255, 255)
+    
+    # 5. Overlays
+    when gameOver {
+        app.drawRect(WIDTH/4, HEIGHT/2 - 50, WIDTH/2, 100, 150, 0, 0)
+        app.drawText("GAME OVER!", WIDTH/2 - 80, HEIGHT/2 - 20, 30, 255, 255, 255)
+        app.drawText("SPACE to Retry", WIDTH/2 - 70, HEIGHT/2 + 20, 20, 255, 255, 255)
+    }
+})
+
+log.info("Launching Flappy EZ...")
+app.run()

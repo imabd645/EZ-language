@@ -1,0 +1,37 @@
+use "serve"
+use "os"
+
+# Create the Web Application
+app = App()
+
+# Setup memory database for demonstration
+users = [
+    { "id": 1, "name": "Maaz", "role": "Admin" },
+    { "id": 2, "name": "Ghost", "role": "User" }
+]
+
+# 1. Basic HTML Route
+app.get("/", |req| {
+    give "<h1>Welcome to EZ Serve!</h1><p>Visit /api/users to see data.</p>"
+})
+
+# 2. JSON API Route (Auto formatting)
+app.get("/api/users", |req| {
+    # You can return native arrays or dictionaries, and they auto parse as JSON
+    give {
+        "success": true,
+        "users": users
+    }
+})
+
+# 3. POST Route Example
+app.post("/api/users", |req| {
+    # req has .body and .form mapped natively
+    give { "status": 201, "body": "User Created: " + req.body }
+})
+
+# 4. Environment variables
+port = os.env.get("PORT")
+when not port { port = 8080 }
+
+app.listen(5000)

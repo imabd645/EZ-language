@@ -1,0 +1,32 @@
+use "crypto"
+
+out "=== EZ Cryptography Test ==="
+
+hash = crypto.sha256("password123")
+out "[SHA256] password123 -> " + hash
+
+md5Hash = crypto.md5("password123")
+out "[MD5] password123 -> " + md5Hash
+
+secretText = "EZ Language is the future!"
+out "Original Text: " + secretText
+
+encoded = crypto.base64Encode(secretText)
+out "[Base64] " + encoded
+
+decoded = crypto.base64Decode(encoded)
+out "[Base64 Decoded] " + decoded
+
+# AES-256 Encyption
+aesKey = "super_secret_master_key"
+cipher = crypto.encrypt(secretText, aesKey)
+
+# Since cipher output is binary bytes, we should Base64 encode it for printing/saving!
+safeCipherBox = crypto.base64Encode(cipher)
+out "[AES-256 Encrypted] " + safeCipherBox
+
+# Decrypt it back
+rawCipher = crypto.base64Decode(safeCipherBox)
+decrypted = crypto.decrypt(rawCipher, aesKey)
+
+out "[AES-256 Decrypted] " + decrypted

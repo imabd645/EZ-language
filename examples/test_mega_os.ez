@@ -1,0 +1,45 @@
+use "os"
+
+out "=== Mega OS Library Test ==="
+
+# 1. System Information
+out "\n[ System Info ]"
+out "Platform: " + os.platform()
+out "Uptime: " + str(os.uptime()) + "s"
+out "Total Memory: " + str(os.totalMemory() / (1024*1024)) + " MB"
+out "Free Memory: " + str(os.freeMemory() / (1024*1024)) + " MB"
+
+# 2. Directory and Paths
+out "\n[ Workspace ]"
+out "Current Dir: " + os.cwd()
+out "Path Join: " + os.path.join("C:\\Users", "Projects")
+out "Is Absolute: " + str(os.path.isAbsolute("C:\\test.txt"))
+
+# 3. Environment Variables & .env Loader
+out "\n[ Environment Variables ]"
+os.env.set("MY_EZ_VAR", "Powered By EZ")
+out "In-Memory Env: " + os.env.get("MY_EZ_VAR")
+
+out "Loading .env file..."
+loaded = os.env.load("examples/.env")
+when loaded {
+    out "SUCCESS! Loaded from examples/.env"
+    out "DB_USER = " + os.env.get("DB_USER")
+    out "DB_PASS = " + os.env.get("DB_PASS")
+} other {
+    out "FAILED to load .env file."
+}
+
+# 4. Clipboard operations
+out "\n[ Clipboard API ]"
+os.clipboard.write("Hello from the Mega OS API!")
+clip = os.clipboard.read()
+out "Clipboard contains: '" + clip + "'"
+
+# 5. Process Execution (Executing 'echo test')
+out "\n[ Process Execution ]"
+out "Running 'ping 127.0.0.1 -n 1'..."
+res = os.process.exec("ping 127.0.0.1 -n 1")
+out res
+
+out "Mega OS Library Tests Complete!"

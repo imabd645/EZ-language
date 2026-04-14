@@ -1,0 +1,20 @@
+use "log"
+
+# 1. Basic Logging
+log.info("Starting the system...")
+log.warn("Low disk space detected (Example Warning)")
+log.debug("This won't show by default as level is INFO")
+
+# 2. Change dynamic level
+log.setLevel(DEBUG)
+log.debug("Now you can see me! (Debug message enabled)")
+
+# 3. File Logging
+log.setFile("app.log")
+log.info("This message is both on console AND saved to app.log")
+
+# 4. Critical Errors
+log.error("Database connection lost!")
+log.fatal("SYSTEM HALTED. Kernel Panic simulation.")
+
+out "\nCheck 'app.log' to see the persistent records!"

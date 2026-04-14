@@ -158,6 +158,10 @@ public:
         loadConfig();
     }
     
+    ~PackageManager() {
+        fs::remove_all(cacheDir);
+    }
+    
     bool installPackage(const std::string& packageName, const std::string& version = "main", const std::string& repoUrl = "") {
         std::cout << "Installing " << packageName << "@" << version << "..." << std::endl;
         
@@ -169,27 +173,49 @@ public:
         
         std::string repositoryUrl = repoUrl;
         if (repositoryUrl.empty()) {
-            repositoryUrl = "https://github.com/imabd645/EZ" + packageName;
+            repositoryUrl = "https://github.com/imabd645/ezlib";
         }
         
         std::string downloadUrl = getGitHubDownloadUrl(repositoryUrl, version);
-        std::string cachePath = cacheDir + "/" + packageName + "-" + version + ".zip";
+        std::string cachePath = cacheDir + "/ezlib-" + version + ".zip";
         
-        std::cout << "Downloading from " << downloadUrl << "..." << std::endl;
+        std::cout << "Downloading central repository from " << downloadUrl << "..." << std::endl;
         if (!downloadFile(downloadUrl, cachePath)) {
             std::cerr << "Download failed." << std::endl;
             return false;
         }
         
-        std::string extractDir = packagesDir + "/" + packageName;
-        fs::remove_all(extractDir);
-        fs::create_directories(extractDir);
+        std::string tempExtractDir = cacheDir + "/ezlib-temp";
+        fs::remove_all(tempExtractDir);
+        fs::create_directories(tempExtractDir);
         
-        std::cout << "Extracting..." << std::endl;
-        if (!extractZip(cachePath, extractDir)) {
+        std::cout << "Extracting repository..." << std::endl;
+        if (!extractZip(cachePath, tempExtractDir)) {
             std::cerr << "Extraction failed." << std::endl;
             return false;
         }
+        
+        std::string sourceLibDir = tempExtractDir + "/ez" + packageName;
+        if (!fs::exists(sourceLibDir)) {
+             sourceLibDir = tempExtractDir + "/" + packageName;
+             if (!fs::exists(sourceLibDir)) {
+                  std::cerr << "Package '" << packageName << "' not found in the repository." << std::endl;
+                  fs::remove_all(tempExtractDir);
+                  return false;
+             }
+        }
+        
+        std::string extractDir = packagesDir + "/" + packageName;
+        fs::remove_all(extractDir);
+        
+        try {
+            fs::copy(sourceLibDir, extractDir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        } catch (...) {
+            std::cerr << "Failed to construct package directory." << std::endl;
+            return false;
+        }
+        
+        fs::remove_all(tempExtractDir);
         
         std::string packageEzPath = extractDir + "/package.ez";
         if (!fs::exists(packageEzPath)) {

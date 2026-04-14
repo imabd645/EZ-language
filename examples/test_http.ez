@@ -1,0 +1,46 @@
+use "http"
+
+out "=== EZ HTTP & JSON Library Test ==="
+
+# 1. Basic HTTP GET
+out "\nFetching dummy product..."
+res = http.get("https://dummyjson.com/products/1")
+
+# Parse JSON into Dictionary
+data = json.parse(res)
+out "Product Title: " + data["title"]
+out "Price: $" + str(data["price"])
+out "Description: " + data["description"]
+
+# 2. HTTP POST with automatic JSON encoding
+out "\nCreating a new post..."
+postData = {
+    "title": "EZ Language is awesome!",
+    "body": "This is a test post made natively in EZ.",
+    "userId": 1
+}
+
+res2 = http.post("https://dummyjson.com/posts/add", postData)
+out "POST Response:"
+out res2
+
+# 3. Async Fetch
+out "\nFiring 3 async requests simultaneously..."
+start = 0 # Assume we have a timer if we wanted
+
+req1 = http.fetch("https://dummyjson.com/products/1")
+req2 = http.fetch("https://dummyjson.com/products/2")
+req3 = http.fetch("https://dummyjson.com/products/3")
+
+out "Waiting for responses..."
+
+# Wait for them to finish
+data1 = json.parse(await(req1))
+data2 = json.parse(await(req2))
+data3 = json.parse(await(req3))
+
+out "- " + data1["title"]
+out "- " + data2["title"]
+out "- " + data3["title"]
+
+out "\nAll HTTP tests passed!"

@@ -25,6 +25,8 @@
 #include <future>
 #include <iomanip>
 #include <filesystem>
+#include <shellapi.h>
+#include <wincrypt.h>
 
 struct SimplePDF {
     std::string filename;
@@ -1629,6 +1631,102 @@ void registerBuiltins(Interpreter& interp) {
             return Value(ss.str());
         }));
 
+    // --- Cryptography Built-ins ---
+    
+    interp.defineGlobal("crypto_hash", Value::makeNativeFunction("crypto_hash", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            std::string algo = args[0].asString();
+            std::string text = args[1].asString();
+            HCRYPTPROV hProv = 0;
+            HCRYPTHASH hHash = 0;
+            ALG_ID algId = CALG_SHA_256;
+            if (algo == "md5") algId = CALG_MD5;
+            else if (algo == "sha1") algId = CALG_SHA1;
+            else if (algo == "sha256") algId = CALG_SHA_256;
+            else { interp.runtimeError("Unknown hash algorithm", 0, ""); return Value(); }
+            
+            if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return Value("Err Context: " + std::to_string(GetLastError()));
+            if (!CryptCreateHash(hProv, algId, 0, 0, &hHash)) { CryptReleaseContext(hProv, 0); return Value("Err Hash: " + std::to_string(GetLastError())); }
+            CryptHashData(hHash, (BYTE*)text.c_str(), text.length(), 0);
+            
+            DWORD hashLen = 0;
+            DWORD bCount = sizeof(DWORD);
+            CryptGetHashParam(hHash, HP_HASHSIZE, (BYTE*)&hashLen, &bCount, 0);
+            std::vector<BYTE> hash(hashLen);
+            CryptGetHashParam(hHash, HP_HASHVAL, hash.data(), &hashLen, 0);
+            
+            CryptDestroyHash(hHash);
+            CryptReleaseContext(hProv, 0);
+            
+            std::stringstream ss;
+            for (size_t i = 0; i < hash.size(); i++) {
+                ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+            }
+            return Value(ss.str());
+        }));
+
+    interp.defineGlobal("crypto_base64_encode", Value::makeNativeFunction("crypto_base64_encode", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            std::string text = args[0].asString();
+            DWORD size = 0;
+            CryptBinaryToStringA((const BYTE*)text.c_str(), text.length(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &size);
+            std::string out(size, '\0');
+            CryptBinaryToStringA((const BYTE*)text.c_str(), text.length(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, &out[0], &size);
+            while(!out.empty() && out.back() == '\0') out.pop_back();
+            return Value(out);
+        }));
+
+    interp.defineGlobal("crypto_base64_decode", Value::makeNativeFunction("crypto_base64_decode", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            std::string text = args[0].asString();
+            DWORD size = 0;
+            CryptStringToBinaryA(text.c_str(), text.length(), CRYPT_STRING_BASE64, NULL, &size, NULL, NULL);
+            std::string out(size, '\0');
+            CryptStringToBinaryA(text.c_str(), text.length(), CRYPT_STRING_BASE64, (BYTE*)&out[0], &size, NULL, NULL);
+            return Value(out);
+        }));
+
+    auto crypto_aes = [](Interpreter& interp, const std::string& text, const std::string& key, bool isEncrypt) -> Value {
+        HCRYPTPROV hProv;
+        HCRYPTHASH hHash;
+        HCRYPTKEY hKey;
+        
+        if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return Value("Err Context AES: " + std::to_string(GetLastError()));
+        if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash)) { CryptReleaseContext(hProv, 0); return Value("Err Hash AES: " + std::to_string(GetLastError())); }
+        CryptHashData(hHash, (BYTE*)key.c_str(), key.length(), 0);
+        if (!CryptDeriveKey(hProv, CALG_AES_256, hHash, 0, &hKey)) { CryptDestroyHash(hHash); CryptReleaseContext(hProv, 0); return Value("Err Derive AES: " + std::to_string(GetLastError())); }
+        
+        std::vector<BYTE> data(text.begin(), text.end());
+        DWORD dataLen = data.size();
+        
+        if (isEncrypt) {
+            DWORD bufLen = dataLen + 64; 
+            data.resize(bufLen);
+            if (CryptEncrypt(hKey, 0, TRUE, 0, data.data(), &dataLen, bufLen)) {
+                data.resize(dataLen);
+            } else { data.clear(); }
+        } else {
+            if (CryptDecrypt(hKey, 0, TRUE, 0, data.data(), &dataLen)) {
+                data.resize(dataLen);
+            } else { data.clear(); }
+        }
+       
+       CryptDestroyKey(hKey);
+       CryptDestroyHash(hHash);
+       CryptReleaseContext(hProv, 0);
+       return Value(std::string(data.begin(), data.end()));
+    };
+
+    interp.defineGlobal("crypto_encrypt", Value::makeNativeFunction("crypto_encrypt", 2,
+        [crypto_aes](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            return crypto_aes(interp, args[0].asString(), args[1].asString(), true);
+        }));
+        
+    interp.defineGlobal("crypto_decrypt", Value::makeNativeFunction("crypto_decrypt", 2,
+        [crypto_aes](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            return crypto_aes(interp, args[0].asString(), args[1].asString(), false);
+        }));
+
     // --- Terminal Built-ins ---
 
     // term_clear() - Clears the terminal screen (Windows)
@@ -1722,6 +1820,9 @@ void registerBuiltins(Interpreter& interp) {
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, (size_t(*)(void*,size_t,size_t,void*))HttpWriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &res);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
             struct curl_slist* headers = nullptr;
             if (args.size() > 1 && args[1].isDictionary()) {
                 for (auto& kv : args[1].asDictionary().map) {
@@ -1752,6 +1853,7 @@ void registerBuiltins(Interpreter& interp) {
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &res);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Bypass for local environments
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L); // 30 second timeout
             
             struct curl_slist* headers = nullptr;
@@ -1858,6 +1960,7 @@ void registerBuiltins(Interpreter& interp) {
                     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
                     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
                     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+                    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
                     
                     if (method == "POST") {
                         curl_easy_setopt(curl, CURLOPT_POST, 1L);
@@ -1987,5 +2090,146 @@ void registerBuiltins(Interpreter& interp) {
                 long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
                 return Value((double)ms);
             } catch (...) { return Value(-1.0); }
+        }));
+    // --- Mega OS Library Built-ins ---
+    interp.defineGlobal("os_get_env", Value::makeNativeFunction("os_get_env", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            const char* val = std::getenv(args[0].toString().c_str());
+            if (val) return Value(std::string(val));
+            return Value();
+        }));
+
+    interp.defineGlobal("os_set_env", Value::makeNativeFunction("os_set_env", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            _putenv_s(args[0].toString().c_str(), args[1].toString().c_str());
+            return Value();
+        }));
+
+    interp.defineGlobal("os_exec", Value::makeNativeFunction("os_exec", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            std::string cmd = args[0].toString();
+            FILE* pipe = _popen(cmd.c_str(), "r");
+            if (!pipe) return Value("");
+            char buffer[128];
+            std::string result = "";
+            while (!feof(pipe)) {
+                if (fgets(buffer, 128, pipe) != nullptr)
+                    result += buffer;
+            }
+            _pclose(pipe);
+            return Value(result);
+        }));
+
+    interp.defineGlobal("os_system", Value::makeNativeFunction("os_system", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            int code = std::system(args[0].toString().c_str());
+            return Value((double)code);
+        }));
+
+    interp.defineGlobal("os_cwd", Value::makeNativeFunction("os_cwd", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+            try { return Value(std::filesystem::current_path().string()); }
+            catch (...) { return Value(""); }
+        }));
+
+    interp.defineGlobal("os_chdir", Value::makeNativeFunction("os_chdir", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            try { std::filesystem::current_path(args[0].toString()); return Value(true); }
+            catch (...) { return Value(false); }
+        }));
+
+    interp.defineGlobal("os_exit", Value::makeNativeFunction("os_exit", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            std::exit((int)args[0].asNumber());
+            return Value();
+        }));
+
+    interp.defineGlobal("os_platform", Value::makeNativeFunction("os_platform", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            return Value("windows");
+#elif __APPLE__
+            return Value("darwin");
+#else
+            return Value("linux");
+#endif
+        }));
+
+    interp.defineGlobal("os_uptime", Value::makeNativeFunction("os_uptime", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            return Value((double)(GetTickCount64() / 1000.0));
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_total_memory", Value::makeNativeFunction("os_total_memory", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            MEMORYSTATUSEX memInfo;
+            memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+            GlobalMemoryStatusEx(&memInfo);
+            return Value((double)memInfo.ullTotalPhys);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_free_memory", Value::makeNativeFunction("os_free_memory", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            MEMORYSTATUSEX memInfo;
+            memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+            GlobalMemoryStatusEx(&memInfo);
+            return Value((double)memInfo.ullAvailPhys);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_clipboard_read", Value::makeNativeFunction("os_clipboard_read", 0,
+        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            if (!OpenClipboard(nullptr)) return Value("");
+            HANDLE hData = GetClipboardData(CF_TEXT);
+            if (!hData) { CloseClipboard(); return Value(""); }
+            char* pszText = static_cast<char*>(GlobalLock(hData));
+            if (!pszText) { CloseClipboard(); return Value(""); }
+            std::string text(pszText);
+            GlobalUnlock(hData);
+            CloseClipboard();
+            return Value(text);
+#else
+            return Value("");
+#endif
+        }));
+
+    interp.defineGlobal("os_clipboard_write", Value::makeNativeFunction("os_clipboard_write", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            std::string text = args[0].toString();
+            if (!OpenClipboard(nullptr)) return Value(false);
+            EmptyClipboard();
+            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1);
+            if (!hMem) { CloseClipboard(); return Value(false); }
+            memcpy(GlobalLock(hMem), text.c_str(), text.size() + 1);
+            GlobalUnlock(hMem);
+            SetClipboardData(CF_TEXT, hMem);
+            CloseClipboard();
+            return Value(true);
+#else
+            return Value(false);
+#endif
+        }));
+
+    interp.defineGlobal("os_shell_open", Value::makeNativeFunction("os_shell_open", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            HINSTANCE res = ShellExecuteA(NULL, "open", args[0].toString().c_str(), NULL, NULL, SW_SHOWNORMAL);
+            return Value((double)(reinterpret_cast<INT_PTR>(res)));
+#else
+            return Value(0.0);
+#endif
         }));
 }

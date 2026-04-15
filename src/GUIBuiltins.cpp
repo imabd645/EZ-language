@@ -258,12 +258,24 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // Native Function Map
     
-    // gui_create_window(title, x, y, w, h)
-    interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", 5,
+    // gui_create_window(title, [x, y], w, h)
+    interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", -1,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() != 3 && args.size() != 5) {
+                interp.runtimeError("Expected 3 or 5 arguments", 0, "native");
+                return Value();
+            }
             std::string title = vStr(args[0]);
-            int x = (int)vNum(args[1]), y = (int)vNum(args[2]);
-            int w = (int)vNum(args[3]), h = (int)vNum(args[4]);
+            int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w, h;
+            if (args.size() == 3) {
+                w = (int)vNum(args[1]);
+                h = (int)vNum(args[2]);
+            } else {
+                x = (int)vNum(args[1]);
+                y = (int)vNum(args[2]);
+                w = (int)vNum(args[3]);
+                h = (int)vNum(args[4]);
+            }
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 x, y, w, h, NULL, NULL, g_gui.hInstance, NULL);
             

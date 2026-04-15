@@ -1,0 +1,40 @@
+use "../lib/crypto.ez"
+
+out "===================================="
+out "     EZ Crypto Library Test         "
+out "===================================="
+
+out "\n[1] Testing Base64 Encoding"
+text = "EZ Language is natively powerful!"
+encoded = Crypto.base64Encode(text)
+out "Original : " + text
+out "Encoded  : " + encoded
+
+out "\n[2] Testing Base64 Decoding"
+decoded = Crypto.base64Decode(encoded)
+out "Decoded  : " + decoded
+
+when decoded == text {
+    out ">>> Base64 Pipeline PASSED!"
+} other {
+    out ">>> Base64 Pipeline FAILED!"
+}
+
+out "\n[3] Testing RC4 Encryption (Symmetric System)"
+key = "SuperSecretKey99"
+msg = "Strictly Confidential Data Block"
+out "Message  : " + msg
+out "Key      : " + key
+
+encryptedBase64 = Crypto.rc4Encrypt(key, msg)
+out "Encrypted (Base64 wrapper) : " + encryptedBase64
+
+decrypted = Crypto.rc4Decrypt(key, encryptedBase64)
+out "Decrypted: " + decrypted
+
+when decrypted == msg {
+    out ">>> RC4 Cipher Pipeline PASSED!"
+} other {
+    out ">>> RC4 Cipher Pipeline FAILED!"
+}
+out "\nTests Complete!"

@@ -16,7 +16,6 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <wincrypt.h>
 #endif
 
 static auto HttpWriteCallback = [](void* contents, size_t size, size_t nmemb, void* userp) -> size_t {
@@ -367,95 +366,9 @@ void registerNetBuiltins(Interpreter& interp) {
             }
 
             closesocket(listenSocket);
+            closesocket(listenSocket);
             WSACleanup();
             return Value();
-        }));
-
-    interp.defineGlobal("crypto_hash", Value::makeNativeFunction("crypto_hash", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            std::string algo = args[0].asString();
-            std::string text = args[1].asString();
-            HCRYPTPROV hProv = 0;
-            HCRYPTHASH hHash = 0;
-            ALG_ID algId = CALG_SHA_256;
-            if (algo == "md5") algId = CALG_MD5;
-            else if (algo == "sha1") algId = CALG_SHA1;
-            else if (algo == "sha256") algId = CALG_SHA_256;
-            else { interp.runtimeError("Unknown hash algorithm", 0, ""); return Value(); }
-            
-            if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return Value("Err Context: " + std::to_string(GetLastError()));
-            if (!CryptCreateHash(hProv, algId, 0, 0, &hHash)) { CryptReleaseContext(hProv, 0); return Value("Err Hash: " + std::to_string(GetLastError())); }
-            CryptHashData(hHash, (BYTE*)text.c_str(), text.length(), 0);
-            
-            DWORD hashLen = 0;
-            DWORD bCount = sizeof(DWORD);
-            CryptGetHashParam(hHash, HP_HASHSIZE, (BYTE*)&hashLen, &bCount, 0);
-            std::vector<BYTE> hash(hashLen);
-            CryptGetHashParam(hHash, HP_HASHVAL, hash.data(), &hashLen, 0);
-            
-            CryptDestroyHash(hHash);
-            CryptReleaseContext(hProv, 0);
-            
-            std::stringstream ss;
-            for (size_t i = 0; i < hash.size(); i++) { ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i]; }
-            return Value(ss.str());
-        }));
-
-    interp.defineGlobal("crypto_base64_encode", Value::makeNativeFunction("crypto_base64_encode", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            std::string text = args[0].asString();
-            DWORD size = 0;
-            CryptBinaryToStringA((const BYTE*)text.c_str(), text.length(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &size);
-            std::string out(size, '\0');
-            CryptBinaryToStringA((const BYTE*)text.c_str(), text.length(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, &out[0], &size);
-            while(!out.empty() && out.back() == '\0') out.pop_back();
-            return Value(out);
-        }));
-
-    interp.defineGlobal("crypto_base64_decode", Value::makeNativeFunction("crypto_base64_decode", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            std::string text = args[0].asString();
-            DWORD size = 0;
-            CryptStringToBinaryA(text.c_str(), text.length(), CRYPT_STRING_BASE64, NULL, &size, NULL, NULL);
-            std::string out(size, '\0');
-            CryptStringToBinaryA(text.c_str(), text.length(), CRYPT_STRING_BASE64, (BYTE*)&out[0], &size, NULL, NULL);
-            return Value(out);
-        }));
-
-    auto crypto_aes = [](Interpreter& interp, const std::string& text, const std::string& key, bool isEncrypt) -> Value {
-        HCRYPTPROV hProv;
-        HCRYPTHASH hHash;
-        HCRYPTKEY hKey;
-        if (!CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return Value("Err Context AES: " + std::to_string(GetLastError()));
-        if (!CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash)) { CryptReleaseContext(hProv, 0); return Value("Err Hash AES: " + std::to_string(GetLastError())); }
-        CryptHashData(hHash, (BYTE*)key.c_str(), key.length(), 0);
-        if (!CryptDeriveKey(hProv, CALG_AES_256, hHash, 0, &hKey)) { CryptDestroyHash(hHash); CryptReleaseContext(hProv, 0); return Value("Err Derive AES: " + std::to_string(GetLastError())); }
-        
-        std::vector<BYTE> data(text.begin(), text.end());
-        DWORD dataLen = data.size();
-        
-        if (isEncrypt) {
-            DWORD bufLen = dataLen + 64; 
-            data.resize(bufLen);
-            if (CryptEncrypt(hKey, 0, TRUE, 0, data.data(), &dataLen, bufLen)) { data.resize(dataLen); } else { data.clear(); }
-        } else {
-            if (CryptDecrypt(hKey, 0, TRUE, 0, data.data(), &dataLen)) { data.resize(dataLen); } else { data.clear(); }
-        }
-       
-       CryptDestroyKey(hKey);
-       CryptDestroyHash(hHash);
-       CryptReleaseContext(hProv, 0);
-       return Value(std::string(data.begin(), data.end()));
-    };
-
-    interp.defineGlobal("crypto_encrypt", Value::makeNativeFunction("crypto_encrypt", 2,
-        [crypto_aes](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            return crypto_aes(interp, args[0].asString(), args[1].asString(), true);
-        }));
-        
-    interp.defineGlobal("crypto_decrypt", Value::makeNativeFunction("crypto_decrypt", 2,
-        [crypto_aes](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            return crypto_aes(interp, args[0].asString(), args[1].asString(), false);
         }));
 
 #else

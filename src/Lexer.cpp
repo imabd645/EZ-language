@@ -160,21 +160,34 @@ void Lexer::scanToken() {
             }
             break;
         case '<':
-            if (match('=')) {
+            if (match('<')) {
+                addToken(TokenType::LSHIFT);
+            } else if (match('=')) {
                 addToken(TokenType::LESS_EQUAL);
             } else {
                 addToken(TokenType::LESS);
             }
             break;
         case '>':
-            if (match('=')) {
+            if (match('>')) {
+                addToken(TokenType::RSHIFT);
+            } else if (match('=')) {
                 addToken(TokenType::GREATER_EQUAL);
             } else {
                 addToken(TokenType::GREATER);
             }
             break;
+        case '&':
+            addToken(TokenType::AMPERSAND);
+            break;
         case '|':
             addToken(TokenType::PIPE);
+            break;
+        case '^':
+            addToken(TokenType::CARET);
+            break;
+        case '~':
+            addToken(TokenType::TILDE);
             break;
         case '#':
             skipLineComment();

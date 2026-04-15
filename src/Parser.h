@@ -71,8 +71,12 @@ private:
     ExprPtr ternary();
     ExprPtr logicalOr();
     ExprPtr logicalAnd();
+    ExprPtr bitwiseOr();
+    ExprPtr bitwiseXor();
+    ExprPtr bitwiseAnd();
     ExprPtr equality();
     ExprPtr comparison();
+    ExprPtr bitwiseShift();
     ExprPtr term();
     ExprPtr factor();
     ExprPtr unary();

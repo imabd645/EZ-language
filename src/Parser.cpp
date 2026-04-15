@@ -551,14 +551,44 @@ ExprPtr Parser::logicalOr() {
 }
 
 ExprPtr Parser::logicalAnd() {
-    ExprPtr expr = equality();
+    ExprPtr expr = bitwiseOr();
     
     while (match(TokenType::AND)) {
         Token op = previous();
-        ExprPtr right = equality();
+        ExprPtr right = bitwiseOr();
         expr = makeLogicalExpr(op.line, op.filename, expr, TokenType::AND, right);
     }
     
+    return expr;
+}
+
+ExprPtr Parser::bitwiseOr() {
+    ExprPtr expr = bitwiseXor();
+    while (match(TokenType::PIPE)) {
+        Token op = previous();
+        ExprPtr right = bitwiseXor();
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+    }
+    return expr;
+}
+
+ExprPtr Parser::bitwiseXor() {
+    ExprPtr expr = bitwiseAnd();
+    while (match(TokenType::CARET)) {
+        Token op = previous();
+        ExprPtr right = bitwiseAnd();
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+    }
+    return expr;
+}
+
+ExprPtr Parser::bitwiseAnd() {
+    ExprPtr expr = equality();
+    while (match(TokenType::AMPERSAND)) {
+        Token op = previous();
+        ExprPtr right = equality();
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+    }
     return expr;
 }
 
@@ -575,10 +605,22 @@ ExprPtr Parser::equality() {
 }
 
 ExprPtr Parser::comparison() {
-    ExprPtr expr = term();
+    ExprPtr expr = bitwiseShift();
     
     while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, 
                   TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
+        Token op = previous();
+        ExprPtr right = bitwiseShift();
+        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::bitwiseShift() {
+    ExprPtr expr = term();
+    
+    while (match({TokenType::LSHIFT, TokenType::RSHIFT})) {
         Token op = previous();
         ExprPtr right = term();
         expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
@@ -612,7 +654,7 @@ ExprPtr Parser::factor() {
 }
 
 ExprPtr Parser::unary() {
-    if (match({TokenType::BANG, TokenType::MINUS, TokenType::NOT})) {
+    if (match({TokenType::BANG, TokenType::MINUS, TokenType::NOT, TokenType::TILDE})) {
         Token op = previous();
         ExprPtr right = unary();
         return makeUnaryExpr(op.line, op.filename, op.type, right);

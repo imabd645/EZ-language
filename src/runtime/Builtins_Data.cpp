@@ -361,4 +361,49 @@ void registerDataBuiltins(Interpreter& interp) {
             writer.write(root, &ss);
             return Value(ss.str());
         }));
+
+    interp.defineGlobal("getattr", Value::makeNativeFunction("getattr", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[1].isString()) { interp.runtimeError("getattr() expects property name as string", 0, ""); return Value(); }
+            std::string prop = args[1].asString();
+            if (args[0].isDictionary()) {
+                const auto& map = args[0].asDictionary().map;
+                auto it = map.find(prop);
+                if (it != map.end()) return it->second;
+                return Value();
+            }
+            if (args[0].isInstance()) {
+                return args[0].asInstance()->getProperty(prop);
+            }
+            interp.runtimeError("getattr() expects dictionary or instance object", 0, ""); return Value();
+        }));
+
+    interp.defineGlobal("setattr", Value::makeNativeFunction("setattr", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[1].isString()) { interp.runtimeError("setattr() expects property name as string", 0, ""); return Value(); }
+            std::string prop = args[1].asString();
+            if (args[0].isDictionary()) {
+                args[0].asDictionaryPtr()->map[prop] = args[2];
+                return args[0];
+            }
+            if (args[0].isInstance()) {
+                args[0].asInstance()->setProperty(prop, args[2]);
+                return args[0];
+            }
+            interp.runtimeError("setattr() expects dictionary or instance object", 0, ""); return Value();
+        }));
+
+    interp.defineGlobal("hasattr", Value::makeNativeFunction("hasattr", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[1].isString()) { interp.runtimeError("hasattr() expects property name as string", 0, ""); return Value(); }
+            std::string prop = args[1].asString();
+            if (args[0].isDictionary()) {
+                const auto& map = args[0].asDictionary().map;
+                return Value(map.find(prop) != map.end());
+            }
+            if (args[0].isInstance()) {
+                return Value(args[0].asInstance()->hasProperty(prop));
+            }
+            interp.runtimeError("hasattr() expects dictionary or instance object", 0, ""); return Value();
+        }));
 }

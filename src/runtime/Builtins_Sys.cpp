@@ -318,4 +318,72 @@ void registerSysBuiltins(Interpreter& interp) {
             return Value("");
 #endif
         }));
+
+    interp.defineGlobal("os_load_lib", Value::makeNativeFunction("os_load_lib", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isString()) return Value();
+            HMODULE handle = LoadLibraryA(args[0].asString().c_str());
+            return Value((double)(reinterpret_cast<uintptr_t>(handle)));
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_get_func", Value::makeNativeFunction("os_get_func", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isString()) return Value();
+            HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asNumber());
+            FARPROC proc = GetProcAddress(handle, args[1].asString().c_str());
+            return Value((double)(reinterpret_cast<uintptr_t>(proc)));
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_call", Value::makeNativeFunction("os_call", -1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (args.size() < 2 || !args[0].isNumber() || !args[1].isString()) return Value();
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            if (!funcPtr) return Value();
+            
+            using Func0 = intptr_t(*)();
+            using Func1 = intptr_t(*)(intptr_t);
+            using Func2 = intptr_t(*)(intptr_t, intptr_t);
+            using Func3 = intptr_t(*)(intptr_t, intptr_t, intptr_t);
+            using Func4 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t);
+            using Func5 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+            using Func6 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+            
+            intptr_t cArgs[6] = {0};
+            for (size_t i = 2; i < args.size() && i - 2 < 6; i++) {
+                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asNumber());
+                else if (args[i].isString()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asString().c_str());
+                else if (args[i].isBool()) cArgs[i - 2] = args[i].asBool() ? 1 : 0;
+            }
+            
+            intptr_t ret = 0;
+            size_t argc = args.size() - 2;
+            if (argc == 0) ret = ((Func0)funcPtr)();
+            else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
+            else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
+            else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+            else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+            else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
+            else if (argc >= 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
+            
+            std::string retType = args[1].asString();
+            if (retType == "int" || retType == "ptr") return Value((double)ret);
+            if (retType == "string") {
+                const char* str = reinterpret_cast<const char*>(ret);
+                if (str) return Value(std::string(str));
+                return Value("");
+            }
+            return Value();
+#else
+            return Value();
+#endif
+        }));
 }

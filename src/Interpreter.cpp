@@ -35,6 +35,29 @@ Interpreter::Interpreter(std::shared_ptr<Environment> startEnv) {
 void Interpreter::initBuiltins() {
     registerBuiltins(*this);
     registerGUIBuiltins(*this);
+    
+    defineGlobal("eval", Value::makeNativeFunction("eval", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("eval() expects sequence string", 0, ""); return Value(); }
+            std::string code = args[0].asString();
+            
+            Lexer lexer(code, "<eval>");
+            std::vector<Token> tokens = lexer.tokenize();
+            if (lexer.hasError()) { interp.runtimeError("Lexical error inside eval()", 0, ""); return Value(); }
+            
+            Parser parser(tokens);
+            std::vector<StmtPtr> statements = parser.parse();
+            if (parser.hasError()) { interp.runtimeError("Syntax error inside eval()", 0, ""); return Value(); }
+            
+            try {
+                for (const auto& stmt : statements) {
+                    interp.execute(stmt);
+                }
+            } catch (const ReturnException& ret) {
+                return ret.value;
+            }
+            return Value();
+        }));
 }
 
 void Interpreter::defineGlobal(const std::string& name, const Value& value) {
@@ -250,6 +273,11 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
         case TokenType::LESS_EQUAL: opStr = "<="; break;
         case TokenType::GREATER: opStr = ">"; break;
         case TokenType::GREATER_EQUAL: opStr = ">="; break;
+        case TokenType::AMPERSAND: opStr = "&"; break;
+        case TokenType::PIPE: opStr = "|"; break;
+        case TokenType::CARET: opStr = "^"; break;
+        case TokenType::LSHIFT: opStr = "<<"; break;
+        case TokenType::RSHIFT: opStr = ">>"; break;
         default: break;
     }
     
@@ -291,6 +319,22 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
             checkNumberOperands(expr->op, left, right, line, filename);
             if (right.asNumber() == 0) runtimeError("Modulo by zero", line, filename);
             return std::fmod(left.asNumber(), right.asNumber());
+            
+        case TokenType::AMPERSAND:
+            checkNumberOperands(expr->op, left, right, line, filename);
+            return Value((double)(static_cast<int32_t>(left.asNumber()) & static_cast<int32_t>(right.asNumber())));
+        case TokenType::PIPE:
+            checkNumberOperands(expr->op, left, right, line, filename);
+            return Value((double)(static_cast<int32_t>(left.asNumber()) | static_cast<int32_t>(right.asNumber())));
+        case TokenType::CARET:
+            checkNumberOperands(expr->op, left, right, line, filename);
+            return Value((double)(static_cast<int32_t>(left.asNumber()) ^ static_cast<int32_t>(right.asNumber())));
+        case TokenType::LSHIFT:
+            checkNumberOperands(expr->op, left, right, line, filename);
+            return Value((double)(static_cast<int32_t>(left.asNumber()) << static_cast<int32_t>(right.asNumber())));
+        case TokenType::RSHIFT:
+            checkNumberOperands(expr->op, left, right, line, filename);
+            return Value((double)(static_cast<int32_t>(left.asNumber()) >> static_cast<int32_t>(right.asNumber())));
             
         case TokenType::EQUAL_EQUAL:
             return Value(left.equals(right));
@@ -344,6 +388,8 @@ Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, 
         overloadResult = lookupAndCallUnaryOperator(operand, "unary-", line, filename, handled);
     } else if (expr->op == TokenType::BANG || expr->op == TokenType::NOT) {
         overloadResult = lookupAndCallUnaryOperator(operand, "not", line, filename, handled);
+    } else if (expr->op == TokenType::TILDE) {
+        overloadResult = lookupAndCallUnaryOperator(operand, "~", line, filename, handled);
     }
     
     if (handled) return overloadResult;
@@ -356,6 +402,10 @@ Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, 
         case TokenType::BANG:
         case TokenType::NOT:
             return Value(!operand.isTruthy());
+            
+        case TokenType::TILDE:
+            checkNumberOperand(expr->op, operand, line, filename);
+            return Value((double)(~static_cast<int32_t>(operand.asNumber())));
             
         default:
             runtimeError("Unknown unary operator", line, filename);

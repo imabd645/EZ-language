@@ -67,6 +67,13 @@ enum class TokenType {
     STAR_EQUAL,
     SLASH_EQUAL,
 
+    // Bitwise
+    AMPERSAND,
+    CARET,
+    TILDE,
+    LSHIFT,
+    RSHIFT,
+
     // Punctuation
     LPAREN,
     RPAREN,
@@ -160,6 +167,11 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::MINUS_EQUAL: return "MINUS_EQUAL";
         case TokenType::STAR_EQUAL: return "STAR_EQUAL";
         case TokenType::SLASH_EQUAL: return "SLASH_EQUAL";
+        case TokenType::AMPERSAND: return "AMPERSAND";
+        case TokenType::CARET: return "CARET";
+        case TokenType::TILDE: return "TILDE";
+        case TokenType::LSHIFT: return "LSHIFT";
+        case TokenType::RSHIFT: return "RSHIFT";
         case TokenType::LPAREN: return "LPAREN";
         case TokenType::RPAREN: return "RPAREN";
         case TokenType::LBRACKET: return "LBRACKET";

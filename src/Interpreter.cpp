@@ -42,12 +42,13 @@ void Interpreter::defineGlobal(const std::string& name, const Value& value) {
 }
 
 void Interpreter::runtimeError(const std::string& message, int line, const std::string& filename) {
-    std::cerr << "Runtime Error: " << message << std::endl;
-    std::cerr << "  at [line " << line << "] in " << (filename.empty() ? "main" : filename) << std::endl;
+    std::string fullMessage = message + "\n  at [line " + std::to_string(line) + "] in " + (filename.empty() ? "main" : filename);
     
-    printStackTrace();
+    for (auto it = callStack.rbegin(); it != callStack.rend(); ++it) {
+        fullMessage += "\n  at task " + it->functionName + " (" + (it->filename.empty() ? "main" : it->filename) + ":" + std::to_string(it->line) + ")";
+    }
     
-    throw RuntimeError(message, line);
+    throw RuntimeError(fullMessage, line);
 }
 
 void Interpreter::printStackTrace() const {

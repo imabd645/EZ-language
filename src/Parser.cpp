@@ -389,9 +389,13 @@ StmtPtr Parser::tryStatement() {
     consume(TokenType::LBRACE, "Expected '{' after 'try'");
     StmtPtr tryBlock = blockStatement();
     
+    skipNewlines();
+    
     consume(TokenType::CATCH, "Expected 'catch' after try block");
     Token varToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'catch'");
     std::string catchVar = varToken.lexeme;
+    
+    skipNewlines();
     
     consume(TokenType::LBRACE, "Expected '{' after catch variable");
     StmtPtr catchBlock = blockStatement();

@@ -1,0 +1,17 @@
+out "Running Ternary tests..."
+
+x = 5 > 3 ? "yes" : "no"
+out "5 > 3 ? " + x // Expected: yes
+
+y = false ? 1 : true ? 2 : 3
+out "nested ? = " + str(y) // Expected: 2
+
+user = { "role": "admin" }
+status = user["role"] == "admin" ? "full_access" : "denied"
+out "status = " + status // Expected: full_access
+
+// Short-circuit testing - we should NOT evaluate a divided-by-zero expression if short-circuited properly.
+z = true ? 100 : (5 / 0)
+out "Short circuiting = " + str(z)
+
+out "Tests Complete!"

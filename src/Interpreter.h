@@ -81,6 +81,7 @@ private:
     Value visitArray(const std::shared_ptr<ArrayExpr>& expr, int line, const std::string& filename);
     Value visitAssign(const std::shared_ptr<AssignExpr>& expr, int line, const std::string& filename);
     Value visitLogical(const std::shared_ptr<LogicalExpr>& expr, int line, const std::string& filename);
+    Value visitTernary(const std::shared_ptr<TernaryExpr>& expr, int line, const std::string& filename);
     Value visitLambda(const std::shared_ptr<LambdaExpr>& expr, int line, const std::string& filename);
     Value visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>& expr, int line, const std::string& filename);
     Value visitSelf(const std::shared_ptr<SelfExpr>& expr, int line, const std::string& filename);

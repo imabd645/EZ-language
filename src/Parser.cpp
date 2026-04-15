@@ -482,7 +482,7 @@ ExprPtr Parser::expression() {
 }
 
 ExprPtr Parser::assignment() {
-    ExprPtr expr = logicalOr();
+    ExprPtr expr = ternary();
     
     if (match({TokenType::EQUAL, TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, 
                TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {
@@ -515,6 +515,20 @@ ExprPtr Parser::assignment() {
         }
         
         error(op, "Invalid assignment target");
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::ternary() {
+    ExprPtr expr = logicalOr();
+    
+    if (match(TokenType::QUESTION_MARK)) {
+        Token op = previous();
+        ExprPtr thenBranch = expression();
+        consume(TokenType::COLON, "Expected ':' after then branch of ternary operator");
+        ExprPtr elseBranch = ternary(); // Right-associative
+        expr = makeTernaryExpr(op.line, op.filename, expr, thenBranch, elseBranch);
     }
     
     return expr;

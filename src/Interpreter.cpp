@@ -141,6 +141,8 @@ Value Interpreter::evaluate(const ExprPtr& expr) {
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) {
             runtimeError("Spread operator cannot be used as a standalone expression", line, filename);
             return Value();
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
+            return visitTernary(arg, line, filename);
         }
         
         return Value();
@@ -504,6 +506,15 @@ Value Interpreter::visitLogical(const std::shared_ptr<LogicalExpr>& expr, int li
     }
     
     return evaluate(expr->right);
+}
+
+Value Interpreter::visitTernary(const std::shared_ptr<TernaryExpr>& expr, int line, const std::string& filename) {
+    Value condition = evaluate(expr->condition);
+    if (condition.isTruthy()) {
+        return evaluate(expr->thenBranch);
+    } else {
+        return evaluate(expr->elseBranch);
+    }
 }
 
 Value Interpreter::visitLambda(const std::shared_ptr<LambdaExpr>& expr, int line, const std::string& filename) {

@@ -68,6 +68,7 @@ private:
     // Expression parsing (precedence climbing)
     ExprPtr expression();
     ExprPtr assignment();
+    ExprPtr ternary();
     ExprPtr logicalOr();
     ExprPtr logicalAnd();
     ExprPtr equality();

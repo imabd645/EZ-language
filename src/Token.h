@@ -77,6 +77,7 @@ enum class TokenType {
     COMMA,
     DOT,
     COLON,
+    QUESTION_MARK,
     PIPE,
     ARROW,
     NEWLINE,
@@ -168,6 +169,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::COMMA: return "COMMA";
         case TokenType::DOT: return "DOT";
         case TokenType::COLON: return "COLON";
+        case TokenType::QUESTION_MARK: return "QUESTION_MARK";
         case TokenType::PIPE: return "PIPE";
         case TokenType::ARROW: return "ARROW";
         case TokenType::NEWLINE: return "NEWLINE";

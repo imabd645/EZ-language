@@ -32,6 +32,7 @@ struct NewExpr;
 struct SetExpr;
 struct DictionaryExpr;
 struct SpreadExpr;
+struct TernaryExpr;
 
 using ExprVariant = std::variant<
     std::shared_ptr<LiteralExpr>,
@@ -49,7 +50,8 @@ using ExprVariant = std::variant<
     std::shared_ptr<NewExpr>,
     std::shared_ptr<SetExpr>,
     std::shared_ptr<DictionaryExpr>,
-    std::shared_ptr<SpreadExpr>
+    std::shared_ptr<SpreadExpr>,
+    std::shared_ptr<TernaryExpr>
 >;
 
 struct Expr {
@@ -200,6 +202,16 @@ struct SpreadExpr {
     ExprPtr expression;
     
     explicit SpreadExpr(ExprPtr expr) : expression(std::move(expr)) {}
+};
+
+// Ternary operator expression (cond ? then : else)
+struct TernaryExpr {
+    ExprPtr condition;
+    ExprPtr thenBranch;
+    ExprPtr elseBranch;
+    
+    TernaryExpr(ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr)
+        : condition(std::move(cond)), thenBranch(std::move(thenBr)), elseBranch(std::move(elseBr)) {}
 };
 
 // ============ STATEMENTS ============
@@ -569,6 +581,10 @@ inline ExprPtr makeDictionaryExpr(int line, const std::string& file, std::vector
 
 inline ExprPtr makeSpreadExpr(int line, const std::string& file, ExprPtr expr) {
     return std::make_shared<Expr>(line, file, std::make_shared<SpreadExpr>(std::move(expr)));
+}
+
+inline ExprPtr makeTernaryExpr(int line, const std::string& file, ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr) {
+    return std::make_shared<Expr>(line, file, std::make_shared<TernaryExpr>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
 inline StmtPtr makeInterfaceStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> methods) {

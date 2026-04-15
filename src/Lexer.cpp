@@ -109,6 +109,7 @@ void Lexer::scanToken() {
             }
             break;
         case ':': addToken(TokenType::COLON); break;
+        case '?': addToken(TokenType::QUESTION_MARK); break;
         case '+':
             if (match('=')) {
                 addToken(TokenType::PLUS_EQUAL);

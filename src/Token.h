@@ -80,6 +80,7 @@ enum class TokenType {
     PIPE,
     ARROW,
     NEWLINE,
+    ELLIPSIS,
 
     // Special
     END_OF_FILE,
@@ -170,6 +171,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::PIPE: return "PIPE";
         case TokenType::ARROW: return "ARROW";
         case TokenType::NEWLINE: return "NEWLINE";
+        case TokenType::ELLIPSIS: return "ELLIPSIS";
         case TokenType::END_OF_FILE: return "EOF";
         case TokenType::ERROR: return "ERROR";
         default: return "UNKNOWN";

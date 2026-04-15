@@ -298,9 +298,21 @@ StmtPtr Parser::taskStatement() {
     std::vector<std::string> params;
     std::vector<ExprPtr> defaultValues;
     bool hadDefault = false;
+    bool isVariadic = false;
     
     if (!check(TokenType::RPAREN)) {
         do {
+            if (match(TokenType::ELLIPSIS)) {
+                isVariadic = true;
+                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
+                params.push_back(paramToken.lexeme);
+                defaultValues.push_back(nullptr);
+                if (check(TokenType::COMMA)) {
+                    error(peek(), "Rest parameter must be the last parameter");
+                }
+                break;
+            }
+            
             Token paramToken = advance();
             if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
                 throw ParseError("Expected parameter name", paramToken.line);
@@ -339,7 +351,7 @@ StmtPtr Parser::taskStatement() {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body);
+    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -637,7 +649,11 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
     
     if (!check(TokenType::RPAREN)) {
         do {
-            arguments.push_back(expression());
+            if (match(TokenType::ELLIPSIS)) {
+                arguments.push_back(makeSpreadExpr(line, peek().filename, expression()));
+            } else {
+                arguments.push_back(expression());
+            }
         } while (match(TokenType::COMMA));
     }
     
@@ -699,7 +715,11 @@ ExprPtr Parser::primary() {
         if (!check(TokenType::RBRACKET)) {
             do {
                 skipNewlines();
-                elements.push_back(expression());
+                if (match(TokenType::ELLIPSIS)) {
+                    elements.push_back(makeSpreadExpr(line, filename, expression()));
+                } else {
+                    elements.push_back(expression());
+                }
                 skipNewlines();
             } while (match(TokenType::COMMA));
         }
@@ -766,9 +786,19 @@ ExprPtr Parser::lambdaExpression() {
     
     // Parse parameters
     std::vector<std::string> params;
+    bool isVariadic = false;
     
     if (!check(TokenType::PIPE)) {
         do {
+            if (match(TokenType::ELLIPSIS)) {
+                isVariadic = true;
+                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
+                params.push_back(paramToken.lexeme);
+                if (check(TokenType::COMMA)) {
+                    error(peek(), "Rest parameter must be the last parameter");
+                }
+                break;
+            }
             Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
             params.push_back(paramToken.lexeme);
         } while (match(TokenType::COMMA));
@@ -783,7 +813,7 @@ ExprPtr Parser::lambdaExpression() {
         // Expression body
         skipNewlines();
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body);
+        return makeLambdaExpr(line, peek().filename, params, body, isVariadic);
     } else if (match(TokenType::LBRACE)) {
         // Statement body
         skipNewlines();
@@ -794,11 +824,11 @@ ExprPtr Parser::lambdaExpression() {
             skipNewlines();
         }
         consume(TokenType::RBRACE, "Expected '}' after lambda body");
-        return makeLambdaExpr(line, peek().filename, params, stmtBody);
+        return makeLambdaExpr(line, peek().filename, params, stmtBody, isVariadic);
     } else {
         // Default: treat as expression body without arrow
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body);
+        return makeLambdaExpr(line, peek().filename, params, body, isVariadic);
     }
 }
 

@@ -63,8 +63,9 @@ EZFunction::EZFunction(const std::string& name,
                        const std::vector<std::string>& params,
                        const std::vector<ExprPtr>& defaultValues,
                        const std::vector<StmtPtr>& body,
-                       std::shared_ptr<Environment> closure)
-    : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure) {
+                       std::shared_ptr<Environment> closure,
+                       bool variadic)
+    : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure), isVariadic(variadic) {
     staticEnv = std::make_shared<Environment>(closure, true); // Important: set isStatic = true
 }
 
@@ -137,6 +138,9 @@ Value Interpreter::evaluate(const ExprPtr& expr) {
             return visitSet(arg, line, filename);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) {
             return visitDictionary(arg, line, filename);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) {
+            runtimeError("Spread operator cannot be used as a standalone expression", line, filename);
+            return Value();
         }
         
         return Value();
@@ -361,7 +365,19 @@ Value Interpreter::visitCall(const std::shared_ptr<CallExpr>& expr, int line, co
     
     std::vector<Value> arguments;
     for (const auto& arg : expr->arguments) {
-        arguments.push_back(evaluate(arg));
+        if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(arg->variant)) {
+            auto spreadExpr = std::get<std::shared_ptr<SpreadExpr>>(arg->variant);
+            Value val = evaluate(spreadExpr->expression);
+            if (!val.isArray()) {
+                runtimeError("Spread operator requires an array", line, filename);
+            }
+            const auto& arr = val.asArray();
+            for (const auto& elem : arr) {
+                arguments.push_back(elem);
+            }
+        } else {
+            arguments.push_back(evaluate(arg));
+        }
     }
     
     return callFunction(callee, arguments, line, filename);
@@ -412,7 +428,19 @@ Value Interpreter::visitIndex(const std::shared_ptr<IndexExpr>& expr, int line, 
 Value Interpreter::visitArray(const std::shared_ptr<ArrayExpr>& expr, int line, const std::string& filename) {
     std::vector<Value> elements;
     for (const auto& elem : expr->elements) {
-        elements.push_back(evaluate(elem));
+        if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(elem->variant)) {
+            auto spreadExpr = std::get<std::shared_ptr<SpreadExpr>>(elem->variant);
+            Value val = evaluate(spreadExpr->expression);
+            if (!val.isArray()) {
+                runtimeError("Spread operator requires an array", line, filename);
+            }
+            const auto& arr = val.asArray();
+            for (const auto& e : arr) {
+                elements.push_back(e);
+            }
+        } else {
+            elements.push_back(evaluate(elem));
+        }
     }
     return Value::makeArray(elements);
 }
@@ -486,10 +514,10 @@ Value Interpreter::visitLambda(const std::shared_ptr<LambdaExpr>& expr, int line
         // Expression body lambda - wrap in a give statement
         std::vector<StmtPtr> body;
         body.push_back(makeGiveStmt(line, filename, expr->body));
-        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, body, closure);
+        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, body, closure, expr->isVariadic);
     } else {
         // Statement body lambda
-        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, expr->stmtBody, closure);
+        return Value::makeFunction("<lambda>", expr->params, std::vector<ExprPtr>{}, expr->stmtBody, closure, expr->isVariadic);
     }
 }
 
@@ -657,7 +685,7 @@ void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt, int line, c
 }
 
 void Interpreter::visitTaskStmt(const std::shared_ptr<TaskStmt>& stmt, int line, const std::string& filename) {
-    auto func = std::make_shared<EZFunction>(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv);
+    auto func = std::make_shared<EZFunction>(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv, stmt->isVariadic);
     Value function(func);
     currentEnv->define(stmt->name, function);
 }
@@ -728,21 +756,45 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
     
     if (callee.isFunction()) {
         auto func = callee.asFunction();
-        std::vector<Value> finalArgs = args;
+        std::vector<Value> finalArgs;
         
-        // Fill in missing arguments with default values if available
-        for (size_t i = args.size(); i < func->params.size(); i++) {
-            if (i < func->defaultValues.size() && func->defaultValues[i]) {
-                finalArgs.push_back(evaluate(func->defaultValues[i]));
-            } else {
-                runtimeError("Expected " + std::to_string(func->params.size()) + 
-                             " arguments but got " + std::to_string(args.size()), line, filename);
+        if (func->isVariadic) {
+            size_t minArgs = func->params.size() > 0 ? func->params.size() - 1 : 0;
+            
+            // Collect standard arguments
+            for (size_t i = 0; i < minArgs; i++) {
+                if (i < args.size()) {
+                    finalArgs.push_back(args[i]);
+                } else if (i < func->defaultValues.size() && func->defaultValues[i]) {
+                    finalArgs.push_back(evaluate(func->defaultValues[i]));
+                } else {
+                    runtimeError("Expected " + std::to_string(minArgs) + " arguments before rest term, got " + std::to_string(args.size()), line, filename);
+                }
             }
-        }
-        
-        if (finalArgs.size() > func->params.size()) {
-            runtimeError("Expected " + std::to_string(func->params.size()) + 
-                         " arguments but got " + std::to_string(finalArgs.size()), line, filename);
+            
+            // Collect rest arguments into an array
+            std::vector<Value> restArgs;
+            for (size_t i = minArgs; i < args.size(); i++) {
+                restArgs.push_back(args[i]);
+            }
+            finalArgs.push_back(Value::makeArray(restArgs));
+            
+        } else {
+            finalArgs = args;
+            // Fill in missing arguments with default values if available
+            for (size_t i = args.size(); i < func->params.size(); i++) {
+                if (i < func->defaultValues.size() && func->defaultValues[i]) {
+                    finalArgs.push_back(evaluate(func->defaultValues[i]));
+                } else {
+                    runtimeError("Expected " + std::to_string(func->params.size()) + 
+                                 " arguments but got " + std::to_string(args.size()), line, filename);
+                }
+            }
+            
+            if (finalArgs.size() > func->params.size()) {
+                runtimeError("Expected " + std::to_string(func->params.size()) + 
+                             " arguments but got " + std::to_string(finalArgs.size()), line, filename);
+            }
         }
         
         // Create environment chain: global -> closure -> staticEnv -> callEnv

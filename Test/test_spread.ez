@@ -1,0 +1,26 @@
+out "Running Spread/Rest tests..."
+
+arr1 = [1, 2]
+arr2 = [3, 4]
+merged = [...arr1, ...arr2, 5]
+out "Array Spread: " + str(merged) // Expected: [1, 2, 3, 4, 5]
+
+task sum(...numbers) {
+    total = 0
+    get n in numbers { total += n }
+    give total
+}
+
+out "Rest sum(1, 2, 3, 4) = " + str(sum(1, 2, 3, 4)) // Expected: 10
+out "Rest sum(...merged) = " + str(sum(...merged)) // Expected: 15
+
+// Lambda variadic test
+multiplyAll = |scale, ...nums| {
+    res = []
+    get n in nums { push(res, n * scale) }
+    give res
+}
+
+out "Lambda Rest = " + str(multiplyAll(10, 1, 2, 3)) // Expected [10, 20, 30]
+
+out "Tests Complete!"

@@ -97,7 +97,17 @@ void Lexer::scanToken() {
         case '{': addToken(TokenType::LBRACE); break;
         case '}': addToken(TokenType::RBRACE); break;
         case ',': addToken(TokenType::COMMA); break;
-        case '.': addToken(TokenType::DOT); break;
+        case '.':
+            if (match('.')) {
+                if (match('.')) {
+                    addToken(TokenType::ELLIPSIS);
+                } else {
+                    error("Invalid token '..'");
+                }
+            } else {
+                addToken(TokenType::DOT);
+            }
+            break;
         case ':': addToken(TokenType::COLON); break;
         case '+':
             if (match('=')) {

@@ -1,0 +1,40 @@
+use "../lib/net.ez"
+
+out "============================================="
+out "      PURE EZ NATIVE HTTP SERVER DEMO        "
+out "============================================="
+
+app = App()
+
+# HTML Endpoint
+app.get("/", |req| {
+    html = "<html><body style='font-family: sans-serif; text-align: center; margin-top: 50px;'>"
+    html = html + "<h1 style='color: #4CAF50;'>EZ Web Server is Alive!</h1>"
+    html = html + "<p>This page is being served through <strong>pure FFI sockets</strong> natively constructed in EZ!</p>"
+    html = html + "<br/><a href='/api/ping'>Test JSON API Endpoint</a></body></html>"
+    give html
+})
+
+# JSON API Endpoint
+app.get("/api/ping", |req| {
+    give {
+        "status": 200,
+        "message": "Pong! EZ Backend responding.",
+        "server": "Pure FFI Architecture"
+    }
+})
+
+# Dictionary Standard Endpoint
+app.get("/custom", |req| {
+    give {
+        "status": 201,
+        "headers": {
+            "Content-Type": "text/html",
+            "X-Custom-Header": "EZ-Engine"
+        },
+        "body": "Custom 201 Response with custom headers!"
+    }
+})
+
+out "Initializing Native Server..."
+app.listen(8080)

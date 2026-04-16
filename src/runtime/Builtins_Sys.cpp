@@ -151,6 +151,58 @@ void registerSysBuiltins(Interpreter& interp) {
 #endif
         }));
 
+    interp.defineGlobal("os_read_uint32", Value::makeNativeFunction("os_read_uint32", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            uint32_t val = *(uint32_t*)(base + offset);
+            return Value((double)val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_uint32", Value::makeNativeFunction("os_write_uint32", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_uint16", Value::makeNativeFunction("os_read_uint16", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            uint16_t val = *(uint16_t*)(base + offset);
+            return Value((double)val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_uint16", Value::makeNativeFunction("os_write_uint16", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
     interp.defineGlobal("os_write_uint64", Value::makeNativeFunction("os_write_uint64", 3,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32

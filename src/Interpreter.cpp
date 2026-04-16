@@ -11,6 +11,23 @@
 #include "Parser.h"
 #include "MiniJson.h"
 
+class ScopedRoot {
+    GCObject* obj;
+public:
+    ScopedRoot(const Value& v) : obj(nullptr) {
+        if (v.isFunction()) obj = v.asFunction().get();
+        else if (v.isInstance()) obj = (GCObject*)v.asInstance().get();
+        else if (v.isArray()) obj = (GCObject*)v.asArrayPtr().get();
+        else if (v.isDictionary()) obj = (GCObject*)v.asDictionaryPtr().get();
+        else if (v.isClass()) obj = (GCObject*)v.asClass().get();
+        
+        if (obj) GarbageCollector::instance().addTemporaryRoot(obj);
+    }
+    ~ScopedRoot() {
+        if (obj) GarbageCollector::instance().removeTemporaryRoot(obj);
+    }
+};
+
 Interpreter::Interpreter() {
     globalEnv = std::make_shared<Environment>();
     currentEnv = globalEnv;
@@ -255,7 +272,9 @@ Value Interpreter::visitIdentifier(const std::shared_ptr<IdentifierExpr>& expr, 
 
 Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line, const std::string& filename) {
     Value left = evaluate(expr->left);
+    ScopedRoot leftRoot(left);
     Value right = evaluate(expr->right);
+    ScopedRoot rightRoot(right);
     
     bool handled = false;
     Value overloadResult;
@@ -415,21 +434,29 @@ Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, 
 
 Value Interpreter::visitCall(const std::shared_ptr<CallExpr>& expr, int line, const std::string& filename) {
     Value callee = evaluate(expr->callee);
+    ScopedRoot calleeRoot(callee);
     
     std::vector<Value> arguments;
+    std::vector<std::unique_ptr<ScopedRoot>> argRoots;
+    
     for (const auto& arg : expr->arguments) {
         if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(arg->variant)) {
             auto spreadExpr = std::get<std::shared_ptr<SpreadExpr>>(arg->variant);
             Value val = evaluate(spreadExpr->expression);
+            ScopedRoot valRoot(val);
+            
             if (!val.isArray()) {
                 runtimeError("Spread operator requires an array", line, filename);
             }
             const auto& arr = val.asArray();
             for (const auto& elem : arr) {
                 arguments.push_back(elem);
+                argRoots.push_back(std::make_unique<ScopedRoot>(elem));
             }
         } else {
-            arguments.push_back(evaluate(arg));
+            Value val = evaluate(arg);
+            arguments.push_back(val);
+            argRoots.push_back(std::make_unique<ScopedRoot>(val));
         }
     }
     
@@ -438,7 +465,9 @@ Value Interpreter::visitCall(const std::shared_ptr<CallExpr>& expr, int line, co
 
 Value Interpreter::visitIndex(const std::shared_ptr<IndexExpr>& expr, int line, const std::string& filename) {
     Value object = evaluate(expr->object);
+    ScopedRoot objectRoot(object);
     Value index = evaluate(expr->index);
+    ScopedRoot indexRoot(index);
     
     if (object.isArray()) {
         if (!index.isNumber()) {
@@ -1085,6 +1114,7 @@ Value Interpreter::visitNew(const std::shared_ptr<NewExpr>& expr, int line, cons
 
 Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>& expr, int line, const std::string& filename) {
     Value object = evaluate(expr->object);
+    ScopedRoot objectRoot(object);
     
     if (object.isClass()) {
         auto klass = object.asClass();
@@ -1264,6 +1294,7 @@ void Interpreter::visitInterfaceStmt(const std::shared_ptr<InterfaceStmt>& stmt,
 
 Value Interpreter::visitSet(const std::shared_ptr<SetExpr>& expr, int line, const std::string& filename) {
     Value object = evaluate(expr->object);
+    ScopedRoot objectRoot(object);
     
     if (!object.isInstance() && !object.isDictionary() && !object.isClass()) {
         runtimeError("Only instances, dictionaries, or classes have fields", line, filename);

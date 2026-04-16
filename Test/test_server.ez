@@ -1,4 +1,4 @@
-use "../lib/net.ez"
+use "../lib/serve.ez"
 
 out "============================================="
 out "   HARDENED EZ NATIVE HTTP SERVER DEMO       "

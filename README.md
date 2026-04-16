@@ -32,6 +32,8 @@
   - [Error Handling](#error-handling)
   - [Modules and Imports](#modules-and-imports)
 - [Built-in Functions](#built-in-functions)
+- [Native FFI & Metaprogramming](#native-ffi--metaprogramming)
+- [Standard Library (`lib/`)](#standard-library-lib)
 - [Package Manager](#package-manager)
 - [Advanced Features](#advanced-features)
 - [Examples](#examples)
@@ -61,29 +63,24 @@
 ### Core Features
 - Dynamic typing with type inference
 - First-class functions and closures
-- Lambda expressions
+- **Metaprogramming**: `getattr`, `setattr`, `hasattr` (Native primitives)
+- **Bitwise Operations**: `~`, `&`, `|`, `^`, `<<`, `>>`
 - Array and dictionary literals
 - String interpolation
-- Pattern matching
 
 ### Advanced Features
+- **Pure Native FFI**: Call into any Windows DLL (`Kernel32`, `User32`, etc.) directly from EZ.
+- **Self-Contained Standard Library**: OS, Net, and FS logic implemented in EZ, not hardcoded in C++.
 - Object-oriented programming (classes and inheritance)
-- Exception handling (try/catch)
-- Async/await for concurrent operations
-- SQLite database integration
-- HTTP client (GET/POST requests)
-- File system operations
-- JSON parsing
-- Regular expressions
-- Threading support
+- Exception handling (try/catch) with detailed stack traces.
+- Async/await and Threading support.
+- Hardened Production-grade Web Framework (TCP/IP via WS2_32).
 
 ### Developer Experience
 - 🚀 **Professional GUI Framework (v6.0)**
-- 🔍 **Detailed Stack Traces** for runtime errors
-- Interactive REPL mode
-- Package manager for code reuse
-- Built-in documentation
-
+- 🔍 **Java-style Stack Traces** for multi-file debugging.
+- 📦 **Dynamic Modular Loading** using `use` keyword.
+- Interactive REPL mode.
 ---
 
 ## 🚀 Installation
@@ -248,6 +245,16 @@ subtraction = 10 - 4    // 6
 multiplication = 3 * 7  // 21
 division = 20 / 4       // 5
 modulo = 17 % 5         // 2
+```
+
+#### Bitwise Operators
+```ez
+a = 5 & 3      // Bitwise AND
+b = 5 | 3      // Bitwise OR
+c = 5 ^ 3      // Bitwise XOR
+d = ~5         // Bitwise NOT
+e = 1 << 2     // Left Shift
+f = 8 >> 1     // Right Shift
 ```
 
 #### Comparison Operators
@@ -728,18 +735,17 @@ use "mymodule.ez"
 | `cos(x)` | number | Cosine | `cos(0)` → `1` |
 | `tan(x)` | number | Tangent | `tan(0)` → `0` |
 
-### File System Functions
+### File System (Core Primitives)
+These are low-level built-ins. For high-level operations, use the `fs.ez` library.
 
 | Function | Parameters | Description | Example |
 |----------|------------|-------------|---------|
-| `read_file(path)` | string | Read file content | `content = read_file("data.txt")` |
-| `write_file(path, data)` | string, string | Write to file | `write_file("out.txt", "Hello")` |
-| `append_file(path, data)` | string, string | Append to file | `append_file("log.txt", "Entry")` |
-| `file_exists(path)` | string | Check if file exists | `file_exists("test.txt")` → `true` |
-| `delete_file(path)` | string | Delete file | `delete_file("temp.txt")` |
-| `list_dir(path)` | string | List directory | `files = list_dir(".")` |
-| `create_dir(path)` | string | Create directory | `create_dir("newfolder")` |
-| `file_size(path)` | string | Get file size | `size = file_size("data.txt")` |
+| `readFile(path)` | string | Read file content | `content = readFile("data.txt")` |
+| `writeFile(path, data)` | string, string | Write to file | `writeFile("out.txt", "Hello")` |
+| `appendFile(path, data)` | string, string | Append to file | `appendFile("log.txt", "Entry")` |
+| `readLines(path)` | string | Read file as array of lines | `lines = readLines("data.txt")` |
+| `writeLine(path, data)` | string, string | Write line to file | `writeLine("out.txt", "Hello")` |
+| `appendLine(path, data)` | string, string | Append line to file | `appendLine("log.txt", "Entry")` |
 
 ### JSON Functions
 
@@ -800,6 +806,101 @@ use "mymodule.ez"
 |----------|------------|-------------|---------|
 | `clock()` | none | Milliseconds since epoch | `clock()` → `1699123456789` |
 | `print(values...)` | any... | Print multiple values | `print("x=", x, "y=", y)` |
+
+---
+
+## 🔗 Native FFI & Metaprogramming
+
+EZ allows direct interaction with the host operating system's binary layer through a powerful Foreign Function Interface (FFI) and Metaprogramming primitives.
+
+### Metaprogramming
+Dynamically inspect and modify objects at runtime.
+
+```ez
+struct Point { x, y }
+p = new Point()
+p.x = 10
+
+setattr(p, "z", 30)
+when hasattr(p, "z") {
+    out getattr(p, "z")  // 30
+}
+```
+
+### Foreign Function Interface (FFI)
+Call functions directly from shared libraries (DLLs).
+
+```ez
+// 1. Load the library
+user32 = os_load_lib("user32.dll")
+
+// 2. Extract the function pointer
+messageBox = os_get_func(user32, "MessageBoxA")
+
+// 3. Call natively
+os_call(messageBox, "int", 0, "Hello from FFI!", "EZ Language", 0)
+```
+
+
+
+---
+
+## 📚 Standard Library 
+
+Unlike traditional languages, EZ keeps the binary core thin. Most advanced capabilities are decoupled and must be installed via the package manager.
+
+### Installation
+Run these commands to pull the native bindings into your environment:
+
+```bash
+ez install os
+ez install fs
+ez install serve
+ez install crypto
+```
+
+### `os.ez`: System Utilities
+Access environment variables, clipboard, and process management.
+
+```ez
+use "os.ez"
+out os.env.get("PATH")
+os.clipboard.set("Copied from EZ!")
+```
+
+### `fs.ez`: Native Filesystem
+Hardened filesystem operations using Kernel32.
+
+```ez
+use "fs.ez"
+files = fs.listDir(".")
+when fs.exists("data.txt") {
+    size = fs.size("data.txt")
+}
+```
+
+### `serve.ez`: Production Web Framework
+DDoS-resistant, Express-style web server running on native FFI sockets.
+
+```ez
+use "serve.ez"
+app = App()
+
+app.get("/api/v1", |req| {
+    give { "status": 200, "message": "Natively Hardened!" }
+})
+
+app.listen(8080)
+```
+
+### `crypto.ez`: Native Cryptography
+Base64 and symmetric ciphers (RC4) implemented in pure EZ.
+
+```ez
+use "crypto.ez"
+encoded = crypto.base64Encode("Hello")
+encrypted = crypto.rc4("SecretMessage", "Key123")
+```
 
 ---
 
@@ -1332,23 +1433,24 @@ For more detailed documentation:
 
 ## 🛣️ Roadmap
 
-### Version 1.1 (Upcoming)
-- [x] Improved error messages (Stack Traces)
-- [ ] Debugger support
-- [ ] Standard library expansion
-- [ ] Performance optimizations
+### Version 1.1 (Stable)
+- [x] **New Architecture**: Native FFI Core Integration.
+- [x] **Modular Libs**: Standard libraries implemented in EZ (`lib/os.ez`, `lib/net.ez`, `lib/fs.ez`).
+- [x] **Diagnostics**: Java-style Stack Traces.
+- [x] **Hardened Networking**: DDoS-resistant native TCP server.
+- [x] **Metaprogramming**: Dynamic attribute access and mutation.
 
-### Version 1.2 (Future)
-- [x] Native GUI library (v6.0 Released)
-- [ ] Package registry website
-- [ ] VS Code extension
-- [ ] Documentation generator
+### Version 1.2 (Current)
+- [x] **Native GUI Layer**: Immersive Dark Mode, Windows 11 aesthetics.
+- [ ] Debugger support (In Progress)
+- [ ] Performance optimizations (JIT Research)
+- [ ] Package Registry integration
 
 ### Version 2.0 (Long-term)
-- [ ] JIT compilation
-- [ ] Static typing (optional)
-- [ ] Native mobile support
-- [ ] WebAssembly target
+- [ ] Optional Static Typing
+- [ ] VS Code Extension
+- [ ] Cross-Platform FFI (Linux/macOS)
+- [ ] WebAssembly Target
 
 ---
 

@@ -1003,7 +1003,7 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
         return instanceVal;
     }
     
-    runtimeError("Can only call functions or models", line, filename);
+    runtimeError("Can only call functions or models (got " + callee.typeName() + ")", line, filename);
     return Value(); // Unreachable
 }
 

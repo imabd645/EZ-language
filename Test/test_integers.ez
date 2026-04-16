@@ -1,0 +1,41 @@
+use "lib/unittest.ez"
+
+describe("Integer Engine & Hex Literals", || {
+
+    it("should handle 64-bit bitwise operations accurately", || {
+        # 1 << 60 is above 2^53 (JS double limit)
+        mask = 1 << 60
+        assert(mask > 0, "Large bitshift should not wrap to 0 or become float precision loss")
+        
+        combined = mask | 0xFF
+        assert(combined != mask, "Bitwise OR should preserve high bits and add low bits")
+        
+        # Manual hex - high bit set
+        val = 0xFFFFFFFFFFFFFFFF 
+        assert(val != 0, "High bit set mask should not be 0")
+    })
+
+    it("should parse hexadecimal literals correctly", || {
+        assertEquals(0xFF, 255, "0xFF should be 255")
+        assertEquals(0x10, 16, "0x10 should be 16")
+        assertEquals(0xABCD, 43981, "0xABCD should be 43981")
+    })
+
+    it("should implement numeric promotion (int vs float)", || {
+        a = 10     # Integer
+        b = 0.5    # Float
+        res = a + b
+        assertEquals(res, 10.5, "int + float should be float")
+        
+        assertEquals(10 / 4, 2.5, "Division should promote to float")
+    })
+
+    it("should handle large integer precision", || {
+        large = 9007199254740993 # 2^53 + 1
+        nextVal = large + 1
+        assert(nextVal != large, "2^53 + 1 + 1 should be different from 2^53 + 1")
+    })
+
+})
+
+testSummary()

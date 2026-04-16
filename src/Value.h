@@ -40,7 +40,8 @@ enum class ValueType {
     INSTANCE,
     DICTIONARY,
     FUTURE,
-    SUPER
+    SUPER,
+    INTEGER
 };
 
 struct EZFunction : public GCObject {
@@ -123,7 +124,8 @@ struct Value {
         InstancePtr,        // INSTANCE
         DictionaryPtr,      // DICTIONARY
         FuturePtr,          // FUTURE
-        SuperPtr            // SUPER
+        SuperPtr,           // SUPER
+        long long           // INTEGER
     > data;
     
     // Constructors
@@ -143,6 +145,7 @@ struct Value {
     Value(DictionaryPtr val) : data(val) {}
     Value(FuturePtr val) : data(val) {}
     Value(SuperPtr val) : data(val) {}
+    Value(long long val) : data(val) {}
     
     // Type checking
     ValueType type() const {
@@ -158,12 +161,15 @@ struct Value {
         if (std::holds_alternative<DictionaryPtr>(data)) return ValueType::DICTIONARY;
         if (std::holds_alternative<FuturePtr>(data)) return ValueType::FUTURE;
         if (std::holds_alternative<SuperPtr>(data)) return ValueType::SUPER;
+        if (std::holds_alternative<long long>(data)) return ValueType::INTEGER;
         return ValueType::NIL;
     }
     
     bool isNil() const { return std::holds_alternative<std::nullptr_t>(data); }
     bool isBool() const { return std::holds_alternative<bool>(data); }
-    bool isNumber() const { return std::holds_alternative<double>(data); }
+    bool isInteger() const { return std::holds_alternative<long long>(data); }
+    bool isFloat() const { return std::holds_alternative<double>(data); }
+    bool isNumber() const { return isInteger() || isFloat(); }
     bool isString() const { return std::holds_alternative<StringPtr>(data); }
     bool isArray() const { return std::holds_alternative<ArrayPtr>(data); }
     bool isFunction() const { return std::holds_alternative<FunctionPtr>(data); }
@@ -177,7 +183,15 @@ struct Value {
     
     // Value extraction
     bool asBool() const { return std::get<bool>(data); }
-    double asNumber() const { return std::get<double>(data); }
+    double asFloat() const { 
+        if (isInteger()) return static_cast<double>(std::get<long long>(data));
+        return std::get<double>(data); 
+    }
+    long long asInteger() const { 
+        if (isFloat()) return static_cast<long long>(std::get<double>(data));
+        return std::get<long long>(data); 
+    }
+    double asNumber() const { return asFloat(); }
     StringPtr asStringPtr() const { return std::get<StringPtr>(data); }
     const std::string& asString() const { return *std::get<StringPtr>(data); }
     ArrayPtr asArrayPtr() const { return std::get<ArrayPtr>(data); }
@@ -208,6 +222,7 @@ struct Value {
             case ValueType::NIL: return true;
             case ValueType::BOOL: return asBool() == other.asBool();
             case ValueType::NUMBER: return asNumber() == other.asNumber();
+            case ValueType::INTEGER: return asInteger() == other.asInteger();
             case ValueType::STRING: return asString() == other.asString();
             case ValueType::ARRAY: {
                 const auto& a = asArray();
@@ -326,6 +341,7 @@ inline std::string Value::toString() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
         case ValueType::BOOL: return asBool() ? "true" : "false";
+        case ValueType::INTEGER: return std::to_string(asInteger());
         case ValueType::NUMBER: {
             double num = asNumber();
             if (num == static_cast<int>(num)) {
@@ -369,6 +385,7 @@ inline std::string Value::typeName() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
         case ValueType::BOOL: return "bool";
+        case ValueType::INTEGER: return "number";
         case ValueType::NUMBER: return "number";
         case ValueType::STRING: return "string";
         case ValueType::ARRAY: return "array";

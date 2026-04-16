@@ -317,6 +317,7 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
 
     switch (expr->op) {
         case TokenType::PLUS:
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() + right.asInteger());
             if (left.isNumber() && right.isNumber()) return left.asNumber() + right.asNumber();
             if (left.isString() || right.isString()) return stringify(left, line) + stringify(right, line);
             if (left.isArray() && right.isArray()) {
@@ -324,18 +325,21 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
                 auto& rightArr = right.asArray();
                 std::vector<Value> combined(leftArr.begin(), leftArr.end());
                 combined.insert(combined.end(), rightArr.begin(), rightArr.end());
-                return Value(makeGCArray(combined));
+                return Value(Value::makeArray(combined));
             }
             runtimeError("Operands must be numbers, strings or arrays", line, filename);
             break;
         case TokenType::MINUS:
             checkNumberOperands(expr->op, left, right, line, filename);
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() - right.asInteger());
             return left.asNumber() - right.asNumber();
         case TokenType::STAR:
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() * right.asInteger());
             if (left.isNumber() && right.isNumber()) return left.asNumber() * right.asNumber();
             if (left.isString() && right.isNumber()) {
                 std::string res = "";
-                for (int i = 0; i < (int)right.asNumber(); i++) res += left.asString();
+                int count = static_cast<int>(right.asNumber());
+                for (int i = 0; i < count; i++) res += left.asString();
                 return res;
             }
             runtimeError("Operands must be numbers or string * number", line, filename);
@@ -351,19 +355,19 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
             
         case TokenType::AMPERSAND:
             checkNumberOperands(expr->op, left, right, line, filename);
-            return Value((double)(static_cast<int32_t>(left.asNumber()) & static_cast<int32_t>(right.asNumber())));
+            return Value(left.asInteger() & right.asInteger());
         case TokenType::PIPE:
             checkNumberOperands(expr->op, left, right, line, filename);
-            return Value((double)(static_cast<int32_t>(left.asNumber()) | static_cast<int32_t>(right.asNumber())));
+            return Value(left.asInteger() | right.asInteger());
         case TokenType::CARET:
             checkNumberOperands(expr->op, left, right, line, filename);
-            return Value((double)(static_cast<int32_t>(left.asNumber()) ^ static_cast<int32_t>(right.asNumber())));
+            return Value(left.asInteger() ^ right.asInteger());
         case TokenType::LSHIFT:
             checkNumberOperands(expr->op, left, right, line, filename);
-            return Value((double)(static_cast<int32_t>(left.asNumber()) << static_cast<int32_t>(right.asNumber())));
+            return Value(left.asInteger() << right.asInteger());
         case TokenType::RSHIFT:
             checkNumberOperands(expr->op, left, right, line, filename);
-            return Value((double)(static_cast<int32_t>(left.asNumber()) >> static_cast<int32_t>(right.asNumber())));
+            return Value(left.asInteger() >> right.asInteger());
             
         case TokenType::EQUAL_EQUAL:
             return Value(left.equals(right));
@@ -373,15 +377,19 @@ Value Interpreter::visitBinary(const std::shared_ptr<BinaryExpr>& expr, int line
             
         case TokenType::LESS:
             checkNumberOperands(expr->op, left, right, line, filename);
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() < right.asInteger());
             return left.asNumber() < right.asNumber();
         case TokenType::LESS_EQUAL:
             checkNumberOperands(expr->op, left, right, line, filename);
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() <= right.asInteger());
             return left.asNumber() <= right.asNumber();
         case TokenType::GREATER:
             checkNumberOperands(expr->op, left, right, line, filename);
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() > right.asInteger());
             return left.asNumber() > right.asNumber();
         case TokenType::GREATER_EQUAL:
             checkNumberOperands(expr->op, left, right, line, filename);
+            if (left.isInteger() && right.isInteger()) return Value(left.asInteger() >= right.asInteger());
             return left.asNumber() >= right.asNumber();
 
         case TokenType::IN:
@@ -426,6 +434,7 @@ Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, 
     switch (expr->op) {
         case TokenType::MINUS:
             checkNumberOperand(expr->op, operand, line, filename);
+            if (operand.isInteger()) return Value(-operand.asInteger());
             return Value(-operand.asNumber());
             
         case TokenType::BANG:
@@ -434,7 +443,7 @@ Value Interpreter::visitUnary(const std::shared_ptr<UnaryExpr>& expr, int line, 
             
         case TokenType::TILDE:
             checkNumberOperand(expr->op, operand, line, filename);
-            return Value((double)(~static_cast<int32_t>(operand.asNumber())));
+            return Value(~operand.asInteger());
             
         default:
             runtimeError("Unknown unary operator", line, filename);
@@ -483,7 +492,7 @@ Value Interpreter::visitIndex(const std::shared_ptr<IndexExpr>& expr, int line, 
         if (!index.isNumber()) {
             runtimeError("Array index must be a number", line, filename);
         }
-        int idx = static_cast<int>(index.asNumber());
+        int idx = static_cast<int>(index.asInteger());
         const auto& arr = object.asArray();
         if (idx < 0 || idx >= static_cast<int>(arr.size())) {
             runtimeError("Array index out of bounds: " + std::to_string(idx), line, filename);
@@ -495,7 +504,7 @@ Value Interpreter::visitIndex(const std::shared_ptr<IndexExpr>& expr, int line, 
         if (!index.isNumber()) {
             runtimeError("String index must be a number", line, filename);
         }
-        int idx = static_cast<int>(index.asNumber());
+        int idx = static_cast<int>(index.asInteger());
         const auto& str = object.asString();
         if (idx < 0 || idx >= static_cast<int>(str.length())) {
             runtimeError("String index out of bounds: " + std::to_string(idx), line, filename);
@@ -678,8 +687,8 @@ void Interpreter::visitRepeatStmt(const std::shared_ptr<RepeatStmt>& stmt, int l
         runtimeError("Repeat bounds must be numbers", line, filename);
     }
     
-    int start = static_cast<int>(startVal.asNumber());
-    int end = static_cast<int>(endVal.asNumber());
+    long long start = startVal.asInteger();
+    long long end = endVal.asInteger();
     
     auto loopEnv = currentEnv->createChild();
     auto prevEnv = currentEnv;
@@ -689,8 +698,8 @@ void Interpreter::visitRepeatStmt(const std::shared_ptr<RepeatStmt>& stmt, int l
     try {
         // Support both upward and downward loops
         if (start <= end) {
-            for (int i = start; i <= end; i++) {
-                loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
+            for (long long i = start; i <= end; i++) {
+                loopEnv->define(stmt->variable, Value(i));
                 try {
                     execute(stmt->body);
                 } catch (const BreakException&) {
@@ -700,8 +709,8 @@ void Interpreter::visitRepeatStmt(const std::shared_ptr<RepeatStmt>& stmt, int l
                 }
             }
         } else {
-            for (int i = start; i >= end; i--) {
-                loopEnv->define(stmt->variable, Value(static_cast<double>(i)));
+            for (long long i = start; i >= end; i--) {
+                loopEnv->define(stmt->variable, Value(i));
                 try {
                     execute(stmt->body);
                 } catch (const BreakException&) {

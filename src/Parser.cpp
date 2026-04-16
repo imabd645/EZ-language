@@ -732,6 +732,9 @@ ExprPtr Parser::primary() {
     
     if (match(TokenType::NUMBER)) {
         Token t = previous();
+        if (std::holds_alternative<long long>(t.literal)) {
+            return makeLiteralExpr(t.line, t.filename, std::get<long long>(t.literal));
+        }
         return makeLiteralExpr(t.line, t.filename, std::get<double>(t.literal));
     }
     

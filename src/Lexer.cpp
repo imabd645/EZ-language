@@ -209,7 +209,12 @@ void Lexer::scanToken() {
             break;
         default:
             if (isDigit(c)) {
-                scanNumber();
+                if (c == '0' && (peek() == 'x' || peek() == 'X')) {
+                    advance(); // Consume 'x'
+                    scanHexNumber();
+                } else {
+                    scanNumber();
+                }
             } else if (isAlpha(c)) {
                 scanIdentifier();
             } else {
@@ -225,6 +230,11 @@ void Lexer::addToken(TokenType type) {
 }
 
 void Lexer::addToken(TokenType type, double value) {
+    std::string text = source.substr(start, current - start);
+    tokens.push_back(Token(type, text, value, line, column - (int)(current - start), filename));
+}
+
+void Lexer::addToken(TokenType type, long long value) {
     std::string text = source.substr(start, current - start);
     tokens.push_back(Token(type, text, value, line, column - (int)(current - start), filename));
 }
@@ -275,16 +285,50 @@ void Lexer::scanString() {
 }
 
 void Lexer::scanNumber() {
+    bool isFloat = false;
     while (isDigit(peek())) advance();
     
     // Look for decimal part
     if (peek() == '.' && isDigit(peekNext())) {
+        isFloat = true;
         advance(); // Consume '.'
         while (isDigit(peek())) advance();
     }
     
+    // Look for exponent part
+    if (peek() == 'e' || peek() == 'E') {
+        isFloat = true;
+        advance(); // Consume 'e'
+        if (peek() == '+' || peek() == '-') advance();
+        if (!isDigit(peek())) error("Expected digits after exponent");
+        while (isDigit(peek())) advance();
+    }
+    
     std::string text = source.substr(start, current - start);
-    addToken(TokenType::NUMBER, std::stod(text));
+    if (isFloat) {
+        addToken(TokenType::NUMBER, std::stod(text));
+    } else {
+        try {
+            addToken(TokenType::NUMBER, std::stoll(text));
+        } catch (...) {
+            // Fallback to double for extremely large integers
+            addToken(TokenType::NUMBER, std::stod(text));
+        }
+    }
+}
+
+void Lexer::scanHexNumber() {
+    while (isxdigit(peek())) advance();
+    std::string text = source.substr(start + 2, current - (start + 2)); // Skip 0x
+    if (text.empty()) {
+        error("Expected hexadecimal digits after '0x'");
+        return;
+    }
+    try {
+        addToken(TokenType::NUMBER, static_cast<long long>(std::stoull(text, nullptr, 16)));
+    } catch (...) {
+        error("Hexadecimal literal too large");
+    }
 }
 
 void Lexer::scanIdentifier() {

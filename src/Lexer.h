@@ -33,6 +33,7 @@ private:
     void scanToken();
     void addToken(TokenType type);
     void addToken(TokenType type, double value);
+    void addToken(TokenType type, long long value);
     void addToken(TokenType type, const std::string& value);
     void addToken(TokenType type, bool value);
     
@@ -40,6 +41,7 @@ private:
     void scanRawString();
     void scanInterpolatedString();
     void scanNumber();
+    void scanHexNumber();
     void scanIdentifier();
     void skipLineComment();
     void skipBlockComment();

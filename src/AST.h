@@ -65,10 +65,11 @@ struct Expr {
 
 // Literal expression (numbers, strings, booleans, nil)
 struct LiteralExpr {
-    std::variant<std::nullptr_t, double, std::string, bool> value;
+    std::variant<std::nullptr_t, double, long long, std::string, bool> value;
     
     explicit LiteralExpr(std::nullptr_t) : value(nullptr) {}
     explicit LiteralExpr(double val) : value(val) {}
+    explicit LiteralExpr(long long val) : value(val) {}
     explicit LiteralExpr(const std::string& val) : value(val) {}
     explicit LiteralExpr(bool val) : value(val) {}
 };
@@ -457,6 +458,10 @@ inline ExprPtr makeLiteralExpr(int line, const std::string& file, std::nullptr_t
 }
 
 inline ExprPtr makeLiteralExpr(int line, const std::string& file, double val) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(val));
+}
+
+inline ExprPtr makeLiteralExpr(int line, const std::string& file, long long val) {
     return std::make_shared<Expr>(line, file, std::make_shared<LiteralExpr>(val));
 }
 

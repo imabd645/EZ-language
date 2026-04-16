@@ -303,8 +303,35 @@ void Lexer::scanIdentifier() {
             addToken(type);
         }
     } else {
+        // Check for raw string prefix: r"..." or r'...'
+        if (text == "r" && (peek() == '"' || peek() == '\'')) {
+            start = current; // Move start past 'r'
+            scanRawString();
+            return;
+        }
         addToken(TokenType::IDENTIFIER);
     }
+}
+
+void Lexer::scanRawString() {
+    char quote = advance(); // Consume '"' or '\''
+    std::string value;
+    
+    while (!isAtEnd() && peek() != quote) {
+        if (peek() == '\n') {
+            line++;
+            column = 1;
+        }
+        value += advance();
+    }
+    
+    if (isAtEnd()) {
+        error("Unterminated raw string");
+        return;
+    }
+    
+    advance(); // Consume closing quote
+    addToken(TokenType::STRING, value);
 }
 
 void Lexer::skipLineComment() {

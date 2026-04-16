@@ -37,6 +37,7 @@ private:
     void addToken(TokenType type, bool value);
     
     void scanString();
+    void scanRawString();
     void scanInterpolatedString();
     void scanNumber();
     void scanIdentifier();

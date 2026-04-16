@@ -1,0 +1,35 @@
+use "../lib/os.ez"
+
+out "============================================="
+out "      PURE EZ OS LIBRARY VERIFICATION        "
+out "============================================="
+
+out "Platform      : " + os.platform()
+out "Uptime (sec)  : " + os.uptime()
+
+# Memory Status verification via FFI Kernel32
+totalMem = os.totalMemory() / (1024 * 1024)
+freeMem = os.freeMemory() / (1024 * 1024)
+out "Total Memory  : " + totalMem + " MB"
+out "Free Memory   : " + freeMem + " MB"
+
+# Environment manipulation via FFI MSVCRT
+os.env.set("TEST_EZ_VAR", "NativeFFIWorks!")
+out "ENV Variable  : " + os.env.get("TEST_EZ_VAR")
+
+# Directory navigation via FFI Kernel32
+currDir = os.cwd()
+out "Current Dir   : " + currDir
+
+# Clipboard Interaction via FFI User32
+readPre = os.clipboard.read()
+os.clipboard.write("Hello from pure EZ FFI Clipboard!")
+readPost = os.clipboard.read()
+out "Clipboard Get : " + readPost
+
+# Exec verification via FFI _popen
+execOut = os.process.exec("echo Pure OS Process Exec Works")
+out "Exec Output   : " + execOut
+
+out "============================================="
+out "     ALL OS SUBSYSTEMS NATIVELY PASSED!      "

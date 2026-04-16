@@ -127,147 +127,7 @@ void registerSysBuiltins(Interpreter& interp) {
             } catch (...) { return Value(-1.0); }
         }));
 
-    // OS Operations extraction
-    interp.defineGlobal("os_get_env", Value::makeNativeFunction("os_get_env", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            const char* val = std::getenv(args[0].toString().c_str());
-            if (val) return Value(std::string(val));
-            return Value();
-        }));
-
-    interp.defineGlobal("os_set_env", Value::makeNativeFunction("os_set_env", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            _putenv_s(args[0].toString().c_str(), args[1].toString().c_str());
-            return Value();
-        }));
-
-    interp.defineGlobal("os_exec", Value::makeNativeFunction("os_exec", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            std::string cmd = args[0].toString();
-            FILE* pipe = _popen(cmd.c_str(), "r");
-            if (!pipe) return Value("");
-            char buffer[128];
-            std::string result = "";
-            while (!feof(pipe)) {
-                if (fgets(buffer, 128, pipe) != nullptr)
-                    result += buffer;
-            }
-            _pclose(pipe);
-            return Value(result);
-        }));
-
-    interp.defineGlobal("os_system", Value::makeNativeFunction("os_system", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            int code = std::system(args[0].toString().c_str());
-            return Value((double)code);
-        }));
-
-    interp.defineGlobal("os_cwd", Value::makeNativeFunction("os_cwd", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-            try { return Value(std::filesystem::current_path().string()); }
-            catch (...) { return Value(""); }
-        }));
-
-    interp.defineGlobal("os_chdir", Value::makeNativeFunction("os_chdir", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            try { std::filesystem::current_path(args[0].toString()); return Value(true); }
-            catch (...) { return Value(false); }
-        }));
-
-    interp.defineGlobal("os_exit", Value::makeNativeFunction("os_exit", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            std::exit((int)args[0].asNumber());
-            return Value();
-        }));
-
-    interp.defineGlobal("os_platform", Value::makeNativeFunction("os_platform", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-#ifdef _WIN32
-            return Value("windows");
-#elif __APPLE__
-            return Value("darwin");
-#else
-            return Value("linux");
-#endif
-        }));
-
-    interp.defineGlobal("os_uptime", Value::makeNativeFunction("os_uptime", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-#ifdef _WIN32
-            return Value((double)(GetTickCount64() / 1000.0));
-#else
-            return Value(0.0);
-#endif
-        }));
-
-    interp.defineGlobal("os_total_memory", Value::makeNativeFunction("os_total_memory", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-#ifdef _WIN32
-            MEMORYSTATUSEX memInfo;
-            memInfo.dwLength = sizeof(MEMORYSTATUSEX);
-            GlobalMemoryStatusEx(&memInfo);
-            return Value((double)memInfo.ullTotalPhys);
-#else
-            return Value(0.0);
-#endif
-        }));
-
-    interp.defineGlobal("os_free_memory", Value::makeNativeFunction("os_free_memory", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-#ifdef _WIN32
-            MEMORYSTATUSEX memInfo;
-            memInfo.dwLength = sizeof(MEMORYSTATUSEX);
-            GlobalMemoryStatusEx(&memInfo);
-            return Value((double)memInfo.ullAvailPhys);
-#else
-            return Value(0.0);
-#endif
-        }));
-
-    interp.defineGlobal("os_clipboard_read", Value::makeNativeFunction("os_clipboard_read", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
-#ifdef _WIN32
-            if (!OpenClipboard(nullptr)) return Value("");
-            HANDLE hData = GetClipboardData(CF_TEXT);
-            if (!hData) { CloseClipboard(); return Value(""); }
-            char* pszText = static_cast<char*>(GlobalLock(hData));
-            if (!pszText) { CloseClipboard(); return Value(""); }
-            std::string text(pszText);
-            GlobalUnlock(hData);
-            CloseClipboard();
-            return Value(text);
-#else
-            return Value("");
-#endif
-        }));
-
-    interp.defineGlobal("os_clipboard_write", Value::makeNativeFunction("os_clipboard_write", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            std::string text = args[0].toString();
-            if (!OpenClipboard(nullptr)) return Value(false);
-            EmptyClipboard();
-            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, text.size() + 1);
-            if (!hMem) { CloseClipboard(); return Value(false); }
-            memcpy(GlobalLock(hMem), text.c_str(), text.size() + 1);
-            GlobalUnlock(hMem);
-            SetClipboardData(CF_TEXT, hMem);
-            CloseClipboard();
-            return Value(true);
-#else
-            return Value(false);
-#endif
-        }));
-
-    interp.defineGlobal("os_shell_open", Value::makeNativeFunction("os_shell_open", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            HINSTANCE res = ShellExecuteA(NULL, "open", args[0].toString().c_str(), NULL, NULL, SW_SHOWNORMAL);
-            return Value((double)(reinterpret_cast<INT_PTR>(res)));
-#else
-            return Value(0.0);
-#endif
-        }));
+    // Legacy OS Operations extracted to lib/os.ez via FFI
         
     interp.defineGlobal("clear", Value::makeNativeFunction("clear", 0,
         [](Interpreter& interp, const std::vector<Value>&) -> Value {
@@ -316,6 +176,107 @@ void registerSysBuiltins(Interpreter& interp) {
             return Value(std::string(1, (char)c));
 #else
             return Value("");
+#endif
+        }));
+
+    interp.defineGlobal("os_alloc", Value::makeNativeFunction("os_alloc", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber()) return Value();
+            size_t size = (size_t)args[0].asNumber();
+            void* ptr = calloc(1, size);
+            return Value((double)(reinterpret_cast<uintptr_t>(ptr)));
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_free", Value::makeNativeFunction("os_free", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber()) return Value();
+            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            if (ptr) free(ptr);
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_uint64", Value::makeNativeFunction("os_read_uint64", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            uint64_t val = *(uint64_t*)(base + offset);
+            return Value((double)val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_uint64", Value::makeNativeFunction("os_write_uint64", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_byte", Value::makeNativeFunction("os_read_byte", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            return Value((double)*(base + offset));
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_byte", Value::makeNativeFunction("os_write_byte", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(base + offset) = (uint8_t)args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_string_ptr", Value::makeNativeFunction("os_read_string_ptr", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber()) return Value("");
+            const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
+            if (str) return Value(std::string(str));
+            return Value("");
+#else
+            return Value("");
+#endif
+        }));
+
+    interp.defineGlobal("os_write_string", Value::makeNativeFunction("os_write_string", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isString()) return Value();
+            char* base = reinterpret_cast<char*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            std::string text = args[2].asString();
+            memcpy(base + offset, text.c_str(), text.length() + 1);
+            return Value();
+#else
+            return Value();
 #endif
         }));
 

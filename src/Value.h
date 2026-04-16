@@ -133,7 +133,12 @@ struct Value {
     Value(std::nullptr_t) : data(nullptr) {}
     Value(bool val) : data(val) {}
     Value(double val) : data(val) {}
-    Value(int val) : data(static_cast<double>(val)) {}
+    Value(int val) : data(static_cast<long long>(val)) {}
+    Value(unsigned int val) : data(static_cast<long long>(val)) {}
+    Value(long val) : data(static_cast<long long>(val)) {}
+    Value(unsigned long val) : data(static_cast<long long>(val)) {}
+    Value(long long val) : data(val) {}
+    Value(unsigned long long val) : data(static_cast<long long>(val)) {}
     Value(const std::string& val) : data(std::make_shared<std::string>(val)) {}
     Value(const char* val) : data(std::make_shared<std::string>(val)) {}
     Value(StringPtr val) : data(val) {}
@@ -145,7 +150,7 @@ struct Value {
     Value(DictionaryPtr val) : data(val) {}
     Value(FuturePtr val) : data(val) {}
     Value(SuperPtr val) : data(val) {}
-    Value(long long val) : data(val) {}
+    // Deleted duplicate long long constructor
     
     // Type checking
     ValueType type() const {
@@ -216,13 +221,15 @@ struct Value {
     
     // Equality
     bool equals(const Value& other) const {
+        if (isNumber() && other.isNumber()) {
+            if (isInteger() && other.isInteger()) return asInteger() == other.asInteger();
+            return asNumber() == other.asNumber();
+        }
         if (type() != other.type()) return false;
         
         switch (type()) {
             case ValueType::NIL: return true;
             case ValueType::BOOL: return asBool() == other.asBool();
-            case ValueType::NUMBER: return asNumber() == other.asNumber();
-            case ValueType::INTEGER: return asInteger() == other.asInteger();
             case ValueType::STRING: return asString() == other.asString();
             case ValueType::ARRAY: {
                 const auto& a = asArray();
@@ -233,9 +240,6 @@ struct Value {
                 }
                 return true;
             }
-            // Functions, Classes, Instances, Futures compared by pointer identity implicitly?
-            // Actually, we should probably implement pointer comparison for objects.
-            // But strict equality for now.
             default: return false; 
         }
     }

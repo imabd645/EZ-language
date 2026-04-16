@@ -42,7 +42,8 @@ enum class ValueType {
     FUTURE,
     SUPER,
     INTEGER,
-    BUFFER
+    BUFFER,
+    MUTEX
 };
 
 struct EZFunction : public GCObject {
@@ -104,12 +105,22 @@ struct EZBuffer : public GCObject {
     std::vector<uint8_t> data;
     EZBuffer(size_t size = 0) : data(size, 0) {}
     EZBuffer(const std::vector<uint8_t>& d) : data(d) {}
-    void gc_mark() override { gc_marked = true; } // Buffers don't contain other Values
+    void gc_mark() override { gc_marked = true; } 
     void gc_clear() override { data.clear(); }
     
     size_t size() const { return data.size(); }
     uint8_t& operator[](size_t i) { return data[i]; }
     const uint8_t& operator[](size_t i) const { return data[i]; }
+};
+
+struct EZMutex : public GCObject {
+    std::recursive_mutex mtx;
+    void gc_mark() override { gc_marked = true; }
+    void gc_clear() override {}
+    
+    void lock() { mtx.lock(); }
+    void unlock() { mtx.unlock(); }
+    bool try_lock() { return mtx.try_lock(); }
 };
 
 // The main Value struct - dynamically typed
@@ -125,6 +136,7 @@ struct Value {
     using FuturePtr = std::shared_ptr<std::shared_future<Value>>;
     using SuperPtr = std::shared_ptr<EZSuper>;
     using BufferPtr = std::shared_ptr<EZBuffer>;
+    using MutexPtr = std::shared_ptr<EZMutex>;
     
     std::variant<
         std::nullptr_t,     // NIL
@@ -140,7 +152,8 @@ struct Value {
         FuturePtr,          // FUTURE
         SuperPtr,           // SUPER
         long long,          // INTEGER
-        BufferPtr           // BUFFER
+        BufferPtr,          // BUFFER
+        MutexPtr            // MUTEX
     > data;
     
     // Constructors
@@ -168,6 +181,7 @@ struct Value {
     // Deleted duplicate long long constructor
     
     Value(BufferPtr val) : data(val) {}
+    Value(MutexPtr val) : data(val) {}
     
     // Type checking
     ValueType type() const {
@@ -185,6 +199,7 @@ struct Value {
         if (std::holds_alternative<SuperPtr>(data)) return ValueType::SUPER;
         if (std::holds_alternative<long long>(data)) return ValueType::INTEGER;
         if (std::holds_alternative<BufferPtr>(data)) return ValueType::BUFFER;
+        if (std::holds_alternative<MutexPtr>(data)) return ValueType::MUTEX;
         return ValueType::NIL;
     }
     
@@ -203,6 +218,7 @@ struct Value {
     bool isFuture() const { return std::holds_alternative<FuturePtr>(data); }
     bool isSuper() const { return std::holds_alternative<SuperPtr>(data); }
     bool isBuffer() const { return std::holds_alternative<BufferPtr>(data); }
+    bool isMutex() const { return std::holds_alternative<MutexPtr>(data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass(); }
     
     // Value extraction
@@ -229,6 +245,7 @@ struct Value {
     FuturePtr asFuture() const { return std::get<FuturePtr>(data); }
     SuperPtr asSuper() const { return std::get<SuperPtr>(data); }
     BufferPtr asBufferPtr() const { return std::get<BufferPtr>(data); }
+    MutexPtr asMutexPtr() const { return std::get<MutexPtr>(data); }
     std::vector<uint8_t>& asBuffer() const { return std::get<BufferPtr>(data)->data; }
     EZDictionary& asDictionary();
     const EZDictionary& asDictionary() const;

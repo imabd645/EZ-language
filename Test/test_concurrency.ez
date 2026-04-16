@@ -1,0 +1,39 @@
+use "lib/unittest.ez"
+
+describe("Concurrency & Thread Safety", || {
+
+    it("should prevent race conditions using mutex and lock", || {
+        count = 0
+        mu = mutex()
+        
+        # Spawn 10 parallel agents
+        repeat i = 1 to 10 {
+            spawn(|| {
+                repeat j = 1 to 100 {
+                    lock(mu, || {
+                        count = count + 1
+                    })
+                }
+            })
+        }
+        
+        # Give them time to finish
+        wait(1000) 
+        
+        # If lock works, count should be exactly 1000
+        assertEquals(count, 1000, "Count should be exactly 1000 with locking")
+    })
+
+    it("should handle nested locking (recursive mutex)", || {
+        mu = mutex()
+        status = lock(mu, || {
+            give lock(mu, || {
+                give true
+            })
+        })
+        assert(status, "Recursive lock should not deadlock")
+    })
+
+})
+
+testSummary()

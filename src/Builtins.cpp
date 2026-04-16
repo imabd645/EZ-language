@@ -10,4 +10,5 @@ void registerBuiltins(Interpreter& interp) {
     registerSysBuiltins(interp);
     registerPDFBuiltins(interp);
     registerBufferBuiltins(interp);
+    registerConcurrencyBuiltins(interp);
 }

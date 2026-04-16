@@ -14,5 +14,6 @@ void registerDataBuiltins(Interpreter& interp);
 void registerSysBuiltins(Interpreter& interp);
 void registerPDFBuiltins(Interpreter& interp);
 void registerBufferBuiltins(Interpreter& interp);
+void registerConcurrencyBuiltins(Interpreter& interp);
 
 #endif // BUILTINS_H

@@ -108,4 +108,9 @@ inline Value::BufferPtr makeGCBuffer(const std::vector<uint8_t>& data) {
     return GarbageCollector::instance().track(std::make_shared<EZBuffer>(data));
 }
 
+// Helper to create GC-tracked mutex
+inline Value::MutexPtr makeGCMutex() {
+    return GarbageCollector::instance().track(std::make_shared<EZMutex>());
+}
+
 #endif // GC_H

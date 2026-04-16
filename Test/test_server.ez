@@ -1,39 +1,52 @@
 use "../lib/net.ez"
 
 out "============================================="
-out "      PURE EZ NATIVE HTTP SERVER DEMO        "
+out "   HARDENED EZ NATIVE HTTP SERVER DEMO       "
 out "============================================="
 
 app = App()
 
-# HTML Endpoint
-app.get("/", |req| {
-    html = "<html><body style='font-family: sans-serif; text-align: center; margin-top: 50px;'>"
-    html = html + "<h1 style='color: #4CAF50;'>EZ Web Server is Alive!</h1>"
-    html = html + "<p>This page is being served through <strong>pure FFI sockets</strong> natively constructed in EZ!</p>"
-    html = html + "<br/><a href='/api/ping'>Test JSON API Endpoint</a></body></html>"
-    give html
-})
-
-# JSON API Endpoint
-app.get("/api/ping", |req| {
+# 1. Routing & URL Decoding Verification
+app.get("/search", |req| {
+    q = ""
+    when has_key(req["query"], "q") { q = req["query"]["q"] }
+    
     give {
         "status": 200,
-        "message": "Pong! EZ Backend responding.",
-        "server": "Pure FFI Architecture"
+        "body": {
+            "message": "Generic EZ Native URL Decoder works!",
+            "received_query": q
+        }
     }
 })
 
-# Dictionary Standard Endpoint
-app.get("/custom", |req| {
+# 2. Form Submission via URL Encoded Body
+app.post("/submit", |req| {
+    name = "Unknown"
+    message = "Unknown"
+    
+    when has_key(req["form"], "name") { name = req["form"]["name"] }
+    when has_key(req["form"], "message") { message = req["form"]["message"] }
+    
     give {
-        "status": 201,
-        "headers": {
-            "Content-Type": "text/html",
-            "X-Custom-Header": "EZ-Engine"
-        },
-        "body": "Custom 201 Response with custom headers!"
+        "status": 201, # Automatically maps to '201 Created'
+        "body": {
+            "success": true,
+            "parsed_name": name,
+            "parsed_msg": message
+        }
     }
+})
+
+# 3. Base Homepage
+app.get("/", |req| {
+    html = "<html><body style='font-family: sans-serif; text-align: center; margin-top: 50px;'>"
+    html = html + "<h1 style='color: #4CAF50;'>DDoS-Resistant Pure EZ Web Server</h1>"
+    html = html + "<p>This server relies natively on <strong>ws2_32.dll</strong> FFI bindings.</p>"
+    html = html + "<p>Active Connections Tracking, 10MB Capping, and SO_RCVTIMEO active!</p>"
+    html = html + "<br/><a href='/search?q=Hello+World%21+pure%20EZ%20Decoder%2B%3F'>Test URL Decoder</a>"
+    html = html + "</body></html>"
+    give html
 })
 
 out "Initializing Native Server..."

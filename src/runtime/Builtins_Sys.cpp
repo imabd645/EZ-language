@@ -30,7 +30,7 @@ static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 void registerSysBuiltins(Interpreter& interp) {
     interp.defineGlobal("panic", Value::makeNativeFunction("panic", 1,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            interp.runtimeError(args[0].toString(), 0, "script");
+            interp.runtimeError(args[0].toString(), 0, "");
             return Value();
         }));
 

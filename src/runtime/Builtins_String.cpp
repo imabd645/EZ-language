@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <regex>
 
 void registerStringBuiltins(Interpreter& interp) {
     interp.defineGlobal("substr", Value::makeNativeFunction("substr", 3,
@@ -162,5 +163,54 @@ void registerStringBuiltins(Interpreter& interp) {
             if (len < 0) len = 0;
             
             return Value(s.substr(start, len));
+        }));
+
+    // --- Regex Engine ---
+    
+    interp.defineGlobal("reMatch", Value::makeNativeFunction("reMatch", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reMatch() expects two strings (text, pattern)", 0, ""); return Value(); }
+            try {
+                std::regex re(args[1].asString());
+                return Value(std::regex_match(args[0].asString(), re));
+            } catch (const std::regex_error& e) {
+                interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
+                return Value(false);
+            }
+        }));
+
+    interp.defineGlobal("reSearch", Value::makeNativeFunction("reSearch", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reSearch() expects two strings (text, pattern)", 0, ""); return Value(); }
+            try {
+                std::string text = args[0].asString();
+                std::regex re(args[1].asString());
+                std::smatch matches;
+                std::vector<Value> results;
+                if (std::regex_search(text, matches, re)) {
+                    for (size_t i = 0; i < matches.size(); i++) {
+                        results.push_back(Value(matches[i].str()));
+                    }
+                }
+                return Value::makeArray(results);
+            } catch (const std::regex_error& e) {
+                interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
+                return Value::makeArray({});
+            }
+        }));
+
+    interp.defineGlobal("reReplace", Value::makeNativeFunction("reReplace", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString() || !args[1].isString() || !args[2].isString()) { 
+                interp.runtimeError("reReplace() expects three strings (text, pattern, replacement)", 0, ""); return Value(); 
+            }
+            try {
+                std::regex re(args[1].asString());
+                std::string result = std::regex_replace(args[0].asString(), re, args[2].asString());
+                return Value(result);
+            } catch (const std::regex_error& e) {
+                interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
+                return Value(args[0]);
+            }
         }));
 }

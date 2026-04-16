@@ -1,0 +1,40 @@
+# ============================================================================
+# EZ Regex Engine Test
+# ============================================================================
+
+use "lib/unittest.ez"
+
+describe("Regex Engine", || {
+
+    it("should match simple patterns", || {
+        assert(reMatch("hello", "h.*o"), "Match failed")
+        assert(reMatch("12345", `\d+`), "Digit match failed")
+        assert(not reMatch("abc", `\d+`), "Invalid digit match")
+    })
+
+    it("should search and capture groups", || {
+        matches = reSearch("User: Abdullah, ID: 12345", `User: (\w+), ID: (\d+)`)
+        assertEquals(len(matches), 3, "Should have 3 groups (total + 2 sub)")
+        assertEquals(matches[1], "Abdullah", "First group mismatch")
+        assertEquals(matches[2], "12345", "Second group mismatch")
+    })
+
+    it("should replace content using patterns", || {
+        text = "The quick brown fox jumps over the lazy dog"
+        result = reReplace(text, `[aeiou]`, "*")
+        assertEquals(result, "Th* q**ck br*wn f*x j*mps *v*r th* l*zy d*g", "Replacement failed")
+    })
+
+    it("should handle invalid regex patterns gracefully", || {
+        # This will trigger a Regex Error, which our framework should catch
+        try {
+            reMatch("test", "[")
+        } catch e {
+            out "  [INFO] Caught expected regex error: " + str(e)
+            assert(startsWith(str(e), "Regex Error"), "Should report Regex Error prefix")
+        }
+    })
+
+})
+
+testSummary()

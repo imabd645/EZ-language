@@ -265,6 +265,8 @@ Value Interpreter::visitLiteral(const std::shared_ptr<LiteralExpr>& expr) {
             return Value(arg);
         } else if constexpr (std::is_same_v<T, std::string>) {
             return Value(arg);
+        } else if constexpr (std::is_same_v<T, long long>) {
+            return Value(arg);
         } else if constexpr (std::is_same_v<T, bool>) {
             return Value(arg);
         }

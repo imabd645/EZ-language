@@ -1,0 +1,8 @@
+a = 1
+b = 2
+out "a: " + str(a)
+out "b: " + str(b)
+c = a + b
+out "a + b: " + str(c)
+out "0xFF: " + str(0xFF)
+out "1 << 60: " + str(1 << 60)

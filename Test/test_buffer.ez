@@ -1,0 +1,58 @@
+use "lib/unittest.ez"
+
+describe("Native Buffer Engine", || {
+
+    it("should allocate and provide indexed access", || {
+        buf = buffer(10)
+        assertEquals(buf_size(buf), 10, "Size should be 10")
+        
+        buf[0] = 255
+        buf[9] = 128
+        assertEquals(buf[0], 255, "Byte 0 should be 255")
+        assertEquals(buf[9], 128, "Byte 9 should be 128")
+    })
+
+    it("should convert to and from strings", || {
+        testStr = "EZ-Buffer"
+        buf = buffer(testStr)
+        assertEquals(buf_size(buf), 9, "Buffer size should match string length")
+        assertEquals(buf[0], 69, "First byte should be 'E' (69)")
+        
+        backStr = buf_to_str(buf)
+        assertEquals(backStr, testStr, "Roundtrip string conversion should match")
+    })
+
+    it("should support bulk copying via buf_copy", || {
+        src = buffer("ABCDE")
+        dest = buffer(10)
+        buf_fill(dest, 0)
+        
+        # Copy "ABCDE" into dest at offset 2
+        copied = buf_copy(src, dest, 2)
+        assertEquals(copied, 5, "Should have copied 5 bytes")
+        assertEquals(buf_to_str(dest), "\x00\x00ABCDE\x00\x00\x00", "Content check")
+    })
+
+    it("should handle partial range copying", || {
+        src = buffer("0123456789")
+        dest = buffer(5)
+        
+        # Copy index 2-5 ("234") into dest at offset 1
+        buf_copy(src, dest, 1, 2, 5)
+        assertEquals(buf_to_str(dest), "\x00234\x00", "Partial copy check")
+    })
+
+    it("should enforce bounds checking", || {
+        buf = buffer(5)
+        status = true
+        try {
+            val = buf[10] # Out of bounds
+        } catch ex {
+            status = false
+        }
+        assert(not status, "Accessing index 10 should throw error")
+    })
+
+})
+
+testSummary()

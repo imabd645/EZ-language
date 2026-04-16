@@ -41,7 +41,8 @@ enum class ValueType {
     DICTIONARY,
     FUTURE,
     SUPER,
-    INTEGER
+    INTEGER,
+    BUFFER
 };
 
 struct EZFunction : public GCObject {
@@ -99,6 +100,18 @@ struct EZDictionary : public GCObject {
     void gc_clear() override { map.clear(); }
 };
 
+struct EZBuffer : public GCObject {
+    std::vector<uint8_t> data;
+    EZBuffer(size_t size = 0) : data(size, 0) {}
+    EZBuffer(const std::vector<uint8_t>& d) : data(d) {}
+    void gc_mark() override { gc_marked = true; } // Buffers don't contain other Values
+    void gc_clear() override { data.clear(); }
+    
+    size_t size() const { return data.size(); }
+    uint8_t& operator[](size_t i) { return data[i]; }
+    const uint8_t& operator[](size_t i) const { return data[i]; }
+};
+
 // The main Value struct - dynamically typed
 struct Value {
     using ArrayType = std::vector<Value>;
@@ -111,6 +124,7 @@ struct Value {
     using DictionaryPtr = std::shared_ptr<EZDictionary>;
     using FuturePtr = std::shared_ptr<std::shared_future<Value>>;
     using SuperPtr = std::shared_ptr<EZSuper>;
+    using BufferPtr = std::shared_ptr<EZBuffer>;
     
     std::variant<
         std::nullptr_t,     // NIL
@@ -125,7 +139,8 @@ struct Value {
         DictionaryPtr,      // DICTIONARY
         FuturePtr,          // FUTURE
         SuperPtr,           // SUPER
-        long long           // INTEGER
+        long long,          // INTEGER
+        BufferPtr           // BUFFER
     > data;
     
     // Constructors
@@ -152,6 +167,8 @@ struct Value {
     Value(SuperPtr val) : data(val) {}
     // Deleted duplicate long long constructor
     
+    Value(BufferPtr val) : data(val) {}
+    
     // Type checking
     ValueType type() const {
         if (std::holds_alternative<std::nullptr_t>(data)) return ValueType::NIL;
@@ -167,6 +184,7 @@ struct Value {
         if (std::holds_alternative<FuturePtr>(data)) return ValueType::FUTURE;
         if (std::holds_alternative<SuperPtr>(data)) return ValueType::SUPER;
         if (std::holds_alternative<long long>(data)) return ValueType::INTEGER;
+        if (std::holds_alternative<BufferPtr>(data)) return ValueType::BUFFER;
         return ValueType::NIL;
     }
     
@@ -184,6 +202,7 @@ struct Value {
     bool isDictionary() const { return std::holds_alternative<DictionaryPtr>(data); }
     bool isFuture() const { return std::holds_alternative<FuturePtr>(data); }
     bool isSuper() const { return std::holds_alternative<SuperPtr>(data); }
+    bool isBuffer() const { return std::holds_alternative<BufferPtr>(data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass(); }
     
     // Value extraction
@@ -209,6 +228,8 @@ struct Value {
     DictionaryPtr asDictionaryPtr() const { return std::get<DictionaryPtr>(data); }
     FuturePtr asFuture() const { return std::get<FuturePtr>(data); }
     SuperPtr asSuper() const { return std::get<SuperPtr>(data); }
+    BufferPtr asBufferPtr() const { return std::get<BufferPtr>(data); }
+    std::vector<uint8_t>& asBuffer() const { return std::get<BufferPtr>(data)->data; }
     EZDictionary& asDictionary();
     const EZDictionary& asDictionary() const;
     

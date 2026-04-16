@@ -99,4 +99,13 @@ inline Value::ArrayPtr makeGCArray(const std::vector<Value>& elements = {}) {
     return GarbageCollector::instance().track(std::make_shared<EZArray>(elements));
 }
 
+// Helper to create GC-tracked buffer
+inline Value::BufferPtr makeGCBuffer(size_t size = 0) {
+    return GarbageCollector::instance().track(std::make_shared<EZBuffer>(size));
+}
+
+inline Value::BufferPtr makeGCBuffer(const std::vector<uint8_t>& data) {
+    return GarbageCollector::instance().track(std::make_shared<EZBuffer>(data));
+}
+
 #endif // GC_H

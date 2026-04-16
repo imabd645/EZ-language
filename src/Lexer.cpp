@@ -265,9 +265,25 @@ void Lexer::scanString() {
                 case 'n': value += '\n'; break;
                 case 't': value += '\t'; break;
                 case 'r': value += '\r'; break;
+                case '0': value += '\0'; break;
                 case '\\': value += '\\'; break;
                 case '"': value += '"'; break;
                 case '\'': value += '\''; break;
+                case 'x': {
+                    if (current + 2 > source.length()) {
+                        error("Incomplete hex escape");
+                        break;
+                    }
+                    std::string hex = source.substr(current, 2);
+                    current += 2;
+                    column += 2;
+                    try {
+                        value += static_cast<char>(std::stoi(hex, nullptr, 16));
+                    } catch (...) {
+                        error("Invalid hex escape: \\x" + hex);
+                    }
+                    break;
+                }
                 default: value += escaped; break;
             }
         } else {

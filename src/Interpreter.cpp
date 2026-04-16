@@ -514,6 +514,16 @@ Value Interpreter::visitIndex(const std::shared_ptr<IndexExpr>& expr, int line, 
         return Value(std::string(1, str[idx]));
     }
     
+    if (object.isBuffer()) {
+        if (!index.isNumber()) runtimeError("Buffer index must be a number", line, filename);
+        int idx = static_cast<int>(index.asInteger());
+        auto& buf = object.asBuffer();
+        if (idx < 0 || idx >= static_cast<int>(buf.size())) {
+            runtimeError("Buffer index out of bounds: " + std::to_string(idx), line, filename);
+        }
+        return Value(static_cast<long long>(buf[idx]));
+    }
+    
     if (object.isDictionary()) {
         std::string key = index.toString();
         const auto& dict = object.asDictionary();
@@ -564,6 +574,14 @@ Value Interpreter::visitAssign(const std::shared_ptr<AssignExpr>& expr, int line
                 auto& arr = object.asArray();
                 if (idx < 0 || idx >= static_cast<int>(arr.size())) runtimeError("Array index out of bounds", line, filename);
                 arr[idx] = value;
+            } else if (object.isBuffer()) {
+                Value indexVal = evaluate(expr->index);
+                if (!indexVal.isNumber()) runtimeError("Buffer index must be a number", line, filename);
+                int idx = static_cast<int>(indexVal.asInteger());
+                auto& buf = object.asBuffer();
+                if (idx < 0 || idx >= static_cast<int>(buf.size())) runtimeError("Buffer index out of bounds", line, filename);
+                if (!value.isNumber()) runtimeError("Can only write numbers to Buffer", line, filename);
+                buf[idx] = static_cast<uint8_t>(value.asInteger());
             } else if (object.isDictionary()) {
                 Value indexVal = evaluate(expr->index);
                 object.asDictionary().map[indexVal.toString()] = value;
@@ -582,6 +600,13 @@ Value Interpreter::visitAssign(const std::shared_ptr<AssignExpr>& expr, int line
                 auto& arr = targetPtr->asArray();
                 if (idx < 0 || idx >= static_cast<int>(arr.size())) runtimeError("Array index out of bounds", line, filename);
                 arr[idx] = value;
+            } else if (targetPtr->isBuffer()) {
+                if (!indexVal.isNumber()) runtimeError("Buffer index must be a number", line, filename);
+                int idx = static_cast<int>(indexVal.asInteger());
+                auto& buf = targetPtr->asBuffer();
+                if (idx < 0 || idx >= static_cast<int>(buf.size())) runtimeError("Buffer index out of bounds", line, filename);
+                if (!value.isNumber()) runtimeError("Can only write numbers to Buffer", line, filename);
+                buf[idx] = static_cast<uint8_t>(value.asInteger());
             } else if (targetPtr->isDictionary()) {
                 targetPtr->asDictionary().map[indexVal.toString()] = value;
             } else {

@@ -9,4 +9,5 @@ void registerBuiltins(Interpreter& interp) {
     registerDataBuiltins(interp);
     registerSysBuiltins(interp);
     registerPDFBuiltins(interp);
+    registerBufferBuiltins(interp);
 }

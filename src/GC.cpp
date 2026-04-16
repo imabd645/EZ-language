@@ -11,6 +11,7 @@ static void markValue(const Value& val) {
         case ValueType::DICTIONARY: val.asDictionaryPtr()->gc_mark(); break;
         case ValueType::FUNCTION: val.asFunction()->gc_mark(); break;
         case ValueType::CLASS: val.asClass()->gc_mark(); break;
+        case ValueType::BUFFER: val.asBufferPtr()->gc_mark(); break;
         default: break;
     }
 }

@@ -34,6 +34,14 @@ void registerSysBuiltins(Interpreter& interp) {
             return Value();
         }));
 
+    interp.defineGlobal("exit", Value::makeNativeFunction("exit", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            int code = 0;
+            if (!args.empty() && args[0].isNumber()) code = (int)args[0].asNumber();
+            std::exit(code);
+            return Value();
+        }));
+
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](Interpreter& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();

@@ -82,13 +82,23 @@ void Interpreter::defineGlobal(const std::string& name, const Value& value) {
 }
 
 void Interpreter::runtimeError(const std::string& message, int line, const std::string& filename) {
-    std::string fullMessage = message + "\n  at [line " + std::to_string(line) + "] in " + (filename.empty() ? "main" : filename);
+    int reportLine = line;
+    std::string reportFile = filename;
     
+    // Auto-detect location from call stack if not provided (common for native built-ins)
+    if (reportLine <= 0 && reportFile.empty() && !callStack.empty()) {
+        reportLine = callStack.back().line;
+        reportFile = callStack.back().filename;
+    }
+
+    std::string fullMessage = message + "\n  at [line " + std::to_string(reportLine) + "] in " + (reportFile.empty() ? "main" : reportFile);
+    
+    // Print full trace (skipping the top if we just used it)
     for (auto it = callStack.rbegin(); it != callStack.rend(); ++it) {
         fullMessage += "\n  at task " + it->functionName + " (" + (it->filename.empty() ? "main" : it->filename) + ":" + std::to_string(it->line) + ")";
     }
     
-    throw RuntimeError(fullMessage, line);
+    throw RuntimeError(fullMessage, reportLine);
 }
 
 void Interpreter::printStackTrace() const {
@@ -1003,7 +1013,11 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
         return instanceVal;
     }
     
-    runtimeError("Can only call functions or models (got " + callee.typeName() + ")", line, filename);
+    std::string typeInfo = callee.typeName();
+    if (callee.isString()) {
+        typeInfo += " '" + callee.asString() + "'";
+    }
+    runtimeError("Can only call functions or models (got " + typeInfo + ")", line, filename);
     return Value(); // Unreachable
 }
 

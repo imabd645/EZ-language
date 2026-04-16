@@ -14,8 +14,8 @@ describe("EZ Core Features", || {
 
     it("should handle string interpolation", || {
         name = "EZ"
-        str = `Hello {name}`
-        assertEquals(str, "Hello EZ", "Interpolation failed")
+        result = `Hello {name}`
+        assertEquals(result, "Hello EZ", "Interpolation failed")
     })
 
     it("should fail on incorrect assertions", || {

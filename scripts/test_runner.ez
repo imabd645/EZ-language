@@ -1,0 +1,44 @@
+# ============================================================================
+# EZ Test Runner
+# Discovers and executes all test scripts in the Test/ directory
+# ============================================================================
+
+use "lib/fs.ez"
+
+testDir = "Test"
+tests = fs.listDir(testDir)
+
+out "========================================"
+out "EZ Test Runner"
+out "========================================"
+
+passes = 0
+fails = 0
+
+repeat i = 0 to len(tests) - 1 {
+    testFile = tests[i]
+    # Only run .ez files, ignore test_runner itself or other binaries
+    when endsWith(testFile, ".ez") {
+        out "Running: " + testFile
+        
+        path = testDir + "/" + testFile
+        # Run the test using the ez interpreter
+        # We assume 'ez' is in the PATH
+        res = os_call(os_get_func(os_load_lib("Kernel32.dll"), "WinExec"), "int", "ez " + path, 1)
+        
+        # Note: WinExec is asynchronous and legacy. 
+        # For a real runner, we might need a better way to wait for finish.
+        # But for now, we'll assume it runs.
+        
+        # Actually, let's use a better approach if possible.
+        # Since we don't have a robust 'wait' builtin yet, 
+        # we might just report that we started them.
+        
+        out "  Started: " + path
+    }
+}
+
+out "========================================"
+out "Note: Tests are running in separate processes."
+out "Check terminal output for detailed results."
+out "========================================"

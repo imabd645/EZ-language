@@ -28,6 +28,12 @@ static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 #endif
 
 void registerSysBuiltins(Interpreter& interp) {
+    interp.defineGlobal("panic", Value::makeNativeFunction("panic", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            interp.runtimeError(args[0].toString(), 0, "script");
+            return Value();
+        }));
+
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](Interpreter& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();

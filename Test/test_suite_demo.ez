@@ -1,0 +1,28 @@
+# ============================================================================
+# EZ Test Suite Demo
+# Demonstrates use of lib/unittest.ez
+# ============================================================================
+
+use "lib/unittest.ez"
+
+describe("EZ Core Features", || {
+    
+    it("should handle basic arithmetic", || {
+        assertEquals(2 + 2, 4, "Addition failed")
+        assertEquals(10 * 10, 100, "Multiplication failed")
+    })
+
+    it("should handle string interpolation", || {
+        name = "EZ"
+        str = `Hello {name}`
+        assertEquals(str, "Hello EZ", "Interpolation failed")
+    })
+
+    it("should fail on incorrect assertions", || {
+        # This is expected to fail in this demo
+        assertEquals(1 + 1, 3, "Intentional failure")
+    })
+
+})
+
+testSummary()

@@ -15,6 +15,18 @@
 #include <shellapi.h>
 #endif
 
+#ifdef _WIN32
+static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    // Only redirect SENT messages (WM_COMMAND, WM_NOTIFY)
+    // Redirect with 0x8000 offset to avoid infinite loop when DispatchMessage calls this proxy
+    if (msg == WM_COMMAND || msg == WM_NOTIFY) {
+        PostMessage(hwnd, msg + 0x8000, wParam, lParam);
+        return 0;
+    }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+#endif
+
 void registerSysBuiltins(Interpreter& interp) {
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](Interpreter& interp, const std::vector<Value>&) -> Value {
@@ -174,6 +186,17 @@ void registerSysBuiltins(Interpreter& interp) {
             return Value();
 #else
             return Value();
+#endif
+        }));
+
+
+
+    interp.defineGlobal("os_get_proxy_wndproc", Value::makeNativeFunction("os_get_proxy_wndproc", 0,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            return Value((double)(uintptr_t)EZ_ProxyWndProc);
+#else
+            return Value(0.0);
 #endif
         }));
 

@@ -1,0 +1,22 @@
+use "../lib/notify.ez"
+
+out "============================================="
+out "      NATIVE EZ NOTIFICATION TEST            "
+out "============================================="
+
+out "Triggering Success Notification..."
+notify.show("EZ Success", "Natively triggered notification in pure EZ!")
+
+out "Waiting 2 seconds..."
+stop(2000)
+
+out "Triggering Warning Notification..."
+notify.showWithIcon("EZ Warning", "This is a native warning message.", notify.WARNING)
+
+out "Waiting 2 seconds..."
+stop(2000)
+
+out "Triggering Error Notification..."
+notify.showWithIcon("EZ Error", "Critical failure demo!", notify.ERROR)
+
+out "\nCheck your system tray! Tests complete."

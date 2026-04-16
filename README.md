@@ -782,7 +782,7 @@ These are low-level built-ins. For high-level operations, use the `fs.ez` librar
 | `spawn(fn, args...)` | function, any... | Run function async | `future = spawn(myFunc, arg1, arg2)` |
 | `await(future)` | future | Wait for result | `result = await(future)` |
 | `sync(future)` | future | Alias for await | `result = sync(future)` |
-| `sleep(ms)` | number | Sleep milliseconds | `sleep(1000)` |
+| `stop(ms)` | number | Pause execution (ms) | `stop(1000)` |
 
 ### Regular Expression Functions
 
@@ -857,6 +857,7 @@ ez install os
 ez install fs
 ez install serve
 ez install crypto
+ez install notify
 ```
 
 ### `os.ez`: System Utilities
@@ -900,6 +901,15 @@ Base64 and symmetric ciphers (RC4) implemented in pure EZ.
 use "crypto.ez"
 encoded = crypto.base64Encode("Hello")
 encrypted = crypto.rc4("SecretMessage", "Key123")
+```
+
+### `notify.ez`: Native Notifications
+System tray balloon tips for Windows.
+
+```ez
+use "notify.ez"
+notify.show("EZ Info", "Task completed successfully!")
+notify.showWithIcon("Alert", "Memory usage high", notify.WARNING)
 ```
 
 ---

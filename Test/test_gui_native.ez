@@ -1,0 +1,21 @@
+# native gui test
+use "gui.ez"
+
+out "Starting Native GUI Demo..."
+
+win = gui.window("EZ Native FFI GUI", 400, 300)
+
+lbl = win.label("Hello from Pure EZ FFI!", 20, 20, 300, 30)
+btn = win.button("Click Me!", 20, 60, 100, 40, || {
+    gui.alert("Native Alert", "You clicked the FFI button!")
+})
+
+inp = win.input(20, 120, 200, 30)
+win.button("Read Input", 230, 120, 100, 30, || {
+    val = inp.value()
+    gui.alert("Input Content", "You typed: " + val)
+})
+
+out "Running GUI loop..."
+win.run()
+out "GUI closed."

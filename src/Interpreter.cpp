@@ -80,7 +80,7 @@ void Interpreter::initBuiltins() {
 }
 
 void Interpreter::defineGlobal(const std::string& name, const Value& value) {
-    globalEnv->define(name, value);
+    currentEnv->define(name, value);
 }
 
 void Interpreter::runtimeError(const std::string& message, int line, const std::string& filename) {
@@ -100,7 +100,7 @@ void Interpreter::runtimeError(const std::string& message, int line, const std::
         fullMessage += "\n  at task " + it->functionName + " (" + (it->filename.empty() ? "main" : it->filename) + ":" + std::to_string(it->line) + ")";
     }
     
-    throw RuntimeError(fullMessage, reportLine);
+    throw RuntimeError(fullMessage, reportLine, Value(fullMessage));
 }
 
 void Interpreter::printStackTrace() const {

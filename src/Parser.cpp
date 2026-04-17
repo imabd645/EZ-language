@@ -476,7 +476,21 @@ StmtPtr Parser::useStatement() {
     }
     Token pathToken = previous();
     std::string path = std::get<std::string>(pathToken.literal);
-    return makeUseStmt(line, pathToken.filename, path);
+    
+    std::string alias = "";
+    // Support 'use "lib" as alias'
+    // Check if next token's lexeme is "as" (since it's not a reserved keyword in some versions)
+    if (peek().lexeme == "as") {
+        advance(); // Consume "as"
+        if (match(TokenType::STAR)) {
+            alias = "*";
+        } else {
+            Token aliasToken = consume(TokenType::IDENTIFIER, "Expected alias name or '*' after 'as'");
+            alias = aliasToken.lexeme;
+        }
+    }
+    
+    return makeUseStmt(line, pathToken.filename, path, alias);
 }
 
 // ============ Expression Parsing ============

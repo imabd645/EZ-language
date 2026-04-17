@@ -10,6 +10,8 @@
 #include "Lexer.h"
 #include "Parser.h"
 #include "MiniJson.h"
+#include <filesystem>
+namespace fs = std::filesystem;
 
 class ScopedRoot {
     GCObject* obj;
@@ -1522,8 +1524,48 @@ void Interpreter::visitUseStmt(const std::shared_ptr<UseStmt>& stmt, int line, c
          runtimeError("Parser error in module '" + path + "'", line, filename);
     }
     
-    for (const auto& s : statements) {
-        execute(s);
+    std::string alias = stmt->alias;
+    
+    // Auto-derive alias if none provided
+    if (alias.empty()) {
+        fs::path p(stmt->path);
+        alias = p.stem().string();
+    }
+    
+    // If alias is "*" or empty, execute globally
+    if (alias == "*") {
+        for (const auto& s : statements) {
+            execute(s);
+        }
+    } else {
+        // Namespace mode: Execute in private environment
+        auto moduleEnv = std::make_shared<Environment>(globalEnv);
+        
+        // Root it for GC
+        envStack.push_back(moduleEnv);
+        
+        auto previousEnv = currentEnv;
+        currentEnv = moduleEnv;
+        try {
+            for (const auto& s : statements) {
+                execute(s);
+            }
+        } catch (...) {
+            currentEnv = previousEnv;
+            envStack.pop_back();
+            throw;
+        }
+        currentEnv = previousEnv;
+        envStack.pop_back();
+        
+        // Harvest exports into a Dictionary
+        auto dict = std::make_shared<EZDictionary>();
+        for (const auto& pair : moduleEnv->variables) {
+            dict->map[pair.first] = pair.second;
+        }
+        
+        // Define the namespace object in current scope
+        defineGlobal(alias, Value(dict));
     }
 }
 

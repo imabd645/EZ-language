@@ -431,8 +431,10 @@ struct StructStmt {
 // Use statement (import)
 struct UseStmt {
     std::string path;
+    std::string alias;
     
-    explicit UseStmt(const std::string& path) : path(path) {}
+    UseStmt(const std::string& path, const std::string& alias = "") 
+        : path(path), alias(alias) {}
 };
 
 // Try-Catch statement
@@ -608,8 +610,8 @@ inline StmtPtr makeStructStmt(int line, const std::string& file, const std::stri
     return std::make_shared<Stmt>(line, file, std::make_shared<StructStmt>(name, std::move(fields)));
 }
 
-inline StmtPtr makeUseStmt(int line, const std::string& file, const std::string& path) {
-    return std::make_shared<Stmt>(line, file, std::make_shared<UseStmt>(path));
+inline StmtPtr makeUseStmt(int line, const std::string& file, const std::string& path, const std::string& alias = "") {
+    return std::make_shared<Stmt>(line, file, std::make_shared<UseStmt>(path, alias));
 }
 
 inline StmtPtr makeTryStmt(int line, const std::string& file, StmtPtr tryBlk, const std::string& var, StmtPtr catchBlk) {

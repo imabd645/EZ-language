@@ -392,22 +392,45 @@ StmtPtr Parser::staticStatement() {
 
 StmtPtr Parser::tryStatement() {
     int line = previous().line;
+    std::string filename = previous().filename;
     
     consume(TokenType::LBRACE, "Expected '{' after 'try'");
     StmtPtr tryBlock = blockStatement();
     
-    skipNewlines();
-    
-    consume(TokenType::CATCH, "Expected 'catch' after try block");
-    Token varToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'catch'");
-    std::string catchVar = varToken.lexeme;
+    std::vector<CatchBlock> catchBlocks;
     
     skipNewlines();
+    while (match(TokenType::CATCH)) {
+        std::string typeName = "";
+        std::string varName = "";
+        
+        // Allow 'catch (Type var)' or 'catch var'
+        if (match(TokenType::LPAREN)) {
+            Token t = consume(TokenType::IDENTIFIER, "Expected type name or variable name");
+            if (check(TokenType::IDENTIFIER)) {
+                typeName = t.lexeme;
+                varName = advance().lexeme;
+            } else {
+                varName = t.lexeme;
+            }
+            consume(TokenType::RPAREN, "Expected ')' after catch configuration");
+        } else {
+            Token t = consume(TokenType::IDENTIFIER, "Expected variable name after 'catch'");
+            varName = t.lexeme;
+        }
+        
+        skipNewlines();
+        consume(TokenType::LBRACE, "Expected '{' after catch");
+        StmtPtr catchBody = blockStatement();
+        catchBlocks.push_back({typeName, varName, catchBody});
+        skipNewlines();
+    }
     
-    consume(TokenType::LBRACE, "Expected '{' after catch variable");
-    StmtPtr catchBlock = blockStatement();
+    if (catchBlocks.empty()) {
+        error(peek(), "Expected at least one 'catch' block");
+    }
     
-    return makeTryStmt(line, varToken.filename, tryBlock, catchVar, catchBlock);
+    return makeTryStmt(line, filename, tryBlock, std::move(catchBlocks));
 }
 
 StmtPtr Parser::throwStatement() {

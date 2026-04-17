@@ -438,14 +438,19 @@ struct UseStmt {
         : path(path), alias(alias) {}
 };
 
+struct CatchBlock {
+    std::string typeName; // Optional (e.g., catch MyError e)
+    std::string varName;
+    StmtPtr body;
+};
+
 // Try-Catch statement
 struct TryStmt {
     StmtPtr tryBlock;
-    std::string catchVar;
-    StmtPtr catchBlock;
+    std::vector<CatchBlock> catchBlocks;
     
-    TryStmt(StmtPtr tryBlk, const std::string& var, StmtPtr catchBlk)
-        : tryBlock(std::move(tryBlk)), catchVar(var), catchBlock(std::move(catchBlk)) {}
+    TryStmt(StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks)
+        : tryBlock(std::move(tryBlk)), catchBlocks(std::move(catchBlocks)) {}
 };
 
 // Throw statement (error)
@@ -615,8 +620,8 @@ inline StmtPtr makeUseStmt(int line, const std::string& file, const std::string&
     return std::make_shared<Stmt>(line, file, std::make_shared<UseStmt>(path, alias));
 }
 
-inline StmtPtr makeTryStmt(int line, const std::string& file, StmtPtr tryBlk, const std::string& var, StmtPtr catchBlk) {
-    return std::make_shared<Stmt>(line, file, std::make_shared<TryStmt>(std::move(tryBlk), var, std::move(catchBlk)));
+inline StmtPtr makeTryStmt(int line, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<TryStmt>(std::move(tryBlk), std::move(catchBlocks)));
 }
 
 inline StmtPtr makeThrowStmt(int line, const std::string& file, ExprPtr expr) {

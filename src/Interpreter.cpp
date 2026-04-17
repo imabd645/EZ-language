@@ -1567,28 +1567,55 @@ void Interpreter::visitTryStmt(const std::shared_ptr<TryStmt>& stmt, int line, c
     try {
         execute(stmt->tryBlock);
     } catch (const RuntimeError& e) {
-        auto catchEnv = currentEnv->createChild();
-        catchEnv->define(stmt->catchVar, Value(std::string(e.what())));
+        Value thrownValue = e.value;
+        bool handled = false;
         
-        auto prevEnv = currentEnv;
-        envStack.push_back(prevEnv);
-        currentEnv = catchEnv;
-        
-        try {
-            execute(stmt->catchBlock);
-        } catch (...) {
-            currentEnv = prevEnv;
-            envStack.pop_back();
-            throw;
+        for (const auto& cb : stmt->catchBlocks) {
+            bool matches = true;
+            if (!cb.typeName.empty()) {
+                matches = false;
+                if (thrownValue.isInstance()) {
+                    auto klass = thrownValue.asInstance()->klass;
+                    while (klass) {
+                        if (klass->name == cb.typeName) {
+                            matches = true;
+                            break;
+                        }
+                        klass = klass->parent;
+                    }
+                }
+            }
+            
+            if (matches) {
+                auto catchEnv = currentEnv->createChild();
+                catchEnv->define(cb.varName, thrownValue);
+                
+                auto prevEnv = currentEnv;
+                envStack.push_back(prevEnv);
+                currentEnv = catchEnv;
+                
+                try {
+                    execute(cb.body);
+                } catch (...) {
+                    currentEnv = prevEnv;
+                    envStack.pop_back();
+                    throw;
+                }
+                
+                currentEnv = prevEnv;
+                envStack.pop_back();
+                handled = true;
+                break;
+            }
         }
-        currentEnv = prevEnv;
-        envStack.pop_back();
+        
+        if (!handled) throw e;
     }
 }
 
 void Interpreter::visitThrowStmt(const std::shared_ptr<ThrowStmt>& stmt, int line, const std::string& filename) {
     Value value = evaluate(stmt->expression);
-    runtimeError(stringify(value, line, filename), line, filename);
+    throw RuntimeError(stringify(value, line, filename), line, value);
 }
 
 

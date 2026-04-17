@@ -1,0 +1,70 @@
+use "lib/unittest.ez" as *
+
+model MathError {
+    init(msg) { self.msg = msg }
+}
+
+model NetworkError {
+    init(msg) { self.msg = msg }
+}
+
+describe("Typed Exceptions", || {
+    it("should catch specific models", || {
+        caught = false
+        try {
+            throw MathError("division by zero")
+        } catch (MathError e) {
+            caught = true
+            assertEquals(e.msg, "division by zero", "Message should match")
+        } catch e {
+            panic("Should not hit catch-all")
+        }
+        assert(caught, "MathError should have been caught")
+    })
+
+    it("should catch base types (inheritance)", || {
+        model DerivedError extends MathError {
+            init(m) { super(m) }
+        }
+        
+        caught = false
+        try {
+            throw DerivedError("derived message")
+        } catch (MathError e) {
+            caught = true
+            assertEquals(e.msg, "derived message", "Inherited property should be accessible")
+        }
+        assert(caught, "Should catch via parent model")
+    })
+
+    it("should fall through to catch-all", || {
+        caught = false
+        try {
+            throw "just a string"
+        } catch (MathError e) {
+            panic("Should not catch string as MathError")
+        } catch e {
+            caught = true
+            assertEquals(e, "just a string", "Value should match")
+        }
+        assert(caught, "Catch-all should have worked")
+    })
+    
+    it("should re-throw if no catch block matches (and no catch-all)", || {
+        model UnknownError {}
+        
+        status = true
+        try {
+            try {
+                throw UnknownError()
+            } catch (MathError e) {
+                 panic("Wrong catch")
+            }
+        } catch ex {
+            status = false
+        }
+        assert(not status, "Exception should have propagated out of inner try")
+    })
+})
+
+testSummary()

@@ -12,8 +12,9 @@
 class RuntimeError : public std::runtime_error {
 public:
     int line;
-    RuntimeError(const std::string& message, int line = 0) 
-        : std::runtime_error(message), line(line) {}
+    Value value;
+    RuntimeError(const std::string& message, int line = 0, Value val = Value()) 
+        : std::runtime_error(message), line(line), value(val) {}
 };
 
 class Environment : public GCObject, public std::enable_shared_from_this<Environment> {

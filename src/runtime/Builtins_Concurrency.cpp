@@ -50,4 +50,47 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             }
             return Value();
         }));
+
+    static std::mutex atomicMutex;
+    
+    // atomic_inc(name)
+    interp.defineGlobal("atomic_inc", Value::makeNativeFunction("atomic_inc", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("atomic_inc() expects variable name", 0, ""); return Value(); }
+            std::string name = args[0].asString();
+            std::lock_guard<std::mutex> lock(atomicMutex);
+            auto env = interp.getGlobalEnv();
+            Value val = env->get(name, 0);
+            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) + 1;
+            env->assign(name, Value(new_val));
+            return Value(new_val);
+        }));
+
+    // atomic_dec(name)
+    interp.defineGlobal("atomic_dec", Value::makeNativeFunction("atomic_dec", 1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("atomic_dec() expects variable name", 0, ""); return Value(); }
+            std::string name = args[0].asString();
+            std::lock_guard<std::mutex> lock(atomicMutex);
+            auto env = interp.getGlobalEnv();
+            Value val = env->get(name, 0);
+            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) - 1;
+            env->assign(name, Value(new_val));
+            return Value(new_val);
+        }));
+
+    // atomic_add(name, amount)
+    interp.defineGlobal("atomic_add", Value::makeNativeFunction("atomic_add", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("atomic_add() expects variable name", 0, ""); return Value(); }
+            if (!args[1].isNumber() && !args[1].isInteger()) { interp.runtimeError("atomic_add() expects number amount", 0, ""); return Value(); }
+            std::string name = args[0].asString();
+            long long amount = args[1].isInteger() ? args[1].asInteger() : (long long)args[1].asNumber();
+            std::lock_guard<std::mutex> lock(atomicMutex);
+            auto env = interp.getGlobalEnv();
+            Value val = env->get(name, 0);
+            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) + amount;
+            env->assign(name, Value(new_val));
+            return Value(new_val);
+        }));
 }

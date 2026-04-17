@@ -3,7 +3,9 @@
 void registerBuiltins(Interpreter& interp) {
     registerIOBuiltins(interp);
     registerNetBuiltins(interp);
-    registerDBBuiltins(interp);
+    registerNetBuiltins(interp);
+    // registerDBBuiltins(interp); // Moved to lib/db.ez via FFI
+    registerMathBuiltins(interp);
     registerMathBuiltins(interp);
     registerStringBuiltins(interp);
     registerDataBuiltins(interp);

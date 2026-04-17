@@ -1,0 +1,22 @@
+use "lib/db.ez" as db
+use "lib/unittest.ez" as *
+
+describe("Database (Native FFI)", || {
+    it("should create and query a table", || {
+        conn = db.Database("test_ffi.db")
+        conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
+        conn.execute("DELETE FROM users")
+        conn.execute("INSERT INTO users (name) VALUES ('Alice')")
+        conn.execute("INSERT INTO users (name) VALUES ('Bob')")
+
+        rows = conn.query("SELECT * FROM users ORDER BY name")
+        
+        assertEquals(len(rows), 2, "Should have 2 users")
+        assertEquals(rows[0]["name"], "Alice", "First user should be Alice")
+        assertEquals(rows[1]["name"], "Bob", "Second user should be Bob")
+
+        conn.close()
+    })
+})
+
+testSummary()

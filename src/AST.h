@@ -104,6 +104,7 @@ struct UnaryExpr {
 struct CallExpr {
     ExprPtr callee;
     std::vector<ExprPtr> arguments;
+    bool isTailCall = false;
     
     CallExpr(ExprPtr callee, std::vector<ExprPtr> args)
         : callee(std::move(callee)), arguments(std::move(args)) {}

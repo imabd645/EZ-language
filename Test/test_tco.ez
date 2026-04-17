@@ -1,0 +1,28 @@
+use "lib/unittest.ez" as *
+
+task deepRecursion(n, acc) {
+    # Base case
+    when (n == 0) {
+        give acc
+    }
+    # This is a tail call!
+    give deepRecursion(n - 1, acc + 1)
+}
+
+describe("Tail Call Optimization", || {
+
+    it("should handle deep recursion (5,000 levels) without stack overflow", || {
+        # MAX_CALL_DEPTH is 500, so 5,000 is 10x the limit
+        result = deepRecursion(5000, 0)
+        assertEquals(result, 5000, "Should handle 5,000 levels")
+    })
+
+    it("should handle even deeper recursion (20,000 levels)", || {
+        # This would definitely crash without TCO (40x the limit)
+        result = deepRecursion(20000, 0)
+        assertEquals(result, 20000, "Should handle 20,000 levels")
+    })
+
+})
+
+testSummary()

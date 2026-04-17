@@ -20,6 +20,14 @@ public:
 class BreakException : public std::exception {};
 class ContinueException : public std::exception {};
 
+class TailCallException : public std::exception {
+public:
+    Value callee;
+    std::vector<Value> args;
+    TailCallException(const Value& c, const std::vector<Value>& a) 
+        : callee(c), args(a) {}
+};
+
 struct CallFrame {
     std::string functionName;
     std::string filename;

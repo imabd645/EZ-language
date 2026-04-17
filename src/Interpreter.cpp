@@ -483,6 +483,10 @@ Value Interpreter::visitCall(const std::shared_ptr<CallExpr>& expr, int line, co
         }
     }
     
+    if (expr->isTailCall) {
+        throw TailCallException(callee, arguments);
+    }
+    
     return callFunction(callee, arguments, line, filename);
 }
 
@@ -866,197 +870,187 @@ void Interpreter::executeBlock(const std::vector<StmtPtr>& statements, std::shar
 }
 
 Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& args, int line, const std::string& filename) {
+    Value currentCallee = callee;
+    std::vector<Value> currentArgs = args;
+
     // Stack overflow guard
     if (++callDepth > MAX_CALL_DEPTH) {
         callDepth--;
         runtimeError("Stack overflow: maximum call depth (" + std::to_string(MAX_CALL_DEPTH) + ") exceeded", line, filename);
     }
-    // RAII guard to decrement on ANY exit
-    struct DepthGuard { int& d; ~DepthGuard() { d--; } } guard{callDepth};
-    
-    if (callee.isNativeFunction()) {
-        auto nativeFn = callee.asNativeFunction();
-        if (nativeFn->arity != -1 && static_cast<int>(args.size()) != nativeFn->arity) {
-            runtimeError("Expected " + std::to_string(nativeFn->arity) + 
-                         " arguments but got " + std::to_string(args.size()), line, filename);
-        }
-        
-        // Push to stack for native calls too (can be useful for debugging)
-        callStack.push_back({nativeFn->name, filename, line});
-        try {
-            Value result = nativeFn->function(*this, args);
-            callStack.pop_back();
-            return result;
-        } catch (...) {
-            callStack.pop_back();
-            throw;
-        }
-    }
-    
-    if (callee.isFunction()) {
-        auto func = callee.asFunction();
-        std::vector<Value> finalArgs;
-        
-        if (func->isVariadic) {
-            size_t minArgs = func->params.size() > 0 ? func->params.size() - 1 : 0;
+    // RAII guard
+    struct DepthGuard { int& d; ~DepthGuard() { d--; } } depthGuard{callDepth};
+
+    while (true) {
+        if (currentCallee.isNativeFunction()) {
+            auto nativeFn = currentCallee.asNativeFunction();
+            if (nativeFn->arity != -1 && static_cast<int>(currentArgs.size()) != nativeFn->arity) {
+                runtimeError("Expected " + std::to_string(nativeFn->arity) + 
+                             " arguments but got " + std::to_string(currentArgs.size()), line, filename);
+            }
             
-            // Collect standard arguments
-            for (size_t i = 0; i < minArgs; i++) {
-                if (i < args.size()) {
-                    finalArgs.push_back(args[i]);
-                } else if (i < func->defaultValues.size() && func->defaultValues[i]) {
-                    finalArgs.push_back(evaluate(func->defaultValues[i]));
-                } else {
-                    runtimeError("Expected " + std::to_string(minArgs) + " arguments before rest term, got " + std::to_string(args.size()), line, filename);
+            callStack.push_back({nativeFn->name, filename, line});
+            try {
+                Value result = nativeFn->function(*this, currentArgs);
+                callStack.pop_back();
+                return result;
+            } catch (...) {
+                callStack.pop_back();
+                throw;
+            }
+        }
+        
+        if (currentCallee.isFunction()) {
+            auto func = currentCallee.asFunction();
+            std::vector<Value> finalArgs;
+            
+            if (func->isVariadic) {
+                size_t minArgs = func->params.size() > 0 ? func->params.size() - 1 : 0;
+                for (size_t i = 0; i < minArgs; i++) {
+                    if (i < currentArgs.size()) {
+                        finalArgs.push_back(currentArgs[i]);
+                    } else if (i < func->defaultValues.size() && func->defaultValues[i]) {
+                        finalArgs.push_back(evaluate(func->defaultValues[i]));
+                    } else {
+                        runtimeError("Expected " + std::to_string(minArgs) + " arguments before rest term, got " + std::to_string(currentArgs.size()), line, filename);
+                    }
                 }
-            }
-            
-            // Collect rest arguments into an array
-            std::vector<Value> restArgs;
-            for (size_t i = minArgs; i < args.size(); i++) {
-                restArgs.push_back(args[i]);
-            }
-            finalArgs.push_back(Value::makeArray(restArgs));
-            
-        } else {
-            finalArgs = args;
-            // Fill in missing arguments with default values if available
-            for (size_t i = args.size(); i < func->params.size(); i++) {
-                if (i < func->defaultValues.size() && func->defaultValues[i]) {
-                    finalArgs.push_back(evaluate(func->defaultValues[i]));
-                } else {
+                std::vector<Value> restArgs;
+                for (size_t i = minArgs; i < currentArgs.size(); i++) {
+                    restArgs.push_back(currentArgs[i]);
+                }
+                finalArgs.push_back(Value::makeArray(restArgs));
+            } else {
+                finalArgs = currentArgs;
+                for (size_t i = currentArgs.size(); i < func->params.size(); i++) {
+                    if (i < func->defaultValues.size() && func->defaultValues[i]) {
+                        finalArgs.push_back(evaluate(func->defaultValues[i]));
+                    } else {
+                        runtimeError("Expected " + std::to_string(func->params.size()) + 
+                                     " arguments but got " + std::to_string(currentArgs.size()), line, filename);
+                    }
+                }
+                if (finalArgs.size() > func->params.size()) {
                     runtimeError("Expected " + std::to_string(func->params.size()) + 
-                                 " arguments but got " + std::to_string(args.size()), line, filename);
+                                 " arguments but got " + std::to_string(finalArgs.size()), line, filename);
                 }
             }
             
-            if (finalArgs.size() > func->params.size()) {
-                runtimeError("Expected " + std::to_string(func->params.size()) + 
-                             " arguments but got " + std::to_string(finalArgs.size()), line, filename);
-            }
-        }
-        
-        // Create environment chain: global -> closure -> staticEnv -> callEnv
-        auto callEnv = func->staticEnv->createChild();
-        for (size_t i = 0; i < func->params.size(); i++) {
-            callEnv->define(func->params[i], finalArgs[i]);
-        }
-        
-        // Push frame
-        callStack.push_back({func->name, filename, line});
-        
-        try {
-            executeBlock(func->body, callEnv);
-            callStack.pop_back();
-        } catch (const ReturnException& e) {
-            callStack.pop_back();
-            return e.value;
-        } catch (...) {
-            callStack.pop_back();
-            throw;
-        }
-        
-        return Value();
-    }
-    
-    if (callee.isSuper()) {
-        auto superObj = callee.asSuper();
-        auto klass = superObj->parentKlass;
-        
-        if (args.size() != klass->initParams.size()) {
-            runtimeError("Expected " + std::to_string(klass->initParams.size()) + 
-                         " arguments for super init but got " + std::to_string(args.size()), line, filename);
-        }
-        
-        if (!klass->initBody.empty()) {
-            auto methodEnv = globalEnv->createChild(); 
-            methodEnv->define("self", Value(superObj->instance));
-            
-            for (size_t i = 0; i < args.size(); i++) {
-                methodEnv->define(klass->initParams[i], args[i]);
+            auto callEnv = func->staticEnv->createChild();
+            for (size_t i = 0; i < func->params.size(); i++) {
+                callEnv->define(func->params[i], finalArgs[i]);
             }
             
-            if (klass->parent) {
-                methodEnv->define("super", Value::makeSuper(superObj->instance, klass->parent));
-            }
-            
-            std::shared_ptr<Environment> previousEnv = currentEnv;
-            currentEnv = methodEnv;
-            
-            // Push frame for super init
-            callStack.push_back({klass->name + ".init", filename, line});
+            callStack.push_back({func->name, filename, line});
             
             try {
-                executeBlock(klass->initBody, methodEnv);
+                executeBlock(func->body, callEnv);
                 callStack.pop_back();
-            } catch (const ReturnException&) {
+                return Value();
+            } catch (const TailCallException& tco) {
                 callStack.pop_back();
+                currentCallee = tco.callee;
+                currentArgs = tco.args;
+                // Trap the recursion and loop instead of returning
+                continue;
+            } catch (const ReturnException& e) {
+                callStack.pop_back();
+                return e.value;
             } catch (...) {
                 callStack.pop_back();
-                currentEnv = previousEnv;
                 throw;
             }
-            currentEnv = previousEnv;
         }
+        
+        if (currentCallee.isSuper()) {
+            auto superObj = currentCallee.asSuper();
+            auto klass = superObj->parentKlass;
+            
+            if (currentArgs.size() != klass->initParams.size()) {
+                runtimeError("Expected " + std::to_string(klass->initParams.size()) + 
+                             " arguments for super init but got " + std::to_string(currentArgs.size()), line, filename);
+            }
+            
+            if (!klass->initBody.empty()) {
+                auto methodEnv = globalEnv->createChild(); 
+                methodEnv->define("self", Value(superObj->instance));
+                
+                for (size_t i = 0; i < currentArgs.size(); i++) {
+                    methodEnv->define(klass->initParams[i], currentArgs[i]);
+                }
+                
+                if (klass->parent) {
+                    methodEnv->define("super", Value::makeSuper(superObj->instance, klass->parent));
+                }
+                
+                std::shared_ptr<Environment> previousEnv = currentEnv;
+                currentEnv = methodEnv;
+                callStack.push_back({klass->name + ".init", filename, line});
+                
+                try {
+                    executeBlock(klass->initBody, methodEnv);
+                    callStack.pop_back();
+                } catch (const ReturnException&) {
+                    callStack.pop_back();
+                } catch (...) {
+                    callStack.pop_back();
+                    currentEnv = previousEnv;
+                    throw;
+                }
+                currentEnv = previousEnv;
+            }
+            return Value();
+        }
+        
+        if (currentCallee.isClass()) {
+            auto klass = currentCallee.asClass();
+            auto instance = std::make_shared<EZInstance>(klass);
+            Value instanceVal(instance);
+            
+            if (currentArgs.size() != klass->initParams.size()) {
+                runtimeError("Expected " + std::to_string(klass->initParams.size()) + 
+                             " arguments for init but got " + std::to_string(currentArgs.size()), line, filename);
+            }
+            
+            if (!klass->initBody.empty()) {
+                auto methodEnv = globalEnv->createChild(); 
+                methodEnv->define("self", instanceVal);
+                
+                for (size_t i = 0; i < currentArgs.size(); i++) {
+                    methodEnv->define(klass->initParams[i], currentArgs[i]);
+                }
+                
+                if (klass->parent) {
+                    methodEnv->define("super", Value::makeSuper(instance, klass->parent));
+                }
+                
+                std::shared_ptr<Environment> previousEnv = currentEnv;
+                currentEnv = methodEnv;
+                callStack.push_back({klass->name + ".init", filename, line});
+                
+                try {
+                    executeBlock(klass->initBody, methodEnv);
+                    callStack.pop_back();
+                } catch (const ReturnException&) {
+                    callStack.pop_back();
+                } catch (...) {
+                    callStack.pop_back();
+                    currentEnv = previousEnv;
+                    throw;
+                }
+                currentEnv = previousEnv;
+            }
+            return instanceVal;
+        }
+        
+        // Error fallback
+        std::string typeInfo = currentCallee.typeName();
+        if (currentCallee.isString()) {
+            typeInfo += " '" + currentCallee.asString() + "'";
+        }
+        runtimeError("Can only call functions or models (got " + typeInfo + ")", line, filename);
         return Value();
     }
-    
-    if (callee.isClass()) {
-        auto klass = callee.asClass();
-        auto instance = std::make_shared<EZInstance>(klass);
-        Value instanceVal(instance);
-        
-        // Check argument count match for init
-        if (args.size() != klass->initParams.size()) {
-            runtimeError("Expected " + std::to_string(klass->initParams.size()) + 
-                         " arguments for init but got " + std::to_string(args.size()), line, filename);
-        }
-        
-        // Run init method if present
-        if (!klass->initBody.empty()) {
-            auto methodEnv = globalEnv->createChild(); 
-            methodEnv->define("self", instanceVal);
-            
-            // Define params
-            for (size_t i = 0; i < args.size(); i++) {
-                methodEnv->define(klass->initParams[i], args[i]);
-            }
-            
-            if (klass->parent) {
-                methodEnv->define("super", Value::makeSuper(instance, klass->parent));
-            }
-            
-            // Execute init body
-            std::shared_ptr<Environment> previousEnv = currentEnv;
-            currentEnv = methodEnv;
-            
-            // Push frame for init
-            callStack.push_back({klass->name + ".init", filename, line});
-            
-            try {
-                executeBlock(klass->initBody, methodEnv);
-                callStack.pop_back();
-            } catch (const ReturnException&) {
-                // init ignored return
-                callStack.pop_back();
-            } catch (...) {
-                callStack.pop_back();
-                currentEnv = previousEnv;
-                throw;
-            }
-            
-            currentEnv = previousEnv;
-        }
-        
-        return instanceVal;
-    }
-    
-    std::string typeInfo = callee.typeName();
-    if (callee.isString()) {
-        typeInfo += " '" + callee.asString() + "'";
-    }
-    runtimeError("Can only call functions or models (got " + typeInfo + ")", line, filename);
-    return Value(); // Unreachable
 }
 
 void Interpreter::checkNumberOperand(TokenType op, const Value& operand, int line, const std::string& filename) {

@@ -360,6 +360,13 @@ StmtPtr Parser::giveStatement() {
     ExprPtr value = nullptr;
     if (!check(TokenType::NEWLINE) && !check(TokenType::END_OF_FILE) && !check(TokenType::RBRACE)) {
         value = expression();
+        
+        // TCO: Mark tail calls if the expression is a direct call
+        if (value) {
+            if (std::holds_alternative<std::shared_ptr<CallExpr>>(value->variant)) {
+                std::get<std::shared_ptr<CallExpr>>(value->variant)->isTailCall = true;
+            }
+        }
     }
     
     return makeGiveStmt(line, peek().filename, value);

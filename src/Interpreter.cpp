@@ -1278,7 +1278,7 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int lin
     
     // Handle inheritance
     if (!stmt->parentName.empty()) {
-        Value parentVal = globalEnv->get(stmt->parentName, stmt->line);
+        Value parentVal = currentEnv->get(stmt->parentName, stmt->line);
         if (!parentVal.isClass()) {
             runtimeError("Parent '" + stmt->parentName + "' must be a model", stmt->line, filename);
         }
@@ -1297,7 +1297,7 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int lin
         if (member.isMethod) {
             // Method - capture global env as closure (methods are shared)
             Value method = Value::makeFunction(
-                member.name, member.params, std::vector<ExprPtr>{}, member.body, globalEnv
+                member.name, member.params, std::vector<ExprPtr>{}, member.body, currentEnv
             );
             
             if (member.isStatic) {
@@ -1331,7 +1331,7 @@ void Interpreter::visitModelStmt(const std::shared_ptr<ModelStmt>& stmt, int lin
         }
     }
     
-    globalEnv->define(stmt->name, Value(klass));
+    defineGlobal(stmt->name, Value(klass));
 }
 
 void Interpreter::visitInterfaceStmt(const std::shared_ptr<InterfaceStmt>& stmt, int line, const std::string& filename) {

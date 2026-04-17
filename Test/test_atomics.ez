@@ -1,0 +1,28 @@
+use "lib/unittest.ez" as *
+
+describe("Atomic Operations", || {
+    it("should atomically increment variables", || {
+        global_counter = 0
+        
+        # We simulate concurrent access by running multiple tasks
+        # But for simple verification, let's just test the builtin behavior
+        atomic_inc("global_counter")
+        atomic_inc("global_counter")
+        
+        assertEquals(global_counter, 2, "Counter should be 2 after two increments")
+    })
+
+    it("should atomically add values", || {
+        score = 10
+        atomic_add("score", 5)
+        assertEquals(score, 15, "Score should be 15")
+    })
+
+    it("should atomically decrement variables", || {
+        countdown = 10
+        atomic_dec("countdown")
+        assertEquals(countdown, 9, "Countdown should be 9")
+    })
+})
+
+testSummary()

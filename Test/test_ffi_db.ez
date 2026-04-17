@@ -1,11 +1,6 @@
 use "lib/db.ez" as db
 use "lib/unittest.ez" as *
 
-out "DEBUG: db object type: " + typeOf(db)
-when (type(db) == "dictionary") {
-    out "DEBUG: db keys: " + keys(db)
-}
-
 describe("Database (Native FFI)", || {
     it("should create and query a table", || {
         conn = db.Database("test_ffi.db")

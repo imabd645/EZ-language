@@ -59,9 +59,13 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             if (!args[0].isString()) { interp.runtimeError("atomic_inc() expects variable name", 0, ""); return Value(); }
             std::string name = args[0].asString();
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
+            auto env = interp.getCurrentEnv();
             Value val = env->get(name, 0);
-            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) + 1;
+            long long current_val = 0;
+            if (val.isInteger()) current_val = val.asInteger();
+            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
+            
+            long long new_val = current_val + 1;
             env->assign(name, Value(new_val));
             return Value(new_val);
         }));
@@ -72,9 +76,13 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             if (!args[0].isString()) { interp.runtimeError("atomic_dec() expects variable name", 0, ""); return Value(); }
             std::string name = args[0].asString();
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
+            auto env = interp.getCurrentEnv();
             Value val = env->get(name, 0);
-            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) - 1;
+            long long current_val = 0;
+            if (val.isInteger()) current_val = val.asInteger();
+            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
+            
+            long long new_val = current_val - 1;
             env->assign(name, Value(new_val));
             return Value(new_val);
         }));
@@ -85,11 +93,15 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             if (!args[0].isString()) { interp.runtimeError("atomic_add() expects variable name", 0, ""); return Value(); }
             if (!args[1].isNumber() && !args[1].isInteger()) { interp.runtimeError("atomic_add() expects number amount", 0, ""); return Value(); }
             std::string name = args[0].asString();
-            long long amount = args[1].isInteger() ? args[1].asInteger() : (long long)args[1].asNumber();
+            long long amount = args[1].isInteger() ? args[1].asInteger() : static_cast<long long>(args[1].asFloat());
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
+            auto env = interp.getCurrentEnv();
             Value val = env->get(name, 0);
-            long long new_val = (val.isInteger() ? val.asInteger() : (long long)val.asNumber()) + amount;
+            long long current_val = 0;
+            if (val.isInteger()) current_val = val.asInteger();
+            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
+            
+            long long new_val = current_val + amount;
             env->assign(name, Value(new_val));
             return Value(new_val);
         }));

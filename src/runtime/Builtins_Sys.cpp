@@ -164,6 +164,99 @@ void registerSysBuiltins(Interpreter& interp) {
 #endif
         }));
 
+    interp.defineGlobal("os_memcpy", Value::makeNativeFunction("os_memcpy", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            void* dst = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            void* src = reinterpret_cast<void*>((uintptr_t)args[1].asNumber());
+            size_t size = (size_t)args[2].asNumber();
+            if (dst && src && size > 0) memcpy(dst, src, size);
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_buffer_from_ptr", Value::makeNativeFunction("os_buffer_from_ptr", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value();
+            uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t size = (size_t)args[1].asNumber();
+            if (!ptr || size == 0) return Value(makeGCBuffer(0));
+            std::vector<uint8_t> buf(ptr, ptr + size);
+            return Value(makeGCBuffer(buf));
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_buffer_to_ptr", Value::makeNativeFunction("os_buffer_to_ptr", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isBuffer() || !args[1].isNumber()) return Value();
+            const std::vector<uint8_t>& buf = args[0].asBuffer();
+            uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[1].asNumber());
+            if (ptr && !buf.empty()) memcpy(ptr, buf.data(), buf.size());
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_double", Value::makeNativeFunction("os_read_double", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            double val = *(double*)(base + offset);
+            return Value(val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_double", Value::makeNativeFunction("os_write_double", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(double*)(base + offset) = args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_float", Value::makeNativeFunction("os_read_float", 2,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            float val = *(float*)(base + offset);
+            return Value((double)val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_float", Value::makeNativeFunction("os_write_float", 3,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(float*)(base + offset) = (float)args[2].asNumber();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
     interp.defineGlobal("os_read_uint64", Value::makeNativeFunction("os_read_uint64", 2,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
@@ -389,6 +482,78 @@ void registerSysBuiltins(Interpreter& interp) {
                 else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
                 else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
                 else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+            }
+            
+            if (retType == "int" || retType == "ptr") return Value((double)ret);
+            if (retType == "string") {
+                const char* str = reinterpret_cast<const char*>(ret);
+                if (str) return Value(std::string(str));
+                return Value("");
+            }
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_call_sig", Value::makeNativeFunction("os_call_sig", -1,
+        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (args.size() < 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isString()) return Value();
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            if (!funcPtr) return Value();
+            
+            std::string retType = args[1].asString();
+            std::string sig = args[2].asString();
+            
+            intptr_t iArgs[4] = {0};
+            double fArgs[4] = {0.0};
+            
+            for (size_t i = 0; i < sig.length() && i < 4; i++) {
+                if (3 + i < args.size()) {
+                    if (args[3+i].isNumber()) { iArgs[i] = static_cast<intptr_t>(args[3+i].asNumber()); fArgs[i] = args[3+i].asNumber(); }
+                    else if (args[3+i].isString()) iArgs[i] = reinterpret_cast<intptr_t>(args[3+i].asString().c_str());
+                    else if (args[3+i].isBuffer()) iArgs[i] = reinterpret_cast<intptr_t>(args[3+i].asBuffer().data());
+                    else if (args[3+i].isBool()) iArgs[i] = args[3+i].asBool() ? 1 : 0;
+                }
+            }
+
+            intptr_t ret = 0;
+
+            if (sig == "i") {
+                ret = ((intptr_t(*)(intptr_t))funcPtr)(iArgs[0]);
+            } else if (sig == "f") {
+                ret = ((intptr_t(*)(double))funcPtr)(fArgs[0]);
+            } else if (sig == "ii") {
+                ret = ((intptr_t(*)(intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1]);
+            } else if (sig == "if") {
+                ret = ((intptr_t(*)(intptr_t, double))funcPtr)(iArgs[0], fArgs[1]);
+            } else if (sig == "fi") {
+                ret = ((intptr_t(*)(double, intptr_t))funcPtr)(fArgs[0], iArgs[1]);
+            } else if (sig == "ff") {
+                ret = ((intptr_t(*)(double, double))funcPtr)(fArgs[0], fArgs[1]);
+            } else if (sig == "iii") {
+                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2]);
+            } else if (sig == "iif") {
+                ret = ((intptr_t(*)(intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], fArgs[2]);
+            } else if (sig == "ifi") {
+                ret = ((intptr_t(*)(intptr_t, double, intptr_t))funcPtr)(iArgs[0], fArgs[1], iArgs[2]);
+            } else if (sig == "iff") {
+                ret = ((intptr_t(*)(intptr_t, double, double))funcPtr)(iArgs[0], fArgs[1], fArgs[2]);
+            } else if (sig == "fii") {
+                ret = ((intptr_t(*)(double, intptr_t, intptr_t))funcPtr)(fArgs[0], iArgs[1], iArgs[2]);
+            } else if (sig == "fif") {
+                ret = ((intptr_t(*)(double, intptr_t, double))funcPtr)(fArgs[0], iArgs[1], fArgs[2]);
+            } else if (sig == "ffi") {
+                ret = ((intptr_t(*)(double, double, intptr_t))funcPtr)(fArgs[0], fArgs[1], iArgs[2]);
+            } else if (sig == "fff") {
+                ret = ((intptr_t(*)(double, double, double))funcPtr)(fArgs[0], fArgs[1], fArgs[2]);
+            } else if (sig == "iiii") {
+                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]);
+            } else if (sig == "iiif") {
+                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]);
+            } else {
+                 return Value(); 
             }
             
             if (retType == "int" || retType == "ptr") return Value((double)ret);

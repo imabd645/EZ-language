@@ -133,6 +133,14 @@ StmtPtr Parser::declaration() {
 }
 
 StmtPtr Parser::statement() {
+    if (match(TokenType::ASYNC)) {
+        if (check(TokenType::TASK)) {
+            advance(); // consume TASK
+            return taskStatement(true);
+        }
+        current--; // Backtrack for expression usage
+    }
+
     if (match(TokenType::INTERFACE)) return interfaceStatement();
     if (match(TokenType::OUT)) return outStatement();
     if (match(TokenType::WHEN)) return whenStatement();
@@ -140,7 +148,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::REPEAT)) return repeatStatement();
     if (match(TokenType::GET)) return getStatement();
     if (match(TokenType::STATIC)) return staticStatement();
-    if (match(TokenType::TASK)) return taskStatement();
+    if (match(TokenType::TASK)) return taskStatement(false);
     if (match(TokenType::GIVE)) return giveStatement();
     if (match(TokenType::ESCAPE)) return escapeStatement();
     if (match(TokenType::SKIP)) return skipStatement();
@@ -285,7 +293,7 @@ StmtPtr Parser::getStatement() {
     return makeGetStmt(line, varToken.filename, varName, iterable, body);
 }
 
-StmtPtr Parser::taskStatement() {
+StmtPtr Parser::taskStatement(bool isAsync) {
     int line = previous().line;
     
     // Allow any token as function name (for operator overloading)
@@ -351,7 +359,7 @@ StmtPtr Parser::taskStatement() {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic);
+    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic, isAsync);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -702,6 +710,33 @@ ExprPtr Parser::unary() {
         Token op = previous();
         ExprPtr right = unary();
         return makeUnaryExpr(op.line, op.filename, op.type, right);
+    }
+    
+    if (match(TokenType::AWAIT)) {
+        Token op = previous();
+        ExprPtr right = unary();
+        return makeAwaitExpr(op.line, op.filename, right);
+    }
+
+    if (match(TokenType::ASYNC)) {
+        Token op = previous();
+        // Special case: async { body } -> anonymous task/spawn
+        if (check(TokenType::LBRACE)) {
+            consume(TokenType::LBRACE, "Expected '{'");
+            skipNewlines();
+            std::vector<StmtPtr> body;
+            while (!check(TokenType::RBRACE) && !isAtEnd()) {
+                auto stmt = declaration();
+                if (stmt) body.push_back(stmt);
+                skipNewlines();
+            }
+            consume(TokenType::RBRACE, "Expected '}' after async block");
+            ExprPtr lambda = makeLambdaExpr(op.line, op.filename, {}, body);
+            return makeAsyncExpr(op.line, op.filename, lambda);
+        }
+        
+        ExprPtr right = unary();
+        return makeAsyncExpr(op.line, op.filename, right);
     }
     
     return call();

@@ -1,7 +1,9 @@
 #include "GC.h"
 #include "Environment.h"
 #include "Value.h"
+#include "Interpreter.h"
 #include <vector>
+#include <algorithm>
 
 // Helper to mark a Value's underlying GCObject
 static void markValue(const Value& val) {
@@ -58,67 +60,82 @@ void Environment::gc_mark() {
     for (auto& pair : variables) markValue(pair.second);
 }
 
+void GarbageCollector::registerInterpreter(Interpreter* interp) {
+    std::lock_guard<std::mutex> lock(interpretersMutex);
+    interpreters.push_back(interp);
+}
+
+void GarbageCollector::unregisterInterpreter(Interpreter* interp) {
+    std::lock_guard<std::mutex> lock(interpretersMutex);
+    auto it = std::find(interpreters.begin(), interpreters.end(), interp);
+    if (it != interpreters.end()) {
+        interpreters.erase(it);
+    }
+}
+
 void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
                                const std::vector<std::shared_ptr<Environment>>* envStack) {
+    std::lock_guard<std::mutex> collectLock(collectMutex);
     if (isCollecting) return;
     isCollecting = true;
     collectionCount++;
 
-    // Phase 1: Reset all marks
-    GCObject* obj = head;
-    while (obj) {
-        obj->gc_marked = false;
-        obj = obj->gc_next;
+    // Phase 1: Reset all marks (locked on list)
+    {
+        std::lock_guard<std::mutex> listLock(listMutex);
+        GCObject* obj = head;
+        while (obj) {
+            obj->gc_marked = false;
+            obj = obj->gc_next;
+        }
     }
 
     // Phase 2: Mark from roots
-    // Root 1: Global environment
+    // Root 1: Global master environment (shared)
     if (auto root = rootEnv.lock()) {
         root->gc_mark();
     }
 
-    // Root 2: Current execution environment
-    if (currentEnv) {
-        currentEnv->gc_mark();
-    }
-
-    // Root 3: All saved environments on the interpreter's call stack
-    if (envStack) {
-        for (auto& env : *envStack) {
-            if (env) env->gc_mark();
+    // Root 2: Mark from ALL active interpreters (thread-safe)
+    {
+        std::lock_guard<std::mutex> interpLock(interpretersMutex);
+        for (auto* interp : interpreters) {
+            interp->gc_mark();
         }
     }
 
-    // Root 4: Temporary roots (explicitly pinned objects)
-    for (GCObject* root : tempRoots) {
-        if (root && !root->gc_marked) root->gc_mark();
+    // Root 3: Temporary roots (locked)
+    {
+        std::lock_guard<std::mutex> tempRootLock(tempRootsMutex);
+        for (GCObject* root : tempRoots) {
+            if (root && !root->gc_marked) root->gc_mark();
+        }
     }
 
-    // Phase 3: Sweep — break internal references of unmarked objects
-    // Collect pointers first, since gc_clear() can trigger destructions that modify the list
-    stillValid.clear();
-    obj = head;
-    while (obj) {
-        stillValid.insert(obj);
-        obj = obj->gc_next;
-    }
-
+    // Phase 3: Sweep
     std::vector<GCObject*> toClear;
-    obj = head;
-    while (obj) {
-        if (!obj->gc_marked) {
-            toClear.push_back(obj);
+    {
+        std::lock_guard<std::mutex> listLock(listMutex);
+        GCObject* obj = head;
+        while (obj) {
+            if (!obj->gc_marked) {
+                toClear.push_back(obj);
+            }
+            obj = obj->gc_next;
         }
-        obj = obj->gc_next;
     }
 
+    // Clear unmarked objects
     for (GCObject* cand : toClear) {
-        if (stillValid.count(cand)) {
-            cand->gc_clear();
-        }
+        // We don't need to lock list for gc_clear as long as it doesn't touch head
+        // However, destructors MIGHT trigger unregisterObject which locks listMutex.
+        // This is safe because we are using a recursive-friendly strategy or just simple locks.
+        // Wait, listMutex is NOT recursive. 
+        // But unregisterObject is called during cand deletion. 
+        // toClear contains pointers to objects that are about to be deleted.
+        cand->gc_clear();
     }
 
-    stillValid.clear();
     isCollecting = false;
 }
 

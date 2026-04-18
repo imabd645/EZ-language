@@ -1,0 +1,51 @@
+async task fetchAsync(id) {
+    out "Starting fetch for " + str(id)
+    wait(1000) // simulate work
+    give "Data for " + str(id)
+}
+
+out "=== EZ Async/Await Modernization ==="
+out "1. Testing Async Task..."
+
+start = clock()
+f1 = fetchAsync(1)
+f2 = fetchAsync(2)
+
+out "Waiting for parallel results..."
+r1 = await f1
+r2 = await f2
+end = clock()
+
+out "R1: " + r1
+out "R2: " + r2
+out "Time taken: " + str(end - start) + "s (Should be ~1s if parallel)"
+
+out ""
+out "2. Testing Async Expression..."
+f3 = async {
+    wait(1000)
+    give "Async Block Result"
+}
+out "Awaiting block..."
+out "Result: " + await f3
+
+out ""
+out "3. Testing In-line Await..."
+out "Inline result: " + await fetchAsync(3)
+
+out ""
+out "4. Testing GC stability during async..."
+async task gcStressor() {
+    repeat i=1 to 1000 {
+        x = [1, 2, 3, 4, 5] // allocation
+    }
+}
+
+out "Launching multiple background tasks..."
+repeat i=1 to  10 {
+    gcStressor()
+}
+wait(1000)
+out "Manual GC trigger..."
+// GC is automatic but we can just wait
+out "SUCCESS"

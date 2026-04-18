@@ -38,6 +38,7 @@ class Interpreter {
 public:
     Interpreter();
     explicit Interpreter(std::shared_ptr<Environment> startEnv);
+    ~Interpreter();
     
     void interpret(const std::vector<StmtPtr>& statements);
     void runtimeError(const std::string& message, int line, const std::string& filename);
@@ -65,7 +66,11 @@ public:
     // Print current stack trace
     void printStackTrace() const;
     
+    // GC support
+    void gc_mark();
+    
 private:
+    friend class GarbageCollector;
     std::shared_ptr<Environment> globalEnv;
     std::shared_ptr<Environment> currentEnv;
     std::vector<CallFrame> callStack;
@@ -96,6 +101,8 @@ private:
     Value visitNew(const std::shared_ptr<NewExpr>& expr, int line, const std::string& filename);
     Value visitSet(const std::shared_ptr<SetExpr>& expr, int line, const std::string& filename);
     Value visitDictionary(const std::shared_ptr<DictionaryExpr>& expr, int line, const std::string& filename);
+    Value visitAwait(const std::shared_ptr<AwaitExpr>& expr, int line, const std::string& filename);
+    Value visitAsync(const std::shared_ptr<AsyncExpr>& expr, int line, const std::string& filename);
     
     // Statement execution
     void visitExprStmt(const std::shared_ptr<ExprStmt>& stmt);

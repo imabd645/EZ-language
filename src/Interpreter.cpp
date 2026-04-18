@@ -33,7 +33,8 @@ public:
 Interpreter::Interpreter() {
     globalEnv = std::make_shared<Environment>();
     currentEnv = globalEnv;
-    GarbageCollector::instance().setRoot(globalEnv);
+    
+    GarbageCollector::instance().registerInterpreter(this);
     
     // Seed random number generator
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -44,8 +45,12 @@ Interpreter::Interpreter() {
 Interpreter::Interpreter(std::shared_ptr<Environment> startEnv) {
     globalEnv = startEnv;
     currentEnv = globalEnv; // Start execution in this environment
-    GarbageCollector::instance().setRoot(globalEnv);
+    GarbageCollector::instance().registerInterpreter(this);
     // Skip initBuiltins() and srand()
+}
+
+Interpreter::~Interpreter() {
+    GarbageCollector::instance().unregisterInterpreter(this);
 }
 
 #include "Builtins.h"
@@ -156,8 +161,9 @@ EZFunction::EZFunction(const std::string& name,
                        const std::vector<ExprPtr>& defaultValues,
                        const std::vector<StmtPtr>& body,
                        std::shared_ptr<Environment> closure,
-                       bool variadic)
-    : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure), isVariadic(variadic) {
+                       bool variadic,
+                       bool async)
+    : name(name), params(params), defaultValues(defaultValues), body(body), closure(closure), isVariadic(variadic), isAsync(async) {
     staticEnv = std::make_shared<Environment>(closure, true); // Important: set isStatic = true
 }
 
@@ -235,6 +241,10 @@ Value Interpreter::evaluate(const ExprPtr& expr) {
             return Value();
         } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
             return visitTernary(arg, line, filename);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) {
+            return visitAwait(arg, line, filename);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<AsyncExpr>>) {
+            return visitAsync(arg, line, filename);
         }
         
         return Value();
@@ -867,7 +877,7 @@ void Interpreter::visitGetStmt(const std::shared_ptr<GetStmt>& stmt, int line, c
 }
 
 void Interpreter::visitTaskStmt(const std::shared_ptr<TaskStmt>& stmt, int line, const std::string& filename) {
-    auto func = std::make_shared<EZFunction>(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv, stmt->isVariadic);
+    auto func = std::make_shared<EZFunction>(stmt->name, stmt->params, stmt->defaultValues, stmt->body, currentEnv, stmt->isVariadic, stmt->isAsync);
     Value function(func);
     currentEnv->define(stmt->name, function);
 }
@@ -921,6 +931,21 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
     struct DepthGuard { int& d; ~DepthGuard() { d--; } } depthGuard{callDepth};
 
     while (true) {
+        if (currentCallee.isFunction()) {
+            auto func = currentCallee.asFunction();
+            // Handle auto-spawn for async tasks
+            // Only spawn if we are not already in an async execution context to avoid infinite recursion
+            if (func->isAsync && filename != "async_internal") {
+                std::vector<Value> capturedArgs = currentArgs;
+                std::shared_future<Value> fut = std::async(std::launch::async, 
+                    [func, capturedArgs]() -> Value {
+                        Interpreter threadInterp;
+                        return threadInterp.callFunction(Value(func), capturedArgs, 0, "async_internal");
+                    }).share();
+                return Value::makeFuture(fut);
+            }
+        }
+
         if (currentCallee.isNativeFunction()) {
             auto nativeFn = currentCallee.asNativeFunction();
             if (nativeFn->arity != -1 && static_cast<int>(currentArgs.size()) != nativeFn->arity) {
@@ -1711,6 +1736,39 @@ Value Interpreter::lookupAndCallBinaryOperator(const Value& left, const Value& r
     return Value();
 }
 
+Value Interpreter::visitAwait(const std::shared_ptr<AwaitExpr>& expr, int line, const std::string& filename) {
+    Value val = evaluate(expr->expression);
+    if (!val.isFuture()) {
+        return val;
+    }
+    auto fut = val.asFuture();
+    // We must NOT wait on the same thread if it's the main thread? 
+    // std::shared_future::get() is blocking, which is what we want for 'await'.
+    try {
+        return fut->get();
+    } catch (const std::exception& e) {
+        runtimeError("Exception in async task: " + std::string(e.what()), line, filename);
+        return Value();
+    }
+}
+
+Value Interpreter::visitAsync(const std::shared_ptr<AsyncExpr>& expr, int line, const std::string& filename) {
+    Value callee = evaluate(expr->expression);
+    
+    std::vector<Value> args; // No args for simple 'async expr' unless it's a direct call, but that's handled by visitCall
+    
+    std::shared_future<Value> fut = std::async(std::launch::async, 
+        [callee]() -> Value {
+            Interpreter threadInterp;
+            if (callee.isCallable()) {
+                return threadInterp.callFunction(callee, {}, 0, "async_internal");
+            }
+            return callee;
+        }).share();
+    
+    return Value::makeFuture(fut);
+}
+
 Value Interpreter::lookupAndCallUnaryOperator(const Value& operand, const std::string& op, int line, const std::string& filename, bool& handled) {
     handled = false;
     if (!operand.isInstance()) return Value();
@@ -1739,4 +1797,11 @@ Value Interpreter::lookupAndCallUnaryOperator(const Value& operand, const std::s
     }
     
     return Value();
+}
+void Interpreter::gc_mark() {
+    if (globalEnv) globalEnv->gc_mark();
+    if (currentEnv) currentEnv->gc_mark();
+    for (auto& env : envStack) {
+        if (env) env->gc_mark();
+    }
 }

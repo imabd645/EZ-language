@@ -54,13 +54,15 @@ struct EZFunction : public GCObject {
     std::shared_ptr<Environment> closure;
     std::shared_ptr<Environment> staticEnv;
     bool isVariadic;
+    bool isAsync = false;
     
     EZFunction(const std::string& name, 
                const std::vector<std::string>& params,
                const std::vector<ExprPtr>& defaultValues,
                const std::vector<StmtPtr>& body,
                std::shared_ptr<Environment> closure,
-               bool variadic = false);
+               bool variadic = false,
+               bool async = false);
 
     void gc_mark() override;
     void gc_clear() override { closure = nullptr; staticEnv = nullptr; }

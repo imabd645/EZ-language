@@ -5,8 +5,12 @@
 #include <unordered_set>
 #include <memory>
 #include <atomic>
+#include <mutex>
+#include <vector>
 #include "Value.h"
 #include "GCObject.h"
+
+class Interpreter;
 
 // Simple cycle-detecting garbage collector
 class GarbageCollector {
@@ -18,12 +22,14 @@ public:
     
     // Tracking list management
     void registerObject(GCObject* obj) {
+        std::lock_guard<std::mutex> lock(listMutex);
         obj->gc_next = head;
         if (head) head->gc_prev = obj;
         head = obj;
     }
     
     void unregisterObject(GCObject* obj) {
+        std::lock_guard<std::mutex> lock(listMutex);
         if (obj->gc_prev) obj->gc_prev->gc_next = obj->gc_next;
         if (obj->gc_next) obj->gc_next->gc_prev = obj->gc_prev;
         if (obj == head) head = obj->gc_next;
@@ -32,6 +38,10 @@ public:
             stillValid.erase(obj);
         }
     }
+
+    // Interpreter Registry for thread-safe root marking
+    void registerInterpreter(Interpreter* interp);
+    void unregisterInterpreter(Interpreter* interp);
     
     // Track an allocation - registration is handled by GCObject constructor
     template<typename T>
@@ -45,10 +55,12 @@ public:
     }
     
     void addTemporaryRoot(GCObject* obj) {
+        std::lock_guard<std::mutex> lock(tempRootsMutex);
         tempRoots.insert(obj);
     }
     
     void removeTemporaryRoot(GCObject* obj) {
+        std::lock_guard<std::mutex> lock(tempRootsMutex);
         tempRoots.erase(obj);
     }
     
@@ -82,6 +94,13 @@ private:
     std::weak_ptr<Environment> rootEnv;
     std::unordered_set<GCObject*> tempRoots;
     std::unordered_set<GCObject*> stillValid;
+    
+    std::vector<Interpreter*> interpreters;
+    std::mutex listMutex;
+    std::mutex interpretersMutex;
+    std::mutex collectMutex;
+    std::mutex tempRootsMutex;
+
     bool isCollecting = false;
     
     std::atomic<size_t> allocCount{0};

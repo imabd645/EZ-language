@@ -1,0 +1,29 @@
+// Test dictionary fragility
+dict = {"a": 1, "b": 2}
+
+out "1. Accessing existing key 'a':"
+out dict["a"]
+
+out "\n2. Accessing missing key 'c':"
+val = dict["c"]
+out "Value: " + str(val)
+
+out "\n3. Accessing missing property .d:"
+prop = dict.d
+out "Property: " + str(prop)
+
+out "\n4. Testing native methods:"
+out "dict.get('a', 0): " + str(dict.get("a", 0))
+out "dict.get('c', 100): " + str(dict.get("c", 100))
+out "dict.has('a'): " + str(dict.has("a"))
+out "dict.has('c'): " + str(dict.has("c"))
+out "dict.keys(): " + str(dict.keys())
+out "dict.values(): " + str(dict.values())
+
+out "\n5. Testing nil behavior:"
+try {
+    x = nil + 1
+    out "Success adding to nil (unexpected)"
+} catch e {
+    out "Caught expected error adding to nil: " + str(e)
+}

@@ -1290,6 +1290,41 @@ Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>
     } else if (object.isString() && expr->property == "len") {
         return Value(static_cast<double>(object.asString().length()));
     } else if (object.isDictionary()) {
+        if (expr->property == "get") {
+            return Value::makeNativeFunction("get", -1, [object](Interpreter& interp, const std::vector<Value>& args) -> Value {
+                if (args.empty()) return Value();
+                std::string key = args[0].toString();
+                const auto& map = object.asDictionary().map;
+                auto it = map.find(key);
+                if (it != map.end()) return it->second;
+                if (args.size() > 1) return args[1]; // Return default
+                return Value();
+            });
+        }
+        if (expr->property == "has") {
+            return Value::makeNativeFunction("has", 1, [object](Interpreter& interp, const std::vector<Value>& args) -> Value {
+                std::string key = args[0].toString();
+                const auto& map = object.asDictionary().map;
+                return Value(map.find(key) != map.end());
+            });
+        }
+        if (expr->property == "keys") {
+            return Value::makeNativeFunction("keys", 0, [object](Interpreter& interp, const std::vector<Value>& args) -> Value {
+                const auto& map = object.asDictionary().map;
+                std::vector<Value> keys;
+                for (const auto& kv : map) keys.push_back(Value(kv.first));
+                return Value::makeArray(keys);
+            });
+        }
+        if (expr->property == "values") {
+            return Value::makeNativeFunction("values", 0, [object](Interpreter& interp, const std::vector<Value>& args) -> Value {
+                const auto& map = object.asDictionary().map;
+                std::vector<Value> vals;
+                for (const auto& kv : map) vals.push_back(kv.second);
+                return Value::makeArray(vals);
+            });
+        }
+
         auto& map = object.asDictionary().map;
         auto it = map.find(expr->property);
         if (it != map.end()) return it->second;

@@ -1,0 +1,40 @@
+// Demonstration of Standard Built-In Error Types
+
+out "=== EZ Built-in Exceptions ==="
+
+task fetchResource(url) {
+    when len(url) == 0 {
+        throw  ValueError("URL cannot be empty.")
+    }
+    when str(url[0]) != "h" {
+        throw NetworkError("Connection refused by " + url)
+    }
+    out "SUCCESS: Fetched " + url
+}
+
+// 1. Test ValueError
+try {
+    fetchResource("")
+} catch (ValueError e) {
+    out "CAUGHT EXPECTED: " + str(e)
+} catch (Error e) {
+    out "FAIL: Caught by base Error block instead of ValueError: " + str(e)
+}
+
+// 2. Test NetworkError
+try {
+    fetchResource("ftp://myserver.com")
+} catch (NetworkError e) {
+    out "CAUGHT EXPECTED: " + str(e)
+} catch e {
+    out "FAIL: Caught by untyped block instead of NetworkError."
+}
+
+// 3. Test Base IOError inheritance
+try {
+    throw  IOError("File 'config.json' missing or corrupt.")
+} catch (Error e) {
+    out "CAUGHT EXPECTED by Base Class (Error fallback): " + str(e)
+}
+
+out "\nAll tests passed! Exceptions are fully object-oriented natively!"

@@ -77,6 +77,45 @@ void Interpreter::initBuiltins() {
             }
             return Value();
         }));
+
+    // Inject system-level Error classes using C++ AST construction
+    auto defineError = [&](const std::string& name, const std::string& parent) {
+        std::vector<std::string> params = {"message"};
+        std::vector<StmtPtr> body;
+        
+        // self.message = message
+        body.push_back(makeExprStmt(0, "", makeSetExpr(0, "", makeSelfExpr(0, ""), "message", makeIdentifierExpr(0, "", "message"))));
+        // self.name = name
+        body.push_back(makeExprStmt(0, "", makeSetExpr(0, "", makeSelfExpr(0, ""), "name", makeLiteralExpr(0, "", name))));
+        
+        std::vector<ModelMember> members;
+        // task toString() { give self.name + ": " + str(self.message) }
+        std::vector<StmtPtr> tsBody;
+        auto tsExpr = makeBinaryExpr(0, "", 
+            makeBinaryExpr(0, "", makePropertyAccessExpr(0, "", makeSelfExpr(0, ""), "name"), TokenType::PLUS, makeLiteralExpr(0, "", std::string(": "))),
+            TokenType::PLUS,
+            makeCallExpr(0, "", makeIdentifierExpr(0, "", "str"), {makePropertyAccessExpr(0, "", makeSelfExpr(0, ""), "message")})
+        );
+        tsBody.push_back(makeGiveStmt(0, "", tsExpr));
+        
+        ModelMember m;
+        m.name = "toString";
+        m.isMethod = true;
+        m.visibility = MemberVisibility::PUBLIC;
+        m.params = {};
+        m.body = tsBody;
+        members.push_back(m);
+
+        auto stmt = makeModelStmt(0, "<system>", name, parent, {}, params, body, members);
+        this->execute(stmt);
+    };
+
+    defineError("Error", "");
+    defineError("TypeError", "Error");
+    defineError("ValueError", "Error");
+    defineError("IndexError", "Error");
+    defineError("IOError", "Error");
+    defineError("NetworkError", "Error");
 }
 
 void Interpreter::defineGlobal(const std::string& name, const Value& value) {
@@ -962,6 +1001,37 @@ Value Interpreter::callFunction(const Value& callee, const std::vector<Value>& a
             }
         }
         
+        if (currentCallee.isClass()) {
+            auto klass = currentCallee.asClass();
+            auto instance = std::make_shared<EZInstance>(klass);
+            Value instanceVal(instance);
+            
+            if (currentArgs.size() != klass->initParams.size()) {
+                runtimeError("Expected " + std::to_string(klass->initParams.size()) + 
+                             " arguments for " + klass->name + " init but got " + std::to_string(currentArgs.size()), line, filename);
+            }
+            
+            if (!klass->initBody.empty()) {
+                auto methodEnv = globalEnv->createChild(); 
+                methodEnv->define("self", instanceVal);
+                for (size_t i = 0; i < currentArgs.size(); i++) {
+                    methodEnv->define(klass->initParams[i], currentArgs[i]);
+                }
+                
+                auto previousEnv = currentEnv;
+                currentEnv = methodEnv;
+                try {
+                    executeBlock(klass->initBody, methodEnv);
+                } catch (const ReturnException&) {
+                } catch (...) {
+                    currentEnv = previousEnv;
+                    throw;
+                }
+                currentEnv = previousEnv;
+            }
+            return instanceVal;
+        }
+        
         if (currentCallee.isSuper()) {
             auto superObj = currentCallee.asSuper();
             auto klass = superObj->parentKlass;
@@ -1107,55 +1177,12 @@ Value Interpreter::visitNew(const std::shared_ptr<NewExpr>& expr, int line, cons
         runtimeError("'" + expr->className + "' is not a model", line, filename);
     }
     
-    auto klass = classVal.asClass();
-    auto instance = std::make_shared<EZInstance>(klass);
-    Value instanceVal(instance);
-    
-    // Evaluate arguments
     std::vector<Value> args;
     for (const auto& arg : expr->arguments) {
         args.push_back(evaluate(arg));
     }
     
-    // Check argument count match for init
-    if (args.size() != klass->initParams.size()) {
-        throw RuntimeError("Expected " + std::to_string(klass->initParams.size()) + 
-                           " arguments for init but got " + std::to_string(args.size()), line);
-    }
-    
-    // Run init method if present
-    if (!klass->initBody.empty()) {
-        auto initEnv = std::make_shared<Environment>(currentEnv); 
-        
-        // Create a method scope with self
-        // Note: we need to link it properly. 
-        // For init, we can just create a child of global (where class sits) or current (instantiation site)?
-        // Init should have access to global scope.
-        auto methodEnv = globalEnv->createChild(); 
-        methodEnv->define("self", instanceVal);
-        
-        // Define params
-        for (size_t i = 0; i < args.size(); i++) {
-            methodEnv->define(klass->initParams[i], args[i]);
-        }
-        
-        // Execute init body
-        std::shared_ptr<Environment> previousEnv = currentEnv;
-        currentEnv = methodEnv;
-        
-        try {
-            executeBlock(klass->initBody, methodEnv);
-        } catch (const ReturnException&) {
-            // init ignored return
-        } catch (...) {
-            currentEnv = previousEnv;
-            throw;
-        }
-        
-        currentEnv = previousEnv;
-    }
-    
-    return instanceVal;
+    return callFunction(classVal, args, line, filename);
 }
 
 Value Interpreter::visitPropertyAccess(const std::shared_ptr<PropertyAccessExpr>& expr, int line, const std::string& filename) {

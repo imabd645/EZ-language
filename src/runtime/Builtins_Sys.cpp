@@ -16,6 +16,25 @@
 #endif
 
 #ifdef _WIN32
+#include <setjmp.h>
+thread_local jmp_buf ffi_env;
+thread_local bool in_ffi = false;
+
+LONG WINAPI FfiExceptionHandler(EXCEPTION_POINTERS *ExceptionInfo) {
+    if (in_ffi && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+        longjmp(ffi_env, 1);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static bool ffi_veh_installed = false;
+static void install_ffi_veh() {
+    if (!ffi_veh_installed) {
+        AddVectoredExceptionHandler(1, FfiExceptionHandler);
+        ffi_veh_installed = true;
+    }
+}
+
 static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Only redirect SENT messages (WM_COMMAND, WM_NOTIFY)
     // Redirect with 0x8000 offset to avoid infinite loop when DispatchMessage calls this proxy
@@ -28,6 +47,9 @@ static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 #endif
 
 void registerSysBuiltins(Interpreter& interp) {
+#ifdef _WIN32
+    install_ffi_veh();
+#endif
     interp.defineGlobal("panic", Value::makeNativeFunction("panic", 1,
         [](Interpreter& interp, const std::vector<Value>& args) -> Value {
             interp.runtimeError(args[0].toString(), 0, "");
@@ -171,7 +193,16 @@ void registerSysBuiltins(Interpreter& interp) {
             void* dst = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
             void* src = reinterpret_cast<void*>((uintptr_t)args[1].asNumber());
             size_t size = (size_t)args[2].asNumber();
-            if (dst && src && size > 0) memcpy(dst, src, size);
+            if (dst && src && size > 0) {
+                in_ffi = true;
+                if (setjmp(ffi_env) == 0) {
+                    memcpy(dst, src, size);
+                    in_ffi = false;
+                } else {
+                    in_ffi = false;
+                    interp.runtimeError("Memory Access Violation: os_memcpy failed to read/write pointer.", 0, "");
+                }
+            }
             return Value();
 #else
             return Value();
@@ -185,8 +216,18 @@ void registerSysBuiltins(Interpreter& interp) {
             uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t size = (size_t)args[1].asNumber();
             if (!ptr || size == 0) return Value(makeGCBuffer(0));
-            std::vector<uint8_t> buf(ptr, ptr + size);
-            return Value(makeGCBuffer(buf));
+            std::vector<uint8_t> buf(size);
+            
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                memcpy(buf.data(), ptr, size);
+                in_ffi = false;
+                return Value(makeGCBuffer(buf));
+            } else {
+                in_ffi = false;
+                interp.runtimeError("Memory Access Violation: os_buffer_from_ptr failed to read pointer.", 0, "");
+                return Value();
+            }
 #else
             return Value();
 #endif
@@ -198,7 +239,16 @@ void registerSysBuiltins(Interpreter& interp) {
             if (!args[0].isBuffer() || !args[1].isNumber()) return Value();
             const std::vector<uint8_t>& buf = args[0].asBuffer();
             uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[1].asNumber());
-            if (ptr && !buf.empty()) memcpy(ptr, buf.data(), buf.size());
+            if (ptr && !buf.empty()) {
+                in_ffi = true;
+                if (setjmp(ffi_env) == 0) {
+                    memcpy(ptr, buf.data(), buf.size());
+                    in_ffi = false;
+                } else {
+                    in_ffi = false;
+                    interp.runtimeError("Memory Access Violation: os_buffer_to_ptr failed to write pointer.", 0, "");
+                }
+            }
             return Value();
 #else
             return Value();
@@ -211,8 +261,17 @@ void registerSysBuiltins(Interpreter& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            double val = *(double*)(base + offset);
-            return Value(val);
+            
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                double val = *(double*)(base + offset);
+                in_ffi = false;
+                return Value(val);
+            } else {
+                in_ffi = false;
+                interp.runtimeError("Memory Access Violation: os_read_double invalid memory boundary.", 0, "");
+                return Value();
+            }
 #else
             return Value(0.0);
 #endif
@@ -224,7 +283,15 @@ void registerSysBuiltins(Interpreter& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(double*)(base + offset) = args[2].asNumber();
+            
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                *(double*)(base + offset) = args[2].asNumber();
+                in_ffi = false;
+            } else {
+                in_ffi = false;
+                interp.runtimeError("Memory Access Violation: os_write_double invalid memory boundary.", 0, "");
+            }
             return Value();
 #else
             return Value();
@@ -237,8 +304,17 @@ void registerSysBuiltins(Interpreter& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            float val = *(float*)(base + offset);
-            return Value((double)val);
+            
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                float val = *(float*)(base + offset);
+                in_ffi = false;
+                return Value((double)val);
+            } else {
+                in_ffi = false;
+                interp.runtimeError("Memory Access Violation: os_read_float invalid memory boundary.", 0, "");
+                return Value();
+            }
 #else
             return Value(0.0);
 #endif
@@ -250,7 +326,15 @@ void registerSysBuiltins(Interpreter& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(float*)(base + offset) = (float)args[2].asNumber();
+            
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                *(float*)(base + offset) = (float)args[2].asNumber();
+                in_ffi = false;
+            } else {
+                in_ffi = false;
+                interp.runtimeError("Memory Access Violation: os_write_float invalid memory boundary.", 0, "");
+            }
             return Value();
 #else
             return Value();
@@ -454,34 +538,43 @@ void registerSysBuiltins(Interpreter& interp) {
             size_t argc = args.size() - 2;
             std::string retType = args[1].asString();
 
-            if (retType == "float") {
-                using fFunc0 = double(*)();
-                using fFunc1 = double(*)(intptr_t);
-                using fFunc2 = double(*)(intptr_t, intptr_t);
-                using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
-                using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                if (retType == "float") {
+                    using fFunc0 = double(*)();
+                    using fFunc1 = double(*)(intptr_t);
+                    using fFunc2 = double(*)(intptr_t, intptr_t);
+                    using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
+                    using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
 
-                if (argc == 0) f_ret = ((fFunc0)funcPtr)();
-                else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
-                else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
-                else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                
-                return Value(f_ret);
+                    if (argc == 0) f_ret = ((fFunc0)funcPtr)();
+                    else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
+                    else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
+                    else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                    else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                    
+                    in_ffi = false;
+                    return Value(f_ret);
+                } else {
+                    if (argc == 0) ret = ((Func0)funcPtr)();
+                    else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
+                    else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
+                    else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                    else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                    else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
+                    else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
+                    else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
+                    else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
+                    else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
+                    else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
+                    else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
+                    else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+                }
+                in_ffi = false;
             } else {
-                if (argc == 0) ret = ((Func0)funcPtr)();
-                else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
-                else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
-                else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
-                else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
-                else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
-                else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
-                else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
-                else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
-                else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
-                else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+                in_ffi = false;
+                interp.runtimeError("FFI Access Violation (Segmentation Fault): Invalid pointer or memory access during native call.", 0, "");
+                return Value();
             }
             
             if (retType == "int" || retType == "ptr") return Value((double)ret);
@@ -520,40 +613,49 @@ void registerSysBuiltins(Interpreter& interp) {
 
             intptr_t ret = 0;
 
-            if (sig == "i") {
-                ret = ((intptr_t(*)(intptr_t))funcPtr)(iArgs[0]);
-            } else if (sig == "f") {
-                ret = ((intptr_t(*)(double))funcPtr)(fArgs[0]);
-            } else if (sig == "ii") {
-                ret = ((intptr_t(*)(intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1]);
-            } else if (sig == "if") {
-                ret = ((intptr_t(*)(intptr_t, double))funcPtr)(iArgs[0], fArgs[1]);
-            } else if (sig == "fi") {
-                ret = ((intptr_t(*)(double, intptr_t))funcPtr)(fArgs[0], iArgs[1]);
-            } else if (sig == "ff") {
-                ret = ((intptr_t(*)(double, double))funcPtr)(fArgs[0], fArgs[1]);
-            } else if (sig == "iii") {
-                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2]);
-            } else if (sig == "iif") {
-                ret = ((intptr_t(*)(intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], fArgs[2]);
-            } else if (sig == "ifi") {
-                ret = ((intptr_t(*)(intptr_t, double, intptr_t))funcPtr)(iArgs[0], fArgs[1], iArgs[2]);
-            } else if (sig == "iff") {
-                ret = ((intptr_t(*)(intptr_t, double, double))funcPtr)(iArgs[0], fArgs[1], fArgs[2]);
-            } else if (sig == "fii") {
-                ret = ((intptr_t(*)(double, intptr_t, intptr_t))funcPtr)(fArgs[0], iArgs[1], iArgs[2]);
-            } else if (sig == "fif") {
-                ret = ((intptr_t(*)(double, intptr_t, double))funcPtr)(fArgs[0], iArgs[1], fArgs[2]);
-            } else if (sig == "ffi") {
-                ret = ((intptr_t(*)(double, double, intptr_t))funcPtr)(fArgs[0], fArgs[1], iArgs[2]);
-            } else if (sig == "fff") {
-                ret = ((intptr_t(*)(double, double, double))funcPtr)(fArgs[0], fArgs[1], fArgs[2]);
-            } else if (sig == "iiii") {
-                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]);
-            } else if (sig == "iiif") {
-                ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]);
+            in_ffi = true;
+            if (setjmp(ffi_env) == 0) {
+                if (sig == "i") {
+                    ret = ((intptr_t(*)(intptr_t))funcPtr)(iArgs[0]);
+                } else if (sig == "f") {
+                    ret = ((intptr_t(*)(double))funcPtr)(fArgs[0]);
+                } else if (sig == "ii") {
+                    ret = ((intptr_t(*)(intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1]);
+                } else if (sig == "if") {
+                    ret = ((intptr_t(*)(intptr_t, double))funcPtr)(iArgs[0], fArgs[1]);
+                } else if (sig == "fi") {
+                    ret = ((intptr_t(*)(double, intptr_t))funcPtr)(fArgs[0], iArgs[1]);
+                } else if (sig == "ff") {
+                    ret = ((intptr_t(*)(double, double))funcPtr)(fArgs[0], fArgs[1]);
+                } else if (sig == "iii") {
+                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2]);
+                } else if (sig == "iif") {
+                    ret = ((intptr_t(*)(intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], fArgs[2]);
+                } else if (sig == "ifi") {
+                    ret = ((intptr_t(*)(intptr_t, double, intptr_t))funcPtr)(iArgs[0], fArgs[1], iArgs[2]);
+                } else if (sig == "iff") {
+                    ret = ((intptr_t(*)(intptr_t, double, double))funcPtr)(iArgs[0], fArgs[1], fArgs[2]);
+                } else if (sig == "fii") {
+                    ret = ((intptr_t(*)(double, intptr_t, intptr_t))funcPtr)(fArgs[0], iArgs[1], iArgs[2]);
+                } else if (sig == "fif") {
+                    ret = ((intptr_t(*)(double, intptr_t, double))funcPtr)(fArgs[0], iArgs[1], fArgs[2]);
+                } else if (sig == "ffi") {
+                    ret = ((intptr_t(*)(double, double, intptr_t))funcPtr)(fArgs[0], fArgs[1], iArgs[2]);
+                } else if (sig == "fff") {
+                    ret = ((intptr_t(*)(double, double, double))funcPtr)(fArgs[0], fArgs[1], fArgs[2]);
+                } else if (sig == "iiii") {
+                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]);
+                } else if (sig == "iiif") {
+                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]);
+                } else {
+                    in_ffi = false;
+                     return Value(); 
+                }
+                in_ffi = false;
             } else {
-                 return Value(); 
+                in_ffi = false;
+                interp.runtimeError("FFI Access Violation (Segmentation Fault): Invalid pointer or memory access during native call.", 0, "");
+                return Value();
             }
             
             if (retType == "int" || retType == "ptr") return Value((double)ret);

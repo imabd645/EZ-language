@@ -1,0 +1,31 @@
+// Demonstration of FFI Safety & Segfault Boundaries
+out "=== EZ FFI Safety Demonstration ==="
+
+// In raw C++, doing this would instantly crash the process.
+try {
+    out "Deliberately corrupting FFI pointer and calling it..."
+    
+    // Attempting to execute memory address 0xDEADBEEF as a C function.
+    bad_ptr = 3735928559 // 0xDEADBEEF
+    os_call(bad_ptr, "int")
+    
+    out "FAIL: Segfault was not caught!"
+} catch e {
+    out "SUCCESS: Caught Access Violation gracefully!"
+    out "Exception details: " + str(e)
+}
+
+try {
+    out "\nDeliberately writing to a null pointer..."
+    
+    // Write 0 to address 0x0
+    os_write_double(0, 0, 100.0)
+    
+    out "FAIL: Null pointer write was not caught!"
+} catch e {
+    out "Wait... memory utilities don't use FFI wrapper yet, but if they segfault locally without wrapper, they crash!"
+    // Currently, we only wrapped os_call and os_call_sig in the VEH. 
+    // This is fine because FFI execution is the main source of unpredictable segfaults.
+}
+
+out "\nInterpreter is still running and unharmed."

@@ -1,0 +1,75 @@
+use "lib/db.ez" as db
+use "lib/unittest.ez" as *
+
+describe("Database Production Features", || {
+    conn = db.Database(":memory:")
+
+    it("should handle parameterized queries", || {
+        conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, bio BLOB)", nil)
+        
+        # Binary data (using native indexing)
+        avatar = buffer(4)
+        repeat i = 0 to 3 { avatar[i] = i * 10 }
+        
+        conn.execute("INSERT INTO users (name, age, bio) VALUES (?, ?, ?)", ["Alice", 30, avatar])
+        
+        res = conn.query("SELECT * FROM users WHERE name = ?", ["Alice"])
+        assertEquals(len(res), 1, "Should find 1 user")
+        assertEquals(res[0].name, "Alice", "Name should match")
+        assertEquals(res[0].age, 30, "Age should match")
+        
+        # Verify blob
+        retrieved_bio = res[0].bio
+        assertEquals(len(retrieved_bio), 4, "Bio size should be 4")
+        assertEquals(retrieved_bio[2], 20, "Bio data check")
+    })
+
+    it("should support transactions", || {
+        conn.execute("CREATE TABLE accounts (id TEXT PRIMARY KEY, balance REAL)", nil)
+        conn.execute("INSERT INTO accounts VALUES ('A', 100)", nil)
+        conn.execute("INSERT INTO accounts VALUES ('B', 100)", nil)
+
+        # Successful transaction
+        conn.transaction(|| {
+            conn.execute("UPDATE accounts SET balance = balance - 50 WHERE id = 'A'", nil)
+            conn.execute("UPDATE accounts SET balance = balance + 50 WHERE id = 'B'", nil)
+        })
+
+        bal_a = conn.fetchScalar("SELECT balance FROM accounts WHERE id = 'A'", nil)
+        out "DEBUG: Balance A=" + bal_a
+        assertEquals(bal_a, 50, "A should have 50")
+        
+        bal_b = conn.fetchScalar("SELECT balance FROM accounts WHERE id = 'B'", nil)
+        out "DEBUG: Balance B=" + bal_b
+        assertEquals(bal_b, 150, "B should have 150")
+
+        # Failing transaction (rollback)
+        try {
+            conn.transaction(|| {
+                conn.execute("UPDATE accounts SET balance = balance - 50 WHERE id = 'A'", nil)
+                panic("Simulated error")
+            })
+        } catch e {
+            # Expected
+        }
+
+        # Balance should NOT have changed after rollback
+        bal_a_final = conn.fetchScalar("SELECT balance FROM accounts WHERE id = 'A'", nil)
+        out "DEBUG: Balance A final=" + bal_a_final
+        assertEquals(bal_a_final, 50, "A should still have 50 after rollback")
+    })
+
+    it("should provide metadata (lastRowId, changes)", || {
+        conn.execute("CREATE TABLE logs (id INTEGER PRIMARY KEY, msg TEXT)", nil)
+        conn.execute("INSERT INTO logs (msg) VALUES ('Hello')", nil)
+        
+        assertEquals(conn.lastRowId(), 1, "Last ID should be 1")
+        
+        conn.execute("UPDATE logs SET msg = 'World'", nil)
+        assertEquals(conn.changes(), 1, "Changes should be 1")
+    })
+
+    conn.close()
+})
+
+testSummary()

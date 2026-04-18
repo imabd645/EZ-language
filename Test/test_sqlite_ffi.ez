@@ -1,0 +1,101 @@
+// Test Suite for SQLite FFI Library
+use "lib/db.ez" as *
+
+out "=== SQLite FFI Test Suite ==="
+
+try {
+    // 1. Connection
+    out "\n1. Testing Database Connection (:memory:)"
+    db = Database(":memory:")
+    out "SUCCESS: Database opened."
+
+    // 2. Execution and DDL
+    out "\n2. Testing Table Creation (DDL)"
+    db.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, salary REAL, active BOOLEAN, data BLOB)", nil)
+    out "SUCCESS: Table 'users' created."
+
+    // 3. Transactions and DML
+    out "\n3. Testing Transactions and Inserts"
+    db.begin()
+    
+    // Test prepared statement binding
+    insertQuery = "INSERT INTO users (name, age, salary, active, data) VALUES (?, ?, ?, ?, ?)"
+    db.execute(insertQuery, ["Alice", 30, 75000.50, true, nil])
+    aliceId = db.lastRowId()
+    out "Inserted Alice, ID: " + str(aliceId)
+    
+    db.execute(insertQuery, ["Bob", 25, 45000.00, false, "blob_data"])
+    bobId = db.lastRowId()
+    out "Inserted Bob, ID: " + str(bobId)
+
+    db.commit()
+    out "SUCCESS: Transaction committed with " + str(db.changes()) + " changes."
+
+    // 4. Querying and Data Type Mapping
+    out "\n4. Testing Queries and Data Types"
+    results = db.query("SELECT * FROM users", nil)
+    
+    when len(results) != 2 {
+        throw "Expected 2 rows, got " + str(len(results))
+    }
+    
+    // Verify Bob's data
+    bob = results[1]
+    when bob["name"] != "Bob" { throw "Name mismatch" }
+    when bob["age"] != 25 { throw "Age mismatch" }
+    when bob["salary"] != 45000.00 { 
+        throw "Salary mismatch. Expected 45000.00, got: " + str(bob["salary"]) + " (type: " + type(bob["salary"]) + ")"
+    }
+    when type(bob["data"]) != "string" { throw "Blob type mismatch (expected string representation of blob)" } 
+    
+    out "SUCCESS: " + str(len(results)) + " rows fetched correctly."
+
+    // 5. Explicit Statement Usage (Cursor)
+    out "\n5. Testing Manual Statement Iteration"
+    stmt = db.prepareStatement("SELECT name FROM users WHERE age > ?")
+    stmt.bind([20])
+    
+    count = 0
+    while stmt.step() {
+        row = stmt.getRow()
+        out " - Found user: " + row["name"]
+        count += 1
+    }
+    stmt.finalize()
+    
+    when count != 2 {
+        throw "Expected 2 users over 20"
+    }
+    out "SUCCESS: Manual cursor iteration worked."
+
+    // 6. Scalar Fetch
+    out "\n6. Testing Scalar Fetch"
+    totalSalary = db.fetchScalar("SELECT SUM(salary) FROM users", nil)
+    out "Total Salary: " + str(totalSalary)
+    when totalSalary != 120000.50 {
+        throw "Expected 120000.50, got " + str(totalSalary)
+    }
+    out "SUCCESS: Scalar fetch worked."
+
+    // 7. Error Handling
+    out "\n7. Testing Error Reporting"
+    caught = false
+    try {
+        db.execute("SELECT * FROM non_existent_table", nil)
+    } catch e {
+        out "Caught expected error: " + str(e)
+        caught = true
+    }
+    
+    when not caught {
+        throw "Failed to catch syntax error exception"
+    }
+    out "SUCCESS: Exceptions work."
+
+    // Close
+    db.close()
+    out "\n=== ALL TESTS PASSED ==="
+} catch e {
+    out "\n!!! TEST FAILED !!!"
+    out str(e)
+}

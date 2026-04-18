@@ -427,8 +427,8 @@ inline std::string Value::typeName() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
         case ValueType::BOOL: return "bool";
-        case ValueType::INTEGER: return "number";
-        case ValueType::NUMBER: return "number";
+        case ValueType::INTEGER: return "integer";
+        case ValueType::NUMBER: return "float";
         case ValueType::STRING: return "string";
         case ValueType::ARRAY: return "array";
         case ValueType::FUNCTION: return "function";
@@ -437,6 +437,8 @@ inline std::string Value::typeName() const {
         case ValueType::INSTANCE: return "instance";
         case ValueType::DICTIONARY: return "dictionary";
         case ValueType::FUTURE: return "future";
+        case ValueType::BUFFER: return "buffer";
+        case ValueType::MUTEX: return "mutex";
         default: return "unknown";
     }
 }

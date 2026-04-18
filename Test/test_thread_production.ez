@@ -1,0 +1,54 @@
+use "thread" as thread
+
+task slowDouble(x) {
+    wait(200) # Simulate work
+    give x * 2
+}
+
+out "=== EZ Production Threading Library Test ==="
+
+# 1. Test parallelMap
+# Mapping 5 items with 200ms delay should take ~200ms if parallel, 1000ms if serial.
+out "Testing parallelMap..."
+items = [1, 2, 3, 4, 5]
+start = clock()
+results = thread.parallelMap(items, slowDouble)
+end = clock()
+
+out "Original: " + str(items)
+out "Results:  " + str(results)
+out "Duration: " + str(end - start) + "ms (Expected ~200-300ms)"
+
+# 2. Test TaskGroup
+out ""
+out "Testing TaskGroup..."
+tg = thread.createGroup()
+
+task taskA(name) { 
+    wait(100)
+    give "Hello " + name 
+}
+task taskB(val) { 
+    wait(100)
+    give val * val 
+}
+
+tg.add(taskA, "Antigravity")
+tg.add(taskB, 10)
+
+groupResults = tg.wait()
+out "Group Results: " + str(groupResults)
+
+# 3. Test Async Lambda with Await
+out ""
+out "Testing Native Async/Await syntax..."
+f = async {
+    wait(300)
+    give "Finished"
+}
+out "Awaiting manual block..."
+res = await f
+out "Result: " + res
+
+out ""
+out "SUCCESS"

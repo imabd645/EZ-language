@@ -1753,9 +1753,25 @@ Value Interpreter::visitAwait(const std::shared_ptr<AwaitExpr>& expr, int line, 
 }
 
 Value Interpreter::visitAsync(const std::shared_ptr<AsyncExpr>& expr, int line, const std::string& filename) {
+    // Check if it's a direct call: async func(args)
+    if (std::holds_alternative<std::shared_ptr<CallExpr>>(expr->expression->variant)) {
+        auto call = std::get<std::shared_ptr<CallExpr>>(expr->expression->variant);
+        Value callee = evaluate(call->callee);
+        std::vector<Value> args;
+        for (const auto& arg : call->arguments) {
+            args.push_back(evaluate(arg));
+        }
+        
+        std::shared_future<Value> fut = std::async(std::launch::async, 
+            [callee, args]() -> Value {
+                Interpreter threadInterp;
+                return threadInterp.callFunction(callee, args, 0, "async_internal");
+            }).share();
+        
+        return Value::makeFuture(fut);
+    }
+
     Value callee = evaluate(expr->expression);
-    
-    std::vector<Value> args; // No args for simple 'async expr' unless it's a direct call, but that's handled by visitCall
     
     std::shared_future<Value> fut = std::async(std::launch::async, 
         [callee]() -> Value {

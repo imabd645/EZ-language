@@ -111,7 +111,8 @@ enum class OpCode : uint8_t {
     IS_INSTANCE_OF,      // Check if instance of class name (string on stack)
     
     // Models / OOP
-    MAKE_CLASS,          // name_idx, method_count: Create a class
+    MAKE_INTERFACE,      // name_idx, method_count: Create an interface
+    MAKE_CLASS,          // name_idx, method_count, interface_count: Create a class
     
     // Debugging
     BREAKPOINT,          // Debugger breakpoint
@@ -124,4 +125,162 @@ enum class OpCode : uint8_t {
 // Instruction encoding helpers
 inline uint8_t opcodeByte(OpCode op) { return static_cast<uint8_t>(op); }
 
+// ============================================================================
+// Constant Pool Entry
+// ============================================================================
+struct Constant {
+    enum class Type {
+        NIL,
+        BOOL,
+        INT,
+        DOUBLE,
+        STRING,
+        FUNCTION,
+        MODEL,
+        ARRAY_CONST  // For array literals
+    };
+    
+    Type type;
+    std::variant<
+        std::nullptr_t,
+        bool,
+        long long,
+        double,
+        std::string,
+        struct FunctionConstant*,
+        struct ModelConstant*,
+        std::vector<size_t>  // For array constant indices
+    > value;
+    
+    // Constructors
+    Constant() : type(Type::NIL), value(nullptr) {}
+    explicit Constant(bool b) : type(Type::BOOL), value(b) {}
+    explicit Constant(long long i) : type(Type::INT), value(i) {}
+    explicit Constant(double d) : type(Type::DOUBLE), value(d) {}
+    explicit Constant(const std::string& s) : type(Type::STRING), value(s) {}
+    explicit Constant(FunctionConstant* f);
+    explicit Constant(ModelConstant* m);
+};
+
+// Function constant (stored in constant pool)
+struct FunctionConstant {
+    std::string name;
+    size_t arity;
+    bool isVariadic;
+    size_t upvalueCount;
+    std::vector<std::string> paramNames;
+    std::vector<Constant> defaultValues; // NIL = no default
+    
+    // Bytecode location (offset in chunk)
+    size_t codeOffset;
+    size_t codeLength;
+    
+    // Local variable info for debugging
+    size_t localCount;
+};
+
+// Model constant
+struct ModelConstant {
+    std::string name;
+    std::string parent;  // Empty if none
+    std::vector<std::string> interfaces;
+    
+    struct Member {
+        std::string name;
+        bool isMethod;
+        bool isStatic;
+        size_t valueIdx;  // Constant index for method/initial value
+    };
+    std::vector<Member> members;
+    
+    // Init function index
+    size_t initFunctionIdx;
+};
+
+// ============================================================================
+// Bytecode Chunk
+// ============================================================================
+struct Chunk {
+    std::vector<uint8_t> code;           // Bytecode instructions
+    std::vector<Constant> constants;     // Constant pool
+    std::vector<Value>    resolvedConstants; // Cached Value versions of constants
+    std::vector<size_t> lines;           // Source line for each bytecode
+    
+    // Helper methods
+    size_t addConstant(const Constant& constant);
+    size_t writeByte(uint8_t byte, size_t line);
+    void writeOp(OpCode op, size_t line);
+    void writeBytes(uint8_t b1, uint8_t b2, size_t line);
+    void writeBytes(uint8_t b1, uint8_t b2, uint8_t b3, size_t line);
+    void writeJump(OpCode op, size_t line);
+    void patchJump(size_t offset);
+    void writeLoop(size_t loopStart, size_t line);
+    
+    // Get constant
+    const Constant& getConstant(size_t idx) const;
+    void resolveConstants();
+    
+    // Disassembly
+    void disassemble(const std::string& name) const;
+    size_t disassembleInstruction(size_t offset) const;
+};
+
+// ============================================================================
+// Local Variable (for compiler)
+// ============================================================================
+struct Local {
+    std::string name;
+    size_t depth;        // Scope depth
+    bool isCaptured;     // Closed over by closure
+    bool isConst;        // Const variable
+    bool isStackResident; // True if it occupies a slot on the execution stack (needs POP)
+};
+
+// ============================================================================
+// Upvalue (for closures)
+// ============================================================================
+struct Upvalue {
+    enum class Type { LOCAL, UPVALUE };
+    Type type;
+    size_t index;        // Local slot or upvalue index
+};
+
+// ============================================================================
+// Bytecode Function (runtime representation)
+// ============================================================================
+struct BytecodeFunction {
+    std::string name;
+    size_t arity;
+    bool isVariadic;
+    Chunk chunk;
+    std::vector<Upvalue> upvalues;
+    size_t upvalueCount;
+    size_t localCount;
+    
+    // Nested compiled functions referenced by CLOSURE opcodes.
+    // CLOSURE operand N → nestedFunctions[N].
+    std::vector<std::shared_ptr<BytecodeFunction>> nestedFunctions;
+
+    // Number of parameters that have default values (rightmost N params).
+    // Used by the VM to compute minArity = arity - defaultParamCount.
+    size_t defaultParamCount;
+
+    BytecodeFunction(const std::string& name, size_t arity)
+        : name(name), arity(arity), isVariadic(false),
+          upvalueCount(0), localCount(0), defaultParamCount(0) {}
+};
+
+using BytecodeFunctionPtr = std::shared_ptr<BytecodeFunction>;
+
+// ============================================================================
+// Compilation Result
+// ============================================================================
+struct CompileResult {
+    bool success;
+    std::string error;
+    BytecodeFunctionPtr mainFunction;  // Entry point
+    std::vector<BytecodeFunctionPtr> functions;  // All functions
+    
+    CompileResult() : success(false) {}
+};
 #endif // BYTECODE_H

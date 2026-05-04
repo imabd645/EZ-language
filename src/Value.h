@@ -52,7 +52,8 @@ enum class ValueType {
     BUFFER,
     MUTEX,
     BOUND_METHOD,
-    CLOSURE_VAL
+    CLOSURE_VAL,
+    INTERFACE
 };
 
 struct Value {
@@ -70,6 +71,7 @@ struct Value {
     using MutexPtr = std::shared_ptr<EZMutex>;
     using BoundMethodPtr = std::shared_ptr<EZBoundMethod>;
     using ClosureValPtr = std::shared_ptr<EZClosure>;
+    using InterfacePtr = std::shared_ptr<struct EZInterface>;
 
     std::variant<
         std::nullptr_t,     // NIL
@@ -88,7 +90,8 @@ struct Value {
         BufferPtr,          // BUFFER
         MutexPtr,           // MUTEX
         BoundMethodPtr,     // BOUND_METHOD
-        ClosureValPtr       // CLOSURE_VAL
+        ClosureValPtr,      // CLOSURE_VAL
+        InterfacePtr        // INTERFACE
     > m_data;
     
     // Constructors
@@ -117,6 +120,7 @@ struct Value {
     Value(BufferPtr val) : m_data(val) {}
     Value(MutexPtr val) : m_data(val) {}
     Value(ClosureValPtr val) : m_data(val) {}
+    Value(InterfacePtr val) : m_data(val) {}
     
     // Type checking
     ValueType type() const {
@@ -136,6 +140,8 @@ struct Value {
         if (std::holds_alternative<BufferPtr>(m_data)) return ValueType::BUFFER;
         if (std::holds_alternative<MutexPtr>(m_data)) return ValueType::MUTEX;
         if (std::holds_alternative<BoundMethodPtr>(m_data)) return ValueType::BOUND_METHOD;
+        if (std::holds_alternative<ClosureValPtr>(m_data)) return ValueType::CLOSURE_VAL;
+        if (std::holds_alternative<InterfacePtr>(m_data)) return ValueType::INTERFACE;
         return ValueType::NIL;
     }
     
@@ -157,6 +163,7 @@ struct Value {
     bool isMutex() const { return std::holds_alternative<MutexPtr>(m_data); }
     bool isBoundMethod() const { return std::holds_alternative<BoundMethodPtr>(m_data); }
     bool isClosure() const { return std::holds_alternative<ClosureValPtr>(m_data); }
+    bool isInterface() const { return std::holds_alternative<InterfacePtr>(m_data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass() || isBoundMethod() || isClosure(); }
     
     // Value extraction
@@ -191,6 +198,7 @@ struct Value {
     DictionaryPtr asDictionaryPtr() const { return std::get<DictionaryPtr>(m_data); }
     FuturePtr asFuture() const { return std::get<FuturePtr>(m_data); }
     SuperPtr asSuper() const { return std::get<SuperPtr>(m_data); }
+    InterfacePtr asInterface() const { return std::get<InterfacePtr>(m_data); }
     BoundMethodPtr asBoundMethod() const { return std::get<BoundMethodPtr>(m_data); }
     ClosureValPtr asClosure() const { return std::get<ClosureValPtr>(m_data); }
     BufferPtr asBufferPtr() const { return std::get<BufferPtr>(m_data); }
@@ -339,6 +347,17 @@ struct EZSuper {
         : instance(instance), parentKlass(parentKlass) {}
 };
 
+struct EZInterface : public GCObject {
+    std::string name;
+    std::vector<std::string> requiredMethods;
+    
+    EZInterface(const std::string& name, const std::vector<std::string>& methods)
+        : name(name), requiredMethods(methods) {}
+        
+    void gc_mark() override {}
+    void gc_clear() override { requiredMethods.clear(); }
+};
+
 struct EZBoundMethod : public GCObject {
     Value receiver;
     Value method;
@@ -423,6 +442,7 @@ inline std::string Value::toString() const {
         case ValueType::FUTURE: return "<future>";
         case ValueType::BOUND_METHOD: return "<bound method>";
         case ValueType::CLOSURE_VAL: return "<function>";
+        case ValueType::INTERFACE: return "<interface " + asInterface()->name + ">";
         default: return "<unknown>";
     }
 }
@@ -446,6 +466,7 @@ inline std::string Value::typeName() const {
         case ValueType::BOUND_METHOD: return "function";
         case ValueType::SUPER: return "super";
         case ValueType::CLOSURE_VAL: return "function";
+        case ValueType::INTERFACE: return "interface";
         default: return "unknown";
     }
 }

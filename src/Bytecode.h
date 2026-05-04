@@ -1,0 +1,127 @@
+#ifndef BYTECODE_H
+#define BYTECODE_H
+
+#include <cstdint>
+#include <vector>
+#include <string>
+#include <variant>
+#include <memory>
+#include "Value.h"
+
+// ============================================================================
+// EZ Bytecode Instruction Set (Stack-based VM)
+// ============================================================================
+
+enum class OpCode : uint8_t {
+    // Constants & Variables
+    LOAD_CONST = 0,      // idx: Load constant from pool
+    LOAD_LOCAL,          // idx: Load local variable
+    STORE_LOCAL,         // idx: Store to local variable
+    LOAD_UPVALUE,        // idx: Load upvalue
+    STORE_UPVALUE,       // idx: Store upvalue
+    LOAD_GLOBAL,         // name_idx: Load global
+    STORE_GLOBAL,        // name_idx: Store global
+    LOAD_PROPERTY,       // name_idx: Load property
+    STORE_PROPERTY,      // name_idx: Store property
+    POP,                 // Pop top of stack
+    DUP,                 // Duplicate top of stack
+    DUP2,                // Duplicate top 2 elements
+    
+    // Constants (inline for common values)
+    LOAD_NIL,            // Push nil
+    LOAD_TRUE,           // Push true
+    LOAD_FALSE,          // Push false
+    LOAD_ZERO,           // Push 0
+    LOAD_ONE,            // Push 1
+    LOAD_EMPTY_STR,      // Push ""
+    
+    // Local variable ops (optimized)
+    INC_LOCAL,           // idx: local[idx]++ (integer fast path)
+    DEC_LOCAL,           // idx: local[idx]-- (integer fast path)
+    
+    // Arithmetic
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+    MOD,
+    POW,
+    NEGATE,
+    
+    // Bitwise
+    BIT_AND,
+    BIT_OR,
+    BIT_XOR,
+    BIT_NOT,
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
+    
+    // Comparisons
+    EQUAL,
+    NOT_EQUAL,
+    LESS,
+    LESS_EQ,
+    GREATER,
+    GREATER_EQ,
+    
+    // Logical
+    NOT,
+    
+    // Control Flow
+    JUMP,                // offset: Unconditional jump
+    JUMP_IF_FALSE,       // offset: Jump if false
+    JUMP_IF_TRUE,        // offset: Jump if true
+    LOOP,                // offset: Jump backward (for loops)
+    
+    // Functions
+    CALL,                // arg_count: Call function
+    TAIL_CALL,           // arg_count: Tail call optimization
+    RETURN,              // Return from function
+    CLOSURE,             // const_idx: Create closure
+    CLOSE_UPVALUE,       // Close upvalues >= idx
+    
+    // Collections
+    MAKE_ARRAY,          // count: Create array from stack values
+    MAKE_DICT,           // count: Create dict from stack pairs
+    INDEX_GET,           // Get arr[idx] or obj[key]
+    INDEX_SET,           // Set arr[idx] = val
+    ARRAY_APPEND,        // [array, val] -> [array] (appends val)
+    ARRAY_EXTEND,        // [array, iterable] -> [array] (extends with iterable)
+    CALL_SPREAD,         // [callee, array] -> Call function with array elements
+    // Models/Objects
+    NEW_INSTANCE,        // const_idx: Create new model instance
+    GET_METHOD,          // name_idx: Get method binding
+    SUPER,               // Pushes Super object
+    SUPER_CALL,          // Call parent method
+    
+    // Iterators
+    GET_ITER,            // Get iterator from iterable
+    ITER_NEXT,           // offset: Next value or jump
+    ITER_HAS_NEXT,       // Check if iterator has more
+    
+    // Exception handling
+    TRY_START,           // catch_offset, finally_offset
+    TRY_END,             // End try block
+    THROW,               // Throw exception
+    
+    // Built-ins
+    PRINT,               // Print top of stack
+    CLOCK,               // Push current time
+    TYPE_OF,             // Push type name
+    IS_INSTANCE_OF,      // Check if instance of class name (string on stack)
+    
+    // Models / OOP
+    MAKE_CLASS,          // name_idx, method_count: Create a class
+    
+    // Debugging
+    BREAKPOINT,          // Debugger breakpoint
+    LINE,                // line_num: Source line info
+    HAS_GLOBAL,          // name_idx: Push true if global exists
+    
+    END = 255            // End of chunk marker
+};
+
+// Instruction encoding helpers
+inline uint8_t opcodeByte(OpCode op) { return static_cast<uint8_t>(op); }
+
+#endif // BYTECODE_H

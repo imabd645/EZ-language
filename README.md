@@ -54,7 +54,7 @@
 - ✅ **Garbage Collection**: Automatic memory management
 - ✅ **Package Manager**: Built-in package management system
 - ✅ **Interactive REPL**: Test code instantly
-- ✅ **Cross-Platform**: Works on Windows, Linux, and macOS
+- ✅ **Platform**: Works on Windows only for now
 
 ---
 

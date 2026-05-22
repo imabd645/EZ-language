@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <future>
 #include <mutex>
+#include <shared_mutex>
 #include "AST.h"
 #include "GCObject.h"
 
@@ -263,8 +264,12 @@ struct EZArray : public GCObject {
 
 struct EZDictionary : public GCObject {
     std::unordered_map<std::string, Value> map;
+    mutable std::shared_mutex map_mutex;
     void gc_mark() override;
-    void gc_clear() override { map.clear(); }
+    void gc_clear() override {
+        std::unique_lock<std::shared_mutex> lk(map_mutex);
+        map.clear();
+    }
 };
 
 struct EZFunction : public GCObject {
@@ -317,14 +322,22 @@ struct EZClass : public GCObject {
 struct EZInstance : public GCObject {
     std::shared_ptr<EZClass> klass;
     std::unordered_map<std::string, Value> properties;
+    mutable std::shared_mutex prop_mutex; // protects properties for concurrent access
     EZInstance(std::shared_ptr<EZClass> klass) : klass(klass) {}
     void gc_mark() override;
-    void gc_clear() override { properties.clear(); klass = nullptr; }
+    void gc_clear() override {
+        std::unique_lock<std::shared_mutex> lk(prop_mutex);
+        properties.clear(); klass = nullptr;
+    }
     
     Value getProperty(const std::string& name) {
-        if (properties.count(name)) return properties[name];
-        
-        // Search methods in class hierarchy
+        // First check instance properties (shared read)
+        {
+            std::shared_lock<std::shared_mutex> lk(prop_mutex);
+            auto it = properties.find(name);
+            if (it != properties.end()) return it->second;
+        }
+        // Then search class hierarchy (read-only, no lock needed — class methods are set once)
         std::shared_ptr<EZClass> currentClass = klass;
         while (currentClass) {
             if (currentClass->methods.count(name)) return currentClass->methods[name];
@@ -333,9 +346,11 @@ struct EZInstance : public GCObject {
         return Value();
     }
     void setProperty(const std::string& name, const Value& value) {
+        std::unique_lock<std::shared_mutex> lk(prop_mutex);
         properties[name] = value;
     }
     bool hasProperty(const std::string& name) {
+        std::shared_lock<std::shared_mutex> lk(prop_mutex);
         return properties.count(name) > 0;
     }
 };
@@ -367,8 +382,10 @@ struct EZBoundMethod : public GCObject {
     void gc_clear() override;
 };
 
+#include <atomic>
+
 struct UpvalueObj {
-    Value* location;   // Points to stack slot (open) or &closed (closed)
+    std::atomic<Value*> location;   // Points to stack slot (open) or &closed (closed)
     Value  closed;     // When closed, location == &closed
     UpvalueObj* next;
 };
@@ -377,8 +394,8 @@ struct EZClosure : public GCObject {
     std::shared_ptr<struct BytecodeFunction> function;
     std::vector<UpvalueObj*> upvalues;
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
-    void gc_mark() override { gc_marked = true; } 
-    void gc_clear() override { upvalues.clear(); function = nullptr; }
+    void gc_mark() override;
+    void gc_clear() override;
 };
 
 struct EZBuffer : public GCObject {
@@ -443,6 +460,7 @@ inline std::string Value::toString() const {
         case ValueType::BOUND_METHOD: return "<bound method>";
         case ValueType::CLOSURE_VAL: return "<function>";
         case ValueType::INTERFACE: return "<interface " + asInterface()->name + ">";
+        case ValueType::MUTEX: return "<mutex>";
         default: return "<unknown>";
     }
 }

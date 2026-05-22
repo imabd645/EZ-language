@@ -1,8 +1,8 @@
 #ifndef GUI_BUILTINS_H
 #define GUI_BUILTINS_H
 
-class Interpreter;
+class RuntimeContext;
 
-void registerGUIBuiltins(Interpreter& interp);
+void registerGUIBuiltins(RuntimeContext& interp);
 
 #endif // GUI_BUILTINS_H

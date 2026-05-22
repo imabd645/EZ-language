@@ -1,5 +1,5 @@
 #include "GUIBuiltins.h"
-#include "Interpreter.h"
+#include "RuntimeContext.h"
 #include "Value.h"
 #include <windows.h>
 #include <commctrl.h>
@@ -11,8 +11,6 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 
-#pragma comment(lib, "dwmapi.lib")
-#pragma comment(lib, "uxtheme.lib")
 
 
 
@@ -32,7 +30,7 @@ struct GUIState {
     std::map<UINT_PTR, Value> timerCallbacks;
     UINT_PTR nextTimerId = 1;
     int nextHandle = 1;
-    Interpreter* currentInterpreter = nullptr;
+    RuntimeContext* currentInterpreter = nullptr;
     std::string currentTheme = "light";
     HBRUSH darkBrush = NULL;
 };
@@ -239,7 +237,8 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-void registerGUIBuiltins(Interpreter& interp) {
+void registerGUIBuiltins(RuntimeContext& interp) {
+    g_gui.currentInterpreter = &interp;
     g_gui.hInstance = GetModuleHandle(NULL);
     
     INITCOMMONCONTROLSEX icex;
@@ -260,7 +259,7 @@ void registerGUIBuiltins(Interpreter& interp) {
     
     // gui_create_window(title, [x, y], w, h)
     interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() != 3 && args.size() != 5) {
                 interp.runtimeError("Expected 3 or 5 arguments", 0, "native");
                 return Value();
@@ -299,7 +298,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_button(winHandle, text, x, y, w, h, callback)
     interp.defineGlobal("gui_create_button", Value::makeNativeFunction("gui_create_button", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), w = (int)vNum(args[4]), h = (int)vNum(args[5]);
@@ -313,7 +312,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_label(winHandle, text, x, y, w, h)
     interp.defineGlobal("gui_create_label", Value::makeNativeFunction("gui_create_label", 6,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), w = (int)vNum(args[4]), h = (int)vNum(args[5]);
@@ -325,7 +324,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_input(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_input", Value::makeNativeFunction("gui_create_input", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow("EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL, x, y, w, h, parent, NULL, g_gui.hInstance, NULL);
@@ -336,7 +335,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_dropdown(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_dropdown", Value::makeNativeFunction("gui_create_dropdown", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow("COMBOBOX", "", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, x, y, w, h, parent, NULL, g_gui.hInstance, NULL);
@@ -347,7 +346,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_panel(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_panel", Value::makeNativeFunction("gui_create_panel", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, x, y, w, h, parent, NULL, g_gui.hInstance, NULL);
@@ -358,7 +357,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_scroll_panel(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_scroll_panel", Value::makeNativeFunction("gui_create_scroll_panel", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VSCROLL | WS_HSCROLL, x, y, w, h, parent, NULL, g_gui.hInstance, NULL);
@@ -375,7 +374,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_scroll_range(handle, maxW, maxH)
     interp.defineGlobal("gui_set_scroll_range", Value::makeNativeFunction("gui_set_scroll_range", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int maxW = (int)vNum(args[1]);
             int maxH = (int)vNum(args[2]);
@@ -390,7 +389,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_clear_widgets(handle)
     interp.defineGlobal("gui_clear_widgets", Value::makeNativeFunction("gui_clear_widgets", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             
             // Collect children to avoid map/iterator issues during destruction
@@ -422,7 +421,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_tabs(winHandle, x, y, w, h, callback)
     interp.defineGlobal("gui_create_tabs", Value::makeNativeFunction("gui_create_tabs", 6,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow(WC_TABCONTROL, "", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, x, y, w, h, parent, NULL, g_gui.hInstance, NULL);
@@ -434,7 +433,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_add_tab(handle, text)
     interp.defineGlobal("gui_add_tab", Value::makeNativeFunction("gui_add_tab", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             TCITEM tie = {0};
             tie.mask = TCIF_TEXT;
@@ -447,7 +446,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_get_tab_selected(handle)
     interp.defineGlobal("gui_get_tab_selected", Value::makeNativeFunction("gui_get_tab_selected", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int idx = TabCtrl_GetCurSel(hwnd);
             return Value((double)idx);
@@ -455,7 +454,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_show(handle)
     interp.defineGlobal("gui_show", Value::makeNativeFunction("gui_show", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             ShowWindow(hwnd, SW_SHOW);
             SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
@@ -465,7 +464,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_hide(handle)
     interp.defineGlobal("gui_hide", Value::makeNativeFunction("gui_hide", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             ShowWindow(hwnd, SW_HIDE);
             return Value();
@@ -473,7 +472,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_add_dropdown_item(handle, text)
     interp.defineGlobal("gui_add_dropdown_item", Value::makeNativeFunction("gui_add_dropdown_item", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SendMessage(hwnd, CB_ADDSTRING, 0, (LPARAM)vStr(args[1]).c_str());
             return Value();
@@ -481,7 +480,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_get_dropdown_selected(handle)
     interp.defineGlobal("gui_get_dropdown_selected", Value::makeNativeFunction("gui_get_dropdown_selected", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int idx = (int)SendMessage(hwnd, CB_GETCURSEL, 0, 0);
             if (idx == CB_ERR) return Value("");
@@ -492,7 +491,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_color(handle, bgR, bgG, bgB, textR, textG, textB)
     interp.defineGlobal("gui_set_color", Value::makeNativeFunction("gui_set_color", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             COLORREF b = RGB((int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]));
             COLORREF t = RGB((int)vNum(args[4]), (int)vNum(args[5]), (int)vNum(args[6]));
@@ -519,7 +518,7 @@ void registerGUIBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("gui_set_font", Value::makeNativeFunction("gui_set_font", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             std::string name = vStr(args[1]);
             int size = (int)vNum(args[2]);
@@ -532,7 +531,7 @@ void registerGUIBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("gui_get_value", Value::makeNativeFunction("gui_get_value", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             char buffer[4096];
             GetWindowText(hwnd, buffer, 4096);
@@ -540,21 +539,21 @@ void registerGUIBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("gui_set_value", Value::makeNativeFunction("gui_set_value", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SetWindowText(hwnd, vStr(args[1]).c_str());
             return Value();
         }));
 
     interp.defineGlobal("gui_alert", Value::makeNativeFunction("gui_alert", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             MessageBox(NULL, vStr(args[1]).c_str(), vStr(args[0]).c_str(), MB_OK | MB_ICONINFORMATION);
             return Value();
         }));
 
     // gui_set_theme(name)
     interp.defineGlobal("gui_set_theme", Value::makeNativeFunction("gui_set_theme", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             g_gui.currentTheme = args[0].asString();
             for (auto const& [handle, hwnd] : g_gui.handleMap) {
                 if (g_gui.currentTheme == "dark") {
@@ -571,7 +570,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_callback(handle, callback) - set/update callback for any widget
     interp.defineGlobal("gui_set_callback", Value::makeNativeFunction("gui_set_callback", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             g_gui.callbacks[hwnd] = args[1];
             return Value();
@@ -579,7 +578,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_checkbox(winHandle, text, x, y, w, h)
     interp.defineGlobal("gui_create_checkbox", Value::makeNativeFunction("gui_create_checkbox", 6,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), w = (int)vNum(args[4]), h = (int)vNum(args[5]);
@@ -592,14 +591,14 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_get_checked(handle) - returns 1 if checked, 0 if not
     interp.defineGlobal("gui_get_checked", Value::makeNativeFunction("gui_get_checked", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             return Value((double)(SendMessage(hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED ? 1 : 0));
         }));
 
     // gui_set_checked(handle, state) - set checkbox state
     interp.defineGlobal("gui_set_checked", Value::makeNativeFunction("gui_set_checked", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SendMessage(hwnd, BM_SETCHECK, (int)vNum(args[1]) ? BST_CHECKED : BST_UNCHECKED, 0);
             return Value();
@@ -607,7 +606,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_radio(winHandle, text, x, y, w, h, isGroupStart)
     interp.defineGlobal("gui_create_radio", Value::makeNativeFunction("gui_create_radio", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), w = (int)vNum(args[4]), h = (int)vNum(args[5]);
@@ -623,7 +622,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_slider(winHandle, x, y, w, h, min, max)
     interp.defineGlobal("gui_create_slider", Value::makeNativeFunction("gui_create_slider", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             int minVal = (int)vNum(args[5]), maxVal = (int)vNum(args[6]);
@@ -638,14 +637,14 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_get_slider(handle)
     interp.defineGlobal("gui_get_slider", Value::makeNativeFunction("gui_get_slider", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             return Value((double)SendMessage(hwnd, TBM_GETPOS, 0, 0));
         }));
 
     // gui_set_slider(handle, pos)
     interp.defineGlobal("gui_set_slider", Value::makeNativeFunction("gui_set_slider", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SendMessage(hwnd, TBM_SETPOS, TRUE, (int)vNum(args[1]));
             return Value();
@@ -653,7 +652,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_progress(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_progress", Value::makeNativeFunction("gui_create_progress", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow(PROGRESS_CLASS, "", WS_CHILD | WS_VISIBLE,
@@ -666,7 +665,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_progress(handle, value 0-100)
     interp.defineGlobal("gui_set_progress", Value::makeNativeFunction("gui_set_progress", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SendMessage(hwnd, PBM_SETPOS, (int)vNum(args[1]), 0);
             return Value();
@@ -674,7 +673,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_progress_range(handle, min, max)
     interp.defineGlobal("gui_set_progress_range", Value::makeNativeFunction("gui_set_progress_range", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SendMessage(hwnd, PBM_SETRANGE, 0, MAKELPARAM((int)vNum(args[1]), (int)vNum(args[2])));
             return Value();
@@ -682,7 +681,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_listview(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_listview", Value::makeNativeFunction("gui_create_listview", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow(WC_LISTVIEW, "",
@@ -696,7 +695,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_add_column(handle, text, width)
     interp.defineGlobal("gui_listview_add_column", Value::makeNativeFunction("gui_listview_add_column", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int width = (int)vNum(args[2]);
@@ -712,7 +711,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_add_row(handle, itemsArray)
     interp.defineGlobal("gui_listview_add_row", Value::makeNativeFunction("gui_listview_add_row", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             if (!args[1].isArray()) return Value();
             const auto& items = args[1].asArray();
@@ -733,7 +732,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_clear(handle)
     interp.defineGlobal("gui_listview_clear", Value::makeNativeFunction("gui_listview_clear", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             ListView_DeleteAllItems(hwnd);
             return Value();
@@ -741,7 +740,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_get_selected(handle) - returns selected row index or -1
     interp.defineGlobal("gui_listview_get_selected", Value::makeNativeFunction("gui_listview_get_selected", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int idx = ListView_GetNextItem(hwnd, -1, LVNI_SELECTED);
             return Value((double)idx);
@@ -749,7 +748,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_get_row(handle, index) - returns array of cell values
     interp.defineGlobal("gui_listview_get_row", Value::makeNativeFunction("gui_listview_get_row", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int row = (int)vNum(args[1]);
             int colCount = Header_GetItemCount(ListView_GetHeader(hwnd));
@@ -764,7 +763,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_listview_remove_row(handle, index)
     interp.defineGlobal("gui_listview_remove_row", Value::makeNativeFunction("gui_listview_remove_row", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             ListView_DeleteItem(hwnd, (int)vNum(args[1]));
             return Value();
@@ -772,7 +771,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // num(v)
     interp.defineGlobal("num", Value::makeNativeFunction("num", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             try {
                 return Value(std::stod(args[0].asString()));
             } catch (...) {
@@ -782,7 +781,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_timer(winHandle, intervalMs, callback)
     interp.defineGlobal("gui_set_timer", Value::makeNativeFunction("gui_set_timer", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int interval = (int)vNum(args[1]);
             UINT_PTR timerId = g_gui.nextTimerId++;
@@ -793,7 +792,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_kill_timer(winHandle, timerId)
     interp.defineGlobal("gui_kill_timer", Value::makeNativeFunction("gui_kill_timer", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             UINT_PTR timerId = (UINT_PTR)vNum(args[1]);
             KillTimer(hwnd, timerId);
@@ -805,7 +804,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_confirm(title, message) -> true/false
     interp.defineGlobal("gui_dialog_confirm", Value::makeNativeFunction("gui_dialog_confirm", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string title = vStr(args[0]);
             std::string msg = vStr(args[1]);
             int result = MessageBox(g_gui.mainWindow, msg.c_str(), title.c_str(), MB_YESNO | MB_ICONQUESTION);
@@ -814,7 +813,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_input(title, message) -> string or nil
     interp.defineGlobal("gui_dialog_input", Value::makeNativeFunction("gui_dialog_input", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string title = vStr(args[0]);
             std::string msg = vStr(args[1]);
             // Simple input via a prompt dialog isn't built-in to Win32
@@ -825,7 +824,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_open_file(title, filter) -> filepath string or ""
     interp.defineGlobal("gui_dialog_open_file", Value::makeNativeFunction("gui_dialog_open_file", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string title = vStr(args[0]);
             std::string rawFilter = vStr(args[1]);
             
@@ -853,7 +852,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_save_file(title, filter) -> filepath string or ""
     interp.defineGlobal("gui_dialog_save_file", Value::makeNativeFunction("gui_dialog_save_file", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string title = vStr(args[0]);
             std::string rawFilter = vStr(args[1]);
             
@@ -879,7 +878,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_open_folder() -> folder path string or ""
     interp.defineGlobal("gui_dialog_open_folder", Value::makeNativeFunction("gui_dialog_open_folder", 0,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             BROWSEINFO bi = {0};
             bi.hwndOwner = g_gui.mainWindow;
             bi.lpszTitle = "Select Folder";
@@ -897,7 +896,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_dialog_color_picker() -> [r, g, b] or nil
     interp.defineGlobal("gui_dialog_color_picker", Value::makeNativeFunction("gui_dialog_color_picker", 0,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             static COLORREF customColors[16] = {0};
             CHOOSECOLOR cc = {0};
             cc.lStructSize = sizeof(cc);
@@ -919,7 +918,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_treeview(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_treeview", Value::makeNativeFunction("gui_create_treeview", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow(WC_TREEVIEW, "",
@@ -933,7 +932,7 @@ void registerGUIBuiltins(Interpreter& interp) {
     // gui_treeview_add(handle, parentItem, text) -> item handle (as double)
     // parentItem = 0 for root
     interp.defineGlobal("gui_treeview_add", Value::makeNativeFunction("gui_treeview_add", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             HTREEITEM parentItem = (HTREEITEM)(intptr_t)(int64_t)vNum(args[1]);
             if (parentItem == 0) parentItem = TVI_ROOT;
@@ -950,7 +949,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_treeview_get_selected(handle) -> text of selected item
     interp.defineGlobal("gui_treeview_get_selected", Value::makeNativeFunction("gui_treeview_get_selected", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             HTREEITEM sel = TreeView_GetSelection(hwnd);
             if (!sel) return Value("");
@@ -966,7 +965,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_treeview_clear(handle)
     interp.defineGlobal("gui_treeview_clear", Value::makeNativeFunction("gui_treeview_clear", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             TreeView_DeleteAllItems(hwnd);
             return Value();
@@ -976,7 +975,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_datepicker(winHandle, x, y, w, h)
     interp.defineGlobal("gui_create_datepicker", Value::makeNativeFunction("gui_create_datepicker", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             HWND hwnd = CreateWindow(DATETIMEPICK_CLASS, "",
@@ -989,7 +988,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_datepicker_get(handle) -> "YYYY-MM-DD"
     interp.defineGlobal("gui_datepicker_get", Value::makeNativeFunction("gui_datepicker_get", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SYSTEMTIME st;
             DateTime_GetSystemtime(hwnd, &st);
@@ -1000,7 +999,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_datepicker_set(handle, year, month, day)
     interp.defineGlobal("gui_datepicker_set", Value::makeNativeFunction("gui_datepicker_set", 4,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SYSTEMTIME st = {0};
             st.wYear = (WORD)vNum(args[1]);
@@ -1014,7 +1013,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_spinner(winHandle, x, y, w, h, min, max)
     interp.defineGlobal("gui_create_spinner", Value::makeNativeFunction("gui_create_spinner", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             int minVal = (int)vNum(args[5]), maxVal = (int)vNum(args[6]);
@@ -1044,7 +1043,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_spinner_get(handle) -> number
     interp.defineGlobal("gui_spinner_get", Value::makeNativeFunction("gui_spinner_get", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             char buf[64];
             GetWindowText(hwnd, buf, 64);
@@ -1053,7 +1052,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_spinner_set(handle, value)
     interp.defineGlobal("gui_spinner_set", Value::makeNativeFunction("gui_spinner_set", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             SetWindowText(hwnd, std::to_string((int)vNum(args[1])).c_str());
             return Value();
@@ -1063,7 +1062,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_create_image(winHandle, path, x, y, w, h)
     interp.defineGlobal("gui_create_image", Value::makeNativeFunction("gui_create_image", 6,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             std::string path = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), w = (int)vNum(args[4]), h = (int)vNum(args[5]);
@@ -1084,7 +1083,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_image(handle, path)
     interp.defineGlobal("gui_set_image", Value::makeNativeFunction("gui_set_image", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             std::string path = vStr(args[1]);
             RECT rc;
@@ -1102,7 +1101,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_pos(handle, x, y, w, h)
     interp.defineGlobal("gui_set_pos", Value::makeNativeFunction("gui_set_pos", 5,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             SetWindowPos(hwnd, NULL, x, y, w, h, SWP_NOZORDER);
@@ -1111,14 +1110,14 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_set_enabled(handle, enabled)
     interp.defineGlobal("gui_set_enabled", Value::makeNativeFunction("gui_set_enabled", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             EnableWindow(hwnd, (int)vNum(args[1]) != 0);
             return Value();
         }));
 
     interp.defineGlobal("gui_run", Value::makeNativeFunction("gui_run", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             g_gui.currentInterpreter = &interp;
             MSG msg;
             while (GetMessage(&msg, NULL, 0, 0)) {
@@ -1132,14 +1131,14 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_is_key_down(vkCode)
     interp.defineGlobal("gui_is_key_down", Value::makeNativeFunction("gui_is_key_down", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             int vk = (int)vNum(args[0]);
             return Value((double)((GetAsyncKeyState(vk) & 0x8000) ? 1 : 0));
         }));
 
     // gui_draw_rect(handle, x, y, w, h, r, g, b)
     interp.defineGlobal("gui_draw_rect", Value::makeNativeFunction("gui_draw_rect", 8,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             COLORREF color = RGB((int)vNum(args[5]), (int)vNum(args[6]), (int)vNum(args[7]));
@@ -1155,7 +1154,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_draw_circle(handle, x, y, r, r2, g, b)
     interp.defineGlobal("gui_draw_circle", Value::makeNativeFunction("gui_draw_circle", 7,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int x = (int)vNum(args[1]), y = (int)vNum(args[2]), radius = (int)vNum(args[3]);
             COLORREF color = RGB((int)vNum(args[4]), (int)vNum(args[5]), (int)vNum(args[6]));
@@ -1178,7 +1177,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_clear(handle, r, g, b)
     interp.defineGlobal("gui_clear", Value::makeNativeFunction("gui_clear", 4,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             COLORREF color = RGB((int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]));
             
@@ -1194,7 +1193,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_get_client_size(handle) -> [w, h]
     interp.defineGlobal("gui_get_client_size", Value::makeNativeFunction("gui_get_client_size", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             RECT rect;
             GetClientRect(hwnd, &rect);
@@ -1204,7 +1203,7 @@ void registerGUIBuiltins(Interpreter& interp) {
 
     // gui_draw_text(handle, text, x, y, size, r, g, b)
     interp.defineGlobal("gui_draw_text", Value::makeNativeFunction("gui_draw_text", 8,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), size = (int)vNum(args[4]);

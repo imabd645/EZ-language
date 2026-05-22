@@ -3,11 +3,40 @@
 #include <sstream>
 #include <string>
 #include <cstdlib>
+#include <csignal>
 #include "Lexer.h"
 #include "Parser.h"
-#include "Interpreter.h"
+#include "BytecodeInterpreter.h"
 #include "PackageManager.h"
 #include<windows.h>
+
+void signalHandler(int sig) {
+    std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
+    _exit(139);
+}
+
+void terminateHandler() {
+    std::cerr << "\n[FATAL] std::terminate() called!" << std::endl;
+    if (auto eptr = std::current_exception()) {
+        try { std::rethrow_exception(eptr); }
+        catch (const std::exception& e) { std::cerr << "  Reason: " << e.what() << std::endl; }
+        catch (...) { std::cerr << "  Unknown exception" << std::endl; }
+    }
+    _exit(140);
+}
+
+static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
+    DWORD code = pExInfo->ExceptionRecord->ExceptionCode;
+    if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION) {
+        std::cerr << "\n[FATAL] Windows Exception 0x" << std::hex << code << std::dec << std::endl;
+        if (code == EXCEPTION_ACCESS_VIOLATION) {
+            std::cerr << "  Access violation at address 0x" << std::hex
+                      << (uintptr_t)pExInfo->ExceptionRecord->ExceptionInformation[1] << std::dec << std::endl;
+        }
+        _exit(141);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 void runFile(const std::string& path) {
     std::ifstream file(path);
@@ -34,7 +63,9 @@ void runFile(const std::string& path) {
         exit(65);
     }
     
-    Interpreter interpreter;
+    // Use BytecodeInterpreter for faster execution
+    BytecodeInterpreter interpreter;
+    interpreter.setExecutionMode(ExecutionMode::BYTECODE_ONLY);  // Force bytecode for max speed
     try {
         interpreter.interpret(statements);
     } catch (const RuntimeError& e) {
@@ -49,11 +80,11 @@ void runFile(const std::string& path) {
 }
 
 void runRepl() {
-    std::cout << "EZ Language Interpreter v1.0" << std::endl;
+    std::cout << "EZ Language Interpreter v1.0 (Bytecode Mode)" << std::endl;
     std::cout << "Type 'exit' to quit" << std::endl;
     std::cout << std::endl;
     
-    Interpreter interpreter;
+    BytecodeInterpreter interpreter;
     std::string line;
     std::string multiline;
     int openBraces = 0;
@@ -99,10 +130,9 @@ void runRepl() {
                 } catch (const std::exception& e) {
                     std::cerr << "Error: " << e.what() << std::endl;
                 }
+                multiline.clear();
             }
         }
-        
-        multiline.clear();
         openBraces = 0;
     }
     
@@ -144,6 +174,10 @@ void showHelp() {
 }
 
 int main(int argc, char* argv[]) {
+    signal(SIGSEGV, signalHandler);
+    signal(SIGABRT, signalHandler);
+    std::set_terminate(terminateHandler);
+    AddVectoredExceptionHandler(1, VectoredHandler);
     
     if (argc > 1) {
         std::string cmd = argv[1];

@@ -27,14 +27,17 @@ public:
     void gc_mark() override;
     void gc_clear() override { variables.clear(); parent = nullptr; }
     
-    Environment() : parent(nullptr) {}
+    Environment() : parent(nullptr), version(0) {}
     explicit Environment(std::shared_ptr<Environment> parent, bool isStatic = false) 
-        : parent(parent), isStatic(isStatic) {}
+        : parent(parent), isStatic(isStatic), version(0) {}
+    
+    uint64_t version = 0;
     
     // Define a new variable in current scope
     void define(const std::string& name, const Value& value) {
         std::unique_lock<std::shared_mutex> lock(mutex);
         variables[name] = value;
+        version++;
     }
     
     // Get a variable (walks up parent chain)
@@ -83,27 +86,6 @@ public:
         define(name, value); // define() handles its own lock
     }
     
-    // Get pointer to variable for modification (e.g., array indexing)
-    // WARN: This is unsafe if the map rehashes while pointer is held. 
-    // Mutex doesn't protect the pointer after return.
-    // Keeping as is but noting risk.
-    // Get pointer to variable for modification (e.g., array indexing)
-    // WARN: This is unsafe if the map rehashes while pointer is held. 
-    // Mutex doesn't protect the pointer after return.
-    // Keeping as is but noting risk.
-    Value* getPtr(const std::string& name) {
-        std::shared_lock<std::shared_mutex> lock(mutex);
-        auto it = variables.find(name);
-        if (it != variables.end()) {
-            return &it->second;
-        }
-        
-        if (parent) {
-            return parent->getPtr(name);
-        }
-        
-        return nullptr;
-    }
     
     // Create a child scope
     std::shared_ptr<Environment> createChild();

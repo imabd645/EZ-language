@@ -1,19 +1,19 @@
 #ifndef BUILTINS_H
 #define BUILTINS_H
 
-class Interpreter;
+class RuntimeContext;
 
-void registerBuiltins(Interpreter& interp);
+void registerBuiltins(RuntimeContext& interp);
 
-void registerIOBuiltins(Interpreter& interp);
-void registerNetBuiltins(Interpreter& interp);
-void registerDBBuiltins(Interpreter& interp);
-void registerMathBuiltins(Interpreter& interp);
-void registerStringBuiltins(Interpreter& interp);
-void registerDataBuiltins(Interpreter& interp);
-void registerSysBuiltins(Interpreter& interp);
-void registerPDFBuiltins(Interpreter& interp);
-void registerBufferBuiltins(Interpreter& interp);
-void registerConcurrencyBuiltins(Interpreter& interp);
+void registerIOBuiltins(RuntimeContext& interp);
+void registerNetBuiltins(RuntimeContext& interp);
+void registerDBBuiltins(RuntimeContext& interp);
+void registerMathBuiltins(RuntimeContext& interp);
+void registerStringBuiltins(RuntimeContext& interp);
+void registerDataBuiltins(RuntimeContext& interp);
+void registerSysBuiltins(RuntimeContext& interp);
+void registerPDFBuiltins(RuntimeContext& interp);
+void registerBufferBuiltins(RuntimeContext& interp);
+void registerConcurrencyBuiltins(RuntimeContext& interp);
 
 #endif // BUILTINS_H

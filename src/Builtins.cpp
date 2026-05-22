@@ -1,11 +1,8 @@
 #include "Builtins.h"
 
-void registerBuiltins(Interpreter& interp) {
+void registerBuiltins(RuntimeContext& interp) {
     registerIOBuiltins(interp);
     registerNetBuiltins(interp);
-    registerNetBuiltins(interp);
-    // registerDBBuiltins(interp); // Moved to lib/db.ez via FFI
-    registerMathBuiltins(interp);
     registerMathBuiltins(interp);
     registerStringBuiltins(interp);
     registerDataBuiltins(interp);

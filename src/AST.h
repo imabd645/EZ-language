@@ -33,8 +33,6 @@ struct SetExpr;
 struct DictionaryExpr;
 struct SpreadExpr;
 struct TernaryExpr;
-struct AwaitExpr;
-struct AsyncExpr;
 
 using ExprVariant = std::variant<
     std::shared_ptr<LiteralExpr>,
@@ -53,9 +51,7 @@ using ExprVariant = std::variant<
     std::shared_ptr<SetExpr>,
     std::shared_ptr<DictionaryExpr>,
     std::shared_ptr<SpreadExpr>,
-    std::shared_ptr<TernaryExpr>,
-    std::shared_ptr<AwaitExpr>,
-    std::shared_ptr<AsyncExpr>
+    std::shared_ptr<TernaryExpr>
 >;
 
 struct Expr {
@@ -210,6 +206,7 @@ struct SpreadExpr {
     explicit SpreadExpr(ExprPtr expr) : expression(std::move(expr)) {}
 };
 
+// Ternary operator expression (cond ? then : else)
 struct TernaryExpr {
     ExprPtr condition;
     ExprPtr thenBranch;
@@ -217,19 +214,6 @@ struct TernaryExpr {
     
     TernaryExpr(ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr)
         : condition(std::move(cond)), thenBranch(std::move(thenBr)), elseBranch(std::move(elseBr)) {}
-};
-
-// Await expression (await future)
-struct AwaitExpr {
-    ExprPtr expression;
-    explicit AwaitExpr(ExprPtr expr) : expression(std::move(expr)) {}
-};
-
-// Async expression (async { ... } or async (args) => { ... })
-// This is essentially a modifier for a function call/spawn
-struct AsyncExpr {
-    ExprPtr expression;
-    explicit AsyncExpr(ExprPtr expr) : expression(std::move(expr)) {}
 };
 
 // ============ STATEMENTS ============
@@ -362,12 +346,11 @@ struct TaskStmt {
     std::vector<ExprPtr> defaultValues; // nullptr = required, ExprPtr = default value
     std::vector<StmtPtr> body;
     bool isVariadic = false;
-    bool isAsync = false;
     
     TaskStmt(const std::string& name, std::vector<std::string> params, 
-             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool async = false)
+             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false)
         : name(name), params(std::move(params)), defaultValues(std::move(defaultValues)),
-          body(std::move(body)), isVariadic(variadic), isAsync(async) {}
+          body(std::move(body)), isVariadic(variadic) {}
 };
 
 // Return statement (give)
@@ -394,10 +377,10 @@ struct ModelMember {
     MemberVisibility visibility;
     bool isStatic = false;
     bool isMethod;
-    bool isAsync = false;
     std::string name;
     ExprPtr initializer;  // For properties
     std::vector<std::string> params;  // For methods
+    std::vector<ExprPtr> defaultValues; // For methods
     std::vector<StmtPtr> body;  // For methods
 };
 
@@ -427,15 +410,19 @@ struct ModelStmt {
     std::string parentName;  // For inheritance (empty if none)
     std::vector<std::string> interfaces; // For implements
     std::vector<std::string> initParams;
+    std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
     
     ModelStmt(int line, const std::string& name, const std::string& parent,
               std::vector<std::string> interfaces,
-              std::vector<std::string> initParams, std::vector<StmtPtr> initBody,
+              std::vector<std::string> initParams, 
+              std::vector<ExprPtr> initDefaultValues,
+              std::vector<StmtPtr> initBody,
               std::vector<ModelMember> members)
         : line(line), name(name), parentName(parent), interfaces(std::move(interfaces)),
-          initParams(std::move(initParams)), initBody(std::move(initBody)), members(std::move(members)) {}
+          initParams(std::move(initParams)), initDefaultValues(std::move(initDefaultValues)),
+          initBody(std::move(initBody)), members(std::move(members)) {}
 };
 
 // Struct definition (simplified class)
@@ -573,9 +560,9 @@ inline StmtPtr makeGetStmt(int line, const std::string& file, const std::string&
 }
 
 inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, 
-                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false) {
+                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false) {
     return std::make_shared<Stmt>(line, file, std::make_shared<TaskStmt>(name, std::move(params), 
-                                                                     std::move(defaultValues), std::move(body), variadic, isAsync));
+                                                                     std::move(defaultValues), std::move(body), variadic));
 }
 
 inline StmtPtr makeGiveStmt(int line, const std::string& file, ExprPtr val = nullptr) {
@@ -618,24 +605,19 @@ inline ExprPtr makeTernaryExpr(int line, const std::string& file, ExprPtr cond, 
     return std::make_shared<Expr>(line, file, std::make_shared<TernaryExpr>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
-inline ExprPtr makeAwaitExpr(int line, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Expr>(line, file, std::make_shared<AwaitExpr>(std::move(expr)));
-}
-
-inline ExprPtr makeAsyncExpr(int line, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Expr>(line, file, std::make_shared<AsyncExpr>(std::move(expr)));
-}
-
 inline StmtPtr makeInterfaceStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> methods) {
     return std::make_shared<Stmt>(line, file, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
 }
 
 inline StmtPtr makeModelStmt(int line, const std::string& file, const std::string& name, const std::string& parent,
                              std::vector<std::string> interfaces,
-                             std::vector<std::string> initParams, std::vector<StmtPtr> initBody,
+                             std::vector<std::string> initParams, 
+                             std::vector<ExprPtr> initDefaultValues,
+                             std::vector<StmtPtr> initBody,
                              std::vector<ModelMember> members) {
     return std::make_shared<Stmt>(line, file, std::make_shared<ModelStmt>(
-        line, name, parent, std::move(interfaces), std::move(initParams), std::move(initBody), std::move(members)));
+        line, name, parent, std::move(interfaces), std::move(initParams), 
+        std::move(initDefaultValues), std::move(initBody), std::move(members)));
 }
 
 inline StmtPtr makeStructStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> fields) {

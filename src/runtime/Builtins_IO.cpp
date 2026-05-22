@@ -1,21 +1,21 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <string>
 
-void registerIOBuiltins(Interpreter& interp) {
+void registerIOBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("__input__", Value::makeNativeFunction("input", 0, 
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             std::string line;
             std::getline(std::cin, line);
             return Value(line);
         }));
     
     interp.defineGlobal("input", Value::makeNativeFunction("input", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args.empty()) {
                 std::cout << args[0].toString();
             }
@@ -25,7 +25,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("print", Value::makeNativeFunction("print", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             for (size_t i = 0; i < args.size(); i++) {
                 if (i > 0) std::cout << " ";
                 std::cout << args[i].toString();
@@ -35,7 +35,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("readFile", Value::makeNativeFunction("readFile", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("readFile() expects string path", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::ifstream file(path);
@@ -46,7 +46,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("writeFile", Value::makeNativeFunction("writeFile", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("writeFile() expects string path", 0, ""); return Value(); }
             if (!args[1].isString()) { interp.runtimeError("writeFile() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
@@ -59,7 +59,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("appendFile", Value::makeNativeFunction("appendFile", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("appendFile() expects string path", 0, ""); return Value(); }
             if (!args[1].isString()) { interp.runtimeError("appendFile() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
@@ -72,7 +72,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("readLines", Value::makeNativeFunction("readLines", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("readLines() expects string path", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::ifstream file(path);
@@ -86,7 +86,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("writeLine", Value::makeNativeFunction("writeLine", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("writeLine() expects string path", 0, ""); return Value(); }
             if (!args[1].isString()) { interp.runtimeError("writeLine() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
@@ -99,7 +99,7 @@ void registerIOBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("appendLine", Value::makeNativeFunction("appendLine", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("appendLine() expects string path", 0, ""); return Value(); }
             if (!args[1].isString()) { interp.runtimeError("appendLine() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();

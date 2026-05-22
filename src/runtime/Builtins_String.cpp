@@ -1,5 +1,5 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 
 #include <string>
 #include <vector>
@@ -7,9 +7,9 @@
 #include <cctype>
 #include <regex>
 
-void registerStringBuiltins(Interpreter& interp) {
+void registerStringBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("substr", Value::makeNativeFunction("substr", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("substr() expects string as first argument", 0, ""); return Value(); }
             if (!args[1].isNumber() || !args[2].isNumber()) { interp.runtimeError("substr() expects numbers for start and length", 0, ""); return Value(); }
             const std::string& str = args[0].asString();
@@ -24,7 +24,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("split", Value::makeNativeFunction("split", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("split() expects two strings", 0, ""); return Value(); }
             const std::string& str = args[0].asString();
             const std::string& delim = args[1].asString();
@@ -46,7 +46,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("join", Value::makeNativeFunction("join", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("join() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isString()) { interp.runtimeError("join() expects string as delimiter", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -60,7 +60,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
     
     interp.defineGlobal("upper", Value::makeNativeFunction("upper", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("upper() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             std::transform(s.begin(), s.end(), s.begin(), ::toupper);
@@ -68,7 +68,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("toUpper", Value::makeNativeFunction("toUpper", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("toUpper() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -76,7 +76,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("lower", Value::makeNativeFunction("lower", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("lower() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -84,7 +84,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("toLower", Value::makeNativeFunction("toLower", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("toLower() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -92,7 +92,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("trim", Value::makeNativeFunction("trim", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("trim() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             s.erase(0, s.find_first_not_of(" \t\n\r"));
@@ -101,7 +101,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("replace", Value::makeNativeFunction("replace", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString() || !args[2].isString()) { interp.runtimeError("replace() expects three strings", 0, ""); return Value(); }
             std::string s = args[0].asString();
             const std::string& from = args[1].asString();
@@ -116,7 +116,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("startsWith", Value::makeNativeFunction("startsWith", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("startsWith() expects two strings", 0, ""); return Value(); }
             const std::string& str = args[0].asString();
             const std::string& prefix = args[1].asString();
@@ -125,7 +125,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("endsWith", Value::makeNativeFunction("endsWith", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("endsWith() expects two strings", 0, ""); return Value(); }
             const std::string& str = args[0].asString();
             const std::string& suffix = args[1].asString();
@@ -134,22 +134,22 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("ord", Value::makeNativeFunction("ord", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("ord() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
-            if (s.empty()) return Value(0.0);
-            return Value((double)(unsigned char)s[0]);
+            if (s.empty()) return Value(0LL);
+            return Value((long long)(unsigned char)s[0]);
         }));
 
     interp.defineGlobal("chr", Value::makeNativeFunction("chr", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) { interp.runtimeError("chr() expects number", 0, ""); return Value(); }
-            char c = (char)(int)args[0].asNumber();
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber() && !args[0].isInteger()) { interp.runtimeError("chr() expects number", 0, ""); return Value(); }
+            char c = (char)args[0].asInteger();
             return Value(std::string(1, c));
         }));
 
     interp.defineGlobal("substring", Value::makeNativeFunction("substring", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() < 2 || args.size() > 3) { interp.runtimeError("substring() expects 2 or 3 arguments", 0, ""); return Value(); }
             if (!args[0].isString()) { interp.runtimeError("substring() first arg must be string", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("substring() start must be number", 0, ""); return Value(); }
@@ -168,7 +168,7 @@ void registerStringBuiltins(Interpreter& interp) {
     // --- Regex Engine ---
     
     interp.defineGlobal("reMatch", Value::makeNativeFunction("reMatch", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reMatch() expects two strings (text, pattern)", 0, ""); return Value(); }
             try {
                 std::regex re(args[1].asString());
@@ -180,7 +180,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("reSearch", Value::makeNativeFunction("reSearch", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reSearch() expects two strings (text, pattern)", 0, ""); return Value(); }
             try {
                 std::string text = args[0].asString();
@@ -200,7 +200,7 @@ void registerStringBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("reReplace", Value::makeNativeFunction("reReplace", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString() || !args[1].isString() || !args[2].isString()) { 
                 interp.runtimeError("reReplace() expects three strings (text, pattern, replacement)", 0, ""); return Value(); 
             }

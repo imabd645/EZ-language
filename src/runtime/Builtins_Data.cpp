@@ -1,5 +1,5 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 #include "../MiniJson.h"
 
 #include <string>
@@ -7,17 +7,19 @@
 #include <algorithm>
 #include <sstream>
 
-void registerDataBuiltins(Interpreter& interp) {
+void registerDataBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("len", Value::makeNativeFunction("len", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            if (args[0].isString()) return Value(static_cast<double>(args[0].asString().length()));
-            if (args[0].isArray()) return Value(static_cast<double>(args[0].asArray().size()));
-            if (args[0].isDictionary()) return Value(static_cast<double>(args[0].asDictionary().map.size()));
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args[0].isNil()) return Value(0LL);
+            if (args[0].isString()) return Value(static_cast<long long>(args[0].asString().length()));
+            if (args[0].isArray()) return Value(static_cast<long long>(args[0].asArray().size()));
+            if (args[0].isDictionary()) return Value(static_cast<long long>(args[0].asDictionary().map.size()));
+            if (args[0].isBuffer()) return Value(static_cast<long long>(args[0].asBuffer().size()));
             interp.runtimeError("len() expects string or array", 0, ""); return Value();
          }));
 
     interp.defineGlobal("push", Value::makeNativeFunction("push", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("push() expects array as first argument", 0, ""); return Value(); }
             auto arr = args[0].asArrayPtr();
             arr->push_back(args[1]);
@@ -25,7 +27,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("pop", Value::makeNativeFunction("pop", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("pop() expects array", 0, ""); return Value(); }
             auto& arr = *args[0].asArrayPtr();
             if (arr.empty()) { interp.runtimeError("pop() on empty array", 0, ""); return Value(); }
@@ -35,59 +37,69 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("str", Value::makeNativeFunction("str", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             return Value(interp.stringify(args[0]));
         }));
 
     interp.defineGlobal("num", Value::makeNativeFunction("num", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isNumber()) return args[0];
+            if (args[0].isInteger()) return args[0];
             if (args[0].isString()) {
-                try { return Value(std::stod(args[0].asString())); } 
+                try {
+                    std::string s = args[0].asString();
+                    if (s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                        return Value(std::stoll(s));
+                    }
+                    return Value(std::stod(s));
+                } 
                 catch (...) { interp.runtimeError("Cannot convert '" + args[0].asString() + "' to number", 0, ""); return Value(); }
             }
-            if (args[0].isBool()) return Value(args[0].asBool() ? 1.0 : 0.0);
+            if (args[0].isBool()) return Value(args[0].asBool() ? 1LL : 0LL);
             interp.runtimeError("Cannot convert " + args[0].typeName() + " to number", 0, ""); return Value();
          }));
 
     interp.defineGlobal("type", Value::makeNativeFunction("type", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             return Value(args[0].typeName());
         }));
         
     interp.defineGlobal("typeOf", Value::makeNativeFunction("typeOf", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             return Value(args[0].typeName());
         }));
 
     interp.defineGlobal("keys", Value::makeNativeFunction("keys", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isDictionary()) { interp.runtimeError("keys() expects dictionary", 0, ""); return Value(); }
-            const auto& map = args[0].asDictionary().map;
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) { interp.runtimeError("keys() expects dictionary as first argument", 0, ""); return Value(); }
+            auto dictPtr = args[0].asDictionaryPtr();
+            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
             std::vector<Value> keys;
-            for (const auto& kv : map) keys.push_back(Value(kv.first));
+            for (const auto& kv : dictPtr->map) keys.push_back(Value(kv.first));
             return Value::makeArray(keys);
         }));
 
     interp.defineGlobal("values", Value::makeNativeFunction("values", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isDictionary()) { interp.runtimeError("values() expects dictionary", 0, ""); return Value(); }
-            const auto& map = args[0].asDictionary().map;
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isDictionary()) { interp.runtimeError("values() expects dictionary as first argument", 0, ""); return Value(); }
+            auto dictPtr = args[0].asDictionaryPtr();
+            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
             std::vector<Value> vals;
-            for (const auto& kv : map) vals.push_back(kv.second);
+            for (const auto& kv : dictPtr->map) vals.push_back(kv.second);
             return Value::makeArray(vals);
         }));
 
     interp.defineGlobal("has_key", Value::makeNativeFunction("has_key", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) { interp.runtimeError("has_key() expects dictionary as first argument", 0, ""); return Value(); }
             std::string key = args[1].toString();
-            const auto& map = args[0].asDictionary().map;
-            return Value(map.find(key) != map.end());
+            auto dictPtr = args[0].asDictionaryPtr();
+            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+            return Value(dictPtr->map.find(key) != dictPtr->map.end());
         }));
 
     interp.defineGlobal("remove", Value::makeNativeFunction("remove", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("remove() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("remove() expects number index as second argument", 0, ""); return Value(); }
             auto& arr = *args[0].asArrayPtr();
@@ -99,15 +111,17 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("dictRemove", Value::makeNativeFunction("dictRemove", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) { interp.runtimeError("dictRemove() expects dictionary", 0, ""); return Value(); }
             std::string key = args[1].toString();
-            args[0].asDictionaryPtr()->map.erase(key);
+            auto dictPtr = args[0].asDictionaryPtr();
+            std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+            dictPtr->map.erase(key);
             return args[0];
         }));
 
     interp.defineGlobal("insert", Value::makeNativeFunction("insert", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("insert() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("insert() expects number index as second argument", 0, ""); return Value(); }
             auto& arr = *args[0].asArrayPtr();
@@ -118,7 +132,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("slice", Value::makeNativeFunction("slice", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[1].isNumber() || !args[2].isNumber()) { interp.runtimeError("slice() expects numbers for start and end", 0, ""); return Value(); }
             int start = static_cast<int>(args[1].asNumber());
             int end = static_cast<int>(args[2].asNumber());
@@ -147,7 +161,7 @@ void registerDataBuiltins(Interpreter& interp) {
          }));
 
     interp.defineGlobal("range", Value::makeNativeFunction("range", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty() || args.size() > 2) { interp.runtimeError("range() expects 1 or 2 arguments", 0, ""); return Value(); }
             int start = 0, end = 0;
             if (args.size() == 1) {
@@ -166,7 +180,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("map", Value::makeNativeFunction("map", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("map() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("map() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -176,7 +190,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("filter", Value::makeNativeFunction("filter", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("filter() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("filter() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -189,7 +203,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("reduce", Value::makeNativeFunction("reduce", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("reduce() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("reduce() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -199,7 +213,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("forEach", Value::makeNativeFunction("forEach", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("forEach() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("forEach() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -208,7 +222,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("find", Value::makeNativeFunction("find", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("find() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("find() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -220,7 +234,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("every", Value::makeNativeFunction("every", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("every() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("every() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -232,7 +246,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("some", Value::makeNativeFunction("some", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("some() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("some() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
@@ -244,7 +258,7 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("contains", Value::makeNativeFunction("contains", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 if (!args[1].isString()) { interp.runtimeError("contains() with string expects string to search for", 0, ""); return Value(); }
                 return Value(args[0].asString().find(args[1].asString()) != std::string::npos);
@@ -258,14 +272,15 @@ void registerDataBuiltins(Interpreter& interp) {
             }
             if (args[0].isDictionary()) {
                 std::string key = args[1].toString();
-                const auto& dict = args[0].asDictionary();
-                return Value(dict.map.find(key) != dict.map.end());
+                auto dictPtr = args[0].asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                return Value(dictPtr->map.find(key) != dictPtr->map.end());
             }
             interp.runtimeError("contains() expects string, array, or dictionary", 0, ""); return Value();
          }));
 
     interp.defineGlobal("indexOf", Value::makeNativeFunction("indexOf", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 if (!args[1].isString()) { interp.runtimeError("indexOf() with string expects string to search for", 0, ""); return Value(); }
                 size_t pos = args[0].asString().find(args[1].asString());
@@ -283,7 +298,7 @@ void registerDataBuiltins(Interpreter& interp) {
          }));
 
     interp.defineGlobal("reverse", Value::makeNativeFunction("reverse", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
                 std::string s = args[0].asString();
                 std::reverse(s.begin(), s.end());
@@ -292,24 +307,24 @@ void registerDataBuiltins(Interpreter& interp) {
             if (args[0].isArray()) {
                 auto arr = args[0].asArray();
                 std::reverse(arr.begin(), arr.end());
-                return Value::makeArray(arr);
+                return Value::makeArrayCopy(arr);
             }
             interp.runtimeError("reverse() expects string or array", 0, ""); return Value();
          }));
 
     interp.defineGlobal("sort", Value::makeNativeFunction("sort", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("sort() expects array", 0, ""); return Value(); }
             auto arr = args[0].asArray();
             std::sort(arr.begin(), arr.end(), [](const Value& a, const Value& b) {
                 if (a.isNumber() && b.isNumber()) return a.asNumber() < b.asNumber();
                 return a.toString() < b.toString();
             });
-            return Value::makeArray(arr);
+            return Value::makeArrayCopy(arr);
         }));
 
     interp.defineGlobal("parse_json", Value::makeNativeFunction("parse_json", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("parse_json() expects string", 0, ""); return Value(); }
             MiniJson::Value root; MiniJson::Reader reader;
             if (!reader.parse(args[0].asString(), root)) { interp.runtimeError("Failed to parse JSON", 0, ""); return Value(); }
@@ -336,12 +351,14 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("to_json", Value::makeNativeFunction("to_json", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::function<MiniJson::Value(const Value&)> convert;
             convert = [&](const Value& v) -> MiniJson::Value {
                 if (v.isDictionary()) {
                     MiniJson::Value mv(MiniJson::OBJECT);
-                    for (const auto& kv : v.asDictionary().map) mv[kv.first] = convert(kv.second);
+                    auto dictPtr = v.asDictionaryPtr();
+                    std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                    for (const auto& kv : dictPtr->map) mv[kv.first] = convert(kv.second);
                     return mv;
                 } else if (v.isArray()) {
                     MiniJson::Value mv(MiniJson::ARRAY);
@@ -363,13 +380,14 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("getattr", Value::makeNativeFunction("getattr", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[1].isString()) { interp.runtimeError("getattr() expects property name as string", 0, ""); return Value(); }
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
-                const auto& map = args[0].asDictionary().map;
-                auto it = map.find(prop);
-                if (it != map.end()) return it->second;
+                auto dictPtr = args[0].asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                auto it = dictPtr->map.find(prop);
+                if (it != dictPtr->map.end()) return it->second;
                 return Value();
             }
             if (args[0].isInstance()) {
@@ -379,11 +397,13 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("setattr", Value::makeNativeFunction("setattr", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[1].isString()) { interp.runtimeError("setattr() expects property name as string", 0, ""); return Value(); }
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
-                args[0].asDictionaryPtr()->map[prop] = args[2];
+                auto dictPtr = args[0].asDictionaryPtr();
+                std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                dictPtr->map[prop] = args[2];
                 return args[0];
             }
             if (args[0].isInstance()) {
@@ -394,12 +414,13 @@ void registerDataBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("hasattr", Value::makeNativeFunction("hasattr", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[1].isString()) { interp.runtimeError("hasattr() expects property name as string", 0, ""); return Value(); }
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
-                const auto& map = args[0].asDictionary().map;
-                return Value(map.find(prop) != map.end());
+                auto dictPtr = args[0].asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                return Value(dictPtr->map.find(prop) != dictPtr->map.end());
             }
             if (args[0].isInstance()) {
                 return Value(args[0].asInstance()->hasProperty(prop));

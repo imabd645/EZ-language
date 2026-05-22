@@ -1,5 +1,7 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
+#include "../BytecodeVM.h"
+#include "../GUIBuiltins.h"
 
 #include <iostream>
 #include <chrono>
@@ -16,25 +18,6 @@
 #endif
 
 #ifdef _WIN32
-#include <setjmp.h>
-thread_local jmp_buf ffi_env;
-thread_local bool in_ffi = false;
-
-LONG WINAPI FfiExceptionHandler(EXCEPTION_POINTERS *ExceptionInfo) {
-    if (in_ffi && ExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
-        longjmp(ffi_env, 1);
-    }
-    return EXCEPTION_CONTINUE_SEARCH;
-}
-
-static bool ffi_veh_installed = false;
-static void install_ffi_veh() {
-    if (!ffi_veh_installed) {
-        AddVectoredExceptionHandler(1, FfiExceptionHandler);
-        ffi_veh_installed = true;
-    }
-}
-
 static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Only redirect SENT messages (WM_COMMAND, WM_NOTIFY)
     // Redirect with 0x8000 offset to avoid infinite loop when DispatchMessage calls this proxy
@@ -46,18 +29,15 @@ static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
 }
 #endif
 
-void registerSysBuiltins(Interpreter& interp) {
-#ifdef _WIN32
-    install_ffi_veh();
-#endif
+void registerSysBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("panic", Value::makeNativeFunction("panic", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             interp.runtimeError(args[0].toString(), 0, "");
             return Value();
         }));
 
     interp.defineGlobal("exit", Value::makeNativeFunction("exit", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             int code = 0;
             if (!args.empty() && args[0].isNumber()) code = (int)args[0].asNumber();
             std::exit(code);
@@ -65,7 +45,7 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now.time_since_epoch()
@@ -74,30 +54,89 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("stop", Value::makeNativeFunction("stop", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) { interp.runtimeError("stop() expects number", 0, ""); return Value(); }
             std::this_thread::sleep_for(std::chrono::milliseconds((int)args[0].asNumber()));
             return Value();
         }));
 
     interp.defineGlobal("spawn", Value::makeNativeFunction("spawn", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty() || !args[0].isCallable()) { interp.runtimeError("spawn() expects function", 0, ""); return Value(); }
             Value func = args[0];
             std::vector<Value> fnArgs(args.begin() + 1, args.end());
             auto globalEnv = interp.getGlobalEnv();
-            
-            std::shared_future<Value> fut = std::async(std::launch::async, 
-                [globalEnv, func, fnArgs]() -> Value {
-                    Interpreter threadInterp;
-                    threadInterp.setGlobalEnv(globalEnv);
-                    return threadInterp.callFunction(func, fnArgs, 0, "native");
-                }).share();
-                
+            BytecodeVM* parentVM = dynamic_cast<BytecodeVM*>(&interp);
+            auto tState = parentVM ? parentVM->exportThreadState() : BytecodeVM::ThreadState();
+
+            // Close upvalues in any closure/bound-method so the worker thread doesn't hold
+            // dangling pointers into the parent VM's stack.
+            // Arrays, Dicts, and Instances are shared_ptr based — we keep them as-is so
+            // worker threads share the same queue/mutex objects.
+            auto threadUpvalues = std::make_shared<std::vector<std::unique_ptr<UpvalueObj>>>();
+            std::unordered_map<GCObject*, Value> seen;
+
+            std::function<Value(const Value&)> closeUpvals = [&](const Value& v) -> Value {
+                if (v.isClosure()) {
+                    auto oldCl = v.asClosure();
+                    if (seen.count(oldCl.get())) return seen[oldCl.get()];
+
+                    auto newCl = std::make_shared<EZClosure>(oldCl->function);
+                    seen[oldCl.get()] = Value(newCl);
+
+                    for (auto* uv : oldCl->upvalues) {
+                        if (!uv) { newCl->upvalues.push_back(nullptr); continue; }
+                        auto newUv = std::make_unique<UpvalueObj>();
+                        Value* loc = uv->location.load();
+                        // Snapshot the current value (which may be on parent's stack)
+                        Value snap = (loc != nullptr) ? *loc : Value();
+                        // Recursively close nested closures captured in this upvalue
+                        newUv->closed = closeUpvals(snap);
+                        newUv->location.store(&newUv->closed);
+                        newUv->next = nullptr;
+                        newCl->upvalues.push_back(newUv.get());
+                        threadUpvalues->push_back(std::move(newUv));
+                    }
+                    return Value(newCl);
+                } else if (v.isBoundMethod()) {
+                    auto oldBm = v.asBoundMethod();
+                    if (seen.count(oldBm.get())) return seen[oldBm.get()];
+                    auto newBm = std::make_shared<EZBoundMethod>(
+                        closeUpvals(oldBm->receiver),
+                        closeUpvals(oldBm->method)
+                    );
+                    seen[oldBm.get()] = Value(newBm);
+                    return Value(newBm);
+                }
+                // Arrays, Dicts, Instances, primitives — share directly
+                return v;
+            };
+
+            Value closedFunc = closeUpvals(func);
+            std::vector<Value> closedArgs;
+            for (auto& a : fnArgs) closedArgs.push_back(closeUpvals(a));
+
+            auto promise = std::make_shared<std::promise<Value>>();
+            std::shared_future<Value> fut = promise->get_future().share();
+
+            std::thread([promise, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
+                try {
+                    BytecodeVM threadVM(globalEnv);
+                    threadVM.traceExecution = false;
+                    threadVM.importThreadState(tState);
+                    for (auto& uv : *threadUpvalues) threadVM.adoptUpvalue(std::move(uv));
+                    Value result = threadVM.callFunction(closedFunc, closedArgs, 0, "native");
+                    promise->set_value(result);
+                } catch(std::exception& e) {
+                    std::cerr << "[spawn-thread] uncaught: " << e.what() << std::endl;
+                    promise->set_value(Value());
+                }
+            }).detach();
+
             return Value::makeFuture(fut);
         }));
 
-    auto awaitFn = [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+    auto awaitFn = [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
         if (!args[0].isFuture()) { interp.runtimeError("await() expects future", 0, ""); return Value(); }
         auto fut = args[0].asFuture();
         fut->wait();
@@ -113,13 +152,13 @@ void registerSysBuiltins(Interpreter& interp) {
     // Legacy OS Operations extracted to lib/os.ez via FFI
         
     interp.defineGlobal("clear", Value::makeNativeFunction("clear", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             system("cls");
             return Value();
         }));
 
     interp.defineGlobal("color", Value::makeNativeFunction("color", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) { interp.runtimeError("color() expects a number code (0-15)", 0, ""); return Value(); }
             int code = (int)args[0].asNumber();
@@ -130,7 +169,7 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("reset", Value::makeNativeFunction("reset", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
 #ifdef _WIN32
             HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
             SetConsoleTextAttribute(hConsole, 7); 
@@ -139,7 +178,7 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("gotoxy", Value::makeNativeFunction("gotoxy", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber()) 
                 { interp.runtimeError("gotoxy() expects two numbers (x, y)", 0, ""); return Value(); }
@@ -153,7 +192,7 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("getch", Value::makeNativeFunction("getch", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
 #ifdef _WIN32
             int c = _getch();
             return Value(std::string(1, (char)c));
@@ -163,22 +202,22 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_alloc", Value::makeNativeFunction("os_alloc", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            size_t size = (size_t)args[0].asNumber();
+            size_t size = (size_t)args[0].asInteger();
             void* ptr = calloc(1, size);
-            return Value((double)(reinterpret_cast<uintptr_t>(ptr)));
+            return Value((long long)(reinterpret_cast<uintptr_t>(ptr)));
 #else
             return Value();
 #endif
         }));
 
     interp.defineGlobal("os_free", Value::makeNativeFunction("os_free", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asInteger());
             if (ptr) free(ptr);
             return Value();
 #else
@@ -186,194 +225,39 @@ void registerSysBuiltins(Interpreter& interp) {
 #endif
         }));
 
-    interp.defineGlobal("os_memcpy", Value::makeNativeFunction("os_memcpy", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            void* dst = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
-            void* src = reinterpret_cast<void*>((uintptr_t)args[1].asNumber());
-            size_t size = (size_t)args[2].asNumber();
-            if (dst && src && size > 0) {
-                in_ffi = true;
-                if (setjmp(ffi_env) == 0) {
-                    memcpy(dst, src, size);
-                    in_ffi = false;
-                } else {
-                    in_ffi = false;
-                    interp.runtimeError("Memory Access Violation: os_memcpy failed to read/write pointer.", 0, "");
-                }
-            }
-            return Value();
-#else
-            return Value();
-#endif
-        }));
-
-    interp.defineGlobal("os_buffer_from_ptr", Value::makeNativeFunction("os_buffer_from_ptr", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value();
-            uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t size = (size_t)args[1].asNumber();
-            if (!ptr || size == 0) return Value(makeGCBuffer(0));
-            std::vector<uint8_t> buf(size);
-            
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                memcpy(buf.data(), ptr, size);
-                in_ffi = false;
-                return Value(makeGCBuffer(buf));
-            } else {
-                in_ffi = false;
-                interp.runtimeError("Memory Access Violation: os_buffer_from_ptr failed to read pointer.", 0, "");
-                return Value();
-            }
-#else
-            return Value();
-#endif
-        }));
-
-    interp.defineGlobal("os_buffer_to_ptr", Value::makeNativeFunction("os_buffer_to_ptr", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isBuffer() || !args[1].isNumber()) return Value();
-            const std::vector<uint8_t>& buf = args[0].asBuffer();
-            uint8_t* ptr = reinterpret_cast<uint8_t*>((uintptr_t)args[1].asNumber());
-            if (ptr && !buf.empty()) {
-                in_ffi = true;
-                if (setjmp(ffi_env) == 0) {
-                    memcpy(ptr, buf.data(), buf.size());
-                    in_ffi = false;
-                } else {
-                    in_ffi = false;
-                    interp.runtimeError("Memory Access Violation: os_buffer_to_ptr failed to write pointer.", 0, "");
-                }
-            }
-            return Value();
-#else
-            return Value();
-#endif
-        }));
-
-    interp.defineGlobal("os_read_double", Value::makeNativeFunction("os_read_double", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                double val = *(double*)(base + offset);
-                in_ffi = false;
-                return Value(val);
-            } else {
-                in_ffi = false;
-                interp.runtimeError("Memory Access Violation: os_read_double invalid memory boundary.", 0, "");
-                return Value();
-            }
-#else
-            return Value(0.0);
-#endif
-        }));
-
-    interp.defineGlobal("os_write_double", Value::makeNativeFunction("os_write_double", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                *(double*)(base + offset) = args[2].asNumber();
-                in_ffi = false;
-            } else {
-                in_ffi = false;
-                interp.runtimeError("Memory Access Violation: os_write_double invalid memory boundary.", 0, "");
-            }
-            return Value();
-#else
-            return Value();
-#endif
-        }));
-
-    interp.defineGlobal("os_read_float", Value::makeNativeFunction("os_read_float", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                float val = *(float*)(base + offset);
-                in_ffi = false;
-                return Value((double)val);
-            } else {
-                in_ffi = false;
-                interp.runtimeError("Memory Access Violation: os_read_float invalid memory boundary.", 0, "");
-                return Value();
-            }
-#else
-            return Value(0.0);
-#endif
-        }));
-
-    interp.defineGlobal("os_write_float", Value::makeNativeFunction("os_write_float", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                *(float*)(base + offset) = (float)args[2].asNumber();
-                in_ffi = false;
-            } else {
-                in_ffi = false;
-                interp.runtimeError("Memory Access Violation: os_write_float invalid memory boundary.", 0, "");
-            }
-            return Value();
-#else
-            return Value();
-#endif
-        }));
-
     interp.defineGlobal("os_read_uint64", Value::makeNativeFunction("os_read_uint64", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
             uint64_t val = *(uint64_t*)(base + offset);
-            return Value((double)val);
+            return Value((long long)val);
 #else
-            return Value(0.0);
+            return Value(0LL);
 #endif
         }));
 
     interp.defineGlobal("os_read_uint32", Value::makeNativeFunction("os_read_uint32", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
             uint32_t val = *(uint32_t*)(base + offset);
-            return Value((double)val);
+            return Value((long long)val);
 #else
-            return Value(0.0);
+            return Value(0LL);
 #endif
         }));
 
     interp.defineGlobal("os_write_uint32", Value::makeNativeFunction("os_write_uint32", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
+            *(uint32_t*)(base + offset) = (uint32_t)args[2].asInteger();
             return Value();
 #else
             return Value();
@@ -383,34 +267,34 @@ void registerSysBuiltins(Interpreter& interp) {
 
 
     interp.defineGlobal("os_get_proxy_wndproc", Value::makeNativeFunction("os_get_proxy_wndproc", 0,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            return Value((double)(uintptr_t)EZ_ProxyWndProc);
+            return Value((long long)(uintptr_t)EZ_ProxyWndProc);
 #else
-            return Value(0.0);
+            return Value(0LL);
 #endif
         }));
 
     interp.defineGlobal("os_read_uint16", Value::makeNativeFunction("os_read_uint16", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
             uint16_t val = *(uint16_t*)(base + offset);
-            return Value((double)val);
+            return Value((long long)val);
 #else
-            return Value(0.0);
+            return Value(0LL);
 #endif
         }));
 
     interp.defineGlobal("os_write_uint16", Value::makeNativeFunction("os_write_uint16", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
+            *(uint16_t*)(base + offset) = (uint16_t)args[2].asInteger();
             return Value();
 #else
             return Value();
@@ -418,12 +302,12 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_write_uint64", Value::makeNativeFunction("os_write_uint64", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
+            *(uint64_t*)(base + offset) = (uint64_t)args[2].asInteger();
             return Value();
 #else
             return Value();
@@ -431,24 +315,24 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_read_byte", Value::makeNativeFunction("os_read_byte", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            return Value((double)*(base + offset));
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
+            return Value((long long)*(base + offset));
 #else
-            return Value(0.0);
+            return Value(0LL);
 #endif
         }));
 
     interp.defineGlobal("os_write_byte", Value::makeNativeFunction("os_write_byte", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            *(base + offset) = (uint8_t)args[2].asNumber();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
+            *(base + offset) = (uint8_t)args[2].asInteger();
             return Value();
 #else
             return Value();
@@ -456,10 +340,10 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_read_string_ptr", Value::makeNativeFunction("os_read_string_ptr", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value("");
-            const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
+            const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asInteger());
             if (str) return Value(std::string(str));
             return Value("");
 #else
@@ -468,11 +352,11 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_write_string", Value::makeNativeFunction("os_write_string", 3,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isString()) return Value();
-            char* base = reinterpret_cast<char*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
+            char* base = reinterpret_cast<char*>((uintptr_t)args[0].asInteger());
+            size_t offset = (size_t)args[1].asInteger();
             std::string text = args[2].asString();
             memcpy(base + offset, text.c_str(), text.length() + 1);
             return Value();
@@ -482,34 +366,37 @@ void registerSysBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("os_load_lib", Value::makeNativeFunction("os_load_lib", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isString()) return Value();
             HMODULE handle = LoadLibraryA(args[0].asString().c_str());
-            return Value((double)(reinterpret_cast<uintptr_t>(handle)));
+            return Value((long long)(reinterpret_cast<uintptr_t>(handle)));
 #else
             return Value();
 #endif
         }));
 
     interp.defineGlobal("os_get_func", Value::makeNativeFunction("os_get_func", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isString()) return Value();
-            HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asNumber());
+            HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asInteger());
             FARPROC proc = GetProcAddress(handle, args[1].asString().c_str());
-            return Value((double)(reinterpret_cast<uintptr_t>(proc)));
+            return Value((long long)(reinterpret_cast<uintptr_t>(proc)));
 #else
             return Value();
 #endif
         }));
 
     interp.defineGlobal("os_call", Value::makeNativeFunction("os_call", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (args.size() < 2 || !args[0].isNumber() || !args[1].isString()) return Value();
-            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
-            if (!funcPtr) return Value();
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asInteger());
+            if (!funcPtr) {
+                interp.runtimeError("os_call: Null function pointer or function not found.", 0, "");
+                return Value();
+            }
             
             using Func0 = intptr_t(*)();
             using Func1 = intptr_t(*)(intptr_t);
@@ -527,7 +414,7 @@ void registerSysBuiltins(Interpreter& interp) {
             
             intptr_t cArgs[12] = {0};
             for (size_t i = 2; i < args.size() && i - 2 < 12; i++) {
-                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asNumber());
+                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asInteger());
                 else if (args[i].isString()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asString().c_str());
                 else if (args[i].isBuffer()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asBuffer().data());
                 else if (args[i].isBool()) cArgs[i - 2] = args[i].asBool() ? 1 : 0;
@@ -538,127 +425,37 @@ void registerSysBuiltins(Interpreter& interp) {
             size_t argc = args.size() - 2;
             std::string retType = args[1].asString();
 
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                if (retType == "float") {
-                    using fFunc0 = double(*)();
-                    using fFunc1 = double(*)(intptr_t);
-                    using fFunc2 = double(*)(intptr_t, intptr_t);
-                    using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
-                    using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
+            if (retType == "float") {
+                using fFunc0 = double(*)();
+                using fFunc1 = double(*)(intptr_t);
+                using fFunc2 = double(*)(intptr_t, intptr_t);
+                using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
+                using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
 
-                    if (argc == 0) f_ret = ((fFunc0)funcPtr)();
-                    else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
-                    else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
-                    else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                    else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                    
-                    in_ffi = false;
-                    return Value(f_ret);
-                } else {
-                    if (argc == 0) ret = ((Func0)funcPtr)();
-                    else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
-                    else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
-                    else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                    else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                    else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
-                    else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
-                    else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
-                    else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
-                    else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
-                    else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
-                    else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
-                    else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
-                }
-                in_ffi = false;
+                if (argc == 0) f_ret = ((fFunc0)funcPtr)();
+                else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
+                else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
+                else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                
+                return Value(f_ret);
             } else {
-                in_ffi = false;
-                interp.runtimeError("FFI Access Violation (Segmentation Fault): Invalid pointer or memory access during native call.", 0, "");
-                return Value();
+                if (argc == 0) ret = ((Func0)funcPtr)();
+                else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
+                else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
+                else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
+                else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
+                else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
+                else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
+                else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
+                else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
+                else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
+                else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
             }
             
-            if (retType == "int" || retType == "ptr") return Value((double)ret);
-            if (retType == "string") {
-                const char* str = reinterpret_cast<const char*>(ret);
-                if (str) return Value(std::string(str));
-                return Value("");
-            }
-            return Value();
-#else
-            return Value();
-#endif
-        }));
-
-    interp.defineGlobal("os_call_sig", Value::makeNativeFunction("os_call_sig", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (args.size() < 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isString()) return Value();
-            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
-            if (!funcPtr) return Value();
-            
-            std::string retType = args[1].asString();
-            std::string sig = args[2].asString();
-            
-            intptr_t iArgs[4] = {0};
-            double fArgs[4] = {0.0};
-            
-            for (size_t i = 0; i < sig.length() && i < 4; i++) {
-                if (3 + i < args.size()) {
-                    if (args[3+i].isNumber()) { iArgs[i] = static_cast<intptr_t>(args[3+i].asNumber()); fArgs[i] = args[3+i].asNumber(); }
-                    else if (args[3+i].isString()) iArgs[i] = reinterpret_cast<intptr_t>(args[3+i].asString().c_str());
-                    else if (args[3+i].isBuffer()) iArgs[i] = reinterpret_cast<intptr_t>(args[3+i].asBuffer().data());
-                    else if (args[3+i].isBool()) iArgs[i] = args[3+i].asBool() ? 1 : 0;
-                }
-            }
-
-            intptr_t ret = 0;
-
-            in_ffi = true;
-            if (setjmp(ffi_env) == 0) {
-                if (sig == "i") {
-                    ret = ((intptr_t(*)(intptr_t))funcPtr)(iArgs[0]);
-                } else if (sig == "f") {
-                    ret = ((intptr_t(*)(double))funcPtr)(fArgs[0]);
-                } else if (sig == "ii") {
-                    ret = ((intptr_t(*)(intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1]);
-                } else if (sig == "if") {
-                    ret = ((intptr_t(*)(intptr_t, double))funcPtr)(iArgs[0], fArgs[1]);
-                } else if (sig == "fi") {
-                    ret = ((intptr_t(*)(double, intptr_t))funcPtr)(fArgs[0], iArgs[1]);
-                } else if (sig == "ff") {
-                    ret = ((intptr_t(*)(double, double))funcPtr)(fArgs[0], fArgs[1]);
-                } else if (sig == "iii") {
-                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2]);
-                } else if (sig == "iif") {
-                    ret = ((intptr_t(*)(intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], fArgs[2]);
-                } else if (sig == "ifi") {
-                    ret = ((intptr_t(*)(intptr_t, double, intptr_t))funcPtr)(iArgs[0], fArgs[1], iArgs[2]);
-                } else if (sig == "iff") {
-                    ret = ((intptr_t(*)(intptr_t, double, double))funcPtr)(iArgs[0], fArgs[1], fArgs[2]);
-                } else if (sig == "fii") {
-                    ret = ((intptr_t(*)(double, intptr_t, intptr_t))funcPtr)(fArgs[0], iArgs[1], iArgs[2]);
-                } else if (sig == "fif") {
-                    ret = ((intptr_t(*)(double, intptr_t, double))funcPtr)(fArgs[0], iArgs[1], fArgs[2]);
-                } else if (sig == "ffi") {
-                    ret = ((intptr_t(*)(double, double, intptr_t))funcPtr)(fArgs[0], fArgs[1], iArgs[2]);
-                } else if (sig == "fff") {
-                    ret = ((intptr_t(*)(double, double, double))funcPtr)(fArgs[0], fArgs[1], fArgs[2]);
-                } else if (sig == "iiii") {
-                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t))funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]);
-                } else if (sig == "iiif") {
-                    ret = ((intptr_t(*)(intptr_t, intptr_t, intptr_t, double))funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]);
-                } else {
-                    in_ffi = false;
-                     return Value(); 
-                }
-                in_ffi = false;
-            } else {
-                in_ffi = false;
-                interp.runtimeError("FFI Access Violation (Segmentation Fault): Invalid pointer or memory access during native call.", 0, "");
-                return Value();
-            }
-            
-            if (retType == "int" || retType == "ptr") return Value((double)ret);
+            if (retType == "int" || retType == "ptr") return Value((long long)ret);
             if (retType == "string") {
                 const char* str = reinterpret_cast<const char*>(ret);
                 if (str) return Value(std::string(str));

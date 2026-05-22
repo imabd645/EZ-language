@@ -1,19 +1,21 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 #include "../GC.h"
+#include "../Environment.h"
 #include <thread>
 #include <chrono>
+#include <iostream>
 
-void registerConcurrencyBuiltins(Interpreter& interp) {
+void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // mutex()
     interp.defineGlobal("mutex", Value::makeNativeFunction("mutex", 0,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             return Value(makeGCMutex());
         }));
 
     // lock(mutex, lambda)
     interp.defineGlobal("lock", Value::makeNativeFunction("lock", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isMutex()) {
                 interp.runtimeError("lock() expects mutex as first argument", 0, "");
                 return Value();
@@ -25,21 +27,14 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             
             auto mtx = args[0].asMutexPtr();
             
-            // RAII Lock
-            mtx->lock();
-            try {
-                Value result = interp.callFunction(args[1], {}, 0, "");
-                mtx->unlock();
-                return result;
-            } catch (...) {
-                mtx->unlock();
-                throw; // Re-throw to let interpreter handle error
-            }
+            // RAII lock — automatically unlocks on scope exit, even if an exception is thrown
+            std::lock_guard<std::recursive_mutex> guard(mtx->mtx);
+            return interp.callFunction(args[1], {}, 0, "");
         }));
 
     // wait(ms)
     interp.defineGlobal("wait", Value::makeNativeFunction("wait", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) {
                 interp.runtimeError("wait() expects milliseconds (number)", 0, "");
                 return Value();
@@ -53,13 +48,13 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
 
     static std::mutex atomicMutex;
     
-    // atomic_inc(name)
+    // atomic_inc(name) — atomically increment a GLOBAL variable by 1
     interp.defineGlobal("atomic_inc", Value::makeNativeFunction("atomic_inc", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("atomic_inc() expects variable name", 0, ""); return Value(); }
             std::string name = args[0].asString();
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getCurrentEnv();
+            auto env = interp.getGlobalEnv();
             Value val = env->get(name, 0);
             long long current_val = 0;
             if (val.isInteger()) current_val = val.asInteger();
@@ -70,13 +65,13 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             return Value(new_val);
         }));
 
-    // atomic_dec(name)
+    // atomic_dec(name) — atomically decrement a GLOBAL variable by 1
     interp.defineGlobal("atomic_dec", Value::makeNativeFunction("atomic_dec", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("atomic_dec() expects variable name", 0, ""); return Value(); }
             std::string name = args[0].asString();
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getCurrentEnv();
+            auto env = interp.getGlobalEnv();
             Value val = env->get(name, 0);
             long long current_val = 0;
             if (val.isInteger()) current_val = val.asInteger();
@@ -87,15 +82,15 @@ void registerConcurrencyBuiltins(Interpreter& interp) {
             return Value(new_val);
         }));
 
-    // atomic_add(name, amount)
+    // atomic_add(name, amount) — atomically add amount to a GLOBAL variable
     interp.defineGlobal("atomic_add", Value::makeNativeFunction("atomic_add", 2,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("atomic_add() expects variable name", 0, ""); return Value(); }
-            if (!args[1].isNumber() && !args[1].isInteger()) { interp.runtimeError("atomic_add() expects number amount", 0, ""); return Value(); }
+            if (!args[1].isNumber()) { interp.runtimeError("atomic_add() expects number amount", 0, ""); return Value(); }
             std::string name = args[0].asString();
             long long amount = args[1].isInteger() ? args[1].asInteger() : static_cast<long long>(args[1].asFloat());
             std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getCurrentEnv();
+            auto env = interp.getGlobalEnv();
             Value val = env->get(name, 0);
             long long current_val = 0;
             if (val.isInteger()) current_val = val.asInteger();

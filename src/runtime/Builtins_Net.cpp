@@ -1,5 +1,5 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 
 #include <curl/curl.h>
 #include <string>
@@ -23,12 +23,12 @@ static auto HttpWriteCallback = [](void* contents, size_t size, size_t nmemb, vo
     return size * nmemb;
 };
 
-void registerNetBuiltins(Interpreter& interp) {
+void registerNetBuiltins(RuntimeContext& interp) {
     static int curl_init_checker = []() { curl_global_init(CURL_GLOBAL_DEFAULT); return 0; }();
     (void)curl_init_checker;
 
     interp.defineGlobal("url_encode", Value::makeNativeFunction("url_encode", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string s = args[0].toString();
             CURL* curl = curl_easy_init();
             char* output = curl_easy_escape(curl, s.c_str(), (int)s.length());
@@ -39,7 +39,7 @@ void registerNetBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("url_decode", Value::makeNativeFunction("url_decode", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             std::string s = args[0].toString();
             CURL* curl = curl_easy_init();
             int outlen;
@@ -51,7 +51,7 @@ void registerNetBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("http_get", Value::makeNativeFunction("http_get", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty()) { interp.runtimeError("http_get() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
             CURL* curl = curl_easy_init();
@@ -66,7 +66,9 @@ void registerNetBuiltins(Interpreter& interp) {
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
             struct curl_slist* headers = nullptr;
             if (args.size() > 1 && args[1].isDictionary()) {
-                for (auto& kv : args[1].asDictionary().map) {
+                auto dictPtr = args[1].asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                for (auto& kv : dictPtr->map) {
                     std::string h = kv.first + ": " + kv.second.toString();
                     headers = curl_slist_append(headers, h.c_str());
                 }
@@ -80,7 +82,7 @@ void registerNetBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("http_post", Value::makeNativeFunction("http_post", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() < 2) { interp.runtimeError("http_post() expects URL and body", 0, ""); return Value(); }
             std::string url = args[0].toString();
             std::string body = args[1].toString();
@@ -99,7 +101,9 @@ void registerNetBuiltins(Interpreter& interp) {
             struct curl_slist* headers = nullptr;
             bool hasCT = false;
             if (args.size() > 2 && args[2].isDictionary()) {
-                for (auto& kv : args[2].asDictionary().map) {
+                auto dictPtr = args[2].asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                for (auto& kv : dictPtr->map) {
                     std::string k = kv.first;
                     std::string h = k + ": " + kv.second.toString();
                     headers = curl_slist_append(headers, h.c_str());
@@ -118,7 +122,7 @@ void registerNetBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("fetch", Value::makeNativeFunction("fetch", -1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty()) { interp.runtimeError("fetch() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
             Value options;
@@ -134,11 +138,15 @@ void registerNetBuiltins(Interpreter& interp) {
                     struct curl_slist* headers = nullptr;
                     
                     if (options.isDictionary()) {
-                        const auto& opts = options.asDictionary().map;
+                        auto dictPtr = options.asDictionaryPtr();
+                        std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                        const auto& opts = dictPtr->map;
                         if (opts.count("method")) method = opts.at("method").toString();
                         if (opts.count("body")) body = opts.at("body").toString();
                         if (opts.count("headers") && opts.at("headers").isDictionary()) {
-                            for (const auto& kv : opts.at("headers").asDictionary().map) {
+                            auto hDictPtr = opts.at("headers").asDictionaryPtr();
+                            std::shared_lock<std::shared_mutex> hLk(hDictPtr->map_mutex);
+                            for (const auto& kv : hDictPtr->map) {
                                 std::string h = kv.first + ": " + kv.second.toString();
                                 headers = curl_slist_append(headers, h.c_str());
                             }
@@ -174,5 +182,4 @@ void registerNetBuiltins(Interpreter& interp) {
         }));
 
 
-    // Legacy C++ Windows Server & serveFile abstractions ripped out to pure FFI net.ez completely natively.
 }

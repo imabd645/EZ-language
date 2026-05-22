@@ -1,5 +1,5 @@
 #include "../Builtins.h"
-#include "../Interpreter.h"
+#include "../RuntimeContext.h"
 
 #include <string>
 #include <vector>
@@ -99,21 +99,21 @@ struct SimplePDF {
 
 static SimplePDF g_pdf;
 
-void registerPDFBuiltins(Interpreter& interp) {
+void registerPDFBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("pdf_begin", Value::makeNativeFunction("pdf_begin", 1,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             g_pdf.begin(args[0].toString());
             return Value();
         }));
 
     interp.defineGlobal("pdf_add_page", Value::makeNativeFunction("pdf_add_page", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             g_pdf.addPage();
             return Value();
         }));
 
     interp.defineGlobal("pdf_text", Value::makeNativeFunction("pdf_text", 4,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) { interp.runtimeError("pdf_text() expects number size", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("pdf_text() expects number x", 0, ""); return Value(); }
             if (!args[2].isNumber()) { interp.runtimeError("pdf_text() expects number y", 0, ""); return Value(); }
@@ -127,7 +127,7 @@ void registerPDFBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("pdf_line", Value::makeNativeFunction("pdf_line", 4,
-        [](Interpreter& interp, const std::vector<Value>& args) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) { interp.runtimeError("pdf_line() expects number x1", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("pdf_line() expects number y1", 0, ""); return Value(); }
             if (!args[2].isNumber()) { interp.runtimeError("pdf_line() expects number x2", 0, ""); return Value(); }
@@ -141,7 +141,7 @@ void registerPDFBuiltins(Interpreter& interp) {
         }));
 
     interp.defineGlobal("pdf_save", Value::makeNativeFunction("pdf_save", 0,
-        [](Interpreter& interp, const std::vector<Value>&) -> Value {
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             g_pdf.save();
             return Value();
         }));

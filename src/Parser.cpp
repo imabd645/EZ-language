@@ -133,14 +133,6 @@ StmtPtr Parser::declaration() {
 }
 
 StmtPtr Parser::statement() {
-    if (match(TokenType::ASYNC)) {
-        if (check(TokenType::TASK)) {
-            advance(); // consume TASK
-            return taskStatement(true);
-        }
-        current--; // Backtrack for expression usage
-    }
-
     if (match(TokenType::INTERFACE)) return interfaceStatement();
     if (match(TokenType::OUT)) return outStatement();
     if (match(TokenType::WHEN)) return whenStatement();
@@ -148,7 +140,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::REPEAT)) return repeatStatement();
     if (match(TokenType::GET)) return getStatement();
     if (match(TokenType::STATIC)) return staticStatement();
-    if (match(TokenType::TASK)) return taskStatement(false);
+    if (match(TokenType::TASK)) return taskStatement();
     if (match(TokenType::GIVE)) return giveStatement();
     if (match(TokenType::ESCAPE)) return escapeStatement();
     if (match(TokenType::SKIP)) return skipStatement();
@@ -293,7 +285,7 @@ StmtPtr Parser::getStatement() {
     return makeGetStmt(line, varToken.filename, varName, iterable, body);
 }
 
-StmtPtr Parser::taskStatement(bool isAsync) {
+StmtPtr Parser::taskStatement() {
     int line = previous().line;
     
     // Allow any token as function name (for operator overloading)
@@ -359,7 +351,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic, isAsync);
+    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -469,15 +461,8 @@ StmtPtr Parser::expressionStatement() {
     ExprPtr expr = expression();
     
     // Check if this is a variable declaration (assignment to new variable)
-    if (auto* exprNode = expr.get()) {
-        if (auto* assignExpr = std::get_if<std::shared_ptr<AssignExpr>>(&exprNode->variant)) {
-            if (!(*assignExpr)->index) {
-                // Simple assignment, treat as var declaration
-                return makeVarDeclStmt(line, peek().filename, (*assignExpr)->name, (*assignExpr)->value);
-            }
-        }
-    }
-    
+    // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
+    // Otherwise, treat as regular assignment statement
     return makeExprStmt(line, peek().filename, expr);
 }
 
@@ -712,33 +697,6 @@ ExprPtr Parser::unary() {
         return makeUnaryExpr(op.line, op.filename, op.type, right);
     }
     
-    if (match(TokenType::AWAIT)) {
-        Token op = previous();
-        ExprPtr right = unary();
-        return makeAwaitExpr(op.line, op.filename, right);
-    }
-
-    if (match(TokenType::ASYNC)) {
-        Token op = previous();
-        // Special case: async { body } -> anonymous task/spawn
-        if (check(TokenType::LBRACE)) {
-            consume(TokenType::LBRACE, "Expected '{'");
-            skipNewlines();
-            std::vector<StmtPtr> body;
-            while (!check(TokenType::RBRACE) && !isAtEnd()) {
-                auto stmt = declaration();
-                if (stmt) body.push_back(stmt);
-                skipNewlines();
-            }
-            consume(TokenType::RBRACE, "Expected '}' after async block");
-            ExprPtr lambda = makeLambdaExpr(op.line, op.filename, {}, body);
-            return makeAsyncExpr(op.line, op.filename, lambda);
-        }
-        
-        ExprPtr right = unary();
-        return makeAsyncExpr(op.line, op.filename, right);
-    }
-    
     return call();
 }
 
@@ -808,6 +766,21 @@ ExprPtr Parser::primary() {
     if (match(TokenType::FALSE)) return makeLiteralExpr(line, filename, false);
     if (match(TokenType::TRUE)) return makeLiteralExpr(line, filename, true);
     if (match(TokenType::NIL)) return makeLiteralExpr(line, filename, nullptr);
+    
+    if (match(TokenType::NEW)) {
+        Token t = previous();
+        Token nameToken = consume(TokenType::IDENTIFIER, "Expected model name after 'new'");
+        std::vector<ExprPtr> args;
+        if (match(TokenType::LPAREN)) {
+            if (!check(TokenType::RPAREN)) {
+                do {
+                    args.push_back(expression());
+                } while (match(TokenType::COMMA));
+            }
+            consume(TokenType::RPAREN, "Expected ')' after arguments");
+        }
+        return makeNewExpr(t.line, t.filename, nameToken.lexeme, args);
+    }
     
     if (match(TokenType::NUMBER)) {
         Token t = previous();
@@ -1002,6 +975,7 @@ StmtPtr Parser::modelStatement() {
     skipNewlines();
     
     std::vector<std::string> initParams;
+    std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
     
@@ -1026,9 +1000,18 @@ StmtPtr Parser::modelStatement() {
             consume(TokenType::LPAREN, "Expected '(' after 'init'");
             
             if (!check(TokenType::RPAREN)) {
+                bool hadDefault = false;
                 do {
                     Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
                     initParams.push_back(paramToken.lexeme);
+                    
+                    if (match(TokenType::EQUAL)) {
+                        initDefaultValues.push_back(expression());
+                        hadDefault = true;
+                    } else {
+                        if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");
+                        initDefaultValues.push_back(nullptr);
+                    }
                 } while (match(TokenType::COMMA));
             }
             
@@ -1053,13 +1036,23 @@ StmtPtr Parser::modelStatement() {
             consume(TokenType::LPAREN, "Expected '(' after method name");
             
             std::vector<std::string> params;
+            std::vector<ExprPtr> defaultValues;
             if (!check(TokenType::RPAREN)) {
+                bool hadDefault = false;
                 do {
                     Token paramToken = advance();
                     if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
                         throw ParseError("Expected parameter name", paramToken.line);
                     }
                     params.push_back(paramToken.lexeme);
+                    
+                    if (match(TokenType::EQUAL)) {
+                        defaultValues.push_back(expression());
+                        hadDefault = true;
+                    } else {
+                        if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");
+                        defaultValues.push_back(nullptr);
+                    }
                 } while (match(TokenType::COMMA));
             }
             
@@ -1083,6 +1076,7 @@ StmtPtr Parser::modelStatement() {
             member.isMethod = true;
             member.name = methodName.lexeme;
             member.params = params;
+            member.defaultValues = defaultValues;
             member.body = body;
             members.push_back(member);
         }
@@ -1113,7 +1107,7 @@ StmtPtr Parser::modelStatement() {
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
     // Use the peek().filename or current filename
-    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initBody, members);
+    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initDefaultValues, initBody, members);
 }
 
 // Interface definition

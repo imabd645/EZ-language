@@ -52,7 +52,7 @@ private:
     StmtPtr repeatStatement();
     StmtPtr getStatement();
     StmtPtr staticStatement();
-    StmtPtr taskStatement(bool isAsync = false);
+    StmtPtr taskStatement();
     StmtPtr giveStatement();
     StmtPtr escapeStatement();
     StmtPtr skipStatement();

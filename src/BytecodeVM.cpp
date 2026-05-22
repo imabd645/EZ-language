@@ -1,0 +1,1954 @@
+#include <algorithm>
+#include <functional>
+#include "BytecodeVM.h"
+#include <iostream>
+#include <cmath>
+#include <sstream>
+#include "Lexer.h"
+#include "Parser.h"
+#include "Builtins.h"
+#include "GUIBuiltins.h"
+#include <thread>
+
+// ============================================================================
+// BytecodeVM Implementation
+// ============================================================================
+
+BytecodeVM::BytecodeVM()
+    : stackTop(nullptr), openUpvalues(nullptr),
+      isExceptionPending(false), running(false) {
+    stack.resize(STACK_MAX);
+    stackTop = stack.data();
+    frames.reserve(1024);
+    frameUpvalues.reserve(1024);
+    globalEnv = std::make_shared<Environment>();
+    initBuiltins();
+}
+
+BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
+    : globalEnv(globalEnv_), stackTop(nullptr), openUpvalues(nullptr),
+      isExceptionPending(false), running(false) {
+    stack.resize(STACK_MAX);
+    stackTop = stack.data();
+    frames.reserve(1024);
+    frameUpvalues.reserve(1024);
+    initBuiltins();
+}
+
+BytecodeVM::~BytecodeVM() {
+    // allUpvalues unique_ptrs handle cleanup automatically
+}
+
+Value BytecodeVM::execute(BytecodeFunctionPtr function) {
+    return execute(function, {});
+}
+
+BytecodeVM::ThreadState BytecodeVM::exportThreadState() const {
+    ThreadState state;
+    return state;
+}
+
+void BytecodeVM::importThreadState(const ThreadState& state) {
+}
+
+Value BytecodeVM::execute(BytecodeFunctionPtr function,
+                           const std::vector<Value>& args) {
+    // Ensure constants are resolved for this function and all nested ones
+    function->chunk.resolveConstants();
+    
+    // Recursive resolution helper
+    std::function<void(BytecodeFunctionPtr)> resolveRecursive = [&](BytecodeFunctionPtr f) {
+        f->chunk.resolveConstants();
+        for (auto& nested : f->nestedFunctions) {
+            resolveRecursive(nested);
+        }
+    };
+    resolveRecursive(function);
+
+    // Save current state to support re-entrant calls (e.g. from builtins or constructors)
+    auto savedFrames = std::move(frames);
+    auto savedFrameUpvalues = std::move(frameUpvalues);
+    auto savedTryStack = std::move(tryStack);
+    size_t stackOffset = stackTop - stack.data();
+    bool savedRunning = running;
+    bool savedException = isExceptionPending;
+
+    // Reset execution state for THIS recursive run
+    frames.clear();
+    frameUpvalues.clear();
+    tryStack.clear();
+    // Do NOT reset stackTop to stack.data()! We append to the existing stack to preserve outer frames.
+    running = true;
+    isExceptionPending = false;
+    // Push a dummy callee (nil) so that slots[-1] is valid for the main frame
+    push(Value());
+
+    // Push arguments
+    for (const auto& arg : args) push(arg);
+
+    // Push the main call frame
+    CallFrame frame;
+    frame.function     = function;
+    frame.ip           = function->chunk.code.data();
+    frame.slots        = stackTop - args.size(); // arg0 is at slots[0]
+    
+    // Advance stackTop to account for main function locals
+    while ((stackTop - frame.slots) < (long long)function->localCount) {
+        push(Value());
+    }
+
+    frame.functionName = function->name;
+    frame.line         = 0;
+    frame.localCount   = function->localCount;
+    frames.push_back(frame);
+    frameUpvalues.push_back(ClosureState{});
+
+    run(frames.size());
+
+    // Result is the top value before we restore
+    Value result = (stackTop > stack.data()) ? *(stackTop - 1) : Value();
+
+    // Restore saved state
+    frames = std::move(savedFrames);
+    frameUpvalues = std::move(savedFrameUpvalues);
+    tryStack = std::move(savedTryStack);
+    stackTop = stack.data() + stackOffset;
+    running = savedRunning;
+    isExceptionPending = savedException;
+
+    return result;
+}
+
+// ============================================================================
+// Main Execution Loop
+// ============================================================================
+
+void BytecodeVM::run(size_t targetFrameCount) {
+    if (frames.empty()) return;
+    size_t startingFrameCount = (targetFrameCount > 0) ? targetFrameCount : frames.size();
+    CallFrame* frame = &frames.back();
+    const uint8_t* ip = frame->ip;
+    Value* stackTop = this->stackTop;
+    
+#define SYNC_IP() { if (!frames.empty()) frame->ip = ip; this->stackTop = stackTop; }
+#define LOAD_FRAME() { frame = &frames.back(); ip = frame->ip; stackTop = this->stackTop; }
+#define REFRESH_FRAME() { frame = &frames.back(); }
+
+#define READ_BYTE()   (*ip++)
+#define READ_SHORT()  (ip += 2, (uint16_t)((ip[-2] << 8) | ip[-1]))
+#define READ_INT()    (ip += 4, (uint32_t)((ip[-4] << 24) | (ip[-3] << 16) | (ip[-2] << 8) | ip[-1]))
+#define READ_CONST()  (frame->function->chunk.getConstant(READ_SHORT()))
+
+#ifdef __GNUC__
+    static void* dispatchTable[] = {
+        &&handle_LOAD_CONST, &&handle_LOAD_LOCAL, &&handle_STORE_LOCAL, &&handle_LOAD_UPVALUE,
+        &&handle_STORE_UPVALUE, &&handle_LOAD_GLOBAL, &&handle_STORE_GLOBAL, &&handle_LOAD_PROPERTY,
+        &&handle_STORE_PROPERTY, &&handle_POP, &&handle_DUP, &&handle_DUP2,
+        &&handle_LOAD_NIL, &&handle_LOAD_TRUE, &&handle_LOAD_FALSE, &&handle_LOAD_ZERO,
+        &&handle_LOAD_ONE, &&handle_LOAD_EMPTY_STR, &&handle_INC_LOCAL, &&handle_DEC_LOCAL, &&handle_ADD, &&handle_SUB,
+        &&handle_MUL, &&handle_DIV, &&handle_MOD, &&handle_POW,
+        &&handle_NEGATE, &&handle_BIT_AND, &&handle_BIT_OR, &&handle_BIT_XOR,
+        &&handle_BIT_NOT, &&handle_SHIFT_LEFT, &&handle_SHIFT_RIGHT, &&handle_EQUAL,
+        &&handle_NOT_EQUAL, &&handle_LESS, &&handle_LESS_EQ, &&handle_GREATER,
+        &&handle_GREATER_EQ, &&handle_NOT, &&handle_JUMP, &&handle_JUMP_IF_FALSE,
+        &&handle_JUMP_IF_TRUE, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL,
+        &&handle_RETURN, &&handle_CLOSURE, &&handle_CLOSE_UPVALUE, &&handle_MAKE_ARRAY,
+        &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
+        &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
+        &&handle_GET_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
+        &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
+        &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
+        &&handle_HAS_GLOBAL
+    };
+    #define DISPATCH() { \
+        if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
+        goto *dispatchTable[READ_BYTE()]; \
+    }
+    #define INTERPRET_LOOP DISPATCH();
+    #define CASE_CODE(name) handle_##name:
+#else
+    #define DISPATCH() break
+    #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
+        uint8_t instruction = READ_BYTE(); \
+        switch (static_cast<OpCode>(instruction))
+    #define CASE_CODE(name) case OpCode::name:
+#endif
+
+    dispatch_start:
+    try {
+        INTERPRET_LOOP {
+            SYNC_IP();
+                CASE_CODE(LOAD_CONST) {
+                    uint16_t idx = READ_SHORT();
+                    *stackTop++ = frame->function->chunk.resolvedConstants[idx];
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOAD_LOCAL) {
+                    uint8_t slot = READ_BYTE();
+                    *stackTop++ = frame->slots[slot];
+                    DISPATCH();
+                }
+                CASE_CODE(STORE_LOCAL) {
+                    uint8_t slot = READ_BYTE();
+                    frame->slots[slot] = *(stackTop - 1);
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOAD_UPVALUE) {
+                    uint8_t slot = READ_BYTE();
+                    const ClosureState& cs = frameUpvalues.back();
+                    if (slot < cs.upvalues.size() && cs.upvalues[slot]) {
+                        Value* loc = cs.upvalues[slot]->location.load();
+                        if (loc) {
+                            *stackTop++ = *loc;
+                        } else {
+                            *stackTop++ = Value();
+                        }
+                    } else {
+                        *stackTop++ = Value();
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(STORE_UPVALUE) {
+                    uint8_t slot = READ_BYTE();
+                    ClosureState& cs = frameUpvalues.back();
+                    if (slot < cs.upvalues.size() && cs.upvalues[slot]) {
+                        Value* loc = cs.upvalues[slot]->location.load();
+                        if (loc) {
+                            *loc = *(stackTop - 1);
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOAD_GLOBAL) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value v = globalEnv->get(name, frame->line);
+                        if (v.isNil() && !globalEnv->contains(name)) {
+                            SYNC_IP();
+                            runtimeError("Undefined variable '" + name + "'");
+                            return;
+                        }
+                        *stackTop++ = v;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(STORE_GLOBAL) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        globalEnv->assign(name, *(stackTop - 1));
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(HAS_GLOBAL) {
+                    uint16_t nameIdx = READ_SHORT();
+                    const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                    *stackTop++ = Value(globalEnv->contains(name));
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOAD_PROPERTY) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value obj = *(--stackTop);
+                        if (obj.isInstance()) {
+                            Value val = obj.asInstance()->getProperty(propName);
+                            if (val.isFunction() || val.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
+                            else *stackTop++ = val;
+                        } else if (obj.isDictionary()) {
+                            auto dictPtr = obj.asDictionaryPtr();
+                            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                            auto it = dictPtr->map.find(propName);
+                            *stackTop++ = (it != dictPtr->map.end() ? it->second : Value());
+                        } else if (obj.isClass()) {
+                            auto klass = obj.asClass();
+                            if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
+                            else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
+                            else *stackTop++ = Value();
+                        } else if (obj.isSuper()) {
+                            auto super = obj.asSuper();
+                            Value method = Value();
+                            if (super->parentKlass->methods.count(propName)) {
+                                method = super->parentKlass->methods[propName];
+                            } else {
+                                auto currentClass = super->parentKlass->parent;
+                                while (currentClass) {
+                                    if (currentClass->methods.count(propName)) {
+                                        method = currentClass->methods[propName];
+                                        break;
+                                    }
+                                    currentClass = currentClass->parent;
+                                }
+                            }
+                            if (method.isFunction() || method.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
+                            else *stackTop++ = method;
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Cannot access property '" + propName + "' on " + obj.typeName());
+                            return;
+                        }
+
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(STORE_PROPERTY) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value value = *(--stackTop);
+                        Value obj   = *(--stackTop);
+                        if (obj.isInstance()) obj.asInstance()->setProperty(propName, value);
+                        else if (obj.isClass()) obj.asClass()->staticMembers[propName] = value;
+                        else if (obj.isDictionary()) {
+                            auto dictPtr = obj.asDictionaryPtr();
+                            std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                            dictPtr->map[propName] = value;
+                        }
+                        else {
+                            SYNC_IP();
+                            runtimeError("Cannot set property '" + propName + "' on " + obj.typeName());
+                            return;
+                        }
+                        *stackTop++ = value;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(POP)  --stackTop; DISPATCH();
+                CASE_CODE(DUP)  *stackTop = *(stackTop - 1); stackTop++; DISPATCH();
+                CASE_CODE(DUP2) {
+                    {
+                        Value b = *(stackTop - 1), a = *(stackTop - 2); 
+                        *stackTop++ = a; *stackTop++ = b;
+                    }
+                    DISPATCH(); 
+                }
+
+                CASE_CODE(LOAD_NIL)   *stackTop++ = Value(); DISPATCH();
+                CASE_CODE(LOAD_TRUE)  *stackTop++ = Value(true); DISPATCH();
+                CASE_CODE(LOAD_FALSE) *stackTop++ = Value(false); DISPATCH();
+                CASE_CODE(LOAD_ZERO)  *stackTop++ = Value(0LL); DISPATCH();
+                CASE_CODE(LOAD_ONE)   *stackTop++ = Value(1LL); DISPATCH();
+                CASE_CODE(LOAD_EMPTY_STR) *stackTop++ = Value(""); DISPATCH();
+
+                CASE_CODE(INC_LOCAL) {
+                    Value& v = frame->slots[READ_BYTE()];
+                    if (v.m_data.index() == 12) { // INTEGER
+                        std::get<long long>(v.m_data)++;
+                    } else if (v.m_data.index() == 2) { // NUMBER (double)
+                        std::get<double>(v.m_data) += 1.0;
+                    } else {
+                        v = Value(v.asNumber() + 1.0);
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(DEC_LOCAL) {
+                    Value& v = frame->slots[READ_BYTE()];
+                    if (v.m_data.index() == 12) { // INTEGER
+                        std::get<long long>(v.m_data)--;
+                    } else if (v.m_data.index() == 2) { // NUMBER (double)
+                        std::get<double>(v.m_data) -= 1.0;
+                    } else {
+                        v = Value(v.asNumber() - 1.0);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(NEGATE) {
+                    {
+                        Value& v = stackTop[-1];
+                        if (v.m_data.index() == 12) {
+                            std::get<long long>(v.m_data) = -std::get<long long>(v.m_data);
+                        } else if (v.m_data.index() == 2) {
+                            std::get<double>(v.m_data) = -std::get<double>(v.m_data);
+                        } else if (v.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = v.asInstance()->getProperty("neg");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-1] = Value(std::make_shared<EZBoundMethod>(v, method));
+                                    if (!dispatchCall(stackTop[-1], 0)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doNegate(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doNegate(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(ADD) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            long long res = std::get<long long>(a.m_data) + std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            double res = a.asNumber() + b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("+");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doAdd(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doAdd(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(SUB) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            long long res = std::get<long long>(a.m_data) - std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            double res = a.asNumber() - b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("-");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doSubtract(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doSubtract(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(MUL) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            long long res = std::get<long long>(a.m_data) * std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            double res = a.asNumber() * b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("*");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doMultiply(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doMultiply(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(DIV) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            long long al = std::get<long long>(a.m_data);
+                            long long bl = std::get<long long>(b.m_data);
+                            if (bl == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
+                            
+                            if (al % bl == 0) {
+                                long long res = al / bl;
+                                stackTop -= 2;
+                                stackTop->m_data = res;
+                                stackTop++;
+                            } else {
+                                double res = static_cast<double>(al) / static_cast<double>(bl);
+                                stackTop -= 2;
+                                stackTop->m_data = res;
+                                stackTop++;
+                            }
+                        } else if (a.isNumber() && b.isNumber()) {
+                            double db = b.asNumber();
+                            if (db == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
+                            double res = a.asNumber() / db;
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("/");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doDivide(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doDivide(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(MOD) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            long long bl = std::get<long long>(b.m_data);
+                            if (bl == 0) { SYNC_IP(); runtimeError("Modulo by zero"); return; }
+                            long long res = std::get<long long>(a.m_data) % bl;
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else {
+                            SYNC_IP(); doModulo(); LOAD_FRAME();
+                            stackTop = this->stackTop;
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(POW) { SYNC_IP(); doPower(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_AND)    { SYNC_IP(); doBitwiseAnd(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_OR)     { SYNC_IP(); doBitwiseOr(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_XOR)    { SYNC_IP(); doBitwiseXor(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_NOT)    { SYNC_IP(); doBitwiseNot(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_LEFT) { SYNC_IP(); doShiftLeft(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_RIGHT){ SYNC_IP(); doShiftRight(); LOAD_FRAME(); DISPATCH(); }
+
+                CASE_CODE(EQUAL) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == b.m_data.index()) {
+                            bool res;
+                            if (a.m_data.index() == 12) res = (std::get<long long>(a.m_data) == std::get<long long>(b.m_data));
+                            else if (a.m_data.index() == 2) res = (std::get<double>(a.m_data) == std::get<double>(b.m_data));
+                            else if (a.m_data.index() == 1) res = (std::get<bool>(a.m_data) == std::get<bool>(b.m_data));
+                            else if (a.m_data.index() == 0) res = true;
+                            else { SYNC_IP(); doEqual(); LOAD_FRAME(); stackTop = this->stackTop; DISPATCH(); }
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("==");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doEqual(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doEqual(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(NOT_EQUAL)  { SYNC_IP(); doNotEqual(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(LESS) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            bool res = std::get<long long>(a.m_data) < std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            bool res = a.asNumber() < b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("<");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doLess(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doLess(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(LESS_EQ) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            bool res = std::get<long long>(a.m_data) <= std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            bool res = a.asNumber() <= b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else {
+                            SYNC_IP(); doLessEq(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(GREATER) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            bool res = std::get<long long>(a.m_data) > std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            bool res = a.asNumber() > b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty(">");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doGreater(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doGreater(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(GREATER_EQ) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
+                            bool res = std::get<long long>(a.m_data) >= std::get<long long>(b.m_data);
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isNumber() && b.isNumber()) {
+                            bool res = a.asNumber() >= b.asNumber();
+                            stackTop -= 2;
+                            stackTop->m_data = res;
+                            stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty(">=");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); doGreaterEq(); LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); doGreaterEq(); LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(NOT)        { SYNC_IP(); doNot(); LOAD_FRAME(); DISPATCH(); }
+
+                CASE_CODE(JUMP)           ip += READ_INT(); DISPATCH();
+                CASE_CODE(JUMP_IF_FALSE) {
+                    {
+                        uint32_t o = READ_INT(); 
+                        const Value& v = *(--stackTop);
+                        bool truthy;
+                        if (v.m_data.index() == 1) truthy = std::get<bool>(v.m_data);
+                        else if (v.m_data.index() == 0) truthy = false;
+                        else truthy = v.isTruthy();
+                        if (!truthy) ip += o;
+                    }
+                    DISPATCH(); 
+                }
+                CASE_CODE(JUMP_IF_TRUE) {
+                    {
+                        uint32_t o = READ_INT(); 
+                        const Value& v = *(--stackTop);
+                        bool truthy;
+                        if (v.m_data.index() == 1) truthy = std::get<bool>(v.m_data);
+                        else if (v.m_data.index() == 0) truthy = false;
+                        else truthy = v.isTruthy();
+                        if (truthy) ip += o;
+                    }
+                    DISPATCH(); 
+                }
+                CASE_CODE(LOOP)           ip -= READ_INT(); DISPATCH();
+
+                CASE_CODE(CALL) {
+                    {
+                        uint8_t argCount = READ_BYTE();
+                        Value callee = *(stackTop - argCount - 1);
+                        SYNC_IP();
+                        this->stackTop = stackTop;
+                        if (dispatchCall(callee, argCount)) {
+                            LOAD_FRAME();
+                        } else {
+                            REFRESH_FRAME();
+                        }
+                        stackTop = this->stackTop;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(TAIL_CALL) {
+                    {
+                        uint8_t argCount = READ_BYTE();
+                        Value callee = *(stackTop - argCount - 1);
+                        
+                        if (callee.isFunction()) {
+                            auto ezFunc = callee.asFunction();
+                            auto it = compiledFunctionCache.find(ezFunc.get());
+                            if (it != compiledFunctionCache.end() && it->second == frame->function) {
+                                for (int i = 0; i < argCount; i++) {
+                                    frame->slots[i] = *(stackTop - argCount + i);
+                                }
+                                stackTop = frame->slots + frame->function->localCount;
+                                ip = frame->function->chunk.code.data();
+                                // callee/ezFunc destroyed at scope exit below before DISPATCH
+                                goto tail_call_restart;
+                            }
+                        }
+                        
+                        SYNC_IP();
+                        this->stackTop = stackTop;
+                        if (dispatchCall(callee, argCount)) {
+                            LOAD_FRAME();
+                        } else {
+                            REFRESH_FRAME();
+                        }
+                        stackTop = this->stackTop;
+                    }
+                    DISPATCH();
+                    tail_call_restart:
+                    DISPATCH();
+                }
+
+                CASE_CODE(RETURN) {
+                    {
+                        Value result = *(--stackTop);
+                        SYNC_IP();
+                        Value* targetSlots = frame->slots;
+                        closeUpvalues(targetSlots);
+                        frameUpvalues.pop_back();
+                        frames.pop_back();
+                        
+                        if (frames.size() < startingFrameCount) {
+                            this->stackTop = targetSlots - 1;
+                            *(this->stackTop) = result;
+                            this->stackTop++;
+                            return;
+                        }
+                        
+                        LOAD_FRAME();
+                        stackTop = targetSlots - 1; // Pop callee and args
+                        *stackTop++ = result;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(CLOSE_UPVALUE) {
+                    uint8_t slot = READ_BYTE();
+                    this->stackTop = stackTop;
+                    closeUpvalues(frame->slots + slot);
+                    stackTop = this->stackTop;
+                    DISPATCH();
+                }
+
+                CASE_CODE(MAKE_ARRAY) {
+                    {
+                        uint8_t count = READ_BYTE();
+                        std::vector<Value> el(count);
+                        for (int i = count - 1; i >= 0; i--) el[i] = *(--stackTop);
+                        *stackTop++ = Value::makeArray(el);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(MAKE_DICT) {
+                    {
+                        uint8_t pairs = READ_BYTE();
+                        Value dict = Value::makeDictionary();
+                        auto& m = dict.asDictionaryPtr()->map;
+                        for (int i = 0; i < pairs; i++) {
+                            Value val = *(--stackTop);
+                            Value key = *(--stackTop);
+                            m[key.toString()] = val;
+                        }
+                        *stackTop++ = dict;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(INDEX_GET)  { SYNC_IP(); this->stackTop = stackTop; doIndexGet(); stackTop = this->stackTop; DISPATCH(); }
+                CASE_CODE(INDEX_SET)  { SYNC_IP(); this->stackTop = stackTop; doIndexSet(); stackTop = this->stackTop; DISPATCH(); }
+
+                CASE_CODE(ARRAY_APPEND) {
+                    {
+                        Value val = *(--stackTop);
+                        Value arr = *(stackTop - 1);
+                        if (arr.isArray()) {
+                            arr.asArray().push_back(val);
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(ARRAY_EXTEND) {
+                    {
+                        Value iter = *(--stackTop);
+                        Value arr = *(stackTop - 1);
+                        if (arr.isArray() && iter.isArray()) {
+                            auto& src = iter.asArray();
+                            auto& dst = arr.asArray();
+                            for (const Value& v : src) {
+                                dst.push_back(v);
+                            }
+                        } else if (arr.isArray() && iter.isString()) {
+                            auto& dst = arr.asArray();
+                            std::string s = iter.asString();
+                            for (char c : s) {
+                                dst.push_back(Value(std::string(1, c)));
+                            }
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Cannot spread non-iterable value");
+                            return;
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(CALL_SPREAD) {
+                    {
+                        Value argsArray = *(--stackTop);
+                        Value callee = *(stackTop - 1);
+                        if (!argsArray.isArray()) {
+                            SYNC_IP();
+                            runtimeError("CALL_SPREAD requires an array of arguments");
+                            return;
+                        }
+                        auto& args = argsArray.asArray();
+                        int argc = args.size();
+                        
+                        // Recalculate callee after popping argsArray
+                        callee = *(stackTop - 1);
+                        
+                        // Push all arguments to the stack
+                        for (const Value& arg : args) {
+                            *stackTop++ = arg;
+                        }
+                        
+                        // Dispatch the call normally
+                        SYNC_IP();
+                        if (dispatchCall(callee, argc)) {
+                            LOAD_FRAME();
+                        } else {
+                            REFRESH_FRAME();
+                        }
+                        stackTop = this->stackTop;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(NEW_INSTANCE) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        uint8_t argc = READ_BYTE();
+                        const std::string& className = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value classVal = globalEnv->get(className, frame->line);
+                        if (!classVal.isClass()) {
+                            SYNC_IP();
+                            runtimeError("'" + className + "' is not a model");
+                            this->stackTop = stackTop;
+                            return;
+                        }
+                        std::vector<Value> args(argc);
+                        for (int i = argc - 1; i >= 0; i--) args[i] = *(--stackTop);
+                        --stackTop; // pop class value placeholder
+                        
+                        SYNC_IP();
+                        this->stackTop = stackTop;
+                        Value inst = instantiate(classVal.asClass(), args, frame->line, frame->functionName);
+                        LOAD_FRAME();
+                        stackTop = this->stackTop;
+                        *stackTop++ = inst;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(SUPER) {
+                    {
+                        Value parent = *(--stackTop), inst = *(--stackTop);
+                        if (!inst.isInstance() || !parent.isClass()) {
+                            SYNC_IP();
+                            runtimeError("'super' must be used with model instance");
+                            this->stackTop = stackTop;
+                            return;
+                        }
+                        *stackTop++ = Value::makeSuper(inst.asInstance(), parent.asClass());
+                    }
+                    DISPATCH();
+                }
+                
+                CASE_CODE(SUPER_CALL) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        uint8_t argCount = READ_BYTE();
+                        const std::string& method = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value superVal = *(--stackTop); 
+                        if (!superVal.isSuper()) {
+                            SYNC_IP();
+                            runtimeError("SUPER_CALL expects super object");
+                            this->stackTop = stackTop;
+                            return;
+                        }
+                        auto super = superVal.asSuper();
+                        Value m = Value();
+                        auto currentClass = super->parentKlass;
+                        while (currentClass) {
+                            if (currentClass->methods.count(method)) {
+                                m = currentClass->methods[method];
+                                break;
+                            }
+                            currentClass = currentClass->parent;
+                        }
+                        if (m.isNil()) {
+                            SYNC_IP();
+                            runtimeError("Method '" + method + "' not found in superclass");
+                            this->stackTop = stackTop;
+                            return;
+                        }
+                        Value rec = Value(super->instance);
+                        Value bound = Value(std::make_shared<EZBoundMethod>(rec, m));
+                        
+                        // Shift args right to make room for bound method
+                        push(Value()); 
+                        for (int i = 0; i < argCount; i++) {
+                            *(stackTop - i - 1) = *(stackTop - i - 2);
+                        }
+                        *(stackTop - argCount - 1) = bound;
+                        
+                        SYNC_IP();
+                        this->stackTop = stackTop;
+                        if (!dispatchCall(m, argCount + 1)) return;
+                        LOAD_FRAME();
+                        stackTop = this->stackTop;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(GET_ITER) {
+                    {
+                        Value v = *(--stackTop);
+                        if (v.isArray()) {
+                            *stackTop++ = Value::makeArray({v, Value(0LL)});
+                        } else if (v.isString()) {
+                            std::vector<Value> cs;
+                            for (char c : v.asString()) cs.push_back(Value(std::string(1, c)));
+                            *stackTop++ = Value::makeArray({Value::makeArray(cs), Value(0LL)});
+                        } else if (v.isDictionary()) {
+                            std::vector<Value> ks;
+                            {
+                                auto dictPtr = v.asDictionaryPtr();
+                                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                                for (auto& [k, _] : dictPtr->map) ks.push_back(Value(k));
+                            }
+                            *stackTop++ = Value::makeArray({Value::makeArray(ks), Value(0LL)});
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Not iterable: " + v.typeName());
+                            return;
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(ITER_NEXT) {
+                    {
+                        uint32_t offset = READ_INT();
+                        Value& iter = *(stackTop - 1);
+                        auto& iArr = iter.asArray();
+                        long long idx = iArr[1].asInteger();
+                        const auto& data = iArr[0].asArray();
+                        if (idx >= (long long)data.size()) { --stackTop; ip += offset; }
+                        else { 
+                            iArr[1] = Value(idx + 1); 
+                            *(stackTop - 1) = data[idx]; 
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(ITER_HAS_NEXT) {
+                    {
+                        Value& iter = *(stackTop - 1);
+                        auto& iArr = iter.asArray();
+                        long long idx = iArr[1].asInteger();
+                        const auto& data = iArr[0].asArray();
+                        *stackTop++ = Value(idx < (long long)data.size());
+                    }
+                    DISPATCH();
+                }
+                
+                CASE_CODE(PRINT) {
+                    {
+                        Value v = *(--stackTop);
+                        std::cout << v.toString() << std::endl;
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(CLOCK) { 
+                    auto now = std::chrono::steady_clock::now().time_since_epoch();
+                    *stackTop++ = Value(std::chrono::duration<double>(now).count() * 1000.0);
+                    DISPATCH(); 
+                }
+                CASE_CODE(TYPE_OF) {
+                    {
+                        Value v = *(--stackTop);
+                        *stackTop++ = Value(v.typeName());
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(IS_INSTANCE_OF) {
+                    {
+                        std::string className = (*(--stackTop)).toString();
+                        Value v = *(--stackTop);
+                        bool result = false;
+                        if (v.isInstance()) {
+                            auto inst = v.asInstance();
+                            auto currentClass = inst->klass;
+                            while (currentClass) {
+                                if (currentClass->name == className) {
+                                    result = true;
+                                    break;
+                                }
+                                currentClass = currentClass->parent;
+                            }
+                        }
+                        *stackTop++ = Value(result);
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(MAKE_INTERFACE) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        uint8_t methodCount = READ_BYTE();
+                        const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        
+                        std::vector<std::string> methods;
+                        for (int i = 0; i < methodCount; i++) {
+                            methods.push_back((*(--stackTop)).toString());
+                        }
+                        std::reverse(methods.begin(), methods.end());
+                        
+                        auto iface = std::make_shared<EZInterface>(name, methods);
+                        *stackTop++ = Value(iface);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(MAKE_CLASS) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        uint8_t memberCount = READ_BYTE();
+                        uint8_t interfaceCount = READ_BYTE();
+                        const std::string& className = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        auto klass = std::make_shared<EZClass>(className);
+                        
+                        // Interfaces are on top
+                        std::vector<std::shared_ptr<EZInterface>> interfaces;
+                        for (int i = 0; i < interfaceCount; i++) {
+                            Value v = *(--stackTop);
+                            if (v.type() == ValueType::INTERFACE) {
+                                interfaces.push_back(std::get<std::shared_ptr<EZInterface>>(v.m_data));
+                            }
+                        }
+
+                        for (int i = 0; i < memberCount; i++) {
+                            Value isStaticVal = *(--stackTop);
+                            Value val = *(--stackTop);
+                            Value key = *(--stackTop);
+                            bool isStatic = isStaticVal.asBool();
+                            std::string memberName = key.toString();
+                            
+                            if (isStatic) {
+                                klass->staticMembers[memberName] = val;
+                            } else {
+                                klass->methods[memberName] = val;
+                            }
+                        }
+
+                        // Check for parent class
+                        Value parentVal = *(--stackTop);
+                        if (parentVal.isClass()) {
+                            klass->parent = parentVal.asClass();
+                            // Inherit methods from parent
+                            for (auto& [name, method] : klass->parent->methods) {
+                                if (klass->methods.find(name) == klass->methods.end()) {
+                                    klass->methods[name] = method;
+                                }
+                            }
+                        }
+
+                        // Validate interfaces
+                        for (const auto& iface : interfaces) {
+                            for (const auto& methodName : iface->requiredMethods) {
+                                if (klass->methods.find(methodName) == klass->methods.end()) {
+                                    SYNC_IP();
+                                    runtimeError("Model '" + className + "' fails to implement interface '" + 
+                                                 iface->name + "': missing task '" + methodName + "'");
+                                    return;
+                                }
+                            }
+                        }
+
+                        globalEnv->define(className, Value(klass));
+                        *stackTop++ = Value(klass);
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(LINE)      frame->line = READ_SHORT(); DISPATCH();
+                CASE_CODE(BREAKPOINT) SYNC_IP(); /* debug hook */ DISPATCH();
+
+                CASE_CODE(GET_METHOD) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& method = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value instVal = *(stackTop - 1);
+                        if (instVal.isInstance()) {
+                            auto inst = instVal.asInstance();
+                            Value m = inst->klass->methods.count(method) ? inst->klass->methods.at(method) : Value();
+                            --stackTop;
+                            if (m.isNil()) *stackTop++ = Value();
+                            else if (m.isFunction() || m.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(instVal, m));
+                            else *stackTop++ = m;
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Cannot get method from non-instance");
+                            this->stackTop = stackTop;
+                            return;
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(CLOSURE) {
+                    {
+                        uint16_t nestedIdx = READ_SHORT();
+                        BytecodeFunctionPtr func = frame->function->nestedFunctions[nestedIdx];
+                        auto closure = std::make_shared<EZClosure>(func);
+                        for (int i = 0; i < (int)func->upvalues.size(); i++) {
+                            uint8_t isLocal = READ_BYTE();
+                            uint8_t index = READ_BYTE();
+                            if (isLocal) {
+                                closure->upvalues.push_back(captureUpvalue(frame->slots + index));
+                            } else {
+                                // index is into the enclosing closure's upvalue list
+                                closure->upvalues.push_back(frameUpvalues.back().upvalues[index]);
+                            }
+                        }
+                        *stackTop++ = Value(closure);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(TRY_START) {
+                    uint32_t offset = READ_INT();
+                    TryBlock tb;
+                    tb.frameIdx = frames.size() - 1;
+                    tb.catchIp = ip + offset;
+                    tb.stackTop = stackTop;
+                    tryStack.push_back(tb);
+                    DISPATCH();
+                }
+
+                CASE_CODE(TRY_END) {
+                    if (!tryStack.empty()) tryStack.pop_back();
+                    DISPATCH();
+                }
+
+                CASE_CODE(THROW) {
+                    {
+                        Value exc = *(--stackTop);
+                        pendingException = exc;
+                        if (!tryStack.empty()) {
+                            TryBlock tb = tryStack.back(); tryStack.pop_back();
+                            while (frames.size() > tb.frameIdx + 1) {
+                                closeUpvalues(frames.back().slots);
+                                frames.pop_back(); frameUpvalues.pop_back();
+                            }
+                            stackTop = tb.stackTop;
+                            LOAD_FRAME();
+                            ip = tb.catchIp;
+                            *stackTop++ = exc;
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Uncaught exception: " + exc.toString());
+                            return;
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(END) {
+                    running = false;
+#ifdef __GNUC__
+                    goto end_run;
+#else
+                    break;
+#endif
+                }
+            } // closes switch body
+#ifndef __GNUC__
+            } // closes while loop body from INTERPRET_LOOP
+#endif
+
+#ifdef __GNUC__
+            end_run:
+            SYNC_IP();
+            this->stackTop = stackTop;
+#endif
+
+    } catch (const RuntimeError& e) {
+        if (!tryStack.empty()) {
+            TryBlock tb = tryStack.back(); tryStack.pop_back();
+            while (frames.size() > tb.frameIdx + 1) {
+                closeUpvalues(frames.back().slots);
+                frames.pop_back(); frameUpvalues.pop_back();
+            }
+            this->stackTop = tb.stackTop;
+            LOAD_FRAME();
+            ip = tb.catchIp;
+            *stackTop++ = Value(e.what());
+            pendingException = Value(); // Clear pending exception after catch
+            running = true;
+            // Invariant: LOAD_FRAME() refreshes local stackTop and ip pointers from the restored CallFrame.
+            // this->stackTop is restored to the exact level it was at the start of the 'try' block.
+            goto dispatch_start;
+        }
+        // Uncaught RuntimeError: Print it
+        std::cerr << "\n[BytecodeVM] Uncaught Runtime Error: " << e.what() << std::endl;
+        printStackTrace();
+        SYNC_IP();
+    } catch (const std::exception& e) {
+        if (!tryStack.empty()) {
+            TryBlock tb = tryStack.back(); tryStack.pop_back();
+            while (frames.size() > tb.frameIdx + 1) {
+                closeUpvalues(frames.back().slots);
+                frames.pop_back(); frameUpvalues.pop_back();
+            }
+            this->stackTop = tb.stackTop;
+            LOAD_FRAME();
+            ip = tb.catchIp;
+            *stackTop++ = Value(e.what());
+            pendingException = Value(); // Clear pending exception after catch
+            running = true;
+            goto dispatch_start;
+        }
+        std::cerr << "\n[BytecodeVM] Uncaught Exception: " << e.what() << std::endl;
+        printStackTrace();
+        SYNC_IP();
+    }
+}
+
+#undef READ_CONST
+
+// ============================================================================
+// Call Dispatch Helper
+// ============================================================================
+
+bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount) {
+    if (callee.isNativeFunction()) {
+        // Collect args from stack (they sit above the callee)
+        std::vector<Value> args(stackTop - argCount, stackTop);
+        
+        try {
+            Value result = callee.asNativeFunction()->function(*this, args);
+            // NOW we pop everything and push the result
+            stackTop -= argCount + 1;
+            push(result);
+        } catch (const RuntimeError& e) {
+            throw; // Propagate RuntimeError so it can be caught by EZ or VM loop
+        } catch (const std::exception& e) {
+            runtimeError(std::string("Native function error: ") + e.what());
+            return false;
+        }
+        return true;
+    }
+
+    if (callee.isBoundMethod()) {
+        auto bound = callee.asBoundMethod();
+        
+        // We need to insert the receiver as the first argument (slot 0),
+        // and replace the callee placeholder with the separated method.
+        // Current stack: [..., BoundMethod, arg0, arg1, ..., argN-1]
+        // Required stack: [..., method,      receiver, arg0, arg1, ..., argN-1]
+        
+        // Grow the stack by 1 to make room for the extra parameter
+        push(Value()); 
+        
+        Value* calleePtr = stackTop - argCount - 2;
+        
+        // Shift existing arguments to the right
+        for (Value* p = stackTop - 1; p > calleePtr + 1; --p) {
+            *p = *(p - 1);
+        }
+        
+        // Set method as the new callee, and the receiver as the first argument
+        *calleePtr = bound->method;
+        *(calleePtr + 1) = bound->receiver;
+        
+        // Dispatch the pure method with +1 argument count
+        bool result = dispatchCall(bound->method, argCount + 1);
+        // After recursive dispatch, sync our local-to-run stackTop
+        this->stackTop = stackTop; 
+        return result;
+    }
+    
+    if (callee.isClosure() || callee.isFunction()) {
+        BytecodeFunctionPtr bcFunc;
+        std::shared_ptr<EZClosure> closure;
+
+        if (callee.isClosure()) {
+            closure = callee.asClosure();
+            bcFunc = closure->function;
+        } else {
+            auto ezFunc = callee.asFunction();
+            auto it = compiledFunctionCache.find(ezFunc.get());
+            if (it != compiledFunctionCache.end()) {
+                bcFunc = it->second;
+            } else {
+                bcFunc = compileEZFunction(ezFunc.get());
+            }
+        }
+
+        if (!bcFunc) {
+            runtimeError("Function compilation failed");
+            return false;
+        }
+
+        // --- Arity and Variadic handling ---
+        if (bcFunc->isVariadic) {
+            size_t restIndex = bcFunc->arity > 0 ? bcFunc->arity - 1 : 0;
+            auto restArray = std::make_shared<EZArray>();
+            if (argCount >= bcFunc->arity) {
+                for (size_t i = restIndex; i < argCount; ++i) {
+                    restArray->push_back(*(this->stackTop - argCount + i));
+                }
+                this->stackTop -= (argCount - restIndex);
+                argCount = restIndex;
+            }
+            while (argCount < restIndex) {
+                *stackTop++ = Value();
+                argCount++;
+            }
+            *stackTop++ = Value(restArray);
+            argCount++;
+        } else {
+            size_t minArity = (bcFunc->arity > bcFunc->defaultParamCount)
+                               ? bcFunc->arity - bcFunc->defaultParamCount : 0;
+            if (argCount < minArity) {
+                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(minArity) + " args but got " + std::to_string(argCount));
+                return false;
+            }
+            if (argCount > bcFunc->arity) {
+                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(bcFunc->arity) + " args but got " + std::to_string(argCount));
+                return false;
+            }
+        }
+        
+        ClosureState cs;
+        if (closure) cs.upvalues = closure->upvalues;
+        
+        // SYNC before pushing frame so the frame starts at the correct stack boundary
+        this->stackTop = stackTop;
+        pushCallFrame(bcFunc, argCount, cs);
+        return true;
+    }
+
+    if (callee.isSuper()) {
+        auto super_val = callee.asSuper();
+        Value initMethod = super_val->parentKlass->methods.count("init")
+                         ? super_val->parentKlass->methods.at("init")
+                         : Value();
+        
+        if (initMethod.isNil()) {
+            runtimeError("Parent has no 'init' method for super(...) call");
+            return false;
+        }
+
+        // Use BoundMethod to handles self-injection correctly
+        Value bound = Value(std::make_shared<EZBoundMethod>(Value(super_val->instance), initMethod));
+        *(stackTop - argCount - 1) = bound;
+        bool result = dispatchCall(bound, argCount);
+        this->stackTop = stackTop;
+        return result;
+    }
+
+    if (callee.isClass()) {
+        auto klass = callee.asClass();
+        std::vector<Value> args;
+        for (int i = 0; i < argCount; i++) {
+            args.push_back(peek(argCount - 1 - i));
+        }
+        
+        // Similar to NativeFunction, we must call instantiate before popping
+        // to avoid stack overlap if the constructor is an EZ function.
+        Value instance = instantiate(klass, args, 0, "constructor");
+        
+        stackTop -= argCount + 1; // Pop args and callee
+        push(instance);
+        return true;
+    }
+
+    runtimeError("Value is not callable: " + callee.typeName());
+    return false;
+}
+
+void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
+    // Push nil for any missing optional parameters
+    while (argCount < bcFunc->arity) {
+        *stackTop++ = Value();
+        argCount++;
+    }
+
+    // --- Create Frame ---
+    CallFrame newFrame;
+    newFrame.function     = bcFunc;
+    newFrame.ip           = bcFunc->chunk.code.data();
+    newFrame.slots        = stackTop - argCount;
+    // Ensure all local slots are reserved (padding for locals beyond parameters)
+    while ((stackTop - newFrame.slots) < (long long)bcFunc->localCount) {
+        *stackTop++ = Value();
+    }
+    
+    this->stackTop = stackTop; // Sync back to member!
+
+    newFrame.functionName = bcFunc->name;
+    newFrame.line         = 0;
+    newFrame.localCount   = bcFunc->localCount;
+    
+    frames.push_back(newFrame);
+    frameUpvalues.push_back(std::move(cs));
+}
+
+// ============================================================================
+
+void BytecodeVM::push(const Value& value) {
+    if (stackTop >= stack.data() + STACK_MAX) {
+        runtimeError("Stack overflow");
+        throw std::runtime_error("Stack overflow");
+    }
+    *stackTop++ = value;
+}
+
+Value BytecodeVM::pop() {
+    if (stackTop <= stack.data()) {
+        runtimeError("Stack underflow");
+        throw std::runtime_error("Stack underflow");
+    }
+    return *--stackTop;
+}
+
+Value& BytecodeVM::peek(int distance) {
+    return stackTop[-1 - distance];
+}
+
+void BytecodeVM::popN(size_t count) {
+    stackTop -= count;
+}
+
+// ============================================================================
+// Upvalue Handling
+// ============================================================================
+
+UpvalueObj* BytecodeVM::captureUpvalue(Value* local) {
+    // Walk the open upvalue list to find an existing capture
+    UpvalueObj* prev = nullptr;
+    UpvalueObj* cur  = openUpvalues;
+    while (cur != nullptr && cur->location > local) {
+        prev = cur;
+        cur  = cur->next;
+    }
+    if (cur != nullptr && cur->location.load() == local) return cur;
+
+    // Create a new open upvalue
+    auto uv = std::make_unique<UpvalueObj>();
+    uv->location.store(local);
+    uv->next       = cur;
+    UpvalueObj* raw = uv.get();
+    if (prev == nullptr) openUpvalues = raw;
+    else prev->next = raw;
+    allUpvalues.push_back(std::move(uv));
+    return raw;
+}
+
+void BytecodeVM::closeUpvalues(Value* last) {
+    while (openUpvalues != nullptr && openUpvalues->location >= last) {
+        UpvalueObj* uv = openUpvalues;
+        uv->closed     = *uv->location.load();
+        uv->location.store(&uv->closed);
+        openUpvalues   = uv->next;
+    }
+}
+
+// ============================================================================
+// Binary Operations
+// ============================================================================
+
+void BytecodeVM::doAdd() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() + b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   + b.asFloat()));   return; }
+    if (a.isString()  || b.isString())  { push(Value(a.toString()  + b.toString()));  return; }
+    if (a.isArray()   && b.isArray()) {
+        auto res = a.asArray();
+        for (const Value& v : b.asArray()) res.push_back(v);
+        push(Value::makeArrayCopy(res));
+        return;
+    }
+    runtimeError("'+' operands must be numbers, strings, or arrays");
+}
+
+void BytecodeVM::doSubtract() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() - b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   - b.asFloat()));   return; }
+    runtimeError("'-' operands must be numbers");
+}
+
+void BytecodeVM::doMultiply() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() * b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   * b.asFloat()));   return; }
+    // "str" * N  repetition
+    if (a.isString() && b.isInteger()) {
+        std::string result;
+        for (long long i = 0; i < b.asInteger(); i++) result += a.asString();
+        push(Value(result));
+        return;
+    }
+    runtimeError("'*' operands must be numbers");
+}
+
+void BytecodeVM::doDivide() {
+    Value b = pop(), a = pop();
+    if (b.isInteger() && b.asInteger() == 0) { runtimeError("Division by zero"); return; }
+    if (b.isFloat()   && b.asFloat()   == 0) { runtimeError("Division by zero"); return; }
+    if (a.isInteger() && b.isInteger()) {
+        long long ai = a.asInteger();
+        long long bi = b.asInteger();
+        if (ai % bi == 0) {
+            push(Value(ai / bi));
+        } else {
+            push(Value(static_cast<double>(ai) / static_cast<double>(bi)));
+        }
+        return;
+    }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   / b.asFloat()));   return; }
+    runtimeError("'/' operands must be numbers");
+}
+
+void BytecodeVM::doModulo() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) {
+        if (b.asInteger() == 0) { runtimeError("Modulo by zero"); return; }
+        push(Value(a.asInteger() % b.asInteger()));
+        return;
+    }
+    if (a.isNumber() && b.isNumber()) {
+        push(Value(std::fmod(a.asFloat(), b.asFloat())));
+        return;
+    }
+    runtimeError("'%' operands must be numbers");
+}
+
+void BytecodeVM::doPower() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) {
+        push(Value(std::pow(a.asFloat(), b.asFloat())));
+        return;
+    }
+    runtimeError("'**' operands must be numbers");
+}
+
+void BytecodeVM::doNegate() {
+    Value a = pop();
+    if (a.isInteger()) { push(Value(-a.asInteger())); return; }
+    if (a.isFloat())   { push(Value(-a.asFloat()));   return; }
+    runtimeError("Negation operand must be a number");
+}
+
+void BytecodeVM::doBitwiseAnd() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) { push(Value(a.asInteger() & b.asInteger())); return; }
+    runtimeError("'&' operands must be numbers");
+}
+void BytecodeVM::doBitwiseOr() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) { push(Value(a.asInteger() | b.asInteger())); return; }
+    runtimeError("'|' operands must be numbers");
+}
+void BytecodeVM::doBitwiseXor() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) { push(Value(a.asInteger() ^ b.asInteger())); return; }
+    runtimeError("'^' operands must be numbers");
+}
+void BytecodeVM::doBitwiseNot() {
+    Value a = pop();
+    if (a.isNumber()) { push(Value(~a.asInteger())); return; }
+    runtimeError("'~' operand must be a number");
+}
+void BytecodeVM::doShiftLeft() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) {
+        push(Value(a.asInteger() << b.asInteger())); return;
+    }
+    runtimeError("'<<' operands must be numbers");
+}
+void BytecodeVM::doShiftRight() {
+    Value b = pop(), a = pop();
+    if (a.isNumber() && b.isNumber()) {
+        push(Value(a.asInteger() >> b.asInteger())); return;
+    }
+    runtimeError("'>>' operands must be numbers");
+}
+
+void BytecodeVM::doIndexGet() {
+    Value idx = pop();
+    Value obj = pop();
+    if (obj.isArray()) {
+        auto& arr = obj.asArray();
+        long long i = idx.asInteger();
+        if (i < 0 || i >= (long long)arr.size()) { runtimeError("Array index out of bounds"); return; }
+        push(arr[i]);
+    } else if (obj.isString()) {
+        const std::string& s = obj.asString();
+        long long i = idx.asInteger();
+        if (i < 0 || i >= (long long)s.length()) { runtimeError("String index out of bounds"); return; }
+        push(Value(std::string(1, s[i])));
+    } else if (obj.isDictionary()) {
+        auto dictPtr = obj.asDictionaryPtr();
+        std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+        std::string sKey = idx.toString();
+        auto it = dictPtr->map.find(sKey);
+        push(it != dictPtr->map.end() ? it->second : Value());
+    } else if (obj.isBuffer()) {
+        auto& buf = obj.asBuffer();
+        long long i = idx.asInteger();
+        if (i < 0 || i >= (long long)buf.size()) { runtimeError("Buffer index out of bounds"); return; }
+        push(Value((long long)buf[i]));
+    } else {
+        runtimeError("Cannot index " + obj.typeName());
+    }
+}
+
+void BytecodeVM::doIndexSet() {
+    Value val = pop();
+    Value idx = pop();
+    Value obj = pop();
+    if (obj.isArray()) {
+        auto& arr = obj.asArray();
+        long long i = idx.asInteger();
+        if (i < 0) { runtimeError("Array index out of bounds"); return; }
+        if (i >= (long long)arr.size()) arr.resize(i + 1);
+        arr[i] = val;
+    } else if (obj.isDictionary()) {
+        auto dictPtr = obj.asDictionaryPtr();
+        std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+        dictPtr->map[idx.toString()] = val;
+    } else if (obj.isBuffer()) {
+        auto& buf = obj.asBuffer();
+        long long i = idx.asInteger();
+        if (i < 0 || i >= (long long)buf.size()) { runtimeError("Buffer index out of bounds"); return; }
+        buf[i] = (uint8_t)val.asInteger();
+    } else {
+        runtimeError("Cannot set index on " + obj.typeName());
+    }
+    push(val);
+}
+
+// ============================================================================
+// Comparisons
+// ============================================================================
+
+void BytecodeVM::doEqual()    { Value b=pop(),a=pop(); push(Value(a.equals(b))); }
+void BytecodeVM::doNotEqual() { Value b=pop(),a=pop(); push(Value(!a.equals(b))); }
+
+void BytecodeVM::doLess() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() < b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   < b.asFloat()));   return; }
+    if (a.isString()  && b.isString())  { push(Value(a.asString()  < b.asString()));  return; }
+    runtimeError("'<' operands must be numbers or strings");
+}
+void BytecodeVM::doLessEq() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() <= b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   <= b.asFloat()));   return; }
+    if (a.isString()  && b.isString())  { push(Value(a.asString()  <= b.asString()));  return; }
+    runtimeError("'<=' operands must be numbers or strings");
+}
+void BytecodeVM::doGreater() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() > b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   > b.asFloat()));   return; }
+    if (a.isString()  && b.isString())  { push(Value(a.asString()  > b.asString()));  return; }
+    runtimeError("'>' operands must be numbers or strings");
+}
+void BytecodeVM::doGreaterEq() {
+    Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() >= b.asInteger())); return; }
+    if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   >= b.asFloat()));   return; }
+    if (a.isString()  && b.isString())  { push(Value(a.asString()  >= b.asString()));  return; }
+    runtimeError("'>=' operands must be numbers or strings");
+}
+void BytecodeVM::doNot() { push(Value(!pop().isTruthy())); }
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+void BytecodeVM::runtimeError(const std::string& message, int line, const std::string& filename) {
+    if (pendingException.isNil()) {
+        pendingException = Value(message);
+    }
+    // We no longer print immediately here to avoid garbled output for caught exceptions.
+    // Printing is handled by the uncaught catch block in run().
+    running = false;
+    throw RuntimeError(message, frames.empty() ? line : frames.back().line);
+}
+
+void BytecodeVM::defineGlobal(const std::string& name, const Value& value) {
+    globalEnv->define(name, value);
+}
+
+Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
+    Lexer lexer(code, filename);
+    std::vector<Token> tokens = lexer.tokenize();
+    if (lexer.hasError()) return Value();
+
+    Parser parser(tokens);
+    std::vector<StmtPtr> statements = parser.parse();
+    if (parser.hasError()) return Value();
+
+    BytecodeCompiler compiler;
+    CompileResult result = compiler.compile(statements);
+    if (!result.success) return Value();
+
+    return execute(result.mainFunction);
+}
+
+std::string BytecodeVM::stringify(const Value& val, int line, const std::string& filename) {
+    return val.toString();
+}
+
+// ============================================================================
+// Built-ins
+// ============================================================================
+
+void BytecodeVM::initBuiltins() {
+    registerBuiltins(*this);
+    registerGUIBuiltins(*this);
+}
+
+// ============================================================================
+// Debugging
+// ============================================================================
+
+void BytecodeVM::printStack() const {
+    std::cout << "          ";
+    for (const Value* slot = stack.data(); slot < stackTop; slot++) {
+        std::cout << "[" << slot->toString() << "]";
+    }
+    std::cout << std::endl;
+}
+
+// ============================================================================
+// Compile EZFunction to Bytecode (on-demand)
+// ============================================================================
+
+BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
+    auto it = compiledFunctionCache.find(func);
+    if (it != compiledFunctionCache.end()) return it->second;
+
+    BytecodeCompiler compiler;
+
+    // Build a minimal TaskStmt from the EZFunction
+    TaskStmt fakeTask(func->name, func->params, func->defaultValues,
+                      func->body, func->isVariadic);
+    BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
+
+    compiledFunctionCache[func] = bfunc;
+    return bfunc;
+}
+
+// ============================================================================
+// callFunction (from native / external code)
+// ============================================================================
+
+Value BytecodeVM::callFunction(const Value& callee,
+                                const std::vector<Value>& args,
+                                int line,
+                                const std::string& filename) {
+    if (callee.isNativeFunction()) {
+        try {
+            return callee.asNativeFunction()->function(*this, args);
+        } catch (const std::exception& e) {
+            runtimeError(std::string("Native function error: ") + e.what(), line, filename);
+            return Value();
+        }
+    }
+
+    // Save current stack state to prevent corruption if dispatchCall fails
+    size_t stackBefore = stackTop - stack.data();
+    bool savedRunning = running;
+    running = true;
+
+    push(callee);
+    for (const auto& arg : args) {
+        push(arg);
+    }
+
+    Value result;
+    if (dispatchCall(callee, args.size())) {
+        run(frames.size());
+        if (stackTop > stack.data() + stackBefore) {
+            result = *(stackTop - 1);
+        }
+    }
+    
+    // Always restore stack to exactly where it was before the call
+    stackTop = stack.data() + stackBefore;
+
+    running = savedRunning;
+    return result;
+}
+
+Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
+                               const std::vector<Value>& args,
+                               int line,
+                               const std::string& filename) {
+    auto inst = std::make_shared<EZInstance>(klass);
+    Value instVal(inst);
+
+    if (klass->methods.count("init")) {
+        Value init = klass->methods.at("init");
+        std::vector<Value> initArgs = { instVal };
+        initArgs.insert(initArgs.end(), args.begin(), args.end());
+        
+        // Execute constructor through callFunction (handles bytecode or native)
+        callFunction(init, initArgs, line, filename);
+    }
+
+    return instVal;
+}
+
+void BytecodeVM::printStackTrace() const {
+    std::cerr << "Bytecode Stack Trace:" << std::endl;
+    for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+        int currentLine = it->line;
+        if (it->function && !it->function->chunk.lines.empty()) {
+            size_t offset = (size_t)(it->ip - it->function->chunk.code.data());
+            if (offset > 0) offset--;
+            if (offset < it->function->chunk.lines.size()) {
+                currentLine = (int)it->function->chunk.lines[offset];
+            }
+        }
+        std::cerr << "  in " << it->functionName
+                  << " (line " << (currentLine > 0 ? currentLine : 0) << ")" << std::endl;
+    }
+}

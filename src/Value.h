@@ -123,27 +123,30 @@ struct Value {
     Value(ClosureValPtr val) : m_data(val) {}
     Value(InterfacePtr val) : m_data(val) {}
     
-    // Type checking
+    // Type checking — O(1) via index lookup table
+    // Table order must match the std::variant alternative order in m_data exactly.
     ValueType type() const {
-        if (std::holds_alternative<std::nullptr_t>(m_data)) return ValueType::NIL;
-        if (std::holds_alternative<bool>(m_data)) return ValueType::BOOL;
-        if (std::holds_alternative<double>(m_data)) return ValueType::NUMBER;
-        if (std::holds_alternative<StringPtr>(m_data)) return ValueType::STRING;
-        if (std::holds_alternative<ArrayPtr>(m_data)) return ValueType::ARRAY;
-        if (std::holds_alternative<FunctionPtr>(m_data)) return ValueType::FUNCTION;
-        if (std::holds_alternative<NativeFnPtr>(m_data)) return ValueType::NATIVE_FUNCTION;
-        if (std::holds_alternative<ClassPtr>(m_data)) return ValueType::CLASS;
-        if (std::holds_alternative<InstancePtr>(m_data)) return ValueType::INSTANCE;
-        if (std::holds_alternative<DictionaryPtr>(m_data)) return ValueType::DICTIONARY;
-        if (std::holds_alternative<FuturePtr>(m_data)) return ValueType::FUTURE;
-        if (std::holds_alternative<SuperPtr>(m_data)) return ValueType::SUPER;
-        if (std::holds_alternative<long long>(m_data)) return ValueType::INTEGER;
-        if (std::holds_alternative<BufferPtr>(m_data)) return ValueType::BUFFER;
-        if (std::holds_alternative<MutexPtr>(m_data)) return ValueType::MUTEX;
-        if (std::holds_alternative<BoundMethodPtr>(m_data)) return ValueType::BOUND_METHOD;
-        if (std::holds_alternative<ClosureValPtr>(m_data)) return ValueType::CLOSURE_VAL;
-        if (std::holds_alternative<InterfacePtr>(m_data)) return ValueType::INTERFACE;
-        return ValueType::NIL;
+        static constexpr ValueType typeTable[] = {
+            ValueType::NIL,              // 0:  nullptr_t
+            ValueType::BOOL,             // 1:  bool
+            ValueType::NUMBER,           // 2:  double
+            ValueType::STRING,           // 3:  StringPtr
+            ValueType::ARRAY,            // 4:  ArrayPtr
+            ValueType::FUNCTION,         // 5:  FunctionPtr
+            ValueType::NATIVE_FUNCTION,  // 6:  NativeFnPtr
+            ValueType::CLASS,            // 7:  ClassPtr
+            ValueType::INSTANCE,         // 8:  InstancePtr
+            ValueType::DICTIONARY,       // 9:  DictionaryPtr
+            ValueType::FUTURE,           // 10: FuturePtr
+            ValueType::SUPER,            // 11: SuperPtr
+            ValueType::INTEGER,          // 12: long long
+            ValueType::BUFFER,           // 13: BufferPtr
+            ValueType::MUTEX,            // 14: MutexPtr
+            ValueType::BOUND_METHOD,     // 15: BoundMethodPtr
+            ValueType::CLOSURE_VAL,      // 16: ClosureValPtr
+            ValueType::INTERFACE         // 17: InterfacePtr
+        };
+        return typeTable[m_data.index()];
     }
     
     bool isNil() const { return std::holds_alternative<std::nullptr_t>(m_data); }

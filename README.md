@@ -1,130 +1,196 @@
-# EZ Programming Language
-
 <div align="center">
 
-![EZ Language](https://img.shields.io/badge/EZ-Language-blue?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.0-green?style=for-the-badge)
-![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)
+<br>
 
-**A simple, readable programming language with natural syntax**
+```
+███████╗███████╗    ██╗      █████╗ ███╗   ██╗ ██████╗
+██╔════╝╚══███╔╝    ██║     ██╔══██╗████╗  ██║██╔════╝
+█████╗    ███╔╝     ██║     ███████║██╔██╗ ██║██║  ███╗
+██╔══╝   ███╔╝      ██║     ██╔══██║██║╚██╗██║██║   ██║
+███████╗███████╗    ███████╗██║  ██║██║ ╚████║╚██████╔╝
+╚══════╝╚══════╝    ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝
+```
 
-[Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Features](#features)
+**A dynamically-typed, bytecode-compiled programming language with natural English syntax**
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
+[![Language](https://img.shields.io/badge/written%20in-C%2B%2B17-orange.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
+[![Packages](https://img.shields.io/badge/packages-19-green.svg?style=flat-square)](https://github.com/imabd645/ezlib)
+[![Version](https://img.shields.io/badge/version-1.0-purple.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
+
+[Quick Start](#-quick-start) · [Syntax Guide](#-language-syntax) · [Built-ins](#-built-in-functions) · [OOP](#-object-oriented-programming) · [Async](#-async--concurrency) · [Packages](#-package-manager) · [Standard Library](#-standard-library)
 
 </div>
 
 ---
 
-## 📋 Table of Contents
+## What is EZ?
 
-- [About EZ](#about-ez)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Language Syntax](#language-syntax)
-  - [Variables](#variables)
-  - [Data Types](#data-types)
-  - [Operators](#operators)
-  - [Control Flow](#control-flow)
-  - [Functions](#functions)
-  - [Arrays](#arrays)
-  - [Dictionaries](#dictionaries)
-  - [Object-Oriented Programming](#object-oriented-programming)
-  - [Error Handling](#error-handling)
-  - [Modules and Imports](#modules-and-imports)
-- [Built-in Functions](#built-in-functions)
-- [Native FFI & Metaprogramming](#native-ffi--metaprogramming)
-- [Standard Library (`lib/`)](#standard-library-lib)
-- [Package Manager](#package-manager)
-- [Advanced Features](#advanced-features)
-- [Examples](#examples)
-- [Contributing](#contributing)
-- [License](#license)
+EZ is a scripting language built from scratch — bytecode compiler, stack VM, garbage collector, and a full standard library ecosystem — all written in C++17. It replaces cryptic programming symbols with plain English keywords so code reads like what it actually does.
+
+```ez
+# A taste of EZ
+task greet(name) {
+    give "Hello, " + name + "!"
+}
+
+out greet("World")        # Hello, World!
+
+people = ["Alice", "Bob", "Carol"]
+get person in people {
+    out greet(person)
+}
+```
+
+**Why EZ exists:** The goal is a language where beginners can focus on *thinking like a programmer*, not fighting with syntax. `when` instead of `if`, `task` instead of `function`, `give` instead of `return` — every keyword was chosen to be self-explanatory on first read.
 
 ---
 
-## 🎯 About EZ
+## Table of Contents
 
-**EZ** is a dynamically-typed, interpreted programming language designed with readability and simplicity in mind. It uses natural English-like keywords and intuitive syntax, making it perfect for beginners while being powerful enough for advanced use cases.
-
-### Why EZ?
-
-- ✅ **Natural Syntax**: Keywords like `out`, `when`, `repeat`, `task` instead of `print`, `if`, `for`, `function`
-- ✅ **Beginner Friendly**: Easy to learn with clear, readable code
-- ✅ **Feature Rich**: OOP, async/await, database support, HTTP requests
-- ✅ **Garbage Collection**: Automatic memory management
-- ✅ **Package Manager**: Built-in package management system
-- ✅ **Interactive REPL**: Test code instantly
-- ✅ **Platform**: Works on Windows only for now
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Language Syntax](#-language-syntax)
+  - [Variables & Types](#variables--types)
+  - [Operators](#operators)
+  - [Control Flow](#control-flow)
+  - [Functions & Lambdas](#functions--lambdas)
+  - [Arrays & Dictionaries](#arrays--dictionaries)
+  - [Object-Oriented Programming](#-object-oriented-programming)
+  - [Error Handling](#error-handling)
+  - [Modules](#modules)
+- [Built-in Functions](#-built-in-functions)
+- [Async & Concurrency](#-async--concurrency)
+- [Native FFI](#-native-ffi)
+- [GUI Framework](#-gui-framework)
+- [Package Manager](#-package-manager)
+- [Standard Library](#-standard-library)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
 
 ---
 
 ## ✨ Features
 
-### Core Features
-- Dynamic typing with type inference
-- First-class functions and closures
-- **Metaprogramming**: `getattr`, `setattr`, `hasattr` (Native primitives)
-- **Bitwise Operations**: `~`, `&`, `|`, `^`, `<<`, `>>`
-- Array and dictionary literals
-- String interpolation
+### Language Core
+- **Natural English keywords** — `out`, `when`, `other`, `repeat`, `task`, `give`, `escape`, `skip`, `get`
+- **Dynamic typing** with 18 runtime value types including a dedicated `INTEGER` path for fast integer arithmetic
+- **Bytecode compilation** — source compiles to a custom stack-VM ISA before execution
+- **Tail call optimization** — `give myFunc(...)` at tail position reuses the stack frame; 20,000-deep recursion without overflow
+- **First-class closures** with Lua-style upvalues that migrate to the heap when their scope exits
+- **Compile-time constant folding** — `3 + 4 * 2` evaluated at compile time, not runtime
+- **String interpolation**, raw strings, ternary expressions (`cond ? a : b`), spread operator (`...arr`)
 
-### Advanced Features
-- **Pure Native FFI**: Call into any Windows DLL (`Kernel32`, `User32`, etc.) directly from EZ.
-- **Self-Contained Standard Library**: OS, Net, and FS logic implemented in EZ, not hardcoded in C++.
-- Object-oriented programming (classes and inheritance)
-- Exception handling (try/catch) with detailed stack traces.
-- Async/await and Threading support.
-- Hardened Production-grade Web Framework (TCP/IP via WS2_32).
+### Object-Oriented Programming
+- **`model`** — classes with `init` constructors, `self` references, `hidden`/`shown` access modifiers
+- **Single inheritance** via `extends` + `super` calls
+- **`interface` / `implements`** with runtime method-presence validation
+- **`static`** fields and methods on models
+- **`struct`** for lightweight data holders
+- **`toString()` override** — called automatically by `out` and string coercion
 
-### Developer Experience
-- 🚀 **Professional GUI Framework (v6.0)**
-- 🔍 **Java-style Stack Traces** for multi-file debugging.
-- 📦 **Dynamic Modular Loading** using `use` keyword.
-- Interactive REPL mode.
+### Concurrency
+- **`async task`** — spawns the function on a background thread, returns a `FUTURE` value
+- **`await expr`** — blocks until the future resolves
+- **`async { ... }` blocks** — inline async expressions
+- **`spawn(fn)`** — detached background thread
+- **First-class `Mutex()`** — `lock()` / `unlock()` as values
+- **Atomic operations** — `atomicAdd`, `atomicGet`, `atomicSet`
+
+### Runtime
+- **Garbage collector** — cycle-detecting mark-sweep over a doubly-linked intrusive list, threshold-triggered (default 50,000 allocations)
+- **Stack traces** — file, line, and call frame reported on runtime errors
+- **Native FFI** — call any Windows DLL function directly: `os_load_lib("ws2_32.dll")` + `os_get_func(handle, "WSAStartup")`
+- **Package manager** — `ez install <name>` downloads from the [ezlib registry](https://github.com/imabd645/ezlib)
+- **Module system** — `use "path/to/file"` or `use "name" as alias` for namespaced imports
+
+### Standard Library (19 packages, 6,664 lines of EZ)
+Math · HTTP client · Web server · AI SDK · GUI · Testing · Collections · Regex · ORM · DateTime · Crypto · File system · OS · Logging · PDF · Threading · and more
+
+---
+
+## 🏗 Architecture
+
+```
+source.ez
+    │
+    ▼  Lexer.cpp  (565 lines, 37 token types)
+Token stream
+    │
+    ▼  Parser.cpp  (1,136 lines, recursive descent)
+AST  (std::variant, 17 expression + 18 statement node types)
+    │
+    ▼  BytecodeCompiler.cpp  (1,598 lines)
+       · Upvalue resolution   · Constant folding
+       · TCO detection        · Scope management
+Bytecode chunks  (~80 opcodes, stack-VM ISA)
+    │
+    ▼  BytecodeVM.cpp  (1,954 lines)
+       · Closure capture      · Async/Future dispatch
+       · Exception handling   · Interface validation
+Runtime values  (std::variant, 18 types, O(1) type lookup)
+    │
+    ▼  GarbageCollector  (mark-sweep, intrusive linked list)
+```
+
+**Total C++ source:** ~12,600 lines across 20 files, targeting Windows x64 with C++17.
+
 ---
 
 ## 🚀 Installation
 
 ### Prerequisites
-- C++17 compatible compiler
-- CMake (optional, for building)
-- cURL library (for HTTP features)
-- SQLite3 (for database features)
 
-### Building from Source
+| Dependency | Purpose |
+|---|---|
+| C++17 compiler (MinGW-w64 / MSVC) | Building the interpreter |
+| CMake 3.10+ | Build system (optional) |
+| libcurl | HTTP client/server |
+| libsqlite3 | Database builtins |
+| Win32 SDK | GUI, FFI, threading |
 
-```bash
-# Clone the repository
-git clone https://github.com/imabd645/ez-language.git
-cd ez-lang
-
-# Compile (example using g++)
-g++ -std=c++17 -o ez main.cpp Lexer.cpp Parser.cpp Interpreter.cpp Builtins.cpp \
-    -lsqlite3 -lcurl -lpthread -lws2_32
-
-# Run the interpreter
-./ez
-```
-
-### Windows
+### Build from Source
 
 ```bash
-g++ -std=c++17 -o ez.exe main.cpp Lexer.cpp Parser.cpp Interpreter.cpp Builtins.cpp \
-    -lsqlite3 -lcurl -lws2_32 -lpthread
+git clone https://github.com/imabd645/EZ-language.git
+cd EZ-language
+
+# Using CMake
+mkdir build && cd build
+cmake .. -G "MinGW Makefiles"
+cmake --build .
+
+# Or direct g++ (MinGW)
+g++ -std=c++17 -O2 -o ez.exe \
+    src/main.cpp src/Lexer.cpp src/Parser.cpp \
+    src/Bytecode.cpp src/BytecodeCompiler.cpp \
+    src/BytecodeVM.cpp src/BytecodeInterpreter.cpp \
+    src/Builtins.cpp src/GUIBuiltins.cpp \
+    src/GC.cpp src/GCObject.cpp \
+    src/runtime/Builtins_IO.cpp src/runtime/Builtins_Math.cpp \
+    src/runtime/Builtins_Net.cpp src/runtime/Builtins_String.cpp \
+    src/runtime/Builtins_Data.cpp src/runtime/Builtins_Sys.cpp \
+    src/runtime/Builtins_Buffer.cpp src/runtime/Builtins_Concurrency.cpp \
+    src/runtime/Builtins_PDF.cpp \
+    -lsqlite3 -lcurl -lws2_32 -lpthread -ldwmapi -luxtheme \
+    -I src
 ```
 
-### Adding to System Path
+### Add to PATH
 
-To run `ez` from any directory in your terminal:
+1. Move `ez.exe` to a permanent folder (e.g. `C:\ez\`)
+2. Open **System Properties → Environment Variables → Path → Edit → New**
+3. Add `C:\ez`
+4. Restart your terminal
 
-1.  Move `ez.exe` to a permanent location (e.g., `C:\ez\ez.exe`).
-2.  Press `Win + S` and search for "Environment Variables".
-3.  Click "Edit the system environment variables".
-4.  Click "Environment Variables..." at the bottom.
-5.  Under "System variables", find `Path` and click "Edit".
-6.  Click "New" and paste the path to the folder containing `ez.exe` (e.g., `C:\ez`).
-7.  Click "OK" on all dialogs.
-8.  Restart your terminal.
+```bash
+ez --version     # confirm it works
+ez hello.ez      # run a script
+ez              # start the REPL
+```
 
 ---
 
@@ -136,498 +202,435 @@ To run `ez` from any directory in your terminal:
 out "Hello, World!"
 ```
 
-### Running a Script
+```bash
+ez hello.ez
+# Hello, World!
+```
 
-Create a file `hello.ez`:
+### Five Minutes of EZ
+
 ```ez
-out "Hello, World!"
-```
+# Variables — no declaration keyword needed
+name = "Abdullah"
+age  = 19
+pi   = 3.14159
+active = true
 
-Run it:
-```bash
-./ez hello.ez
-```
+# Output
+out "Name: " + name
+out "Age:  " + str(age)
 
-### Interactive Mode (REPL)
+# Conditional
+when age >= 18 {
+    out name + " is an adult"
+} other {
+    out name + " is a minor"
+}
 
-```bash
-./ez
->>> out "Hello!"
-Hello!
->>> x = 5 + 3
->>> out x
-8
+# Loop — repeat N to M (inclusive)
+repeat i = 1 to 5 {
+    out "Count: " + str(i)
+}
+
+# For-each loop
+fruits = ["apple", "banana", "cherry"]
+get fruit in fruits {
+    out fruit
+}
+
+# Function
+task square(n) {
+    give n * n
+}
+
+out str(square(7))    # 49
+
+# Lambda
+double = |x| x * 2
+out str(double(5))    # 10
 ```
 
 ---
 
 ## 📚 Language Syntax
 
-### Variables
+### Variables & Types
 
-Variables are dynamically typed and don't require declaration keywords.
+Variables are dynamically typed. No declaration keyword — just assign.
 
 ```ez
-// Simple assignment
-x = 10
-name = "Alice"
-isActive = true
+# Numbers — two internal types: double and long long
+x     = 42          # INTEGER (long long)
+pi    = 3.14159     # NUMBER  (double)
+big   = 0xFF        # hex literal
 
-// Multiple assignments
-a = b = c = 0
+# Strings
+msg   = "Hello, EZ!"
+raw   = r"C:\Users\file.txt"           # raw string — backslashes literal
+interp = "Pi is approximately ${pi}"  # string interpolation
 
-// Compound assignments
-x += 5      // x = x + 5
-y -= 2      // y = y - 2
-z *= 3      // z = z * 3
-w /= 4      // w = w / 4
+# Booleans — yes/no are aliases for true/false
+flag1 = true
+flag2 = yes
+flag3 = false
+flag4 = no
+
+# Nil
+nothing = nil
+
+# Compound assignment
+x += 5      # x = x + 5
+x -= 2
+x *= 3
+x /= 4
 ```
 
-### Data Types
-
-EZ supports several built-in data types:
-
-#### Numbers
-```ez
-integer = 42
-decimal = 3.14
-negative = -17
-```
-
-#### Strings
-```ez
-single = 'Hello'
-double = "World"
-escaped = "Line 1\nLine 2"
-concatenation = "Hello" + " " + "World"
-```
-
-#### Booleans
-```ez
-isTrue = true
-isFalse = false
-```
-
-#### Nil
-```ez
-empty = nil
-```
-
-#### Arrays
-```ez
-numbers = [1, 2, 3, 4, 5]
-mixed = [1, "two", true, nil]
-nested = [[1, 2], [3, 4]]
-empty_array = []
-```
-
-#### Dictionaries
-```ez
-person = {
-    "name": "Alice",
-    "age": 30,
-    "city": "New York"
-}
-
-// Access
-out person["name"]  // Alice
-
-// Set values
-person["age"] = 31
-```
+**Type names** (returned by `typeOf()`): `"number"`, `"integer"`, `"string"`, `"boolean"`, `"array"`, `"dictionary"`, `"function"`, `"nil"`, `"model"`, `"future"`, `"buffer"`, `"mutex"`
 
 ### Operators
 
-#### Arithmetic Operators
 ```ez
-addition = 5 + 3        // 8
-subtraction = 10 - 4    // 6
-multiplication = 3 * 7  // 21
-division = 20 / 4       // 5
-modulo = 17 % 5         // 2
-```
+# Arithmetic
+out 10 + 3      # 13
+out 10 - 3      # 7
+out 10 * 3      # 30
+out 10 / 3      # 3.333...
+out 10 % 3      # 1  (modulo)
+out 2 ** 8      # 256 (power)
 
-#### Bitwise Operators
-```ez
-a = 5 & 3      // Bitwise AND
-b = 5 | 3      // Bitwise OR
-c = 5 ^ 3      // Bitwise XOR
-d = ~5         // Bitwise NOT
-e = 1 << 2     // Left Shift
-f = 8 >> 1     // Right Shift
-```
+# Comparison
+out 5 == 5      # true
+out 5 != 4      # true
+out 3 <  4      # true
+out 4 <= 4      # true
+out 5 >  3      # true
+out 5 >= 5      # true
 
-#### Comparison Operators
-```ez
-equal = (5 == 5)           // true
-not_equal = (5 != 3)       // true
-less = (3 < 5)             // true
-less_equal = (5 <= 5)      // true
-greater = (10 > 5)         // true
-greater_equal = (7 >= 7)   // true
-```
+# Logical
+out true and false    # false
+out true or  false    # true
+out not true          # false
 
-#### Logical Operators
-```ez
-and_op = true and false    // false
-or_op = true or false      // true
-not_op = not true          // false
-```
+# Bitwise
+out 0b1010 & 0b1100   # 8   (AND)
+out 0b1010 | 0b0101   # 15  (OR)
+out 0b1010 ^ 0b1100   # 6   (XOR)
+out ~5                 # bitwise NOT
+out 1 << 3             # 8   (left shift)
+out 16 >> 2            # 4   (right shift)
 
-#### Unary Operators
-```ez
-negation = -5              // -5
-logical_not = not true     // false
+# Ternary
+label = age >= 18 ? "adult" : "minor"
+
+# Spread
+a = [1, 2, 3]
+b = [...a, 4, 5]      # [1, 2, 3, 4, 5]
 ```
 
 ### Control Flow
 
-#### When Statement (If-Else)
-
 ```ez
-// Simple when
-when x > 5 {
-    out "x is greater than 5"
-}
+# when / other when / other  (if / else if / else)
+score = 85
 
-// When-other (if-else)
-when score >= 60 {
-    out "Pass"
+when score >= 90 {
+    out "A"
+} other when score >= 80 {
+    out "B"
+} other when score >= 70 {
+    out "C"
 } other {
-    out "Fail"
+    out "F"
 }
 
-// Nested when statements
-when age >= 18 {
-    when hasLicense {
-        out "Can drive"
-    } other {
-        out "Get a license first"
-    }
-} other {
-    out "Too young to drive"
-}
-
-// Single line when
-when x > 0 { out "Positive" }
-```
-
-#### While Loop
-
-```ez
-// Basic while loop
-i = 0
-while i < 5 {
-    out i
-    i += 1
-}
-
-// With escape (break)
-count = 0
-while true {
-    when count >= 10 {
-        escape  // breaks out of loop
-    }
-    count += 1
-}
-
-// With skip (continue)
-n = 0
-while n < 10 {
+# while loop
+n = 1
+while n <= 10 {
+    out str(n)
     n += 1
-    when n % 2 == 0 {
-        skip  // continues to next iteration
-    }
-    out n  // Only prints odd numbers
+}
+
+# repeat N to M  (for i = N; i <= M; i++)
+repeat i = 1 to 100 {
+    out str(i)
+}
+
+# get ... in  (for-each)
+get item in ["alpha", "beta", "gamma"] {
+    out item
+}
+
+# get ... in  (for key in dictionary)
+config = {"host": "localhost", "port": 8080}
+get key in config {
+    out key + " = " + str(config[key])
+}
+
+# escape (break) and skip (continue)
+repeat i = 1 to 10 {
+    when i == 5 { escape }
+    when i % 2 == 0 { skip }
+    out str(i)
 }
 ```
 
-#### Repeat Loop (For Loop)
+### Functions & Lambdas
 
 ```ez
-// Basic repeat loop
-repeat i = 0 to 5 {
-    out i  // Prints 0, 1, 2, 3, 4
-}
-
-// With custom step
-repeat i = 0 to 10 {
-    out i
-    i += 2  // Custom increment
-}
-
-// Countdown
-repeat i = 10 to 0 {
-    out i
-    i -= 1
-}
-```
-
-#### Get Loop (For-Each)
-
-```ez
-// Iterate over array
-fruits = ["apple", "banana", "orange"]
-get fruit in fruits {
-    out fruit
-}
-
-// Iterate over string characters
-get char in "Hello" {
-    out char
-}
-
-// With index
-numbers = [10, 20, 30]
-index = 0
-get num in numbers {
-    out "Index " + str(index) + ": " + str(num)
-    index += 1
-}
-```
-
-### Functions
-
-#### Task Declaration (Function Definition)
-
-```ez
-// Basic function
-task greet() {
-    out "Hello!"
-}
-
-// Function with parameters
-task greet_person(name) {
-    out "Hello, " + name + "!"
-}
-
-// Function with return value
+# Basic function
 task add(a, b) {
-    give a + b  // 'give' is return
+    give a + b
+}
+out str(add(3, 4))    # 7
+
+# Default parameters
+task greet(name, greeting) {
+    when not greeting { greeting = "Hello" }
+    give greeting + ", " + name + "!"
 }
 
-// Function with multiple statements
-task calculate(x) {
-    result = x * 2
-    result += 10
-    give result
+# Variadic functions
+task sum(...nums) {
+    total = 0
+    get n in nums { total += n }
+    give total
+}
+out str(sum(1, 2, 3, 4, 5))    # 15
+
+# Recursive function
+task factorial(n) {
+    when n <= 1 { give 1 }
+    give n * factorial(n - 1)
 }
 
-// Calling functions
-greet()
-greet_person("Alice")
-sum = add(5, 3)
-out sum  // 8
-```
-
-#### Lambda Expressions
-
-```ez
-// Simple lambda
-square = (x) => x * x
-
-// Lambda with multiple parameters
-add = (a, b) => a + b
-
-// Lambda with block body
-compute = (x) => {
-    temp = x * 2
-    give temp + 5
+# Tail-call optimized recursion (20,000+ levels)
+task count(n, acc) {
+    when n == 0 { give acc }
+    give count(n - 1, acc + 1)    # TCO — no stack overflow
 }
 
-// Using lambdas with arrays
-numbers = [1, 2, 3, 4, 5]
-get num in numbers {
-    squared = square(num)
-    out squared
+# Lambda — single expression
+double = |x| x * 2
+
+# Lambda — multi-statement body
+clamp = |val, lo, hi| {
+    when val < lo { give lo }
+    when val > hi { give hi }
+    give val
 }
 
-// Higher-order functions
-task apply(fn, value) {
-    give fn(value)
+# Higher-order functions
+task applyTwice(f, x) {
+    give f(f(x))
 }
+out str(applyTwice(double, 3))    # 12
 
-result = apply((x) => x * 3, 10)  // 30
-```
-
-#### Closures
-
-```ez
+# Closures
 task makeCounter() {
     count = 0
-    give () => {
+    give || {
         count += 1
         give count
     }
 }
+counter = makeCounter()
+out str(counter())    # 1
+out str(counter())    # 2
+out str(counter())    # 3
 
-counter1 = makeCounter()
-out counter1()  // 1
-out counter1()  // 2
-out counter1()  // 3
-
-counter2 = makeCounter()
-out counter2()  // 1 (separate closure)
-```
-
-### Arrays
-
-#### Creating Arrays
-
-```ez
-// Array literal
-numbers = [1, 2, 3, 4, 5]
-empty = []
-
-// Mixed types
-mixed = [1, "two", true, nil, [1, 2]]
-```
-
-#### Array Operations
-
-```ez
-// Access elements
-first = numbers[0]
-last = numbers[4]
-
-// Modify elements
-numbers[0] = 10
-
-// Length
-size = len(numbers)
-
-// Add elements
-push(numbers, 6)        // [1, 2, 3, 4, 5, 6]
-
-// Remove last element
-last = pop(numbers)     // Returns and removes 6
-
-// Iterate
-get num in numbers {
-    out num
+# Async task
+async task fetchUser(id) {
+    data = http_get("https://api.example.com/users/" + str(id))
+    give data
 }
-
-// Nested arrays
-matrix = [[1, 2], [3, 4]]
-element = matrix[0][1]  // 2
+future = fetchUser(1)
+result = await future
 ```
 
-### Dictionaries
+### Arrays & Dictionaries
 
 ```ez
-// Create dictionary
-person = {
+# Array literals
+primes = [2, 3, 5, 7, 11]
+
+# Indexing (0-based)
+out str(primes[0])      # 2
+out str(primes[-1])     # 11  (negative indexing from end)
+
+# Array operations
+push(primes, 13)
+pop(primes)
+out str(len(primes))    # 5
+
+# Slice
+out str(primes[1:3])    # [3, 5]
+
+# Spread into function call
+args = [3, 4]
+out str(add(...args))
+
+# Dictionary (hash map)
+user = {
     "name": "Alice",
-    "age": 30,
-    "email": "alice@example.com"
+    "age":  30,
+    "tags": ["admin", "user"]
 }
 
-// Access values
-name = person["name"]
+out user["name"]                    # Alice
+out str(user["age"])                # 30
+out str(has_key(user, "email"))     # false
 
-// Set values
-person["age"] = 31
-person["phone"] = "555-1234"
+# Add / update
+user["email"] = "alice@example.com"
 
-// Get keys
-keys = person.keys()
-
-// Get values
-values = person.values()
-
-// Check if key exists
-hasEmail = person.contains("email")
-
-// Length
-size = len(person)
-
-// Iterate over keys
-get key in keys(person) {
-    out key + ": " + str(person[key])
+# Iterate
+get key in user {
+    out key + ": " + str(user[key])
 }
+
+# Dictionary functions
+out str(keys(user))     # ["name", "age", "tags", "email"]
+out str(len(user))      # 4
+dictRemove(user, "tags")
 ```
 
-### Object-Oriented Programming
+---
 
-#### Defining a Model (Class)
+## 🧱 Object-Oriented Programming
+
+### Models (Classes)
 
 ```ez
-model Person {
-    // Constructor
-    init(name, age) {
-        self.name = name
-        self.age = age
+model Animal {
+    init(name, sound) {
+        self.name  = name
+        self.sound = sound
     }
-    
-    // Public method (shown)
-    shown greet() {
-        out "Hello, I'm " + self.name
+
+    # Public method
+    shown speak() {
+        out self.name + " says " + self.sound
     }
-    
-    // Private method (hidden)
-    hidden calculateBirthYear() {
-        give 2024 - self.age
+
+    # Private method
+    hidden _describe() {
+        give "I am " + self.name
     }
-    
-    // Public method using private method
-    shown getBirthYear() {
-        give self.calculateBirthYear()
+
+    # toString override — called by out and str()
+    task toString() {
+        give "Animal(" + self.name + ")"
     }
 }
 
-// Create instance
-alice = new Person("Alice", 30)
-alice.greet()  // "Hello, I'm Alice"
-out alice.name  // "Alice"
-year = alice.getBirthYear()
+cat = Animal("Cat", "meow")
+cat.speak()          # Cat says meow
+out str(cat)         # Animal(Cat)
 ```
 
-#### Inheritance
+### Inheritance
 
 ```ez
-model Student extends Person {
-    init(name, age, studentId) {
-        self.name = name
-        self.age = age
-        self.studentId = studentId
+model Dog extends Animal {
+    init(name) {
+        super.init(name, "woof")
+        self.tricks = []
     }
-    
-    shown study() {
-        out self.name + " is studying"
+
+    task learnTrick(trick) {
+        push(self.tricks, trick)
+        give self    # enable method chaining
+    }
+
+    shown perform() {
+        get trick in self.tricks {
+            out self.name + " performs: " + trick
+        }
     }
 }
 
-bob = new Student("Bob", 20, "S12345")
-bob.greet()   // Inherited from Person
-bob.study()   // Student's own method
+rex = Dog("Rex")
+rex.learnTrick("sit").learnTrick("roll over")
+rex.speak()      # Rex says woof
+rex.perform()    # Rex performs: sit
+                 # Rex performs: roll over
 ```
 
-#### Struct (Simplified Class)
+### Interfaces
+
+```ez
+interface Serializable {
+    toJson
+    fromJson
+}
+
+model Config implements Serializable {
+    init(data) {
+        self.data = data
+    }
+
+    task toJson() {
+        give to_json(self.data)
+    }
+
+    task fromJson(json) {
+        self.data = parse_json(json)
+        give self
+    }
+}
+
+# Runtime validates that Config has toJson and fromJson
+cfg = Config({"debug": true, "port": 3000})
+out cfg.toJson()
+```
+
+### Static Members
+
+```ez
+model Counter {
+    static count = 0
+
+    init() {
+        Counter.count += 1
+        self.id = Counter.count
+    }
+
+    static task reset() {
+        Counter.count = 0
+    }
+
+    static task total() {
+        give Counter.count
+    }
+}
+
+a = Counter()
+b = Counter()
+c = Counter()
+out str(Counter.total())    # 3
+Counter.reset()
+out str(Counter.total())    # 0
+```
+
+### Structs
 
 ```ez
 struct Point {
     x, y
 }
 
-// Structs are simpler than models
-// They automatically create fields and basic constructor
 p = new Point()
 p.x = 10
 p.y = 20
+out str(p.x) + ", " + str(p.y)
 ```
+
+---
 
 ### Error Handling
 
 ```ez
-// Try-catch block
-try {
-    result = 10 / 0
-    out result
-} catch error {
-    out "Error occurred: " + str(error)
-}
-
-// Throwing errors
+# try / catch / throw
 task divide(a, b) {
     when b == 0 {
         throw "Division by zero"
@@ -638,904 +641,1036 @@ task divide(a, b) {
 try {
     result = divide(10, 0)
 } catch e {
-    out "Caught error: " + str(e)
+    out "Caught: " + str(e)    # Caught: Division by zero
 }
 
-// Nested try-catch
+# Throw any value — string, number, or model
+model AppError {
+    init(code, message) {
+        self.code    = code
+        self.message = message
+    }
+}
+
+try {
+    throw AppError(404, "Not found")
+} catch e {
+    when typeOf(e) == "model" {
+        out "Error " + str(e.code) + ": " + e.message
+    }
+}
+
+# Nested try-catch
 try {
     try {
-        throw "Inner error"
+        throw "inner"
     } catch e {
-        out "Inner catch"
-        throw "Outer error"
+        out "Inner handler: " + str(e)
+        throw "re-thrown"
     }
 } catch e {
-    out "Outer catch: " + str(e)
+    out "Outer handler: " + str(e)
 }
 ```
 
-### Modules and Imports
+### Modules
 
 ```ez
-// Import a module
-use "mymodule.ez"
+# Import entire file — all its globals become available
+use "lib/utils.ez"
 
-// Use functions from imported module
-// The module's code is executed and variables are available
+# Namespaced import — access via alias.name
+use "lib/math.ez" as math
+out str(math.sqrt(25))    # 5
+
+# Import everything from a module into current scope
+use "lib/helpers.ez" as *
+
+# Install and use a package (after: ez install collections)
+use "collections"
+s = Set().add(1).add(2).add(1)
+out str(s.size())    # 2
 ```
 
 ---
 
 ## 🔧 Built-in Functions
 
-### Input/Output
+### Input / Output
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `out(value)` | Print to console | `out "Hello"` |
-| `in()` | Read input from user | `name = in()` |
+| Function | Description |
+|---|---|
+| `out expr` | Print value with newline |
+| `input(prompt)` | Read a line from stdin |
+| `color(code)` | Set Windows console text color (0–255) |
+| `reset()` | Reset console color |
 
-### Type Conversion
+### Type Conversion & Inspection
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `str(x)` | Convert to string | `str(42)` → `"42"` |
-| `num(x)` | Convert to number | `num("42")` → `42` |
-| `type(x)` | Get type name | `type(42)` → `"number"` |
+| Function | Description |
+|---|---|
+| `str(val)` | Convert any value to string |
+| `num(val)` | Parse string to number |
+| `int(val)` | Convert to integer |
+| `bool(val)` | Convert to boolean |
+| `typeOf(val)` | Return type name as string |
+| `len(val)` | Length of string, array, or dictionary |
 
 ### String Functions
 
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `len(s)` | string | String length | `len("hello")` → `5` |
-| `substr(s, start, len)` | string, number, number | Extract substring | `substr("hello", 1, 3)` → `"ell"` |
-| `split(s, delim)` | string, string | Split string into array | `split("a,b,c", ",")` → `["a","b","c"]` |
-| `join(arr, delim)` | array, string | Join array into string | `join(["a","b"], ",")` → `"a,b"` |
-| `replace(s, old, new)` | string, string, string | Replace substring | `replace("hello", "l", "L")` → `"heLLo"` |
-| `trim(s)` | string | Remove whitespace | `trim(" hi ")` → `"hi"` |
-| `upper(s)` | string | Convert to uppercase | `upper("hi")` → `"HI"` |
-| `lower(s)` | string | Convert to lowercase | `lower("HI")` → `"hi"` |
-| `indexOf(s, sub)` | string, string | Find substring index | `indexOf("hello", "ll")` → `2` |
-| `charAt(s, index)` | string, number | Get character at index | `charAt("hello", 1)` → `"e"` |
-| `startsWith(s, prefix)` | string, string | Check if starts with | `startsWith("hello", "he")` → `true` |
-| `endsWith(s, suffix)` | string, string | Check if ends with | `endsWith("hello", "lo")` → `true` |
+| Function | Description |
+|---|---|
+| `substr(s, start, len)` | Extract substring |
+| `split(s, delim)` | Split string to array |
+| `join(arr, delim)` | Join array to string |
+| `upper(s)` / `lower(s)` | Case conversion |
+| `trim(s)` | Strip leading/trailing whitespace |
+| `replace(s, old, new)` | Replace substring |
+| `contains(s, sub)` | Check if substring exists |
+| `startsWith(s, prefix)` | Prefix check |
+| `endsWith(s, suffix)` | Suffix check |
+| `indexOf(s, sub)` | First index or -1 |
+| `ord(char)` | Character to ASCII code |
+| `chr(code)` | ASCII code to character |
+| `repeat(s, n)` | Repeat string N times |
+| `padLeft(s, w, char)` | Left-pad to width |
+| `padRight(s, w, char)` | Right-pad to width |
 
 ### Array Functions
 
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `len(arr)` | array | Array length | `len([1,2,3])` → `3` |
-| `push(arr, val)` | array, any | Add element | `push(arr, 5)` |
-| `pop(arr)` | array | Remove & return last | `pop([1,2,3])` → `3` |
-| `slice(arr, start, end)` | array, number, number | Extract slice | `slice([1,2,3,4], 1, 3)` → `[2,3]` |
-| `reverse(arr)` | array | Reverse array | `reverse([1,2,3])` → `[3,2,1]` |
-| `sort(arr)` | array | Sort array | `sort([3,1,2])` → `[1,2,3]` |
-| `contains(arr, val)` | array, any | Check if contains | `contains([1,2,3], 2)` → `true` |
-| `indexOf(arr, val)` | array, any | Find element index | `indexOf([1,2,3], 2)` → `1` |
-| `range(start, end)` | number, number | Create range array | `range(1, 5)` → `[1,2,3,4,5]` |
-| `map(arr, fn)` | array, function | Apply function to each | `map([1,2,3], (x)=>x*2)` → `[2,4,6]` |
-| `filter(arr, fn)` | array, function | Filter by condition | `filter([1,2,3,4], (x)=>x>2)` → `[3,4]` |
-| `reduce(arr, fn, init)` | array, function, any | Reduce to single value | `reduce([1,2,3], (a,b)=>a+b, 0)` → `6` |
-
-### Math Functions
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `abs(x)` | number | Absolute value | `abs(-5)` → `5` |
-| `floor(x)` | number | Round down | `floor(3.7)` → `3` |
-| `ceil(x)` | number | Round up | `ceil(3.2)` → `4` |
-| `round(x)` | number | Round to nearest | `round(3.5)` → `4` |
-| `sqrt(x)` | number | Square root | `sqrt(16)` → `4` |
-| `pow(x, y)` | number, number | Power | `pow(2, 3)` → `8` |
-| `min(a, b)` | number, number | Minimum | `min(5, 3)` → `3` |
-| `max(a, b)` | number, number | Maximum | `max(5, 3)` → `5` |
-| `rand()` | none | Random 0-1 | `rand()` → `0.543` |
-| `randint(min, max)` | number, number | Random integer | `randint(1, 10)` → `7` |
-| `sin(x)` | number | Sine | `sin(0)` → `0` |
-| `cos(x)` | number | Cosine | `cos(0)` → `1` |
-| `tan(x)` | number | Tangent | `tan(0)` → `0` |
-
-### File System (Core Primitives)
-These are low-level built-ins. For high-level operations, use the `fs.ez` library.
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `readFile(path)` | string | Read file content | `content = readFile("data.txt")` |
-| `writeFile(path, data)` | string, string | Write to file | `writeFile("out.txt", "Hello")` |
-| `appendFile(path, data)` | string, string | Append to file | `appendFile("log.txt", "Entry")` |
-| `readLines(path)` | string | Read file as array of lines | `lines = readLines("data.txt")` |
-| `writeLine(path, data)` | string, string | Write line to file | `writeLine("out.txt", "Hello")` |
-| `appendLine(path, data)` | string, string | Append line to file | `appendLine("log.txt", "Entry")` |
-
-### JSON Functions
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `json_parse(str)` | string | Parse JSON string | `obj = json_parse('{"a":1}')` |
-| `json_stringify(obj)` | any | Convert to JSON | `json_stringify({"a": 1})` → `'{"a":1}'` |
-
-### Database Functions (SQLite)
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `db_open(path)` | string | Open database | `db = db_open("data.db")` |
-| `db_execute(db, sql)` | database, string | Execute SQL | `db_execute(db, "CREATE TABLE...")` |
-| `db_query(db, sql)` | database, string | Query database | `rows = db_query(db, "SELECT * FROM...")` |
-| `db_close(db)` | database | Close database | `db_close(db)` |
-| `db_last_insert_id(db)` | database | Get last insert ID | `id = db_last_insert_id(db)` |
-| `db_begin(db)` | database | Begin transaction | `db_begin(db)` |
-| `db_commit(db)` | database | Commit transaction | `db_commit(db)` |
-| `db_rollback(db)` | database | Rollback transaction | `db_rollback(db)` |
-
-### HTTP Functions
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `http_get(url)` | string | GET request | `response = http_get("https://api.example.com")` |
-| `http_post(url, body)` | string, string | POST request | `http_post(url, '{"key":"value"}')` |
-| `fetch(url, options)` | string, dict | Async HTTP request | `future = fetch(url, {"method": "GET"})` |
-
-### Async Functions
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `spawn(fn, args...)` | function, any... | Run function async | `future = spawn(myFunc, arg1, arg2)` |
-| `await(future)` | future | Wait for result | `result = await(future)` |
-| `sync(future)` | future | Alias for await | `result = sync(future)` |
-| `stop(ms)` | number | Pause execution (ms) | `stop(1000)` |
-
-### Regular Expression Functions
-
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `regex_match(str, pattern)` | string, string | Check if matches | `regex_match("hello", "h.*o")` → `true` |
-| `regex_replace(str, pattern, repl)` | string, string, string | Replace matches | `regex_replace("hello", "l+", "L")` |
-| `regex_search(str, pattern)` | string, string | Find first match | `regex_search("test123", "\\d+")` → `"123"` |
+| Function | Description |
+|---|---|
+| `push(arr, val)` | Append to array |
+| `pop(arr)` | Remove and return last element |
+| `shift(arr)` | Remove and return first element |
+| `unshift(arr, val)` | Prepend to array |
+| `reverse(arr)` | Reverse in place |
+| `sort(arr)` | Sort in place |
+| `slice(arr, start, end)` | Return sub-array |
+| `concat(a, b)` | Merge two arrays |
+| `indexOf(arr, val)` | Find value index |
+| `includes(arr, val)` | Boolean membership check |
+| `filter(arr, fn)` | Return elements where fn returns true |
+| `map(arr, fn)` | Transform each element |
+| `reduce(arr, fn, init)` | Fold array to single value |
+| `flat(arr)` | Flatten nested arrays |
 
 ### Dictionary Functions
 
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `keys(dict)` | dictionary | Get all keys | `keys({"a": 1, "b": 2})` → `["a", "b"]` |
-| `values(dict)` | dictionary | Get all values | `values({"a": 1, "b": 2})` → `[1, 2]` |
-| `has_key(dict, key)` | dictionary, string | Check if key exists | `has_key(dict, "name")` → `true` |
+| Function | Description |
+|---|---|
+| `keys(dict)` | Array of keys |
+| `values(dict)` | Array of values |
+| `has_key(dict, key)` | Boolean key check |
+| `dictRemove(dict, key)` | Delete a key |
+| `merge(a, b)` | Merge two dicts (b wins on conflict) |
 
-### Utility Functions
+### Math Functions
 
-| Function | Parameters | Description | Example |
-|----------|------------|-------------|---------|
-| `clock()` | none | Milliseconds since epoch | `clock()` → `1699123456789` |
-| `print(values...)` | any... | Print multiple values | `print("x=", x, "y=", y)` |
+| Function | Description |
+|---|---|
+| `floor(x)` | Round down |
+| `ceil(x)` | Round up |
+| `round(x)` | Round to nearest integer |
+| `abs(x)` | Absolute value |
+| `sqrt(x)` | Square root |
+| `pow(base, exp)` | Exponentiation |
+| `min(a, b)` | Minimum of two values |
+| `max(a, b)` | Maximum of two values |
+| `rand()` | Random float [0, 1) |
+| `randint(lo, hi)` | Random integer in range |
+| `xor(a, b)` | Bitwise XOR |
+| `pi` | 3.141592653589793 |
 
----
+### File I/O
 
-## 🔗 Native FFI & Metaprogramming
+| Function | Description |
+|---|---|
+| `readFile(path)` | Read entire file as string |
+| `writeFile(path, content)` | Write/overwrite file |
+| `appendFile(path, content)` | Append to file |
+| `readLines(path)` | Read file as array of lines |
+| `writeLine(path, line)` | Write single line |
+| `deleteFile(path)` | Delete a file |
+| `listDir(path)` | List directory contents |
+| `fs_exists(path)` | Check if path exists |
 
-EZ allows direct interaction with the host operating system's binary layer through a powerful Foreign Function Interface (FFI) and Metaprogramming primitives.
+### JSON
+
+| Function | Description |
+|---|---|
+| `parse_json(str)` | Parse JSON string to EZ value |
+| `to_json(val)` | Serialize EZ value to JSON string |
+
+### Database (SQLite)
+
+| Function | Description |
+|---|---|
+| `db_open(path)` | Open/create SQLite database, returns handle |
+| `db_execute(handle, sql)` | Run non-returning SQL |
+| `db_query(handle, sql)` | Run SELECT, returns array of dicts |
+| `db_last_insert_id(handle)` | Last auto-increment ID |
+| `db_begin(handle)` | Begin transaction |
+| `db_commit(handle)` | Commit transaction |
+| `db_rollback(handle)` | Rollback transaction |
+| `db_close(handle)` | Close database |
+
+### HTTP (via libcurl)
+
+| Function | Description |
+|---|---|
+| `http_get(url, headers?)` | HTTP GET |
+| `http_post(url, body, headers?)` | HTTP POST |
+| `http_put(url, body, headers?)` | HTTP PUT |
+| `http_delete(url, headers?)` | HTTP DELETE |
+| `startServer(port, handler)` | Start HTTP server |
+
+### Regular Expressions
+
+| Function | Description |
+|---|---|
+| `reMatch(text, pattern)` | Test if text matches pattern |
+| `reSearch(text, pattern)` | Find first match, return groups array |
+| `reReplace(text, pattern, repl)` | Replace first match |
+
+### Crypto & Encoding
+
+| Function | Description |
+|---|---|
+| `md5(str)` | MD5 hex digest |
+| `sha256(str)` | SHA-256 hex digest |
+| `base64_encode(str)` | Base64 encode |
+| `base64_decode(str)` | Base64 decode |
+| `hmac_sha256(key, msg)` | HMAC-SHA256 hex digest |
+
+### Time & System
+
+| Function | Description |
+|---|---|
+| `clock()` | Milliseconds since process start |
+| `wait(ms)` | Sleep for N milliseconds |
+| `exit(code)` | Exit process |
+| `exec(cmd)` | Execute shell command, return output |
+| `getenv(name)` | Read environment variable |
+| `setenv(name, val)` | Set environment variable |
+
+### Concurrency
+
+| Function | Description |
+|---|---|
+| `spawn(fn, ...args)` | Start detached thread |
+| `await future` | Block until future resolves |
+| `mutex()` | Create a `Mutex` value |
+| `lock(mu, fn)` | Acquire mutex, run fn, release |
+| `atomicAdd(ref, n)` | Atomic integer add |
+| `atomicGet(ref)` | Atomic integer read |
+| `atomicSet(ref, n)` | Atomic integer write |
+
+### Buffers
+
+| Function | Description |
+|---|---|
+| `Buffer(size)` | Allocate raw byte buffer |
+| `buf.readU8(offset)` | Read unsigned byte |
+| `buf.writeU8(offset, val)` | Write unsigned byte |
+| `buf.readU32(offset)` | Read 32-bit unsigned int |
+| `buf.writeU32(offset, val)` | Write 32-bit unsigned int |
+| `buf.readString(offset, len)` | Read UTF-8 string |
+| `buf.writeString(offset, str)` | Write UTF-8 string |
 
 ### Metaprogramming
-Dynamically inspect and modify objects at runtime.
 
-```ez
-struct Point { x, y }
-p = new Point()
-p.x = 10
-
-setattr(p, "z", 30)
-when hasattr(p, "z") {
-    out getattr(p, "z")  // 30
-}
-```
-
-### Foreign Function Interface (FFI)
-Call functions directly from shared libraries (DLLs).
-
-```ez
-// 1. Load the library
-user32 = os_load_lib("user32.dll")
-
-// 2. Extract the function pointer
-messageBox = os_get_func(user32, "MessageBoxA")
-
-// 3. Call natively
-os_call(messageBox, "int", 0, "Hello from FFI!", "EZ Language", 0)
-```
-
-
+| Function | Description |
+|---|---|
+| `getattr(obj, name)` | Get property by name string |
+| `setattr(obj, name, val)` | Set property by name string |
+| `hasattr(obj, name)` | Check if property exists |
+| `typeOf(val)` | Runtime type name |
 
 ---
 
-## 📚 Standard Library 
+## ⚡ Async & Concurrency
 
-Unlike traditional languages, EZ keeps the binary core thin. Most advanced capabilities are decoupled and must be installed via the package manager.
-
-### Installation
-Run these commands to pull the native bindings into your environment:
-
-```bash
-ez install os
-ez install fs
-ez install serve
-ez install crypto
-ez install notify
-```
-
-### `os.ez`: System Utilities
-Access environment variables, clipboard, and process management.
+EZ's concurrency model is built on `std::future`/`std::async` and exposes it with clean syntax.
 
 ```ez
-use "os.ez"
-out os.env.get("PATH")
-os.clipboard.set("Copied from EZ!")
-```
-
-### `fs.ez`: Native Filesystem
-Hardened filesystem operations using Kernel32.
-
-```ez
-use "fs.ez"
-files = fs.listDir(".")
-when fs.exists("data.txt") {
-    size = fs.size("data.txt")
+# Async task — runs on a background thread immediately
+async task fetchJson(url) {
+    raw = http_get(url)
+    give parse_json(raw)
 }
+
+# Launch two fetches in parallel
+f1 = fetchJson("https://api.example.com/users")
+f2 = fetchJson("https://api.example.com/posts")
+
+out "Fetching in parallel..."
+
+# Await both — total time ≈ max(t1, t2), not t1 + t2
+users = await f1
+posts = await f2
+
+out "Got " + str(len(users)) + " users"
+out "Got " + str(len(posts)) + " posts"
+
+# Async block expression
+result = await async {
+    wait(500)
+    give "done"
+}
+
+# Inline await
+out await fetchJson("https://api.example.com/status")
 ```
 
-### `serve.ez`: Production Web Framework
-DDoS-resistant, Express-style web server running on native FFI sockets.
+### Thread-Safe Shared State
 
 ```ez
-use "serve.ez"
-app = App()
+model SafeCounter {
+    init() {
+        self.mu    = mutex()
+        self.value = 0
+    }
 
-app.get("/api/v1", |req| {
-    give { "status": 200, "message": "Natively Hardened!" }
+    task increment() {
+        lock(self.mu, || {
+            self.value += 1
+        })
+    }
+
+    task get() {
+        give self.value
+    }
+}
+
+counter = SafeCounter()
+
+# Spawn 10 threads all incrementing
+futures = []
+repeat i = 1 to 10 {
+    f = async counter.increment()
+    push(futures, f)
+}
+
+# Wait for all
+get f in futures { await f }
+out str(counter.get())    # 10
+```
+
+---
+
+## 🔗 Native FFI
+
+EZ can call any exported function from any Windows DLL without writing C++.
+
+```ez
+# Load a DLL
+kernel = os_load_lib("kernel32.dll")
+
+# Get a function pointer
+sleep_fn = os_get_func(kernel, "Sleep")
+
+# Call it (arguments passed as EZ values, auto-marshalled)
+sleep_fn(1000)    # sleep 1 second via Win32
+
+# Example: call MessageBox
+user32 = os_load_lib("user32.dll")
+msgbox = os_get_func(user32, "MessageBoxA")
+msgbox(0, "Hello from EZ!", "EZ FFI Demo", 0)
+```
+
+This is how `ezserve` implements its web server — by directly calling `ws2_32.dll` (Winsock) from EZ code with zero C++ required.
+
+---
+
+## 🖥 GUI Framework
+
+EZ includes a native Win32/GDI+ GUI framework with a fluent OOP API.
+
+```ez
+use "gui"
+
+gui.setTheme("dark")    # Immersive dark mode (including title bar)
+
+win = gui.window("My App", 900, 600)
+
+# Panels — containers for grouping widgets
+sidebar = win.panel(0, 0, 200, 600).color("#1e1e1e")
+content = win.panel(200, 0, 700, 600)
+
+# Widgets
+sidebar.label("Navigation", 20, 20, 160, 30).font("Segoe UI", 16)
+sidebar.button("Home",     20,  60, 160, 36, || { showHome() })
+sidebar.button("Settings", 20, 106, 160, 36, || { showSettings() })
+sidebar.button("About",    20, 152, 160, 36, || { showAbout() })
+
+title = content.label("Welcome", 30, 30, 400, 48).font("Segoe UI", 28)
+
+input = content.input("", 30, 100, 400, 36)
+content.button("Submit", 30, 150, 120, 36, || {
+    val = input.getText()
+    out "Submitted: " + val
 })
 
-app.listen(8080)
+# Tabs
+tabs = win.tabs(200, 0, 700, 600)
+tabs.addTab("Dashboard")
+tabs.addTab("Reports")
+tabs.addTab("Users")
+
+# Dropdown
+dropdown = content.dropdown(30, 200, 200, 36, ["Option 1", "Option 2", "Option 3"])
+dropdown.onChange(|val| { out "Selected: " + val })
+
+# Canvas drawing
+canvas = content.canvas(30, 250, 400, 200)
+canvas.fillRect(0, 0, 400, 200, "#1a1a2e")
+canvas.drawCircle(200, 100, 60, "#e94560")
+canvas.drawText("EZ Canvas", 140, 95, "#ffffff", 18)
+
+# Scroll area
+scroll = content.scrollPanel(30, 30, 640, 500)
+repeat i = 1 to 50 {
+    scroll.label("Item " + str(i), 10, (i - 1) * 30, 200, 28)
+}
+
+win.run()    # blocks on event loop
 ```
 
-### `crypto.ez`: Native Cryptography
-Base64 and symmetric ciphers (RC4) implemented in pure EZ.
+### Available Widget Types
 
-```ez
-use "crypto.ez"
-encoded = crypto.base64Encode("Hello")
-encrypted = crypto.rc4("SecretMessage", "Key123")
-```
-
-### `notify.ez`: Native Notifications
-System tray balloon tips for Windows.
-
-```ez
-use "notify.ez"
-notify.show("EZ Info", "Task completed successfully!")
-notify.showWithIcon("Alert", "Memory usage high", notify.WARNING)
-```
+| Widget | Method | Description |
+|---|---|---|
+| Window | `gui.window(title, w, h)` | Main application window |
+| Panel | `win.panel(x, y, w, h)` | Container / layout group |
+| Label | `.label(text, x, y, w, h)` | Static text |
+| Button | `.button(text, x, y, w, h, fn)` | Clickable button |
+| Input | `.input(placeholder, x, y, w, h)` | Single-line text field |
+| Checkbox | `.checkbox(label, x, y, w, h, fn)` | Toggle checkbox |
+| Slider | `.slider(x, y, w, h, min, max, fn)` | Range slider |
+| Dropdown | `.dropdown(x, y, w, h, options)` | Select list |
+| Tabs | `.tabs(x, y, w, h)` | Tab strip navigation |
+| ScrollPanel | `.scrollPanel(x, y, w, h)` | Scrollable container |
+| Canvas | `.canvas(x, y, w, h)` | 2D drawing surface |
+| ProgressBar | `.progressBar(x, y, w, h)` | Progress indicator |
 
 ---
 
 ## 📦 Package Manager
 
-EZ comes with a built-in package manager for sharing and reusing code.
+EZ comes with a built-in package manager that uses [ezlib](https://github.com/imabd645/ezlib) as its registry — a GitHub monorepo where packages are ZIP-downloaded and installed to `C:\ezlib`.
 
 ### Commands
 
 ```bash
-# Install a package
-ez install package-name [version]
-
-# List installed packages
-ez list
-
-# Initialize a new package
-ez init my-package
+ez install <package>        # install a package
+ez install math             # install ezmath
+ez install ai               # install ezai (OpenAI, Claude, Gemini, DeepSeek)
+ez install collections      # install ezcollections
+ez update <package>         # update to latest version
+ez remove <package>         # uninstall a package
+ez list                     # show installed packages
+ez search <term>            # search the registry
 ```
 
-### Creating a Package
+### How It Works
 
-1. Create a `package.ez` file:
-```json
-{
-  "name": "my-package",
-  "version": "1.0.0",
-  "description": "My awesome package",
-  "author": "Your Name",
-  "main": "main.ez",
-  "dependencies": {
-    "other-package": "1.0.0"
-  }
-}
 ```
-
-2. Create your `main.ez` file with your package code
-
-3. Upload to GitHub as `EZmy-package`
+ez install math
+    │
+    ├─ Fetch index.json from github.com/imabd645/ezlib
+    ├─ Resolve latest version (semver: ^, ~, >=)
+    ├─ Download ZIP archive via curl
+    ├─ Extract to C:\ezlib\math\
+    ├─ Read package.ez manifest
+    ├─ Recursively install dependencies
+    └─ Write C:\ezlib\packages.json
+```
 
 ### Using a Package
 
 ```ez
-// In your code
-use "my-package"
+# After: ez install math
+use "math"
 
-// Use functions from the package
-result = myPackageFunction()
+out str(math.isPrime(97))          # true
+out str(math.fibonacci(10))        # 55
+
+v = Vector2(3, 4)
+out str(v.length())                # 5.0
+
+s = stats([2, 4, 4, 4, 5, 5, 7, 9])
+out str(s.mean())                  # 5.0
+out str(s.stddev())                # 2.0
 ```
+
+### Creating a Package
+
+```bash
+ez init mypackage
+```
+
+This generates:
+
+```
+mypackage/
+├── main.ez          # entry point
+└── package.ez       # manifest
+```
+
+`package.ez`:
+```json
+{
+  "name": "mypackage",
+  "version": "1.0.0",
+  "description": "A short description",
+  "author": "your-github-username",
+  "main": "main.ez",
+  "license": "MIT",
+  "dependencies": {}
+}
+```
+
+Push to GitHub as `imabd645/ez-mypackage` and anyone can install it with `ez install mypackage`.
 
 ---
 
-## 🚀 Advanced Features
+## 📚 Standard Library
 
-### Async/Await Programming
+The [ezlib](https://github.com/imabd645/ezlib) registry contains 19 official packages totalling 6,664 lines of EZ code.
+
+### `math` — Mathematics
 
 ```ez
-// Spawn async task
-task fetchData(url) {
-    response = http_get(url)
-    give response
-}
+use "math"
 
-// Run asynchronously
-future1 = spawn(fetchData, "https://api1.com")
-future2 = spawn(fetchData, "https://api2.com")
+# Constants
+out str(math.PI)       # 3.141592653589793
+out str(math.PHI)      # 1.618033988749895  (golden ratio)
 
-// Wait for results
-data1 = await(future1)
-data2 = await(future2)
+# Trigonometry (degrees and radians)
+out str(math.sind(45))                  # 0.7071...
+out str(math.atan2d(1, 1))             # 45.0
 
-out "Got both responses!"
+# Number theory
+out str(math.isPrime(97))              # true
+out str(math.gcd(48, 18))             # 6
+out str(math.fibonacci(10))            # 55
+
+# Statistics model
+s = stats([10, 20, 30, 40, 50])
+out str(s.mean())                      # 30.0
+out str(s.stddev())                    # 14.142...
+out str(s.percentile(75))             # 40.0
+q = s.quartiles()
+out str(q["iqr"])                      # 20.0
+
+# Vectors
+v1 = vec2(3, 4)
+v2 = vec2(1, 0)
+out str(v1.length())                   # 5.0
+out str(v1.dot(v2))                   # 3.0
+
+v3d = vec3(1, 2, 3)
+out str(v3d.normalize().length())     # 1.0
+
+# Random
+out str(math.randInt(1, 6))          # 1–6 dice roll
+out str(math.randNormal(0, 1))       # standard normal sample
+
+# Interpolation & easing
+out str(math.lerp(0, 100, 0.75))     # 75.0
+out str(math.easeInOutCubic(0.5))    # 0.5
 ```
 
-### Async HTTP with Fetch
+### `test` — Testing Framework
 
 ```ez
-// Make async HTTP request
-future = fetch("https://api.example.com/data", {
-    "method": "POST",
-    "body": json_stringify({"key": "value"}),
-    "headers": {
-        "Content-Type": "application/json"
-    }
+use "test"
+
+describe("String utilities", || {
+    beforeEach(|| {
+        # setup runs before each test
+    })
+
+    it("trims whitespace", || {
+        assertEqual(trim("  hello  "), "hello")
+    })
+
+    it("splits on delimiter", || {
+        parts = split("a,b,c", ",")
+        assertDeepEqual(parts, ["a", "b", "c"])
+    })
+
+    it("detects substrings", || {
+        assert(contains("Hello World", "World"))
+    })
 })
 
-// Do other work while waiting
-out "Request sent, doing other work..."
+describe("Error handling", || {
+    it("throws on bad input", || {
+        assertThrows(|| {
+            divide(10, 0)
+        }, "Division by zero")
+    })
+})
 
-// Wait for response
-response = await(future)
-data = json_parse(response)
-out data
+runTests()
 ```
 
-### Database Operations
+**Assertion functions:** `assert`, `assertFalse`, `assertEqual`, `assertDeepEqual`, `assertNotEqual`, `assertNull`, `assertNotNull`, `assertType`, `assertContains`, `assertInArray`, `assertThrows`, `assertDoesNotThrow`, `assertApproxEqual`, `assertGreaterThan`, `assertLessThan`
+
+**Hooks:** `beforeEach`, `afterEach`, `beforeAll`, `afterAll`
+
+**Mocking:** `spy(fn)`, `stub(returnValue)`, `mock()`
+
+### `http` — HTTP Client
 
 ```ez
-// Open database
-db = db_open("myapp.db")
+use "http"
 
-// Create table
-db_execute(db, "
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE
-    )
-")
+# GET
+response = HTTPRequest("GET", "https://api.github.com/users/imabd645")
+    .header("User-Agent", "EZ/1.0")
+    .send()
 
-// Insert data
-db_execute(db, "
-    INSERT INTO users (name, email) 
-    VALUES ('Alice', 'alice@example.com')
-")
-
-// Get last insert ID
-userId = db_last_insert_id(db)
-
-// Query data
-results = db_query(db, "SELECT * FROM users")
-get row in results {
-    out "User: " + row["name"] + " - " + row["email"]
+when response.isOk() {
+    user = response.json()
+    out user["login"] + " has " + str(user["public_repos"]) + " repos"
 }
 
-// Transaction
-db_begin(db)
+# POST with JSON body — auto-serialized
+res = HTTPRequest("POST", "https://api.example.com/items")
+    .data({"name": "Widget", "price": 9.99})
+    .timeout(5000)
+    .retries(3)
+    .send()
+
+res.raiseForStatus()    # throws if 4xx/5xx
+out res.json()
+```
+
+### `serve` — Web Server
+
+```ez
+use "serve"
+
+app = App()
+
+app.get("/", |req| {
+    give {"status": 200, "body": "<h1>Hello from EZ!</h1>",
+          "headers": {"Content-Type": "text/html"}}
+})
+
+app.get("/api/health", |req| {
+    give {"status": 200, "body": to_json({"ok": true, "time": clock()})}
+})
+
+app.post("/api/echo", |req| {
+    data = parse_json(req["body"])
+    give {"status": 200, "body": to_json(data)}
+})
+
+# Serve static files from ./public/
+app.serveStatic("/static", "public")
+
+out "Listening on port 8080"
+app.listen(8080)
+```
+
+### `ai` — Unified AI SDK
+
+```ez
+use "ai"
+
+# Auto-detect provider from API key prefix
+response = ask("Explain closures in one sentence", myApiKey)
+out response
+
+# Explicit provider
+reply = anthropic("What is a monad?", claudeApiKey)
+reply = openai("Write a haiku about recursion", openaiKey)
+reply = gemini("Summarize quantum computing", geminiKey)
+reply = deepseek("Translate to French: hello world", deepseekKey)
+
+# Specific model
+reply = anthropic_model("Solve x^2 - 5x + 6 = 0", key, "claude-opus-4-6")
+
+# Multi-turn chat session
+chat = new_chat(myApiKey)
+chat_send(chat, "My name is Alice.")
+reply = chat_send(chat, "What is my name?")
+out reply    # Alice
+
+# With system prompt
+chat = new_chat_with_system(key, "You are a helpful math tutor.")
+reply = chat_send(chat, "Explain the Pythagorean theorem.")
+```
+
+### `collections` — Data Structures
+
+```ez
+use "collections"
+
+# Set — unique values, any type
+s = Set()
+s.add(1).add("two").add(true).add(1)   # duplicate 1 ignored
+out str(s.size())                       # 3
+out str(s.has("two"))                  # true
+s.remove(1)
+out str(s.toArray())
+
+# Map — typed key-value store
+m = Map()
+m.set(42, "answer").set("pi", 3.14)
+out str(m.get(42))                     # answer
+out str(m.has("missing"))             # false
+
+# Queue — FIFO
+q = Queue()
+q.enqueue("first").enqueue("second").enqueue("third")
+out q.dequeue()                        # first
+out q.peek()                           # second
+
+# Stack — LIFO
+st = Stack()
+st.push(10).push(20).push(30)
+out str(st.pop())                      # 30
+out str(st.peek())                     # 20
+
+# Counter — frequency map
+c = Counter(["a", "b", "a", "c", "a", "b"])
+out str(c.count("a"))                  # 3
+out str(c.mostCommon(2))              # [["a", 3], ["b", 2]]
+```
+
+### `datetime` — Date & Time
+
+```ez
+use "datetime"
+
+# Current timestamp
+ts = now()
+out format(ts)                              # 2026-01-15 14:32:08
+
+# Components
+comp = getComponents(ts)
+out str(comp["year"]) + "-" + str(comp["month"])
+
+# Arithmetic
+tomorrow = addTime(ts, 1, 0, 0, 0)         # +1 day
+nextHour = addTime(ts, 0, 1, 0, 0)         # +1 hour
+out str(diffDays(tomorrow, ts))            # 1
+
+# Relative formatting
+old = addTime(ts, -3, 0, 0, 0)
+out timeAgo(old)                           # "3 days ago"
+```
+
+### `db` — Database (SQLite)
+
+```ez
+use "database"
+
+db = Database("app.db")
+
+# Define table with schema dict
+users = db.define("users", {
+    "name":  "TEXT NOT NULL",
+    "email": "TEXT UNIQUE",
+    "score": "INTEGER DEFAULT 0"
+})
+
+# Fluent query builder
+results = db.query("SELECT * FROM users").where("score > 50").orderBy("score DESC").limit(10).run()
+
+# Transactions
+db.begin()
 try {
-    db_execute(db, "INSERT INTO users (name, email) VALUES ('Bob', 'bob@example.com')")
-    db_execute(db, "INSERT INTO users (name, email) VALUES ('Carol', 'carol@example.com')")
-    db_commit(db)
-} catch error {
-    db_rollback(db)
-    out "Transaction failed: " + str(error)
+    db.execute("INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com')")
+    db.execute("UPDATE users SET score = 100 WHERE name = 'Alice'")
+    db.commit()
+} catch e {
+    db.rollback()
+    out "Transaction failed: " + str(e)
 }
-
-// Close database
-db_close(db)
+db.close()
 ```
 
-### Regular Expressions
+### `orm` — Object-Relational Mapper
 
 ```ez
-// Match pattern
-text = "Contact: user@example.com"
-isEmail = regex_match(text, ".*@.*\\.com")
-out isEmail  // true
+use "orm"
 
-// Extract data
-phoneText = "Call me at 555-1234"
-phone = regex_search(phoneText, "\\d{3}-\\d{4}")
-out phone  // "555-1234"
+db = Database("shop.db")
 
-// Replace
-censored = regex_replace("password123", "\\d+", "***")
-out censored  // "password***"
+Product = db.define("products", {
+    "name":     "TEXT NOT NULL",
+    "price":    "REAL",
+    "category": "TEXT"
+})
+
+# CRUD
+id = Product.insert({"name": "Widget", "price": 9.99, "category": "tools"})
+product = Product.find(id)
+out product["name"]                              # Widget
+
+all = Product.findAll()
+widgets = Product.findWhere("category = 'tools'")
+
+Product.update(id, {"price": 7.99})
+Product.delete(id)
 ```
 
-### File Operations
+### `regex` — Regular Expressions
 
 ```ez
-// Read file
-content = read_file("data.txt")
-out content
+use "regex"
 
-// Write file
-write_file("output.txt", "Hello, World!")
+# OOP interface
+email = Regex(r"^[\w.+-]+@[\w-]+\.[a-z]{2,}$")
+out str(email.match("user@example.com"))    # true
+out str(email.match("not-an-email"))        # false
 
-// Append to file
-append_file("log.txt", "New log entry\n")
+# Find all matches
+ip = Regex(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
+results = ip.findAll("Servers: 192.168.1.1 and 10.0.0.2")
+out str(len(results))                        # 2
 
-// Check if exists
-when file_exists("config.txt") {
-    config = read_file("config.txt")
-} other {
-    out "Config file not found!"
-}
+# Replace
+cleaned = Regex(r"\s+").replaceAll("too   much    space", " ")
+out cleaned    # "too much space"
 
-// List directory
-files = list_dir(".")
-get file in files {
-    out file
-}
-
-// Create directory
-create_dir("output")
-
-// Get file size
-size = file_size("data.txt")
-out "File size: " + str(size) + " bytes"
+# Pre-built patterns
+out str(reEmail.match("alice@example.com"))  # true
+out str(reUrl.match("https://github.com"))  # true
+out str(reIPv4.match("192.168.1.1"))        # true
+out str(rePhone.match("+1-555-0100"))        # true
 ```
 
-### Higher-Order Functions
+### `log` — Structured Logger
 
 ```ez
-// Map
-numbers = [1, 2, 3, 4, 5]
-doubled = map(numbers, (x) => x * 2)
-out doubled  // [2, 4, 6, 8, 10]
+use "log"
 
-// Filter
-evens = filter(numbers, (x) => x % 2 == 0)
-out evens  // [2, 4]
+log.setLevel(DEBUG)              # DEBUG / INFO / WARN / ERROR / FATAL
+log.setFile("app.log")           # also write to file
 
-// Reduce
-sum = reduce(numbers, (acc, x) => acc + x, 0)
-out sum  // 15
+log.debug("Processing item 42")
+log.info("Server started on :8080")
+log.warn("Cache miss rate above 80%")
+log.error("Failed to connect to database")
+log.fatal("Unrecoverable state — shutting down")
 
-// Chaining
-result = reduce(
-    filter(
-        map(numbers, (x) => x * 2),
-        (x) => x > 5
-    ),
-    (acc, x) => acc + x,
-    0
-)
-out result  // 20 (6 + 8 + 10)
+# Custom logger instance
+myLog = Logger()
+myLog.setLevel(WARN)
+myLog.enableConsole(true)
+myLog.warn("This won't go to default log")
 ```
+
+### `fs` — File System
+
+```ez
+use "fs"
+
+# Read / write
+content = fs.readFile("data.txt")
+fs.writeFile("output.txt", "hello\n")
+fs.appendFile("log.txt", "entry\n")
+
+# Directory
+files = fs.listDir("./src", ".ez")      # filter by extension
+when not fs.exists("output/") {
+    fs.mkdir("output/")
+}
+
+# Copy / move
+fs.copyFile("src.txt", "dst.txt")
+fs.moveFile("old.txt", "new.txt")
+
+# Path helpers
+out fs.getExtension("report.pdf")      # .pdf
+out fs.getBasename("/usr/local/ez.exe") # ez.exe
+```
+
+### `os` — Operating System
+
+```ez
+use "os"
+
+# Environment
+home = os.getEnv("USERPROFILE")
+os.setEnv("MY_VAR", "hello")
+
+# Process execution
+output = os.exec("git log --oneline -5")
+out output
+
+# System info
+info = os.info()
+out info["os"]      # Windows
+out info["arch"]    # x64
+
+# Clipboard
+os.clipboard.set("Copied from EZ!")
+text = os.clipboard.get()
+
+# Notifications
+os.notify("EZ App", "Build completed successfully")
+
+# File dialog
+path = os.dialog.openFile("Open Script", "EZ Files (*.ez)\0*.ez\0")
+```
+
+### `thread` — High-Level Threading
+
+```ez
+use "thread"
+
+# Parallel map — fan out + collect
+results = thread.parallelMap([1, 2, 3, 4, 5], |n| {
+    wait(100)       # simulate I/O
+    give n * n
+})
+out str(results)    # [1, 4, 9, 16, 25]
+
+# Await all futures
+f1 = async expensiveComputation(data1)
+f2 = async expensiveComputation(data2)
+f3 = async expensiveComputation(data3)
+all_results = thread.all([f1, f2, f3])
+
+# Task group
+group = thread.createGroup()
+group.add(fetchUser, 1)
+group.add(fetchUser, 2)
+group.add(fetchUser, 3)
+users = group.wait()
+
+# Sleep
+thread.sleep(500)   # 500ms
+```
+
+### `crypto` — Cryptography
+
+```ez
+use "crypto"
+
+# Hashing
+out sha256("hello world")
+out md5("quick check")       # not for security use
+
+# HMAC
+tag = hmac_sha256("secret-key", "message body")
+out tag
+
+# Encoding
+encoded = base64_encode("Binary data: \x00\x01\x02")
+decoded = base64_decode(encoded)
+
+# Ciphers (educational)
+ciphertext = xorCipher("Hello, EZ!", "mykey")
+plaintext  = xorCipher(ciphertext, "mykey")   # XOR is its own inverse
+```
+
+### `gui` — Native GUI Framework
+
+> See [GUI Framework](#-gui-framework) section above for full documentation.
+
+### Package summary
+
+| Package | Install | Lines | Highlights |
+|---|---|---|---|
+| `math` | `ez install math` | 778 | Taylor trig, Box-Muller RNG, Statistics, Vector2/3 |
+| `test` | `ez install test` | 749 | Jest-style framework, 15 assertions, Spy/mock |
+| `http` | `ez install http` | 558 | Fluent builder, retries, auto-JSON, status constants |
+| `gui` | `ez install gui` | 806 | Win32 widgets, dark mode, canvas, tabs |
+| `serve` | `ez install serve` | 388 | Raw Winsock FFI, backpressure, MIME routing |
+| `ai` | `ez install ai` | 442 | OpenAI, Claude, Gemini, DeepSeek, multi-turn chat |
+| `collections` | `ez install collections` | 226 | Set, Map, Queue, Stack, LinkedList, Counter |
+| `regex` | `ez install regex` | 482 | Regex model, findAll, named groups, common patterns |
+| `pm` | `ez install pm` | 758 | Semver, ez.lock, remote index, recursive deps |
+| `orm` | `ez install orm` | 179 | Active-record CRUD over SQLite |
+| `db` | `ez install database` | 238 | Query builder, transactions, SQLite wrapper |
+| `datetime` | `ez install datetime` | 203 | Timestamps, formatting, arithmetic, relative time |
+| `crypto` | `ez install crypto` | 215 | SHA-256, HMAC, Base64, XOR/Caesar ciphers |
+| `fs` | `ez install fs` | 130 | Read/write/copy/move/list with path helpers |
+| `log` | `ez install log` | 102 | 5-level logger, color output, file appending |
+| `os` | `ez install os` | 193 | Env, exec, clipboard, dialogs, notifications |
+| `thread` | `ez install thread` | 63 | parallelMap, all(), TaskGroup |
+| `pdf` | `ez install pdf` | 61 | OOP wrapper over native pdf_* builtins |
+| `game` | `ez install game` | 93 | Delta-time game loop scaffold over GUI |
 
 ---
 
-## 💡 Examples
+## 🗺 Roadmap
 
-### Example 1: Calculator
-
-```ez
-task calculator() {
-    out "Simple Calculator"
-    out "Enter first number:"
-    a = num(in())
-    
-    out "Enter operator (+, -, *, /):"
-    op = in()
-    
-    out "Enter second number:"
-    b = num(in())
-    
-    when op == "+" {
-        give a + b
-    } other when op == "-" {
-        give a - b
-    } other when op == "*" {
-        give a * b
-    } other when op == "/" {
-        when b == 0 {
-            throw "Division by zero!"
-        }
-        give a / b
-    } other {
-        throw "Invalid operator"
-    }
-}
-
-try {
-    result = calculator()
-    out "Result: " + str(result)
-} catch error {
-    out "Error: " + str(error)
-}
-```
-
-### Example 2: Todo List
-
-```ez
-todos = []
-
-task addTodo(task) {
-    todo = {
-        "id": len(todos) + 1,
-        "task": task,
-        "done": false
-    }
-    push(todos, todo)
-}
-
-task listTodos() {
-    when len(todos) == 0 {
-        out "No todos yet!"
-        give
-    }
-    
-    get todo in todos {
-        status = todo["done"] ? "[✓]" : "[ ]"
-        out status + " " + str(todo["id"]) + ". " + todo["task"]
-    }
-}
-
-task markDone(id) {
-    get todo in todos {
-        when todo["id"] == id {
-            todo["done"] = true
-            give
-        }
-    }
-    throw "Todo not found"
-}
-
-// Usage
-addTodo("Buy groceries")
-addTodo("Learn EZ")
-addTodo("Build something cool")
-
-listTodos()
-markDone(2)
-out "\nAfter marking #2 done:"
-listTodos()
-```
-
-### Example 3: Web Scraper
-
-```ez
-task fetchQuote() {
-    // Fetch from quotes API
-    response = http_get("https://api.quotable.io/random")
-    quote = json_parse(response)
-    
-    give quote
-}
-
-// Fetch multiple quotes asynchronously
-futures = []
-repeat i = 0 to 5 {
-    future = spawn(fetchQuote)
-    push(futures, future)
-}
-
-// Wait and display
-out "Fetching 5 random quotes...\n"
-get future in futures {
-    quote = await(future)
-    out "\"" + quote["content"] + "\""
-    out "   - " + quote["author"] + "\n"
-}
-```
-
-### Example 4: Class Inheritance
-
-```ez
-model Animal {
-    init(name) {
-        self.name = name
-    }
-    
-    shown speak() {
-        out self.name + " makes a sound"
-    }
-}
-
-model Dog extends Animal {
-    init(name, breed) {
-        self.name = name
-        self.breed = breed
-    }
-    
-    shown speak() {
-        out self.name + " barks!"
-    }
-    
-    shown getBreed() {
-        give self.breed
-    }
-}
-
-model Cat extends Animal {
-    init(name, color) {
-        self.name = name
-        self.color = color
-    }
-    
-    shown speak() {
-        out self.name + " meows!"
-    }
-}
-
-// Create instances
-dog = new Dog("Rex", "German Shepherd")
-cat = new Cat("Whiskers", "Orange")
-
-dog.speak()  // "Rex barks!"
-cat.speak()  // "Whiskers meows!"
-out "Breed: " + dog.getBreed()
-```
-
-### Example 5: Database CRUD
-
-```ez
-task initDatabase() {
-    db = db_open("contacts.db")
-    db_execute(db, "
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            phone TEXT,
-            email TEXT
-        )
-    ")
-    give db
-}
-
-task addContact(db, name, phone, email) {
-    db_execute(db, "
-        INSERT INTO contacts (name, phone, email)
-        VALUES ('" + name + "', '" + phone + "', '" + email + "')
-    ")
-    give db_last_insert_id(db)
-}
-
-task getAllContacts(db) {
-    give db_query(db, "SELECT * FROM contacts")
-}
-
-task deleteContact(db, id) {
-    db_execute(db, "DELETE FROM contacts WHERE id = " + str(id))
-}
-
-// Usage
-db = initDatabase()
-
-// Add contacts
-addContact(db, "Alice", "555-1234", "alice@example.com")
-addContact(db, "Bob", "555-5678", "bob@example.com")
-
-// List contacts
-contacts = getAllContacts(db)
-out "All Contacts:"
-get contact in contacts {
-    out str(contact["id"]) + ". " + contact["name"] + " - " + contact["phone"]
-}
-
-db_close(db)
-```
-
----
-
-## 🖼️ Professional GUI Framework (v6.0)
-
-EZ now features a state-of-the-art, object-oriented GUI library built on the native Windows API.
-
-### Key Components
-- **Window**: The main application entry point.
-- **Panel**: A container for grouped widgets or nested layouts.
-- **Tabs**: Native Win32 navigation tabs for multi-screen apps.
-- **ScrollPanel**: Automatic scrollbar support for large content areas.
-- **Widgets**: Professional `Button`, `Label`, `Input`, and `Dropdown` controls.
-
-### Modern Aesthetics
-- 🌑 **Immersive Dark Mode**: `gui.setTheme("dark")` transforms the entire app, including the title bar.
-- 📐 **Rounded Corners**: Automatically applies Windows 11 rounded aesthetics.
-- 🖋️ **Modern Typography**: High-quality Segoe UI defaults.
-
-### Example: Navigation Dashboard
-```ez
-use "gui.ez"
-gui.setTheme("dark")
-
-win = gui.window("EZ Dashboard", 800, 600)
-sidebar = win.panel(0, 0, 200, 600).color("dark")
-
-content = win.panel(200, 0, 600, 600)
-vbox = content.vbox(20)
-vbox.label("Main View", 300, 50).font("Segoe UI", 28)
-
-win.run()
-```
-
----
-
-## 🛠️ Professional Error Handling
-
-EZ v6.0 introduces professional-grade diagnostics with detailed stack traces.
-
-### Stack Trace Coverage
-When a runtime error occurs, EZ provides a complete call sequence, including:
-1.  **Exact line and file** of the error.
-2.  **Function call hierarchy** leading to the fault.
-3.  **Cross-file tracking** for imported modules.
-
-**Example Trace:**
-```text
-Runtime Error: Division by zero
-  at [line 4] in lib/utils.ez
-  at calculate() in lib/math.ez:12
-  at main() in app.ez:5
-```
+| Milestone | Status |
+|---|---|
+| Bytecode VM + TCO | ✅ Done |
+| Closures + upvalues | ✅ Done |
+| Async/await + futures | ✅ Done |
+| OOP: models, interfaces, static | ✅ Done |
+| Native FFI (DLL calls from EZ) | ✅ Done |
+| Package manager v2 (semver, lock file) | ✅ Done |
+| GUI framework (Win32) | ✅ Done |
+| Linux / macOS support | 🔜 Planned |
+| Prepared statements (SQL injection fix) | 🔜 Planned |
+| Real-time timestamps in `clock()` | 🔜 Planned |
+| HTTPS / TLS in `serve` | 🔜 Planned |
+| REPL with persistent state | 🔜 Planned |
+| VSCode syntax extension | 🔜 Planned |
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how you can help:
+Contributions are welcome. Here's how to get involved:
 
-### Reporting Bugs
-- Use the GitHub issue tracker
-- Include code samples that reproduce the issue
-- Specify your OS and compiler version
+### Reporting Issues
 
-### Suggesting Features
-- Open an issue with the "feature request" label
-- Explain the use case and benefits
-- Provide examples if possible
+- Open an issue on [GitHub Issues](https://github.com/imabd645/EZ-language/issues)
+- Include a minimal reproducing `.ez` script
+- State your Windows version and compiler (MinGW / MSVC)
 
-### Submitting Pull Requests
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests if applicable
-5. Commit with clear messages (`git commit -m 'Add amazing feature'`)
-6. Push to your fork (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+### Pull Requests
 
-### Code Style Guidelines
-- Use 4 spaces for indentation
-- Follow existing naming conventions
-- Comment complex logic
-- Keep functions focused and small
-- Write clear commit messages
+```bash
+git clone https://github.com/imabd645/EZ-language.git
+git checkout -b feature/your-feature
+# make changes
+git commit -m "feat: describe what you did"
+git push origin feature/your-feature
+# open a PR
+```
 
----
+### Code Style
 
-## 📖 Documentation
+- 4 spaces for indentation in C++ source
+- Descriptive variable names — no single-letter identifiers except loop counters
+- Comment any non-obvious logic
+- If adding a new builtin, register it in the appropriate `Builtins_*.cpp` file and add it to `CMakeLists.txt`
 
-For more detailed documentation:
-- [Language Specification](docs/specification.md)
-- [API Reference](docs/api.md)
-- [Tutorial](docs/tutorial.md)
-- [FAQ](docs/faq.md)
+### Adding a Standard Library Package
 
----
-
-## 🛣️ Roadmap
-
-### Version 1.1 (Stable)
-- [x] **New Architecture**: Native FFI Core Integration.
-- [x] **Modular Libs**: Standard libraries implemented in EZ (`lib/os.ez`, `lib/net.ez`, `lib/fs.ez`).
-- [x] **Diagnostics**: Java-style Stack Traces.
-- [x] **Hardened Networking**: DDoS-resistant native TCP server.
-- [x] **Metaprogramming**: Dynamic attribute access and mutation.
-
-### Version 1.2 (Current)
-- [x] **Native GUI Layer**: Immersive Dark Mode, Windows 11 aesthetics.
-- [ ] Debugger support (In Progress)
-- [ ] Performance optimizations (JIT Research)
-- [ ] Package Registry integration
-
-### Version 2.0 (Long-term)
-- [ ] Optional Static Typing
-- [ ] VS Code Extension
-- [ ] Cross-Platform FFI (Linux/macOS)
-- [ ] WebAssembly Target
-
----
-
-## ❓ FAQ
-
-### Is EZ suitable for production?
-EZ is currently in active development. While it's stable for small to medium projects, we recommend thorough testing before production use.
-
-### How does EZ compare to Python/JavaScript?
-EZ aims for similar simplicity to Python but with more natural English keywords. It's dynamically typed like both but has its own unique syntax focused on readability.
-
-### Can I contribute built-in functions?
-Yes! We welcome contributions. Check the contributing guidelines above.
-
-### Does EZ support Unicode?
-Currently, EZ supports ASCII strings. Unicode support is planned for a future release.
-
-### How fast is EZ?
-As an interpreted language, EZ prioritizes development speed over runtime speed. It's suitable for scripts, automation, and small applications. JIT compilation is planned for future versions.
+1. Fork [ezlib](https://github.com/imabd645/ezlib)
+2. Create a folder `ez<name>/` with `main.ez` and `package.ez`
+3. Add your package entry to `index.json`
+4. Open a PR — once merged, `ez install <name>` works for everyone
 
 ---
 
 ## 📄 License
 
-EZ is released under the MIT License. See [LICENSE](LICENSE) for details.
-
-```
-MIT License
-
-Copyright (c) 2024 EZ Language Team
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## 🙏 Acknowledgments
-
-- Inspired by Python, Lua, and Lox
-- Built with modern C++17
-- Uses SQLite, cURL, and other open-source libraries
-- Thanks to all contributors!
-
----
-
-## 📞 Contact
-
-- **GitHub**: [github.com/imabd645/ez-language](https://github.com/imabd645/ez-language)
-- **Issues**: [github.com/imabd645/ez-language/issues](https://github.com/imabd645/ez-language/issues)
-- **Discussions**: [github.com/imabd645/ez-language/discussions](https://github.com/imabd645/ez-language/discussions)
+EZ Language and ezlib are released under the [MIT License](LICENSE).
 
 ---
 
 
+Built from scratch by **Abdullah Masood** 
 
-**Made By Abdullah Masood**
+*A complete programming language: lexer → parser → bytecode compiler → stack VM → GC → standard library*
 
-⭐ Star us on GitHub if you find EZ useful!
+[⭐ Star on GitHub](https://github.com/imabd645/EZ-language) · [📦 ezlib packages](https://github.com/imabd645/ezlib) · [🐛 Report a Bug](https://github.com/imabd645/EZ-language/issues)
 
-[Getting Started](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Contributing](#contributing)
-
-</div>

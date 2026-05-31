@@ -138,6 +138,14 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             break;
         }
+        case WM_HSCROLL:
+        case WM_VSCROLL: {
+            HWND ctrl = (HWND)lParam;
+            if (ctrl != NULL) {
+                fireEventCallback(ctrl, "change");
+            }
+            break;
+        }
         case WM_NOTIFY: {
             LPNMHDR nmhdr = (LPNMHDR)lParam;
             HWND ctrl = nmhdr->hwndFrom;

@@ -205,7 +205,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            size_t size = (size_t)args[0].asInteger();
+            size_t size = (size_t)args[0].asNumber();
             void* ptr = calloc(1, size);
             return Value((long long)(reinterpret_cast<uintptr_t>(ptr)));
 #else
@@ -217,7 +217,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asInteger());
+            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
             if (ptr) free(ptr);
             return Value();
 #else
@@ -229,8 +229,8 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
             uint64_t val = *(uint64_t*)(base + offset);
             return Value((long long)val);
 #else
@@ -242,8 +242,8 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
             uint32_t val = *(uint32_t*)(base + offset);
             return Value((long long)val);
 #else
@@ -255,9 +255,9 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
-            *(uint32_t*)(base + offset) = (uint32_t)args[2].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber();
             return Value();
 #else
             return Value();
@@ -279,8 +279,8 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
             uint16_t val = *(uint16_t*)(base + offset);
             return Value((long long)val);
 #else
@@ -292,9 +292,9 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
-            *(uint16_t*)(base + offset) = (uint16_t)args[2].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber();
             return Value();
 #else
             return Value();
@@ -305,9 +305,9 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
-            *(uint64_t*)(base + offset) = (uint64_t)args[2].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber();
             return Value();
 #else
             return Value();
@@ -318,8 +318,8 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
             return Value((long long)*(base + offset));
 #else
             return Value(0LL);
@@ -330,9 +330,9 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
-            *(base + offset) = (uint8_t)args[2].asInteger();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(base + offset) = (uint8_t)args[2].asNumber();
             return Value();
 #else
             return Value();
@@ -343,7 +343,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value("");
-            const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asInteger());
+            const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
             if (str) return Value(std::string(str));
             return Value("");
 #else
@@ -355,8 +355,8 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isString()) return Value();
-            char* base = reinterpret_cast<char*>((uintptr_t)args[0].asInteger());
-            size_t offset = (size_t)args[1].asInteger();
+            char* base = reinterpret_cast<char*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
             std::string text = args[2].asString();
             memcpy(base + offset, text.c_str(), text.length() + 1);
             return Value();
@@ -380,7 +380,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isString()) return Value();
-            HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asInteger());
+            HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asNumber());
             FARPROC proc = GetProcAddress(handle, args[1].asString().c_str());
             return Value((long long)(reinterpret_cast<uintptr_t>(proc)));
 #else
@@ -392,7 +392,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (args.size() < 2 || !args[0].isNumber() || !args[1].isString()) return Value();
-            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asInteger());
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
             if (!funcPtr) {
                 interp.runtimeError("os_call: Null function pointer or function not found.", 0, "");
                 return Value();
@@ -414,7 +414,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
             
             intptr_t cArgs[12] = {0};
             for (size_t i = 2; i < args.size() && i - 2 < 12; i++) {
-                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asInteger());
+                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asNumber());
                 else if (args[i].isString()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asString().c_str());
                 else if (args[i].isBuffer()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asBuffer().data());
                 else if (args[i].isBool()) cArgs[i - 2] = args[i].asBool() ? 1 : 0;

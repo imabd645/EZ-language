@@ -173,18 +173,21 @@ struct Value {
     // Value extraction
     size_t index() const { return m_data.index(); }
     
-    bool asBool() const { return std::get<bool>(m_data); }
+    bool asBool() const { 
+        try { return std::get<bool>(m_data); }
+        catch(...) { std::cerr << "[Value] asBool failed, index=" << index() << "\n"; throw; }
+    }
     double asFloat() const { 
         if (index() == 12) return static_cast<double>(std::get<long long>(m_data)); 
         if (index() == 2)  return std::get<double>(m_data);
         std::cerr << "[Value] asFloat() failed: index=" << index() << std::endl;
-        return std::get<double>(m_data); 
+        try { return std::get<double>(m_data); } catch(...) { throw; }
     }
     long long asInteger() const { 
         if (index() == 12) return std::get<long long>(m_data); 
         if (index() == 2)  return static_cast<long long>(std::get<double>(m_data)); 
         std::cerr << "[Value] asInteger() failed: index=" << index() << std::endl;
-        return std::get<long long>(m_data); 
+        try { return std::get<long long>(m_data); } catch(...) { throw; }
     }
     
     // Unsafe accessors (hot paths)
@@ -192,21 +195,21 @@ struct Value {
     double asFloatUnsafe() const { return std::get<double>(m_data); }
 
     double asNumber() const { return asFloat(); }
-    StringPtr asStringPtr() const { return std::get<StringPtr>(m_data); }
-    const std::string& asString() const { return *std::get<StringPtr>(m_data); }
-    ArrayPtr asArrayPtr() const { return std::get<ArrayPtr>(m_data); }
-    FunctionPtr asFunction() const { return std::get<FunctionPtr>(m_data); }
-    NativeFnPtr asNativeFunction() const { return std::get<NativeFnPtr>(m_data); }
-    ClassPtr asClass() const { return std::get<ClassPtr>(m_data); }
-    InstancePtr asInstance() const { return std::get<InstancePtr>(m_data); }
-    DictionaryPtr asDictionaryPtr() const { return std::get<DictionaryPtr>(m_data); }
-    FuturePtr asFuture() const { return std::get<FuturePtr>(m_data); }
-    SuperPtr asSuper() const { return std::get<SuperPtr>(m_data); }
-    InterfacePtr asInterface() const { return std::get<InterfacePtr>(m_data); }
-    BoundMethodPtr asBoundMethod() const { return std::get<BoundMethodPtr>(m_data); }
-    ClosureValPtr asClosure() const { return std::get<ClosureValPtr>(m_data); }
-    BufferPtr asBufferPtr() const { return std::get<BufferPtr>(m_data); }
-    MutexPtr asMutexPtr() const { return std::get<MutexPtr>(m_data); }
+    StringPtr asStringPtr() const { try{return std::get<StringPtr>(m_data);}catch(...){std::cerr<<"[Value] asStringPtr fail, index="<<index()<<"\n";throw;} }
+    const std::string& asString() const { try{return *std::get<StringPtr>(m_data);}catch(...){std::cerr<<"[Value] asString fail, index="<<index()<<"\n";throw;} }
+    ArrayPtr asArrayPtr() const { try{return std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] asArrayPtr fail, index="<<index()<<"\n";throw;} }
+    FunctionPtr asFunction() const { try{return std::get<FunctionPtr>(m_data);}catch(...){std::cerr<<"[Value] asFunction fail, index="<<index()<<"\n";throw;} }
+    NativeFnPtr asNativeFunction() const { try{return std::get<NativeFnPtr>(m_data);}catch(...){std::cerr<<"[Value] asNativeFunction fail, index="<<index()<<"\n";throw;} }
+    ClassPtr asClass() const { try{return std::get<ClassPtr>(m_data);}catch(...){std::cerr<<"[Value] asClass fail, index="<<index()<<"\n";throw;} }
+    InstancePtr asInstance() const { try{return std::get<InstancePtr>(m_data);}catch(...){std::cerr<<"[Value] asInstance fail, index="<<index()<<"\n";throw;} }
+    DictionaryPtr asDictionaryPtr() const { try{return std::get<DictionaryPtr>(m_data);}catch(...){std::cerr<<"[Value] asDictionaryPtr fail, index="<<index()<<"\n";throw;} }
+    FuturePtr asFuture() const { try{return std::get<FuturePtr>(m_data);}catch(...){std::cerr<<"[Value] asFuture fail, index="<<index()<<"\n";throw;} }
+    SuperPtr asSuper() const { try{return std::get<SuperPtr>(m_data);}catch(...){std::cerr<<"[Value] asSuper fail, index="<<index()<<"\n";throw;} }
+    InterfacePtr asInterface() const { try{return std::get<InterfacePtr>(m_data);}catch(...){std::cerr<<"[Value] asInterface fail, index="<<index()<<"\n";throw;} }
+    BoundMethodPtr asBoundMethod() const { try{return std::get<BoundMethodPtr>(m_data);}catch(...){std::cerr<<"[Value] asBoundMethod fail, index="<<index()<<"\n";throw;} }
+    ClosureValPtr asClosure() const { try{return std::get<ClosureValPtr>(m_data);}catch(...){std::cerr<<"[Value] asClosure fail, index="<<index()<<"\n";throw;} }
+    BufferPtr asBufferPtr() const { try{return std::get<BufferPtr>(m_data);}catch(...){std::cerr<<"[Value] asBufferPtr fail, index="<<index()<<"\n";throw;} }
+    MutexPtr asMutexPtr() const { try{return std::get<MutexPtr>(m_data);}catch(...){std::cerr<<"[Value] asMutexPtr fail, index="<<index()<<"\n";throw;} }
 
     // Convenience accessors for builtins
     EZArray& asArray();
@@ -420,12 +423,12 @@ struct EZMutex : public GCObject {
 
 // --- Value Method Implementations (at the end for type completion) ---
 
-inline EZArray& Value::asArray() { return *std::get<ArrayPtr>(m_data); }
-inline const EZArray& Value::asArray() const { return *std::get<ArrayPtr>(m_data); }
-inline EZDictionary& Value::asDictionary() { return *std::get<DictionaryPtr>(m_data); }
-inline const EZDictionary& Value::asDictionary() const { return *std::get<DictionaryPtr>(m_data); }
-inline std::vector<uint8_t>& Value::asBuffer() { return std::get<BufferPtr>(m_data)->data; }
-inline std::vector<uint8_t>& Value::asBuffer() const { return std::get<BufferPtr>(m_data)->data; }
+inline EZArray& Value::asArray() { try{return *std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asArray fail, index="<<index()<<"\n";throw;} }
+inline const EZArray& Value::asArray() const { try{return *std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asArray const fail, index="<<index()<<"\n";throw;} }
+inline EZDictionary& Value::asDictionary() { try{return *std::get<DictionaryPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asDictionary fail, index="<<index()<<"\n";throw;} }
+inline const EZDictionary& Value::asDictionary() const { try{return *std::get<DictionaryPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asDictionary const fail, index="<<index()<<"\n";throw;} }
+inline std::vector<uint8_t>& Value::asBuffer() { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer fail, index="<<index()<<"\n";throw;} }
+inline std::vector<uint8_t>& Value::asBuffer() const { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer const fail, index="<<index()<<"\n";throw;} }
 
 inline std::string Value::toString() const {
     switch (type()) {

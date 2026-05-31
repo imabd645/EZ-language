@@ -143,8 +143,8 @@ void registerStringBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("chr", Value::makeNativeFunction("chr", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber() && !args[0].isInteger()) { interp.runtimeError("chr() expects number", 0, ""); return Value(); }
-            char c = (char)args[0].asInteger();
+            if (!args[0].isNumber()) { interp.runtimeError("chr() expects a number", 0, ""); return Value(); }
+            char c = (char)args[0].asNumber();
             return Value(std::string(1, c));
         }));
 

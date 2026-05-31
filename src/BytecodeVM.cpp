@@ -384,9 +384,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doNegate(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doNegate(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doNegate(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doNegate(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -421,9 +421,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doAdd(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doAdd(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doAdd(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doAdd(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -457,9 +457,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doSubtract(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doSubtract(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doSubtract(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doSubtract(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -493,9 +493,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doMultiply(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doMultiply(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doMultiply(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doMultiply(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -542,9 +542,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doDivide(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doDivide(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doDivide(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doDivide(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -561,19 +561,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             stackTop->m_data = res;
                             stackTop++;
                         } else {
-                            SYNC_IP(); doModulo(); LOAD_FRAME();
-                            stackTop = this->stackTop;
+                            SYNC_IP(); this->stackTop = stackTop; doModulo(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
                 }
-                CASE_CODE(POW) { SYNC_IP(); doPower(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_AND)    { SYNC_IP(); doBitwiseAnd(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_OR)     { SYNC_IP(); doBitwiseOr(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_XOR)    { SYNC_IP(); doBitwiseXor(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_NOT)    { SYNC_IP(); doBitwiseNot(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(SHIFT_LEFT) { SYNC_IP(); doShiftLeft(); LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(SHIFT_RIGHT){ SYNC_IP(); doShiftRight(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(POW) { SYNC_IP(); this->stackTop = stackTop; doPower(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_AND)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseAnd(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_OR)     { SYNC_IP(); this->stackTop = stackTop; doBitwiseOr(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_XOR)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseXor(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_NOT)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseNot(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_LEFT) { SYNC_IP(); this->stackTop = stackTop; doShiftLeft(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_RIGHT){ SYNC_IP(); this->stackTop = stackTop; doShiftRight(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
 
                 CASE_CODE(EQUAL) {
                     {
@@ -585,7 +584,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             else if (a.m_data.index() == 2) res = (std::get<double>(a.m_data) == std::get<double>(b.m_data));
                             else if (a.m_data.index() == 1) res = (std::get<bool>(a.m_data) == std::get<bool>(b.m_data));
                             else if (a.m_data.index() == 0) res = true;
-                            else { SYNC_IP(); doEqual(); LOAD_FRAME(); stackTop = this->stackTop; DISPATCH(); }
+                            else { SYNC_IP(); this->stackTop = stackTop; doEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
                             stackTop -= 2;
                             stackTop->m_data = res;
                             stackTop++;
@@ -604,14 +603,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doEqual(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doEqual(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doEqual(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doEqual(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
                 }
-                CASE_CODE(NOT_EQUAL)  { SYNC_IP(); doNotEqual(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(NOT_EQUAL)  { SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
                 CASE_CODE(LESS) {
                     {
                         const Value& b = stackTop[-1];
@@ -641,9 +640,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doLess(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doLess(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doLess(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doLess(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -663,7 +662,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             stackTop->m_data = res;
                             stackTop++;
                         } else {
-                            SYNC_IP(); doLessEq(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -697,9 +696,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doGreater(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doGreater(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doGreater(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doGreater(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -733,14 +732,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); doGreaterEq(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doGreaterEq(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); doGreaterEq(); LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; doGreaterEq(); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
                 }
-                CASE_CODE(NOT)        { SYNC_IP(); doNot(); LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(NOT)        { SYNC_IP(); this->stackTop = stackTop; doNot(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
 
                 CASE_CODE(JUMP)           ip += READ_INT(); DISPATCH();
                 CASE_CODE(JUMP_IF_FALSE) {

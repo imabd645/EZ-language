@@ -10,7 +10,7 @@ void registerBufferBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("buffer", Value::makeNativeFunction("buffer", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isNumber()) {
-                int size = static_cast<int>(args[0].asInteger());
+                int size = static_cast<int>(args[0].asNumber());
                 if (size < 0) { interp.runtimeError("buffer() size cannot be negative", 0, ""); return Value(); }
                 return Value(makeGCBuffer(size));
             } else if (args[0].isString()) {
@@ -35,7 +35,7 @@ void registerBufferBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isBuffer()) { interp.runtimeError("buf_fill() expects buffer", 0, ""); return Value(); }
             if (!args[1].isNumber()) { interp.runtimeError("buf_fill() expects numeric byte value", 0, ""); return Value(); }
-            uint8_t val = static_cast<uint8_t>(args[1].asInteger());
+            uint8_t val = static_cast<uint8_t>(args[1].asNumber());
             std::vector<uint8_t>& data = args[0].asBuffer();
             std::fill(data.begin(), data.end(), val);
             return args[0];
@@ -50,9 +50,9 @@ void registerBufferBuiltins(RuntimeContext& interp) {
             auto& src = args[0].asBuffer();
             auto& dest = args[1].asBuffer();
             
-            int targetStart = (args.size() > 2) ? static_cast<int>(args[2].asInteger()) : 0;
-            int srcStart = (args.size() > 3) ? static_cast<int>(args[3].asInteger()) : 0;
-            int srcEnd = (args.size() > 4) ? static_cast<int>(args[4].asInteger()) : static_cast<int>(src.size());
+            int targetStart = (args.size() > 2) ? static_cast<int>(args[2].asNumber()) : 0;
+            int srcStart = (args.size() > 3) ? static_cast<int>(args[3].asNumber()) : 0;
+            int srcEnd = (args.size() > 4) ? static_cast<int>(args[4].asNumber()) : static_cast<int>(src.size());
             
             if (srcStart < 0 || srcEnd > static_cast<int>(src.size()) || srcStart > srcEnd) {
                 interp.runtimeError("buf_copy() source range out of bounds", 0, "");
@@ -83,8 +83,8 @@ void registerBufferBuiltins(RuntimeContext& interp) {
     // os_buffer_from_ptr(ptr_as_int, size) - For FFI
     interp.defineGlobal("os_buffer_from_ptr", Value::makeNativeFunction("os_buffer_from_ptr", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            uintptr_t ptr = static_cast<uintptr_t>(args[0].asInteger());
-            int size = static_cast<int>(args[1].asInteger());
+            uintptr_t ptr = static_cast<uintptr_t>(args[0].asNumber());
+            int size = static_cast<int>(args[1].asNumber());
             if (size < 0) return Value();
             
             std::vector<uint8_t> data(size);

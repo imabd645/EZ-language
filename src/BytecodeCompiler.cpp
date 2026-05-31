@@ -781,6 +781,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
 
     // Hidden local: the iterator  (slot N)
     size_t iterVar = addLocal("<iter>");
+    current->locals.back().isStackResident = false;
     markInitialized();
     // GET_ITER leaves the iterator on the stack; store it into iterVar slot.
     emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
@@ -791,6 +792,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
 
     // Loop variable that receives each element (slot N+1)
     size_t loopVar = addLocal(stmt.variable);
+    current->locals.back().isStackResident = false;
     markInitialized();
     // Seed loopVar with nil so the slot exists in frame memory
     emitOp(OpCode::LOAD_NIL);

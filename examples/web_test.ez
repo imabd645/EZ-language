@@ -1,0 +1,43 @@
+use "web"
+
+app = WebApp()
+
+app.get("/", |req| {
+    out "-> Visited /"
+    
+    html = "<!DOCTYPE html><html><head><title>EZ Web</title></head><body>"
+    html = html + "<h1>Welcome to EZ Web Framework</h1>"
+    html = html + "<p>Try navigating to these routes:</p>"
+    html = html + "<ul>"
+    html = html + "<li><a href='/hello/World'>/hello/World</a> (Template Test)</li>"
+    html = html + "<li><a href='/hello/Abdullah'>/hello/Abdullah</a> (Template Test)</li>"
+    html = html + "<li><a href='/api/data'>/api/data</a> (JSON Response)</li>"
+    html = html + "</ul></body></html>"
+    
+    give html
+})
+
+# Dynamic routing: <name> is extracted and placed into req["params"]
+app.get("/hello/<name>", |req| {
+    name = req["params"]["name"]
+    out "-> Visited /hello/" + str(name)
+    
+    give render_template("examples/templates/hello.html", {
+        "name": name,
+        "show_alert": true,
+        "items": ["Apples", "Oranges", "Bananas"]
+    })
+})
+
+app.get("/api/data", |req| {
+    out "-> Visited /api/data"
+    give {
+        "status": "success",
+        "framework": "EZ Web Native",
+        "performance": "Ultra Fast",
+        "author": "Abdullah"
+    }
+})
+
+# Start the server
+app.run(8080)

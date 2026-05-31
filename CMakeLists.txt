@@ -11,7 +11,10 @@ set(SOURCES
     src/main.cpp
     src/Lexer.cpp
     src/Parser.cpp
-    src/Interpreter.cpp
+    src/Bytecode.cpp
+    src/BytecodeCompiler.cpp
+    src/BytecodeVM.cpp
+    src/BytecodeInterpreter.cpp
     src/Builtins.cpp
     src/GUIBuiltins.cpp
     src/GC.cpp

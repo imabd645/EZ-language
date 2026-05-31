@@ -8,6 +8,8 @@ namespace fs = std::filesystem;
 #include "Lexer.h"
 #include "Parser.h"
 
+std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem;
+
 // Helper to get directory of a file
 static std::string getDirectoryName(const std::string& path) {
     size_t lastSlash = path.find_last_of("\\/");
@@ -919,65 +921,110 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         }
     }
     
-    std::ifstream file(absolutePath);
-    if (!file.is_open()) {
-        // Try exactly as typed
-        file.open(path);
-        if (file.is_open()) {
-            absolutePath = path;
-        } else {
-            // Try local lib/ directory
-            std::string localLibPath = "lib/" + path;
-            file.open(localLibPath);
+    std::string source;
+    
+    // 1. Check Virtual File System first
+    bool foundInVFS = false;
+    std::string vfsSearchPath = absolutePath;
+    
+    // Normalize path separators for VFS check
+    std::replace(vfsSearchPath.begin(), vfsSearchPath.end(), '\\', '/');
+    if (vfsSearchPath.size() > 2 && vfsSearchPath[1] == ':') {
+        // If it's an absolute windows path, we can't easily match VFS, but usually VFS paths are relative like "lib/gui.ez"
+        // In the packager, we store them as relative paths
+    }
+    
+    // Check various common formats in VFS
+    if (virtualFileSystem.count(path)) {
+        source = virtualFileSystem[path];
+        absolutePath = path;
+        foundInVFS = true;
+    } else if (virtualFileSystem.count(path + ".ez")) {
+        source = virtualFileSystem[path + ".ez"];
+        absolutePath = path + ".ez";
+        foundInVFS = true;
+    } else if (virtualFileSystem.count("lib/" + path + ".ez")) {
+        source = virtualFileSystem["lib/" + path + ".ez"];
+        absolutePath = "lib/" + path + ".ez";
+        foundInVFS = true;
+    } else if (virtualFileSystem.count("lib/" + path + "/main.ez")) {
+        source = virtualFileSystem["lib/" + path + "/main.ez"];
+        absolutePath = "lib/" + path + "/main.ez";
+        foundInVFS = true;
+    } else if (virtualFileSystem.count("C:/ezlib/" + path)) {
+        source = virtualFileSystem["C:/ezlib/" + path];
+        absolutePath = "C:/ezlib/" + path;
+        foundInVFS = true;
+    } else if (virtualFileSystem.count("C:/ezlib/" + path + ".ez")) {
+        source = virtualFileSystem["C:/ezlib/" + path + ".ez"];
+        absolutePath = "C:/ezlib/" + path + ".ez";
+        foundInVFS = true;
+    } else if (virtualFileSystem.count("C:/ezlib/" + path + "/main.ez")) {
+        source = virtualFileSystem["C:/ezlib/" + path + "/main.ez"];
+        absolutePath = "C:/ezlib/" + path + "/main.ez";
+        foundInVFS = true;
+    }
+    
+    if (!foundInVFS) {
+        std::ifstream file(absolutePath);
+        if (!file.is_open()) {
+            // Try exactly as typed
+            file.open(path);
             if (file.is_open()) {
-                absolutePath = localLibPath;
+                absolutePath = path;
             } else {
-                // Try standard lib path
-                std::string libPath = "C:/ezlib/" + path;
-                file.open(libPath);
+                // Try local lib/ directory
+                std::string localLibPath = "lib/" + path;
+                file.open(localLibPath);
                 if (file.is_open()) {
-                    absolutePath = libPath;
-                } else if (fs::is_directory(libPath)) {
-                    // It's a directory, look for [packageName].ez or main.ez
-                    std::string pkgEz = libPath + "/" + path + ".ez";
-                    file.open(pkgEz);
-                    if (file.is_open()) {
-                        absolutePath = pkgEz;
-                    } else {
-                        std::string mainEz = libPath + "/main.ez";
-                        file.open(mainEz);
-                        if (file.is_open()) {
-                            absolutePath = mainEz;
-                        } else {
-                            error("Could not find entry point in module directory '" + libPath + "'");
-                            return;
-                        }
-                    }
+                    absolutePath = localLibPath;
                 } else {
-                    // Try .ez extension
-                    std::string ezPath = (libPath.find(".ez") == std::string::npos) ? libPath + ".ez" : libPath;
-                    file.open(ezPath);
+                    // Try standard lib path
+                    std::string libPath = "C:/ezlib/" + path;
+                    file.open(libPath);
                     if (file.is_open()) {
-                        absolutePath = ezPath;
-                    } else {
-                        // Try local .ez extension in lib
-                        std::string localEzPath = (localLibPath.find(".ez") == std::string::npos) ? localLibPath + ".ez" : localLibPath;
-                        file.open(localEzPath);
+                        absolutePath = libPath;
+                    } else if (fs::is_directory(libPath)) {
+                        // It's a directory, look for [packageName].ez or main.ez
+                        std::string pkgEz = libPath + "/" + path + ".ez";
+                        file.open(pkgEz);
                         if (file.is_open()) {
-                            absolutePath = localEzPath;
+                            absolutePath = pkgEz;
                         } else {
-                            error("Could not find module '" + path + "'");
-                            return;
+                            std::string mainEz = libPath + "/main.ez";
+                            file.open(mainEz);
+                            if (file.is_open()) {
+                                absolutePath = mainEz;
+                            } else {
+                                error("Could not find entry point in module directory '" + libPath + "'");
+                                return;
+                            }
+                        }
+                    } else {
+                        // Try .ez extension
+                        std::string ezPath = (libPath.find(".ez") == std::string::npos) ? libPath + ".ez" : libPath;
+                        file.open(ezPath);
+                        if (file.is_open()) {
+                            absolutePath = ezPath;
+                        } else {
+                            // Try local .ez extension in lib
+                            std::string localEzPath = (localLibPath.find(".ez") == std::string::npos) ? localLibPath + ".ez" : localLibPath;
+                            file.open(localEzPath);
+                            if (file.is_open()) {
+                                absolutePath = localEzPath;
+                            } else {
+                                error("Could not find module '" + path + "'");
+                                return;
+                            }
                         }
                     }
                 }
             }
         }
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        source = buffer.str();
     }
-    
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
     
     // Compile the imported file
     Lexer lexer(source, absolutePath);

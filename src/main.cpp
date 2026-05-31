@@ -7,8 +7,10 @@
 #include "Lexer.h"
 #include "Parser.h"
 #include "BytecodeInterpreter.h"
+#include "BytecodeCompiler.h"
 #include "PackageManager.h"
-#include<windows.h>
+#include <windows.h>
+#include <cstdint>
 
 void signalHandler(int sig) {
     std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
@@ -38,17 +40,7 @@ static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-void runFile(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
-        exit(65);
-    }
-    
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
-    
+void runFromSource(const std::string& source, const std::string& path) {
     Lexer lexer(source, path);
     std::vector<Token> tokens = lexer.tokenize();
     
@@ -77,6 +69,135 @@ void runFile(const std::string& path) {
         std::cerr << "Internal Error: " << e.what() << std::endl;
         exit(70);
     }
+}
+
+void runFile(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
+        exit(65);
+    }
+    
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+    
+    runFromSource(source, path);
+}
+
+bool bundleFile(const std::string& entryScript, const std::string& outputExe) {
+    char exePath[MAX_PATH];
+    if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+        std::cerr << "Error: Could not determine executable path." << std::endl;
+        return false;
+    }
+    
+    std::ifstream entryFile(entryScript, std::ios::binary);
+    if (!entryFile.is_open()) {
+        std::cerr << "Error: Could not open entry script '" << entryScript << "'" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Packaging " << entryScript << " into " << outputExe << "..." << std::endl;
+    
+    struct PackFile {
+        std::string vfsName;
+        std::string content;
+    };
+    std::vector<PackFile> filesToPack;
+    
+    // 1. Pack main script
+    std::stringstream buffer;
+    buffer << entryFile.rdbuf();
+    filesToPack.push_back({"__main__.ez", buffer.str()});
+    std::cout << "  -> Packed __main__.ez (" << buffer.str().length() << " bytes)\n";
+    
+    // 2. Pack everything in lib/ directory
+    std::string baseDir = exePath;
+    size_t lastSlash = baseDir.find_last_of("\\/");
+    if (lastSlash != std::string::npos) {
+        baseDir = baseDir.substr(0, lastSlash);
+    }
+    std::string libDir = baseDir + "/lib";
+    
+    if (std::filesystem::exists(libDir)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(libDir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".ez") {
+                std::string fullPath = entry.path().string();
+                std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
+                
+                std::string vfsName = fullPath.substr(baseDir.length() + 1); // e.g. "lib/gui.ez"
+                
+                std::ifstream libFile(fullPath, std::ios::binary);
+                if (libFile.is_open()) {
+                    std::stringstream libBuf;
+                    libBuf << libFile.rdbuf();
+                    filesToPack.push_back({vfsName, libBuf.str()});
+                    std::cout << "  -> Packed " << vfsName << " (" << libBuf.str().length() << " bytes)\n";
+                }
+            }
+        }
+    }
+    
+    // 3. Pack everything in C:/ezlib/ directory
+    std::string ezlibDir = "C:/ezlib";
+    if (std::filesystem::exists(ezlibDir)) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(ezlibDir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".ez") {
+                std::string fullPath = entry.path().string();
+                std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
+                
+                std::string vfsName = fullPath; // e.g. "C:/ezlib/package/main.ez"
+                
+                std::ifstream libFile(fullPath, std::ios::binary);
+                if (libFile.is_open()) {
+                    std::stringstream libBuf;
+                    libBuf << libFile.rdbuf();
+                    filesToPack.push_back({vfsName, libBuf.str()});
+                    std::cout << "  -> Packed " << vfsName << " (" << libBuf.str().length() << " bytes)\n";
+                }
+            }
+        }
+    }
+    
+    // 4. Build VFS Blob
+    std::string vfsBlob;
+    uint32_t numFiles = filesToPack.size();
+    vfsBlob.append((char*)&numFiles, 4);
+    
+    for (const auto& f : filesToPack) {
+        uint32_t nameLen = f.vfsName.length();
+        vfsBlob.append((char*)&nameLen, 4);
+        vfsBlob.append(f.vfsName);
+        
+        uint32_t fileLen = f.content.length();
+        vfsBlob.append((char*)&fileLen, 4);
+        vfsBlob.append(f.content);
+    }
+    
+    // 4. Copy ez.exe to outputExe
+    try {
+        std::filesystem::copy_file(exePath, outputExe, std::filesystem::copy_options::overwrite_existing);
+    } catch (const std::exception& e) {
+        std::cerr << "Error copying executable: " << e.what() << std::endl;
+        return false;
+    }
+    
+    // 5. Append VFS Blob
+    std::ofstream outFile(outputExe, std::ios::binary | std::ios::app);
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Could not open output file for appending." << std::endl;
+        return false;
+    }
+    
+    outFile.write(vfsBlob.data(), vfsBlob.length());
+    uint32_t vfsSize = vfsBlob.length();
+    outFile.write((char*)&vfsSize, 4);
+    outFile.write("EZPKV1", 6);
+    outFile.close();
+    
+    std::cout << "\nSuccess! Created standalone executable: " << outputExe << std::endl;
+    return true;
 }
 
 void runRepl() {
@@ -148,6 +269,7 @@ void showHelp() {
     std::cout << "  ez install <pkg>  Install a package" << std::endl;
     std::cout << "  ez list           List installed packages" << std::endl;
     std::cout << "  ez init <name>    Create a new package" << std::endl;
+    std::cout << "  ez bundle <file.ez> [out.exe]  Create a standalone executable" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
@@ -179,6 +301,44 @@ int main(int argc, char* argv[]) {
     std::set_terminate(terminateHandler);
     AddVectoredExceptionHandler(1, VectoredHandler);
     
+    // Check for appended VFS payload
+    char exePath[MAX_PATH];
+    if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+        std::ifstream exeFile(exePath, std::ios::binary | std::ios::ate);
+        if (exeFile.is_open()) {
+            std::streamsize size = exeFile.tellg();
+            if (size > 10) {
+                exeFile.seekg(-10, std::ios::end);
+                char magic[7] = {0};
+                uint32_t vfsSize = 0;
+                exeFile.read((char*)&vfsSize, 4);
+                exeFile.read(magic, 6);
+                if (std::string(magic) == "EZPKV1") {
+                    exeFile.seekg(-10 - (std::streamoff)vfsSize, std::ios::end);
+                    uint32_t numFiles = 0;
+                    exeFile.read((char*)&numFiles, 4);
+                    for (uint32_t i = 0; i < numFiles; i++) {
+                        uint32_t nameLen = 0;
+                        exeFile.read((char*)&nameLen, 4);
+                        std::string name(nameLen, '\0');
+                        exeFile.read(&name[0], nameLen);
+                        
+                        uint32_t fileLen = 0;
+                        exeFile.read((char*)&fileLen, 4);
+                        std::string content(fileLen, '\0');
+                        exeFile.read(&content[0], fileLen);
+                        
+                        BytecodeCompiler::virtualFileSystem[name] = content;
+                    }
+                    if (BytecodeCompiler::virtualFileSystem.count("__main__.ez")) {
+                        runFromSource(BytecodeCompiler::virtualFileSystem["__main__.ez"], "__main__.ez");
+                        return 0;
+                    }
+                }
+            }
+        }
+    }
+    
     if (argc > 1) {
         std::string cmd = argv[1];
         
@@ -205,6 +365,23 @@ int main(int argc, char* argv[]) {
             PackageManager pm;
             pm.listPackages();
             return 0;
+        }
+        else if (cmd == "bundle") {
+            if (argc < 3) {
+                std::cout << "Usage: ez bundle <entry_script.ez> [output.exe]" << std::endl;
+                return 1;
+            }
+            std::string entryScript = argv[2];
+            std::string outputExe;
+            if (argc >= 4) {
+                outputExe = argv[3];
+            } else {
+                outputExe = entryScript;
+                size_t dot = outputExe.find_last_of(".");
+                if (dot != std::string::npos) outputExe = outputExe.substr(0, dot);
+                outputExe += ".exe";
+            }
+            return bundleFile(entryScript, outputExe) ? 0 : 1;
         }
         else if (cmd == "--help" || cmd == "-h") {
             showHelp();

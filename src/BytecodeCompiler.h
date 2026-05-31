@@ -24,6 +24,9 @@ public:
     // Compile single function
     BytecodeFunctionPtr compileFunction(const TaskStmt& task, const std::string& name);
     
+    // Virtual File System for packaged standalone executables
+    static std::unordered_map<std::string, std::string> virtualFileSystem;
+    
 private:
     // Current function being compiled
     struct Compiler {

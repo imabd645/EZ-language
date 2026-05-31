@@ -9,13 +9,13 @@
 // ============================================================================
 
 BytecodeInterpreter::BytecodeInterpreter()
-    : useBytecodeCache(true),
+    : mode(ExecutionMode::BYTECODE_ONLY), useBytecodeCache(true),
       cacheAccessCounter(0) {
     initComponents();
 }
 
 BytecodeInterpreter::BytecodeInterpreter(std::shared_ptr<Environment> startEnv)
-    : useBytecodeCache(true),
+    : mode(ExecutionMode::BYTECODE_ONLY), useBytecodeCache(true),
       globalEnv(startEnv), cacheAccessCounter(0) {
     initComponents();
 }
@@ -34,6 +34,7 @@ void BytecodeInterpreter::initComponents() {
     metrics  = {};
 }
 
+void BytecodeInterpreter::setExecutionMode(ExecutionMode m) { mode = m; }
 void BytecodeInterpreter::enableBytecodeCache(bool enable) { useBytecodeCache = enable; }
 
 // ============================================================================
@@ -123,10 +124,12 @@ void BytecodeInterpreter::resetMetrics() { metrics = {}; }
 
 void BytecodeInterpreter::printMetrics() const {
     std::cout << "=== BytecodeInterpreter Metrics ===" << std::endl;
+    std::cout << "AST executions:           " << metrics.astExecutions       << std::endl;
     std::cout << "Bytecode compilations:    " << metrics.bytecodeCompilations<< std::endl;
     std::cout << "Bytecode executions:      " << metrics.bytecodeExecutions  << std::endl;
     std::cout << "Cache hits:               " << metrics.cacheHits           << std::endl;
     std::cout << "Compile time (s):         " << metrics.totalCompileTime    << std::endl;
+    std::cout << "AST time (s):             " << metrics.totalASTTime        << std::endl;
     std::cout << "Bytecode time (s):        " << metrics.totalBytecodeTime   << std::endl;
 }
 

@@ -12,11 +12,21 @@
 #include "BytecodeVM.h"
 
 // ============================================================================
-// Bytecode Engine
+// Hybrid Interpreter: AST walker + Bytecode VM
 // 
-// This class provides integration between the AST frontend
-// and the new bytecode VM.
+// This class provides a seamless integration between the existing AST-based
+// interpreter and the new bytecode VM. It can:
+// 1. Interpret AST directly (legacy mode)
+// 2. Compile to bytecode and execute (fast mode)
+// 3. Cache bytecode for reuse (performance mode)
 // ============================================================================
+
+enum class ExecutionMode {
+    AST_ONLY,           // Use AST interpreter only (compatibility mode)
+    BYTECODE_ONLY,      // Use bytecode compiler + VM only
+    HYBRID_SMART,     // Auto-select based on complexity
+    HYBRID_CACHED     // Cache bytecode for repeated execution
+};
 
 class BytecodeInterpreter {
 public:
@@ -24,6 +34,8 @@ public:
     explicit BytecodeInterpreter(std::shared_ptr<Environment> startEnv);
     
     // Configuration
+    void setExecutionMode(ExecutionMode mode);
+    ExecutionMode getExecutionMode() const { return mode; }
     void enableBytecodeCache(bool enable);
     bool isBytecodeCacheEnabled() const { return useBytecodeCache; }
     
@@ -47,10 +59,12 @@ public:
     
     // Performance metrics
     struct Metrics {
+        size_t astExecutions;
         size_t bytecodeCompilations;
         size_t bytecodeExecutions;
         size_t cacheHits;
         double totalCompileTime;
+        double totalASTTime;
         double totalBytecodeTime;
     };
     Metrics getMetrics() const { return metrics; }
@@ -69,6 +83,7 @@ public:
     std::string stringify(const Value& val, int line = 0, const std::string& filename = "");
     
 private:
+    ExecutionMode mode;
     bool useBytecodeCache;
     
     // Components
@@ -95,8 +110,14 @@ private:
     size_t computeASTSignature(const std::vector<StmtPtr>& statements);
     
     // Execution methods
+    void executeAST(const std::vector<StmtPtr>& statements);
     void executeBytecodeMode(const std::vector<StmtPtr>& statements);
+    Value executeASTExpression(const ExprPtr& expr);
     Value executeBytecodeWithMetrics(BytecodeFunctionPtr function);
+    
+    // Smart mode selection
+    bool shouldUseBytecode(const std::vector<StmtPtr>& statements);
+    int estimateComplexity(const std::vector<StmtPtr>& statements);
     
     // Cache management
     void addToCache(size_t signature, BytecodeFunctionPtr function);
@@ -107,5 +128,24 @@ private:
     void initComponents();
     void initBuiltins();
 };
+
+// ============================================================================
+// Convenience factory functions
+// ============================================================================
+
+// Create interpreter with bytecode enabled (recommended)
+inline std::unique_ptr<BytecodeInterpreter> makeFastInterpreter() {
+    auto interp = std::make_unique<BytecodeInterpreter>();
+    interp->setExecutionMode(ExecutionMode::HYBRID_CACHED);
+    interp->enableBytecodeCache(true);
+    return interp;
+}
+
+// Create compatible interpreter (AST only)
+inline std::unique_ptr<BytecodeInterpreter> makeCompatibleInterpreter() {
+    auto interp = std::make_unique<BytecodeInterpreter>();
+    interp->setExecutionMode(ExecutionMode::AST_ONLY);
+    return interp;
+}
 
 #endif // BYTECODE_INTERPRETER_H

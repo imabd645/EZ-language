@@ -63,7 +63,9 @@ void runFile(const std::string& path) {
         exit(65);
     }
     
+    // Use BytecodeInterpreter for faster execution
     BytecodeInterpreter interpreter;
+    interpreter.setExecutionMode(ExecutionMode::BYTECODE_ONLY);  // Force bytecode for max speed
     try {
         interpreter.interpret(statements);
     } catch (const RuntimeError& e) {

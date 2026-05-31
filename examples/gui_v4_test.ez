@@ -1,0 +1,118 @@
+use "lib/gui.ez" as *
+
+print("Starting GUI v4 Feature Test...")
+
+# Create the main window
+win = gui.window("EZ GUI v4 Test Suite", 800, 600)
+gui.setTheme("dark")
+win.color("dark")
+
+# Use a VBox for main vertical layout from the window
+mainLayout = win.vbox(10)
+
+# 1. Header Label
+header = mainLayout.label("Modern EZ GUI Framework Testing", 760, 30)
+header.font("Segoe UI", 24)
+header.color("neon")
+
+# 2. Controls Panel (HBox)
+controlsPanel = win.panel(10, mainLayout.currentY(), 760, 60)
+mainLayout.addSpace(70) # Skip past this panel
+controlsBox = controlsPanel.hbox(10)
+
+# We can pass nil for callback and attach via .on() later
+themeBtn = controlsBox.button("Toggle Theme", 120, 40, nil)
+themeBtn.color("blue")
+state = {"isDark": true}
+
+themeBtn.on("click", || {
+    print("Theme button clicked! Current state: " + state["isDark"])
+    state["isDark"] = not state["isDark"]
+    when state["isDark"] {
+        gui.setTheme("dark")
+        win.color("dark")
+        themeBtn.color("blue")
+        print("Set to dark")
+    } other {
+        gui.setTheme("light")
+        win.color("light")
+        themeBtn.color("orange")
+        print("Set to light")
+    }
+})
+
+alertBtn = controlsBox.button("Show Alert", 120, 40, || {
+    gui.alert("Test Alert", "This is a native alert from EZ GUI!")
+})
+alertBtn.color("green")
+
+# 3. Input & Display Section
+inputGroup = win.panel(10, mainLayout.currentY(), 760, 120)
+mainLayout.addSpace(130)
+inputGroup.color("gray")
+
+nameInput = inputGroup.input(10, 10, 200, 30)
+nameInput.text("Type something...")
+
+textDisplay = inputGroup.label("Output will appear here", 10, 50, 400, 30)
+textDisplay.font("Segoe UI", 16)
+
+nameInput.on("change", || {
+    val = nameInput.value()
+    textDisplay.text("Live Output: " + val)
+})
+
+textArea = inputGroup.textarea(450, 10, 300, 100)
+textArea.text("Multi-line text area\nSupports newlines and scrolling.")
+
+# 4. Interactive Components (Sliders & Progress)
+interactivePanel = win.panel(10, mainLayout.currentY(), 760, 60)
+mainLayout.addSpace(70)
+
+slider = interactivePanel.slider(10, 10, 200, 40, 0, 100)
+slider.setValue(50)
+
+progress = interactivePanel.progressBar(230, 15, 300, 30)
+progress.setValue(50)
+
+slider.on("change", || {
+    val = slider.value()
+    progress.setValue(val)
+})
+
+check = interactivePanel.checkbox("Enable Feature X", 550, 15, 150, 30)
+check.setChecked(true)
+
+# 5. TreeView and ListView Demo
+dataPanel = win.panel(10, mainLayout.currentY(), 760, 200)
+mainLayout.addSpace(210)
+
+tree = dataPanel.treeView(10, 10, 250, 180)
+root = tree.add(0, "Root Element")
+child1 = tree.add(root, "Child 1")
+child2 = tree.add(root, "Child 2")
+tree.add(child1, "Grandchild A")
+
+list = dataPanel.listView(280, 10, 460, 180)
+list.addColumn("ID", 50)
+list.addColumn("Name", 150)
+list.addColumn("Status", 100)
+
+list.addRow([1, "System Core", "Active"])
+list.addRow([2, "GUI Module", "Running"])
+list.addRow([3, "Network API", "Pending"])
+
+# Main window events
+win.onResize(|w, h| {
+    print("Window resized to: " + w + "x" + h)
+})
+
+win.onClose(|| {
+    res = gui.dialog.confirm("Exit?", "Are you sure you want to close the test app?")
+    give res
+})
+
+# Run the application
+print("UI Built. Running message loop...")
+win.show()
+win.run()

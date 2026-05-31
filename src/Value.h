@@ -312,7 +312,10 @@ struct EZClass : public GCObject {
     std::unordered_map<std::string, Value> methods;
     std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool> visibility;
-
+    
+    // Legacy support for AST Interpreter
+    std::vector<std::string> initParams;
+    std::vector<StmtPtr> initBody;
 
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
     void gc_mark() override;

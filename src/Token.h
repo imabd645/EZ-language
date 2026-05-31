@@ -47,8 +47,6 @@ enum class TokenType {
     TRY,
     CATCH,
     THROW,
-    ASYNC,
-    AWAIT,
 
     // Operators
     PLUS,
@@ -193,8 +191,6 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::ELLIPSIS: return "ELLIPSIS";
         case TokenType::END_OF_FILE: return "EOF";
         case TokenType::ERROR: return "ERROR";
-        case TokenType::ASYNC: return "ASYNC";
-        case TokenType::AWAIT: return "AWAIT";
         default: return "UNKNOWN";
     }
 }

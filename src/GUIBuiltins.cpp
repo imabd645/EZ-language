@@ -138,13 +138,6 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             break;
         }
-        case WM_HSCROLL:
-        case WM_VSCROLL: {
-            HWND ctrl = (HWND)lParam;
-            if (ctrl != NULL) {
-                fireEventCallback(ctrl, "change");
-            }
-            break;
         }
         case WM_NOTIFY: {
             LPNMHDR nmhdr = (LPNMHDR)lParam;
@@ -204,14 +197,18 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_VSCROLL:
         case WM_HSCROLL: {
             HWND ctrlHwnd = (HWND)lParam;
-            if (ctrlHwnd != NULL && g_gui.callbacks.count(ctrlHwnd)) {
-                Value callback = g_gui.callbacks[ctrlHwnd];
-                if (g_gui.currentInterpreter && callback.isCallable()) {
-                    try { g_gui.currentInterpreter->callFunction(callback, {}, 0, "native"); } 
-                    catch (const std::exception& e) { printf("GUI Slider Error: %s\n", e.what()); }
+            if (ctrlHwnd != NULL) {
+                if (g_gui.callbacks.count(ctrlHwnd)) {
+                    Value callback = g_gui.callbacks[ctrlHwnd];
+                    if (g_gui.currentInterpreter && callback.isCallable()) {
+                        try { g_gui.currentInterpreter->callFunction(callback, {}, 0, "native"); } 
+                        catch (const std::exception& e) { printf("GUI Slider Error: %s\n", e.what()); }
+                    }
                 }
                 fireEventCallback(ctrlHwnd, "change");
-                return 0;
+                if (g_gui.eventCallbacks.count(ctrlHwnd) || g_gui.callbacks.count(ctrlHwnd)) {
+                    return 0;
+                }
             }
             int bar = (msg == WM_VSCROLL) ? SB_VERT : SB_HORZ;
             SCROLLINFO si = { sizeof(si), SIF_ALL };

@@ -172,7 +172,86 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
     }
 }
 
-bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui) {
+#pragma pack(push, 1)
+struct EZ_ICONDIR {
+    uint16_t idReserved;
+    uint16_t idType;
+    uint16_t idCount;
+};
+struct EZ_ICONDIRENTRY {
+    uint8_t bWidth;
+    uint8_t bHeight;
+    uint8_t bColorCount;
+    uint8_t bReserved;
+    uint16_t wPlanes;
+    uint16_t wBitCount;
+    uint32_t dwBytesInRes;
+    uint32_t dwImageOffset;
+};
+struct EZ_GRPICONDIR {
+    uint16_t idReserved;
+    uint16_t idType;
+    uint16_t idCount;
+};
+struct EZ_GRPICONDIRENTRY {
+    uint8_t bWidth;
+    uint8_t bHeight;
+    uint8_t bColorCount;
+    uint8_t bReserved;
+    uint16_t wPlanes;
+    uint16_t wBitCount;
+    uint32_t dwBytesInRes;
+    uint16_t nID;
+};
+#pragma pack(pop)
+
+bool injectIcon(const std::string& exePath, const std::string& iconPath) {
+    std::ifstream file(iconPath, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) return false;
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<uint8_t> icoData(size);
+    if (!file.read((char*)icoData.data(), size)) return false;
+
+    if (size < sizeof(EZ_ICONDIR)) { std::cerr << "Icon error: too small\n"; return false; }
+    EZ_ICONDIR* dir = (EZ_ICONDIR*)icoData.data();
+    if (dir->idReserved != 0 || dir->idType != 1) { std::cerr << "Icon error: invalid header\n"; return false; }
+
+    HANDLE hUpdate = BeginUpdateResourceA(exePath.c_str(), FALSE);
+    if (hUpdate == NULL) { std::cerr << "Icon error: BeginUpdateResourceA failed (" << GetLastError() << ")\n"; return false; }
+
+    std::vector<uint8_t> grpData(sizeof(EZ_GRPICONDIR) + dir->idCount * sizeof(EZ_GRPICONDIRENTRY));
+    EZ_GRPICONDIR* grpDir = (EZ_GRPICONDIR*)grpData.data();
+    grpDir->idReserved = 0;
+    grpDir->idType = 1;
+    grpDir->idCount = dir->idCount;
+
+    EZ_GRPICONDIRENTRY* grpEntries = (EZ_GRPICONDIRENTRY*)(grpData.data() + sizeof(EZ_GRPICONDIR));
+    EZ_ICONDIRENTRY* entries = (EZ_ICONDIRENTRY*)(icoData.data() + sizeof(EZ_ICONDIR));
+
+    for (int i = 0; i < dir->idCount; ++i) {
+        grpEntries[i].bWidth = entries[i].bWidth;
+        grpEntries[i].bHeight = entries[i].bHeight;
+        grpEntries[i].bColorCount = entries[i].bColorCount;
+        grpEntries[i].bReserved = entries[i].bReserved;
+        grpEntries[i].wPlanes = entries[i].wPlanes;
+        grpEntries[i].wBitCount = entries[i].wBitCount;
+        grpEntries[i].dwBytesInRes = entries[i].dwBytesInRes;
+        grpEntries[i].nID = i + 1; // Resource ID starting at 1
+
+        uint8_t* imageData = icoData.data() + entries[i].dwImageOffset;
+        UpdateResourceA(hUpdate, RT_ICON, MAKEINTRESOURCEA(i + 1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), imageData, entries[i].dwBytesInRes);
+    }
+
+    UpdateResourceA(hUpdate, RT_GROUP_ICON, MAKEINTRESOURCEA(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), grpData.data(), grpData.size());
+    if (!EndUpdateResourceA(hUpdate, FALSE)) {
+        std::cerr << "Icon error: EndUpdateResourceA failed (" << GetLastError() << ")\n";
+        return false;
+    }
+    return true;
+}
+
+bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui, const std::string& iconPath) {
     char exePath[MAX_PATH];
     if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
         std::cerr << "Error: Could not determine executable path." << std::endl;
@@ -268,10 +347,28 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
         return false;
     }
     
-    // 5. Append VFS Blob
-    std::ofstream outFile(outputExe, std::ios::binary | std::ios::app);
+    // 5. Inject Icon if provided
+    if (!iconPath.empty()) {
+        if (injectIcon(outputExe, iconPath)) {
+            std::cout << "  -> Injected Custom Icon (" << iconPath << ")\n";
+        } else {
+            std::cout << "  -> Warning: Failed to inject custom icon. Ensure it's a valid .ico file.\n";
+        }
+    }
+    
+    // 6. Append VFS Blob
+    // Anti-virus may lock the file briefly after EndUpdateResourceA, so we retry a few times
+    std::ofstream outFile;
+    int retries = 10;
+    while (retries > 0) {
+        outFile.open(outputExe, std::ios::binary | std::ios::app);
+        if (outFile.is_open()) break;
+        Sleep(100);
+        retries--;
+    }
+    
     if (!outFile.is_open()) {
-        std::cerr << "Error: Could not open output file for appending." << std::endl;
+        std::cerr << "Error: Could not open output file for appending after 10 retries." << std::endl;
         return false;
     }
     
@@ -364,7 +461,7 @@ void showHelp() {
     std::cout << "  ez install <pkg>  Install a package" << std::endl;
     std::cout << "  ez list           List installed packages" << std::endl;
     std::cout << "  ez init <name>    Create a new package" << std::endl;
-    std::cout << "  ez bundle <file.ez> [out.exe] [--gui]  Create a standalone executable" << std::endl;
+    std::cout << "  ez bundle <file.ez> [out.exe] [--gui] [--icon app.ico]  Create a standalone executable" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
@@ -463,17 +560,23 @@ int main(int argc, char* argv[]) {
         }
         else if (cmd == "bundle") {
             if (argc < 3) {
-                std::cout << "Usage: ez bundle <entry_script.ez> [output.exe] [--gui]" << std::endl;
+                std::cout << "Usage: ez bundle <entry_script.ez> [output.exe] [--gui] [--icon app.ico]" << std::endl;
                 return 1;
             }
             std::string entryScript = argv[2];
             std::string outputExe;
             bool isGui = false;
+            std::string iconPath = "";
             
             for (int i = 3; i < argc; i++) {
                 std::string arg = argv[i];
-                if (arg == "--gui") isGui = true;
-                else if (outputExe.empty()) outputExe = arg;
+                if (arg == "--gui") {
+                    isGui = true;
+                } else if (arg == "--icon" && i + 1 < argc) {
+                    iconPath = argv[++i];
+                } else if (outputExe.empty()) {
+                    outputExe = arg;
+                }
             }
             
             if (outputExe.empty()) {
@@ -482,7 +585,7 @@ int main(int argc, char* argv[]) {
                 if (dot != std::string::npos) outputExe = outputExe.substr(0, dot);
                 outputExe += ".exe";
             }
-            return bundleFile(entryScript, outputExe, isGui) ? 0 : 1;
+            return bundleFile(entryScript, outputExe, isGui, iconPath) ? 0 : 1;
         }
         else if (cmd == "--help" || cmd == "-h") {
             showHelp();

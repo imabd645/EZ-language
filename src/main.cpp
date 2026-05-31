@@ -4,6 +4,7 @@
 #include <string>
 #include <cstdlib>
 #include <csignal>
+#include <algorithm>
 #include "Lexer.h"
 #include "Parser.h"
 #include "BytecodeInterpreter.h"
@@ -85,7 +86,29 @@ void runFile(const std::string& path) {
     runFromSource(source, path);
 }
 
-bool bundleFile(const std::string& entryScript, const std::string& outputExe) {
+bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem) {
+    std::fstream file(exePath, std::ios::in | std::ios::out | std::ios::binary);
+    if (!file.is_open()) return false;
+    
+    // Read DOS header e_lfanew
+    int32_t e_lfanew = 0;
+    file.seekg(0x3C);
+    file.read((char*)&e_lfanew, 4);
+    
+    // Check PE signature
+    file.seekg(e_lfanew);
+    char signature[4];
+    file.read(signature, 4);
+    if (signature[0] != 'P' || signature[1] != 'E') return false; // Not a valid PE file
+    
+    // The Subsystem field is at offset 68 into the Optional Header
+    // e_lfanew + 4 (Signature) + 20 (COFF Header) + 68 = e_lfanew + 92
+    file.seekg(e_lfanew + 92);
+    file.write((char*)&newSubsystem, 2);
+    return true;
+}
+
+bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui) {
     char exePath[MAX_PATH];
     if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
         std::cerr << "Error: Could not determine executable path." << std::endl;
@@ -196,6 +219,16 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe) {
     outFile.write("EZPKV1", 6);
     outFile.close();
     
+    // 6. Patch PE Header if GUI mode is requested
+    if (isGui) {
+        // 2 = IMAGE_SUBSYSTEM_WINDOWS_GUI
+        if (patchPESubsystem(outputExe, 2)) {
+            std::cout << "  -> Patched PE Subsystem for GUI Mode (Console Hidden)\n";
+        } else {
+            std::cout << "  -> Warning: Failed to patch PE Subsystem\n";
+        }
+    }
+    
     std::cout << "\nSuccess! Created standalone executable: " << outputExe << std::endl;
     return true;
 }
@@ -269,7 +302,7 @@ void showHelp() {
     std::cout << "  ez install <pkg>  Install a package" << std::endl;
     std::cout << "  ez list           List installed packages" << std::endl;
     std::cout << "  ez init <name>    Create a new package" << std::endl;
-    std::cout << "  ez bundle <file.ez> [out.exe]  Create a standalone executable" << std::endl;
+    std::cout << "  ez bundle <file.ez> [out.exe] [--gui]  Create a standalone executable" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
@@ -368,20 +401,26 @@ int main(int argc, char* argv[]) {
         }
         else if (cmd == "bundle") {
             if (argc < 3) {
-                std::cout << "Usage: ez bundle <entry_script.ez> [output.exe]" << std::endl;
+                std::cout << "Usage: ez bundle <entry_script.ez> [output.exe] [--gui]" << std::endl;
                 return 1;
             }
             std::string entryScript = argv[2];
             std::string outputExe;
-            if (argc >= 4) {
-                outputExe = argv[3];
-            } else {
+            bool isGui = false;
+            
+            for (int i = 3; i < argc; i++) {
+                std::string arg = argv[i];
+                if (arg == "--gui") isGui = true;
+                else if (outputExe.empty()) outputExe = arg;
+            }
+            
+            if (outputExe.empty()) {
                 outputExe = entryScript;
                 size_t dot = outputExe.find_last_of(".");
                 if (dot != std::string::npos) outputExe = outputExe.substr(0, dot);
                 outputExe += ".exe";
             }
-            return bundleFile(entryScript, outputExe) ? 0 : 1;
+            return bundleFile(entryScript, outputExe, isGui) ? 0 : 1;
         }
         else if (cmd == "--help" || cmd == "-h") {
             showHelp();

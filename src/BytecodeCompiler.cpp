@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include <filesystem>
 namespace fs = std::filesystem;
 #include "Lexer.h"

@@ -375,10 +375,6 @@ void registerGUIBuiltins(RuntimeContext& interp) {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             std::string eventName = vStr(args[1]);
             g_gui.eventCallbacks[hwnd][eventName] = args[2];
-            // Backward compat
-            if (eventName == "click" || eventName == "change") {
-                g_gui.callbacks[hwnd] = args[2];
-            }
             return Value();
         }));
 

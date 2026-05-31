@@ -279,17 +279,36 @@ void registerDataBuiltins(RuntimeContext& interp) {
             interp.runtimeError("contains() expects string, array, or dictionary", 0, ""); return Value();
          }));
 
-    interp.defineGlobal("indexOf", Value::makeNativeFunction("indexOf", 2,
+    interp.defineGlobal("indexOf", Value::makeNativeFunction("indexOf", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2 || args.size() > 3) {
+                interp.runtimeError("indexOf() expects 2 or 3 arguments", 0, ""); return Value();
+            }
             if (args[0].isString()) {
                 if (!args[1].isString()) { interp.runtimeError("indexOf() with string expects string to search for", 0, ""); return Value(); }
-                size_t pos = args[0].asString().find(args[1].asString());
+                size_t startPos = 0;
+                if (args.size() == 3) {
+                    if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
+                    double val = args[2].asNumber();
+                    if (val < 0) return Value(-1.0); // Safe if negative
+                    startPos = static_cast<size_t>(val);
+                }
+                if (startPos >= args[0].asString().length() && args[0].asString().length() > 0) return Value(-1.0);
+                
+                size_t pos = args[0].asString().find(args[1].asString(), startPos);
                 if (pos == std::string::npos) return Value(-1.0);
                 return Value(static_cast<double>(pos));
             }
             if (args[0].isArray()) {
                 const auto& arr = args[0].asArray();
-                for (size_t i = 0; i < arr.size(); i++) {
+                size_t startPos = 0;
+                if (args.size() == 3) {
+                    if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
+                    double val = args[2].asNumber();
+                    if (val < 0) return Value(-1.0);
+                    startPos = static_cast<size_t>(val);
+                }
+                for (size_t i = startPos; i < arr.size(); i++) {
                     if (arr[i].equals(args[1])) return Value(static_cast<double>(i));
                 }
                 return Value(-1.0);

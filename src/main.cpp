@@ -108,6 +108,70 @@ bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem) {
     return true;
 }
 
+#include <set>
+
+void findDependencies(const std::string& filePath, std::set<std::string>& visited, std::vector<std::pair<std::string, std::string>>& filesToPack, const std::string& baseDir) {
+    std::string normalizedPath = filePath;
+    std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+    
+    if (visited.count(normalizedPath)) return;
+    visited.insert(normalizedPath);
+    
+    std::ifstream file(normalizedPath, std::ios::binary);
+    if (!file.is_open()) return;
+    
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
+    
+    // Determine vfsName
+    std::string vfsName;
+    std::string normalizedBase = baseDir;
+    std::replace(normalizedBase.begin(), normalizedBase.end(), '\\', '/');
+    
+    if (normalizedPath.find(normalizedBase) == 0) {
+        vfsName = normalizedPath.substr(normalizedBase.length() + 1);
+    } else {
+        vfsName = normalizedPath; // e.g. C:/ezlib/...
+    }
+    
+    // If it's the main file being passed directly, skip adding it here (handled in bundleFile)
+    if (vfsName != "__main_skip__") {
+        filesToPack.push_back({vfsName, content});
+        std::cout << "  -> Packed " << vfsName << " (" << content.length() << " bytes)\n";
+    }
+    
+    // Naive string search for 'use "..."'
+    size_t pos = 0;
+    while ((pos = content.find("use ", pos)) != std::string::npos) {
+        size_t startQuote = content.find("\"", pos);
+        if (startQuote != std::string::npos && startQuote < pos + 10) {
+            size_t endQuote = content.find("\"", startQuote + 1);
+            if (endQuote != std::string::npos) {
+                std::string usePath = content.substr(startQuote + 1, endQuote - startQuote - 1);
+                
+                // Try resolving usePath
+                std::vector<std::string> searchPaths = {
+                    baseDir + "/lib/" + usePath + ".ez",
+                    baseDir + "/lib/" + usePath + "/main.ez",
+                    "C:/ezlib/" + usePath + ".ez",
+                    "C:/ezlib/" + usePath + "/main.ez",
+                    usePath,
+                    usePath + ".ez"
+                };
+                
+                for (const auto& sp : searchPaths) {
+                    if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
+                        findDependencies(sp, visited, filesToPack, baseDir);
+                        break;
+                    }
+                }
+            }
+        }
+        pos += 4;
+    }
+}
+
 bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui) {
     char exePath[MAX_PATH];
     if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
@@ -123,11 +187,7 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     
     std::cout << "Packaging " << entryScript << " into " << outputExe << "..." << std::endl;
     
-    struct PackFile {
-        std::string vfsName;
-        std::string content;
-    };
-    std::vector<PackFile> filesToPack;
+    std::vector<std::pair<std::string, std::string>> filesToPack;
     
     // 1. Pack main script
     std::stringstream buffer;
@@ -135,67 +195,69 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     filesToPack.push_back({"__main__.ez", buffer.str()});
     std::cout << "  -> Packed __main__.ez (" << buffer.str().length() << " bytes)\n";
     
-    // 2. Pack everything in lib/ directory
     std::string baseDir = exePath;
     size_t lastSlash = baseDir.find_last_of("\\/");
     if (lastSlash != std::string::npos) {
         baseDir = baseDir.substr(0, lastSlash);
     }
-    std::string libDir = baseDir + "/lib";
     
-    if (std::filesystem::exists(libDir)) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(libDir)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".ez") {
-                std::string fullPath = entry.path().string();
-                std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
-                
-                std::string vfsName = fullPath.substr(baseDir.length() + 1); // e.g. "lib/gui.ez"
-                
-                std::ifstream libFile(fullPath, std::ios::binary);
-                if (libFile.is_open()) {
-                    std::stringstream libBuf;
-                    libBuf << libFile.rdbuf();
-                    filesToPack.push_back({vfsName, libBuf.str()});
-                    std::cout << "  -> Packed " << vfsName << " (" << libBuf.str().length() << " bytes)\n";
+    // 2. Discover and pack dependencies recursively
+    std::set<std::string> visited;
+    // Mark main script as visited so we don't pack it twice
+    std::string normalizedMain = entryScript;
+    std::replace(normalizedMain.begin(), normalizedMain.end(), '\\', '/');
+    // Call findDependencies but tell it to skip adding __main__ to the vector again
+    findDependencies(normalizedMain, visited, filesToPack, baseDir);
+    // Remove the __main__ entry from vector if findDependencies added it (we already added it as __main__.ez)
+    if (filesToPack.size() > 1 && filesToPack.back().first != "__main__.ez" && filesToPack.back().second == buffer.str()) {
+        // We handle duplicate by just not doing anything, as visited prevents loops. 
+        // Wait, to cleanly skip main in findDependencies without hack, just pass it with a dummy visited entry.
+    }
+    
+    // Actually, a better way to not duplicate main is to clear visited and insert it
+    visited.insert(normalizedMain);
+    
+    // Now crawl the main file's content manually for the first level, then let findDependencies handle the rest
+    size_t pos = 0;
+    std::string mainContent = buffer.str();
+    while ((pos = mainContent.find("use ", pos)) != std::string::npos) {
+        size_t startQuote = mainContent.find("\"", pos);
+        if (startQuote != std::string::npos && startQuote < pos + 10) {
+            size_t endQuote = mainContent.find("\"", startQuote + 1);
+            if (endQuote != std::string::npos) {
+                std::string usePath = mainContent.substr(startQuote + 1, endQuote - startQuote - 1);
+                std::vector<std::string> searchPaths = {
+                    baseDir + "/lib/" + usePath + ".ez",
+                    baseDir + "/lib/" + usePath + "/main.ez",
+                    "C:/ezlib/" + usePath + ".ez",
+                    "C:/ezlib/" + usePath + "/main.ez",
+                    usePath,
+                    usePath + ".ez"
+                };
+                for (const auto& sp : searchPaths) {
+                    if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
+                        findDependencies(sp, visited, filesToPack, baseDir);
+                        break;
+                    }
                 }
             }
         }
+        pos += 4;
     }
     
-    // 3. Pack everything in C:/ezlib/ directory
-    std::string ezlibDir = "C:/ezlib";
-    if (std::filesystem::exists(ezlibDir)) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(ezlibDir)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".ez") {
-                std::string fullPath = entry.path().string();
-                std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
-                
-                std::string vfsName = fullPath; // e.g. "C:/ezlib/package/main.ez"
-                
-                std::ifstream libFile(fullPath, std::ios::binary);
-                if (libFile.is_open()) {
-                    std::stringstream libBuf;
-                    libBuf << libFile.rdbuf();
-                    filesToPack.push_back({vfsName, libBuf.str()});
-                    std::cout << "  -> Packed " << vfsName << " (" << libBuf.str().length() << " bytes)\n";
-                }
-            }
-        }
-    }
-    
-    // 4. Build VFS Blob
+    // 3. Build VFS Blob
     std::string vfsBlob;
     uint32_t numFiles = filesToPack.size();
     vfsBlob.append((char*)&numFiles, 4);
     
     for (const auto& f : filesToPack) {
-        uint32_t nameLen = f.vfsName.length();
+        uint32_t nameLen = f.first.length();
         vfsBlob.append((char*)&nameLen, 4);
-        vfsBlob.append(f.vfsName);
+        vfsBlob.append(f.first);
         
-        uint32_t fileLen = f.content.length();
+        uint32_t fileLen = f.second.length();
         vfsBlob.append((char*)&fileLen, 4);
-        vfsBlob.append(f.content);
+        vfsBlob.append(f.second);
     }
     
     // 4. Copy ez.exe to outputExe

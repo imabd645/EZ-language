@@ -1,0 +1,19 @@
+use "lib/email.ez"
+
+out "Initializing SmtpClient..."
+# SmtpClient(smtp_server, port, username, password)
+
+# Enable HTML emails
+client.isHtml = true
+
+# Configure Custom Headers (Option 3)
+client.replyTo = "support@examify.site"
+client.priority = "1"  # "1" = High, "3" = Normal, "5" = Low
+client.customHeaders = {
+    "X-Mailer": "EZ SMTP FFI Engine",
+    "X-Campaign-ID": "EZ-2026"
+}
+
+# Send Email: send(fromEmail, toEmail, subject, body)
+
+out "SMTP mail sent successfully with custom headers!"

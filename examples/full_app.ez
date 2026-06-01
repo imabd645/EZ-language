@@ -1,0 +1,88 @@
+use  "lib/web.ez"
+
+app = WebApp()
+
+# 1. Middleware: Global Logger
+app.use(|req| {
+    out "[LOG] " + req["method"] + " " + req["fullPath"]
+    # Return nil to continue to the next middleware or route
+    give nil
+})
+
+# 2. Middleware: Auth Check for /admin
+app.use(|req| {
+    when startsWith(req["path"], "/admin") {
+        when not has_key(req["session"], "username") {
+            # Short-circuit the request and return an error response
+            give {"status": 401, "body": "Unauthorized. Please login first."}
+        }
+    }
+    give nil
+})
+
+# 3. Static Files
+app.serve_static("/assets", "examples/assets")
+
+# 4. Custom 404 Handler
+app.on_404(|req| {
+    give render_template("examples/templates/404.html", {
+        "title": "Page Not Found",
+        "requested_path": req["path"]
+    })
+})
+
+# 5. Routes
+
+app.get("/", |req| {
+    user = "Guest"
+    logged_in = false
+    sess_id = ""
+    
+    when has_key(req["session"], "username") {
+        user = req["session"]["username"]
+        logged_in = true
+        sess_id = req["cookies"]["ez_session"]
+    }
+    
+    give render_template("examples/templates/home.html", {
+        "title": "Home",
+        "user": user,
+        "logged_in": logged_in,
+        "session_id": sess_id,
+        "tech_list": [
+            "Native FFI Networking",
+            "Middleware Interceptors",
+            "Session Management",
+            "Static File Serving",
+            "Template Inheritance (Extends/Blocks)"
+        ]
+    })
+})
+
+app.post("/login", |req| {
+    username = ""
+    when has_key(req["form"], "username") {
+        username = req["form"]["username"]
+    }
+    
+    when len(username) > 0 {
+        # Modify session (this automatically sets the ez_session cookie)
+        req["session"]["username"] = username
+    }
+    
+    # Redirect back to home
+    give redirect("/")
+})
+
+app.post("/logout", |req| {
+    # Clear session
+    req["session"] = {}
+    give redirect("/")
+})
+
+app.get("/admin", |req| {
+    give {"status": 200, "body": "Welcome to the secret admin panel, " + req["session"]["username"] + "!"}
+})
+
+# Start the server
+app.run(8080)

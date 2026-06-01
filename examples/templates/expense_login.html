@@ -1,0 +1,34 @@
+{% extends "expense_base.html" %}
+
+{% block content %}
+<div style="max-width: 450px; margin: 4rem auto 0 auto;" class="card">
+    <h2>Login to Expense Tracker</h2>
+    
+    {% if error %}
+        <p class="status-negative" style="background: rgba(239, 68, 68, 0.1); padding: 0.75rem; border-radius: 8px;">
+            {{ error }}
+        </p>
+    {% endif %}
+    {% if message %}
+        <p class="status-positive" style="background: rgba(16, 185, 129, 0.1); padding: 0.75rem; border-radius: 8px;">
+            {{ message }}
+        </p>
+    {% endif %}
+
+    <form method="POST" action="/login">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" placeholder="Enter username" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="Enter password" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%; margin-top: 1rem;">Login</button>
+    </form>
+    
+    <p style="text-align: center; margin-top: 1.5rem; color: #94a3b8;">
+        Don't have an account? <a href="/signup" style="color: #818cf8; text-decoration: none; font-weight: 600;">Sign Up</a>
+    </p>
+</div>
+{% endblock %}

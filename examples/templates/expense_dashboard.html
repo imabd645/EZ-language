@@ -1,0 +1,212 @@
+{% extends "expense_base.html" %}
+
+{% block content %}
+<div class="grid-2">
+    <!-- Left Column: Forms -->
+    <div>
+        <!-- Add Expense Card -->
+        <div class="card">
+            <h2>Add an Expense</h2>
+            
+            {% if error %}
+                <p class="status-negative" style="background: rgba(239, 68, 68, 0.1); padding: 0.75rem; border-radius: 8px;">
+                    {{ error }}
+                </p>
+            {% endif %}
+            {% if message %}
+                <p class="status-positive" style="background: rgba(16, 185, 129, 0.1); padding: 0.75rem; border-radius: 8px;">
+                    {{ message }}
+                </p>
+            {% endif %}
+
+            <form method="POST" action="/expenses" id="expense-form">
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" id="description" name="description" placeholder="e.g., Dinner, Groceries" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="amount">Total Amount ($)</label>
+                    <input type="number" step="0.01" min="0.01" id="amount" name="amount" placeholder="0.00" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="split_type">Split Type</label>
+                    <select id="split_type" name="split_type" onchange="toggleSplitFields()">
+                        <option value="equal">Split Equally</option>
+                        <option value="custom">Split Custom Amounts</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Split Between Partners</label>
+                    <div class="checkbox-group">
+                        {% for u in users %}
+                            <div class="split-row" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="split_user_{{ u.id }}" value="1" class="split-user-checkbox" data-user-id="{{ u.id }}" checked onchange="toggleUserAmountInput(this, '{{ u.id }}')">
+                                    {{ u.name }}
+                                </label>
+                                <input type="number" step="0.01" min="0" 
+                                       id="custom_val_{{ u.id }}" 
+                                       name="custom_val_{{ u.id }}" 
+                                       placeholder="$ 0.00" 
+                                       class="custom-amount-input" 
+                                       style="display: none; width: 90px; padding: 0.4rem; font-size: 0.9rem;">
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn" style="width: 100%; margin-top: 1rem;">Add Expense</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column: Balances and Settlements -->
+    <div>
+        <!-- Net Balances -->
+        <div class="card">
+            <h2>Net Balances</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Paid</th>
+                        <th>Owed</th>
+                        <th>Net Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in balances %}
+                        <tr>
+                            <td><strong>{{ b.name }}</strong></td>
+                            <td>$ {{ b.paid }}</td>
+                            <td>$ {{ b.owed }}</td>
+                            <td class="{% if b.net >= 0 %}status-positive{% else %}status-negative{% endif %}">
+                                {% if b.net >= 0 %}+{% endif %}$ {{ b.net }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Settlements -->
+        <div class="card">
+            <h2>Suggested Settlements</h2>
+            {% if settlements %}
+                <ul style="list-style: none; padding: 0; margin: 0;">
+                    {% for s in settlements %}
+                        <li style="padding: 0.75rem; border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between;">
+                            <span>
+                                <strong style="color: #ef4444;">{{ s.debtor }}</strong> owes 
+                                <strong style="color: #10b981;">{{ s.creditor }}</strong>
+                            </span>
+                            <span style="font-weight: 700; font-size: 1.1rem; color: #818cf8;">$ {{ s.amount }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p style="color: #94a3b8; margin: 0;">All balances are fully settled! No payments needed.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- History Log -->
+<div class="card" style="margin-top: 1rem;">
+    <h2>Expense History</h2>
+    {% if expenses %}
+        <table style="font-size: 0.95rem;">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Paid By</th>
+                    <th>Total Amount</th>
+                    <th>Split Breakdown</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in expenses %}
+                    <tr>
+                        <td style="color: #94a3b8; font-size: 0.85rem;">{{ e.created_at }}</td>
+                        <td><strong>{{ e.description }}</strong></td>
+                        <td><span class="badge" style="background: rgba(129, 140, 248, 0.2);">{{ e.paid_by_name }}</span></td>
+                        <td style="font-weight: 600;">$ {{ e.amount }}</td>
+                        <td style="color: #cbd5e1;">
+                            {{ e.split_breakdown }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p style="color: #94a3b8; text-align: center; margin: 2rem 0;">No expenses logged yet. Add one above!</p>
+    {% endif %}
+</div>
+
+<script>
+function toggleSplitFields() {
+    var splitType = document.getElementById("split_type").value;
+    var inputs = document.querySelectorAll(".custom-amount-input");
+    inputs.forEach(function(input) {
+        var row = input.closest(".split-row");
+        var checkbox = row.querySelector("input[type='checkbox']");
+        if (splitType === "custom" && checkbox.checked) {
+            input.style.display = "block";
+            input.required = true;
+        } else {
+            input.style.display = "none";
+            input.required = false;
+        }
+    });
+}
+
+function toggleUserAmountInput(checkbox, userId) {
+    var splitType = document.getElementById("split_type").value;
+    var input = document.getElementById("custom_val_" + userId);
+    if (splitType === "custom" && checkbox.checked) {
+        input.style.display = "block";
+        input.required = true;
+    } else {
+        input.style.display = "none";
+        input.required = false;
+    }
+}
+
+document.getElementById("expense-form").onsubmit = function(e) {
+    var splitType = document.getElementById("split_type").value;
+    var totalAmount = parseFloat(document.getElementById("amount").value);
+    
+    // Check that at least one user is selected
+    var checkedUsers = document.querySelectorAll(".split-user-checkbox:checked");
+    if (checkedUsers.length === 0) {
+        alert("Please select at least one user to split the expense with.");
+        return false;
+    }
+    
+    if (splitType === "custom") {
+        var sum = 0.0;
+        checkedUsers.forEach(function(cb) {
+            var userId = cb.getAttribute("data-user-id");
+            var input = document.getElementById("custom_val_" + userId);
+            if (input) {
+                sum += parseFloat(input.value || 0);
+            }
+        });
+        
+        // Use a small epsilon threshold for floating point comparison
+        if (Math.abs(sum - totalAmount) > 0.02) {
+            alert("Error: The sum of custom split amounts ($" + sum.toFixed(2) + ") must equal the total amount ($" + totalAmount.toFixed(2) + ").");
+            return false;
+        }
+    }
+    return true;
+};
+
+// Run onload to sync state
+toggleSplitFields();
+</script>
+{% endblock %}

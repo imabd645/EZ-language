@@ -1,0 +1,358 @@
+use "lib/web.ez"
+use "lib/db.ez"
+
+# Initialize SQLite Database
+db = Database("expenses.db")
+db.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT)", nil)
+db.execute("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT, amount REAL, paid_by INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)", nil)
+db.execute("CREATE TABLE IF NOT EXISTS splits (id INTEGER PRIMARY KEY AUTOINCREMENT, expense_id INTEGER, user_id INTEGER, amount REAL)", nil)
+
+# Check if is_paid column exists in splits table
+tableInfo = db.query("PRAGMA table_info(splits)", nil)
+hasPaid = false
+i_t = 0
+while i_t < len(tableInfo) {
+    col = tableInfo[i_t]
+    when col["name"] == "is_paid" {
+        hasPaid = true
+    }
+    i_t = i_t + 1
+}
+when not hasPaid {
+    db.execute("ALTER TABLE splits ADD COLUMN is_paid INTEGER DEFAULT 0", nil)
+}
+# Mark existing payer splits as paid
+db.execute("UPDATE splits SET is_paid = 1 WHERE user_id = (SELECT paid_by FROM expenses WHERE expenses.id = splits.expense_id)", nil)
+
+app = WebApp()
+
+# Middleware: Authenticate Session and block access to secure routes
+app.use(|req| {
+    out "[LOG] " + req["method"] + " " + req["path"]
+    path = req["path"]
+    when path != "/login" and path != "/signup" and not startsWith(path, "/assets") {
+        when not has_key(req["session"], "username") {
+            give redirect("/login")
+        }
+    }
+    give nil
+})
+
+# Route: Login Screen
+app.get("/login", |req| {
+    when has_key(req["session"], "username") {
+        give redirect("/")
+    }
+    give render_template("examples/templates/expense_login.html", {
+        "title": "Login",
+        "current_user": nil,
+        "error": nil,
+        "message": nil
+    })
+})
+
+# Route: Handle Login Post
+app.post("/login", |req| {
+    username = ""
+    password = ""
+    when has_key(req["form"], "username") { username = req["form"]["username"] }
+    when has_key(req["form"], "password") { password = req["form"]["password"] }
+    
+    # Query credentials
+    res = db.query("SELECT * FROM users WHERE username = ? AND password = ?", [username, password])
+    
+    when len(res) > 0 {
+        # Success - Set session and redirect
+        req["session"]["username"] = username
+        give redirect("/")
+    } other {
+        give render_template("examples/templates/expense_login.html", {
+            "title": "Login",
+            "current_user": nil,
+            "error": "Invalid username or password.",
+            "message": nil
+        })
+    }
+})
+
+# Route: Signup Screen
+app.get("/signup", |req| {
+    when has_key(req["session"], "username") {
+        give redirect("/")
+    }
+    give render_template("examples/templates/expense_signup.html", {
+        "title": "Sign Up",
+        "current_user": nil,
+        "error": nil
+    })
+})
+
+# Route: Handle Signup Post
+app.post("/signup", |req| {
+    username = ""
+    password = ""
+    when has_key(req["form"], "username") { username = req["form"]["username"] }
+    when has_key(req["form"], "password") { password = req["form"]["password"] }
+    
+    when len(username) == 0 or len(password) == 0 {
+        give render_template("examples/templates/expense_signup.html", {
+            "title": "Sign Up",
+            "current_user": nil,
+            "error": "Username and password cannot be empty."
+        })
+    }
+    
+    # Check if user already exists
+    exists = db.query("SELECT id FROM users WHERE username = ?", [username])
+    when len(exists) > 0 {
+        give render_template("examples/templates/expense_signup.html", {
+            "title": "Sign Up",
+            "current_user": nil,
+            "error": "Username is already taken."
+        })
+    } other {
+        # Insert user
+        db.execute("INSERT INTO users (username, password) VALUES (?, ?)", [username, password])
+        # Auto-login after registration
+        req["session"]["username"] = username
+        give redirect("/")
+    }
+})
+
+# Route: Handle Logout Post
+app.post("/logout", |req| {
+    req["session"] = {}
+    give redirect("/login")
+})
+
+# Route: Mark Split as Paid
+app.post("/pay-split", |req| {
+    split_id = ""
+    when has_key(req["form"], "split_id") { split_id = req["form"]["split_id"] }
+    
+    when len(split_id) > 0 {
+        # Check that this split belongs to the logged in user
+        current_user = req["session"]["username"]
+        current_user_id = db.fetchScalar("SELECT id FROM users WHERE username = ?", [current_user])
+        
+        # Verify the user actually owns the split before updating
+        split_user = db.fetchScalar("SELECT user_id FROM splits WHERE id = ?", [split_id])
+        when split_user == current_user_id {
+            db.execute("UPDATE splits SET is_paid = 1 WHERE id = ?", [split_id])
+        }
+    }
+    give redirect("/")
+})
+
+# Route: Main Dashboard
+app.get("/", |req| {
+    current_user = req["session"]["username"]
+    
+    # Fetch all users
+    allUsers = db.query("SELECT id, username AS name FROM users ORDER BY username ASC", nil)
+    
+    # Fetch paid totals (unpaid splits owed to this user by others)
+    paidRes = db.query("SELECT expenses.paid_by AS id, SUM(splits.amount) AS paid FROM splits JOIN expenses ON splits.expense_id = expenses.id WHERE splits.is_paid = 0 GROUP BY expenses.paid_by", nil)
+    paidMap = {}
+    i_p = 0
+    while i_p < len(paidRes) {
+        r = paidRes[i_p]
+        paidMap[str(r["id"])] = r["paid"]
+        i_p = i_p + 1
+    }
+    
+    # Fetch owed totals (unpaid splits this user owes to others)
+    owedRes = db.query("SELECT user_id AS id, SUM(amount) AS owed FROM splits WHERE splits.is_paid = 0 GROUP BY user_id", nil)
+    owedMap = {}
+    i_o = 0
+    while i_o < len(owedRes) {
+        r = owedRes[i_o]
+        owedMap[str(r["id"])] = r["owed"]
+        i_o = i_o + 1
+    }
+    
+    # Combine into balances
+    balances = []
+    i_u = 0
+    while i_u < len(allUsers) {
+        u = allUsers[i_u]
+        uIdStr = str(u["id"])
+        
+        pVal = 0.0
+        when has_key(paidMap, uIdStr) { pVal = paidMap[uIdStr] }
+        
+        oVal = 0.0
+        when has_key(owedMap, uIdStr) { oVal = owedMap[uIdStr] }
+        
+        netVal = pVal - oVal
+        
+        push(balances, {
+            "id": u["id"],
+            "name": u["name"],
+            "paid": pVal,
+            "owed": oVal,
+            "net": netVal
+        })
+        i_u = i_u + 1
+    }
+    
+    # Compute settlements (who pays whom)
+    creditors = []
+    debtors = []
+    i_b = 0
+    while i_b < len(balances) {
+        b = balances[i_b]
+        when b["net"] > 0.01 {
+            push(creditors, { "name": b["name"], "amount": b["net"] })
+        } other when b["net"] < -0.01 {
+            push(debtors, { "name": b["name"], "amount": -b["net"] })
+        }
+        i_b = i_b + 1
+    }
+    
+    settlements = []
+    cIdx = 0
+    dIdx = 0
+    while cIdx < len(creditors) and dIdx < len(debtors) {
+        c = creditors[cIdx]
+        d = debtors[dIdx]
+        
+        amt = c["amount"]
+        when d["amount"] < amt { amt = d["amount"] }
+        
+        # Round to 2 decimal places manually
+        # E.g., multiply by 100, round to integer, divide by 100
+        dispAmt = amt
+        
+        push(settlements, {
+            "debtor": d["name"],
+            "creditor": c["name"],
+            "amount": dispAmt
+        })
+        
+        c["amount"] = c["amount"] - amt
+        d["amount"] = d["amount"] - amt
+        
+        when c["amount"] < 0.01 { cIdx = cIdx + 1 }
+        when d["amount"] < 0.01 { dIdx = dIdx + 1 }
+    }
+    
+    current_user_id = db.fetchScalar("SELECT id FROM users WHERE username = ?", [current_user])
+    
+    # Fetch History Log
+    expenses = db.query("SELECT expenses.id, expenses.description, expenses.amount, expenses.created_at, users.username AS paid_by_name FROM expenses JOIN users ON expenses.paid_by = users.id ORDER BY expenses.id DESC", nil)
+    
+    # Map splits to expenses
+    i_ex = 0
+    while i_ex < len(expenses) {
+        e = expenses[i_ex]
+        splits = db.query("SELECT splits.id AS split_id, splits.amount, splits.is_paid, splits.user_id, users.username AS user_name FROM splits JOIN users ON splits.user_id = users.id WHERE splits.expense_id = ?", [e["id"]])
+        
+        breakdown = ""
+        i_sp = 0
+        while i_sp < len(splits) {
+            s = splits[i_sp]
+            when i_sp > 0 { breakdown = breakdown + " " }
+            
+            # Start of split badge container
+            breakdown = breakdown + "<span style='display: inline-flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); padding: 0.25rem 0.5rem; border-radius: 6px; margin: 2px; font-size: 0.85rem;'>"
+            breakdown = breakdown + s["user_name"] + ": $" + str(s["amount"])
+            
+            when s["is_paid"] == 1 {
+                breakdown = breakdown + "<span style='color: #10b981; margin-left: 6px; font-weight: bold;'>✓ Paid</span>"
+            } other {
+                when s["user_id"] == current_user_id and e["paid_by_name"] != current_user {
+                    breakdown = breakdown + "<form method='POST' action='/pay-split' style='display:inline; margin: 0; margin-left: 6px;'><input type='hidden' name='split_id' value='" + str(s["split_id"]) + "'><button type='submit' class='btn' style='padding: 2px 6px; font-size: 0.75rem; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; line-height: 1;'>Pay</button></form>"
+                } other {
+                    breakdown = breakdown + "<span style='color: #ef4444; margin-left: 6px; font-weight: bold;'>✗ Unpaid</span>"
+                }
+            }
+            breakdown = breakdown + "</span>"
+            i_sp = i_sp + 1
+        }
+        e["split_breakdown"] = breakdown
+        i_ex = i_ex + 1
+    }
+    
+    give render_template("examples/templates/expense_dashboard.html", {
+        "title": "Dashboard",
+        "current_user": current_user,
+        "users": allUsers,
+        "balances": balances,
+        "settlements": settlements,
+        "expenses": expenses,
+        "error": nil,
+        "message": nil
+    })
+})
+
+# Route: Handle Adding Expense Post
+app.post("/expenses", |req| {
+    current_user = req["session"]["username"]
+    
+    description = ""
+    amount = 0.0
+    split_type = "equal"
+    
+    when has_key(req["form"], "description") { description = req["form"]["description"] }
+    when has_key(req["form"], "amount") { amount = os_call(WebFFI.atofFunc, "float", req["form"]["amount"]) }
+    when has_key(req["form"], "split_type") { split_type = req["form"]["split_type"] }
+    
+    # Get current user ID
+    paid_by = db.fetchScalar("SELECT id FROM users WHERE username = ?", [current_user])
+    
+    allUsers = db.query("SELECT id FROM users", nil)
+    
+    # Determine which users were selected
+    selectedUsers = []
+    i_u = 0
+    while i_u < len(allUsers) {
+        u = allUsers[i_u]
+        valKey = "split_user_" + str(u["id"])
+        when has_key(req["form"], valKey) and req["form"][valKey] == "1" {
+            push(selectedUsers, u["id"])
+        }
+        i_u = i_u + 1
+    }
+    
+    when len(selectedUsers) == 0 {
+        # Redirect with error if no users selected (fallback)
+        give redirect("/")
+    }
+    
+    # Insert expense record
+    db.execute("INSERT INTO expenses (description, amount, paid_by) VALUES (?, ?, ?)", [description, amount, paid_by])
+    expense_id = db.lastRowId()
+    
+    # Insert splits records
+    i_sel = 0
+    while i_sel < len(selectedUsers) {
+        uId = selectedUsers[i_sel]
+        splitAmt = 0.0
+        
+        when split_type == "equal" {
+            splitAmt = amount / len(selectedUsers)
+        } other {
+            # custom split - parse value submitted
+            valKey = "custom_val_" + str(uId)
+            when has_key(req["form"], valKey) {
+                # We can use atoi or parse manually or use FFI double parsing if needed. 
+                # Since atoiFunc is for integers, let's use it for amount or custom splits
+                # To support decimal input cleanly, let's use atoiFunc to get value (or cast it)
+                splitAmt = os_call(WebFFI.atofFunc, "float", req["form"][valKey])
+            }
+        }
+        
+        isPaidVal = 0
+        when uId == paid_by {
+            isPaidVal = 1
+        }
+        db.execute("INSERT INTO splits (expense_id, user_id, amount, is_paid) VALUES (?, ?, ?, ?)", [expense_id, uId, splitAmt, isPaidVal])
+        i_sel = i_sel + 1
+    }
+    
+    give redirect("/")
+})
+
+# Start Web Server
+app.run(8080)

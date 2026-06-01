@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Welcome, {{ user }}!</h1>
+    <p>This page is rendering natively through the <strong>EZ Web Framework</strong>.</p>
+    
+    {% if logged_in %}
+        <p style="color: #4ade80;">You are currently logged in via Session ID: {{ session_id }}</p>
+        <form method="POST" action="/logout">
+            <button type="submit" style="background: #ef4444;">Logout</button>
+        </form>
+    {% else %}
+        <p style="color: #f87171;">You are not logged in.</p>
+        <form method="POST" action="/login">
+            <input type="text" name="username" placeholder="Enter username..." required>
+            <button type="submit">Login</button>
+        </form>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>Technologies Demonstrated:</h3>
+    <ul>
+        {% for tech in tech_list %}
+            <li>{{ tech }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

@@ -10,6 +10,42 @@
 #include "GUIBuiltins.h"
 #include <thread>
 
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#define NOCOMM
+#include <windows.h>
+// The Windows COM headers define INTERFACE as a macro used for vtable
+// declarations. If it is still defined here it will corrupt any subsequent
+// reference to ValueType::INTERFACE, so we remove it unconditionally.
+#ifdef INTERFACE
+#  undef INTERFACE
+#endif
+
+// ============================================================================
+// Global Source Registry — maps filename -> vector of source lines
+// Populated by the Lexer/interpreter when loading each file so that
+// runtimeError() can print the offending source line.
+// ============================================================================
+static std::unordered_map<std::string, std::vector<std::string>> g_sourceRegistry;
+
+void EZ_RegisterSource(const std::string& filename, const std::string& source) {
+    std::vector<std::string> lines;
+    std::istringstream ss(source);
+    std::string ln;
+    while (std::getline(ss, ln)) lines.push_back(ln);
+    g_sourceRegistry[filename] = std::move(lines);
+}
+
+const std::string* EZ_GetSourceLine(const std::string& filename, int line) {
+    auto it = g_sourceRegistry.find(filename);
+    if (it == g_sourceRegistry.end()) return nullptr;
+    int idx = line - 1;
+    if (idx < 0 || idx >= (int)it->second.size()) return nullptr;
+    return &it->second[idx];
+}
+
 // ============================================================================
 // BytecodeVM Implementation
 // ============================================================================
@@ -98,6 +134,7 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     }
 
     frame.functionName = function->name;
+    frame.filename     = function->filename;
     frame.line         = 0;
     frame.localCount   = function->localCount;
     frames.push_back(frame);
@@ -1318,9 +1355,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             // this->stackTop is restored to the exact level it was at the start of the 'try' block.
             goto dispatch_start;
         }
-        // Uncaught RuntimeError: Print it
-        std::cerr << "\n[BytecodeVM] Uncaught Runtime Error: " << e.what() << std::endl;
-        printStackTrace();
+        // Uncaught RuntimeError: already printed in runtimeError()
         SYNC_IP();
     } catch (const std::exception& e) {
         if (!tryStack.empty()) {
@@ -1337,7 +1372,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
             running = true;
             goto dispatch_start;
         }
-        std::cerr << "\n[BytecodeVM] Uncaught Exception: " << e.what() << std::endl;
+        // Uncaught std exception — format like our runtime errors
+        std::string fname = frames.empty() ? "" : frames.back().filename;
+        int ln = frames.empty() ? 0 : frames.back().line;
+        std::cerr << "\nError: " << e.what() << std::endl;
+        if (ln > 0) std::cerr << "  at line " << ln;
+        if (!fname.empty()) std::cerr << " in " << fname;
+        if (ln > 0 || !fname.empty()) std::cerr << std::endl;
         printStackTrace();
         SYNC_IP();
     }
@@ -1517,6 +1558,7 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
     this->stackTop = stackTop; // Sync back to member!
 
     newFrame.functionName = bcFunc->name;
+    newFrame.filename     = bcFunc->filename;  // propagate source file
     newFrame.line         = 0;
     newFrame.localCount   = bcFunc->localCount;
     
@@ -1805,10 +1847,60 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     if (pendingException.isNil()) {
         pendingException = Value(message);
     }
-    // We no longer print immediately here to avoid garbled output for caught exceptions.
-    // Printing is handled by the uncaught catch block in run().
+
+    // Resolve the actual fault location: prefer the caller-supplied line/file,
+    // fall back to the top CallFrame's current line and filename.
+    int    faultLine = line;
+    std::string faultFile = filename;
+    if (faultLine <= 0 && !frames.empty()) {
+        faultLine = frames.back().line;
+    }
+    if (faultFile.empty() && !frames.empty()) {
+        faultFile = frames.back().filename;
+    }
+
+    // ── Print the error header ─────────────────────────────────────────────
+    // Use ANSI escapes if the terminal supports them (Windows 10+)
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD  consoleMode = 0;
+    bool   ansi = GetConsoleMode(hErr, &consoleMode) != 0;
+    if (ansi) SetConsoleMode(hErr, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+
+    auto RED    = ansi ? "\033[1;31m" : "";
+    auto YELLOW = ansi ? "\033[1;33m" : "";
+    auto CYAN   = ansi ? "\033[0;36m" : "";
+    auto BOLD   = ansi ? "\033[1m"    : "";
+    auto RESET  = ansi ? "\033[0m"    : "";
+
+    std::cerr << "\n" << RED << "Error" << RESET << ": " << BOLD << message << RESET << "\n";
+
+    // ── Location line ──────────────────────────────────────────────────────
+    if (!faultFile.empty() || faultLine > 0) {
+        std::cerr << "  " << CYAN;
+        if (!faultFile.empty()) std::cerr << faultFile;
+        if (!faultFile.empty() && faultLine > 0) std::cerr << ":";
+        if (faultLine > 0) std::cerr << faultLine;
+        std::cerr << RESET << "\n";
+    }
+
+    // ── Source snippet ─────────────────────────────────────────────────────
+    if (faultLine > 0) {
+        const std::string* srcLine = EZ_GetSourceLine(faultFile, faultLine);
+        if (srcLine) {
+            // Trim leading whitespace for display, but keep a counter for caret
+            size_t indent = srcLine->find_first_not_of(" \t");
+            if (indent == std::string::npos) indent = 0;
+            std::cerr << "  " << YELLOW << std::to_string(faultLine) << " |" << RESET << "  "
+                      << srcLine->substr(indent) << "\n";
+            std::cerr << "      " << RED << "^^^" << RESET << "\n";
+        }
+    }
+
+    // ── Stack trace ────────────────────────────────────────────────────────
+    printStackTrace();
+
     running = false;
-    throw RuntimeError(message, frames.empty() ? line : frames.back().line);
+    throw RuntimeError(message, faultLine);
 }
 
 void BytecodeVM::defineGlobal(const std::string& name, const Value& value) {
@@ -1937,7 +2029,9 @@ Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
 }
 
 void BytecodeVM::printStackTrace() const {
-    std::cerr << "Bytecode Stack Trace:" << std::endl;
+    // Collect frames innermost-first, skip duplicate <main> frames
+    struct TraceEntry { std::string func; std::string file; int line; };
+    std::vector<TraceEntry> trace;
     for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
         int currentLine = it->line;
         if (it->function && !it->function->chunk.lines.empty()) {
@@ -1947,7 +2041,25 @@ void BytecodeVM::printStackTrace() const {
                 currentLine = (int)it->function->chunk.lines[offset];
             }
         }
-        std::cerr << "  in " << it->functionName
-                  << " (line " << (currentLine > 0 ? currentLine : 0) << ")" << std::endl;
+        std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
+        trace.push_back({fn, it->filename, currentLine});
+    }
+
+    if (trace.empty()) return;
+    std::cerr << "\nTraceback (most recent call last):\n";
+    // Print outermost first (reverse of our innermost-first vector)
+    for (auto tit = trace.rbegin(); tit != trace.rend(); ++tit) {
+        std::cerr << "  File \"" << (tit->file.empty() ? "<unknown>" : tit->file)
+                  << "\", line " << (tit->line > 0 ? tit->line : 0)
+                  << ", in " << tit->func << "\n";
+        // Show source snippet if available
+        if (tit->line > 0) {
+            const std::string* srcLine = EZ_GetSourceLine(tit->file, tit->line);
+            if (srcLine) {
+                size_t indent = srcLine->find_first_not_of(" \t");
+                if (indent == std::string::npos) indent = 0;
+                std::cerr << "    " << srcLine->substr(indent) << "\n";
+            }
+        }
     }
 }

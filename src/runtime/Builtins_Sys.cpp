@@ -12,12 +12,28 @@
 #include <string>
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#define NOCOMM
 #include <windows.h>
+#include <setjmp.h>
 #include <conio.h>
 #include <shellapi.h>
-#endif
 
-#ifdef _WIN32
+static jmp_buf os_call_jmp_env;
+static LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
+    DWORD code = ExceptionInfo->ExceptionRecord->ExceptionCode;
+    if (code == EXCEPTION_ACCESS_VIOLATION ||
+        code == EXCEPTION_ILLEGAL_INSTRUCTION ||
+        code == EXCEPTION_INT_DIVIDE_BY_ZERO ||
+        code == EXCEPTION_PRIV_INSTRUCTION) {
+        longjmp(os_call_jmp_env, 1);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 static LRESULT CALLBACK EZ_ProxyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Only redirect SENT messages (WM_COMMAND, WM_NOTIFY)
     // Redirect with 0x8000 offset to avoid infinite loop when DispatchMessage calls this proxy
@@ -425,35 +441,48 @@ void registerSysBuiltins(RuntimeContext& interp) {
             size_t argc = args.size() - 2;
             std::string retType = args[1].asString();
 
-            if (retType == "float") {
-                using fFunc0 = double(*)();
-                using fFunc1 = double(*)(intptr_t);
-                using fFunc2 = double(*)(intptr_t, intptr_t);
-                using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
-                using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
+            bool crashed = false;
+            PVOID vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
+            
+            if (setjmp(os_call_jmp_env) == 0) {
+                if (retType == "float") {
+                    using fFunc0 = double(*)();
+                    using fFunc1 = double(*)(intptr_t);
+                    using fFunc2 = double(*)(intptr_t, intptr_t);
+                    using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t);
+                    using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
 
-                if (argc == 0) f_ret = ((fFunc0)funcPtr)();
-                else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
-                else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
-                else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                
-                return Value(f_ret);
+                    if (argc == 0) f_ret = ((fFunc0)funcPtr)();
+                    else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
+                    else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
+                    else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                    else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                } else {
+                    if (argc == 0) ret = ((Func0)funcPtr)();
+                    else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
+                    else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
+                    else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
+                    else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
+                    else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
+                    else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
+                    else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
+                    else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
+                    else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
+                    else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
+                    else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
+                    else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+                }
             } else {
-                if (argc == 0) ret = ((Func0)funcPtr)();
-                else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
-                else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
-                else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-                else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-                else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
-                else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
-                else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
-                else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
-                else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
-                else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
-                else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
-                else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+                crashed = true;
             }
+            RemoveVectoredExceptionHandler(vehHandler);
+
+            if (crashed) {
+                interp.runtimeError("os_call: Access violation or fatal memory fault inside external DLL.", 0, "");
+                return Value();
+            }
+            
+            if (retType == "float") return Value(f_ret);
             
             if (retType == "int" || retType == "ptr") return Value((long long)ret);
             if (retType == "string") {

@@ -1,0 +1,7 @@
+task crash() {
+    # This task will intentionally crash to demonstrate stack traces
+    out "Inside error_module: About to crash..."
+    
+    # panic() is a built-in that throws a runtime error
+    panic("Intentional crash from imported module!")
+}

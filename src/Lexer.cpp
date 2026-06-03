@@ -435,9 +435,20 @@ bool Lexer::isAlphaNumeric(char c) const {
     return isAlpha(c) || isDigit(c);
 }
 
+#include "BytecodeVM.h"
+
 void Lexer::error(const std::string& message) {
     hadError = true;
-    std::cerr << "[Line " << line << ", Col " << column << "] Error: " << message << std::endl;
+    std::cerr << "\nError: " << message << "\n"
+              << "  " << (filename.empty() ? "<unknown>" : filename)
+              << ":" << line << ":" << column << "\n\n";
+              
+    const std::string* sourceLine = EZ_GetSourceLine(filename, line);
+    if (sourceLine) {
+        std::cerr << "    " << *sourceLine << "\n";
+        std::string caret(column > 0 ? column - 1 : 0, ' ');
+        std::cerr << "    " << caret << "^\n";
+    }
 }
 
 void Lexer::scanInterpolatedString() {

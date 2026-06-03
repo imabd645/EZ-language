@@ -250,6 +250,7 @@ struct Upvalue {
 // ============================================================================
 struct BytecodeFunction {
     std::string name;
+    std::string filename;  // Source file this function was defined in
     size_t arity;
     bool isVariadic;
     Chunk chunk;
@@ -266,7 +267,7 @@ struct BytecodeFunction {
     size_t defaultParamCount;
 
     BytecodeFunction(const std::string& name, size_t arity)
-        : name(name), arity(arity), isVariadic(false),
+        : name(name), filename(""), arity(arity), isVariadic(false),
           upvalueCount(0), localCount(0), defaultParamCount(0) {}
 };
 

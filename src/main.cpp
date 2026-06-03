@@ -9,6 +9,7 @@
 #include "Parser.h"
 #include "BytecodeInterpreter.h"
 #include "BytecodeCompiler.h"
+#include "BytecodeVM.h"
 #include "PackageManager.h"
 #include <windows.h>
 #include <cstdint>
@@ -42,6 +43,9 @@ static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
 }
 
 void runFromSource(const std::string& source, const std::string& path) {
+    // Register source for error reporting (line snippets)
+    EZ_RegisterSource(path, source);
+
     Lexer lexer(source, path);
     std::vector<Token> tokens = lexer.tokenize();
     
@@ -62,9 +66,7 @@ void runFromSource(const std::string& source, const std::string& path) {
     try {
         interpreter.interpret(statements);
     } catch (const RuntimeError& e) {
-        // Some errors are printed by Interpreter::runtimeError, others (like undefined vars) 
-        // are thrown directly from Environment/Builtins. We ensure it's always visible.
-        std::cerr << "Fatal Error: " << e.what() << std::endl;
+        // runtimeError() already printed the formatted error + stack trace
         exit(70); 
     } catch (const std::exception& e) {
         std::cerr << "Internal Error: " << e.what() << std::endl;

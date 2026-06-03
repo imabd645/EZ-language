@@ -56,6 +56,7 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     result.success = true;
     result.mainFunction = current->function;
     result.mainFunction->localCount = current->maxLocals;
+    result.mainFunction->filename = currentFile;  // propagate for stack traces
     // compiledFunctions was populated as inner functions were compiled;
     // add main last so indices assigned during compilation are stable.
     compiledFunctions.push_back(current->function);
@@ -128,7 +129,8 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
 
     BytecodeFunctionPtr result = current->function;
     result->localCount = current->maxLocals;
-    
+    // Propagate the source filename so stack traces can show which file this function is from
+    result->filename = currentFile;
 
     // Register this function in compiledFunctions so the VM can find it.
     // The index assigned here is what CLOSURE will use.
@@ -1029,6 +1031,12 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         source = buffer.str();
     }
     
+    // Register the module source so runtimeError() can show snippets from it
+    {
+        extern void EZ_RegisterSource(const std::string&, const std::string&);
+        EZ_RegisterSource(absolutePath, source);
+    }
+
     // Compile the imported file
     Lexer lexer(source, absolutePath);
     auto tokens = lexer.tokenize();

@@ -84,15 +84,30 @@ void Parser::consumeNewlines() {
     skipNewlines();
 }
 
+#include "BytecodeVM.h"
+
 void Parser::error(const Token& token, const std::string& message) {
     hadError = true;
-    std::cerr << "[" << token.filename << ":" << token.line << "] Error";
     if (token.type == TokenType::END_OF_FILE) {
-        std::cerr << " at end";
+        std::cerr << "\nError: " << message << " (at end of file)\n"
+                  << "  " << (token.filename.empty() ? "<unknown>" : token.filename)
+                  << ":" << token.line << "\n\n";
     } else {
-        std::cerr << " at '" << token.lexeme << "'";
+        std::cerr << "\nError: " << message << "\n"
+                  << "  " << (token.filename.empty() ? "<unknown>" : token.filename)
+                  << ":" << token.line << ":" << token.column << " near '" << token.lexeme << "'\n\n";
     }
-    std::cerr << ": " << message << std::endl;
+    
+    const std::string* sourceLine = EZ_GetSourceLine(token.filename, token.line);
+    if (sourceLine) {
+        std::cerr << "    " << *sourceLine << "\n";
+        std::string caret(token.column > 0 ? token.column - 1 : 0, ' ');
+        // If it's EOF, we can just point to the end of the line
+        if (token.type == TokenType::END_OF_FILE) {
+            caret = std::string(sourceLine->length(), ' ');
+        }
+        std::cerr << "    " << caret << "^\n";
+    }
 }
 
 void Parser::synchronize() {

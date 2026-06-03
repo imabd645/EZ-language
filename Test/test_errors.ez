@@ -1,40 +1,26 @@
-// Demonstration of Standard Built-In Error Types
+use "error_module.ez" as errMod
 
-out "=== EZ Built-in Exceptions ==="
-
-task fetchResource(url) {
-    when len(url) == 0 {
-        throw  ValueError("URL cannot be empty.")
-    }
-    when str(url[0]) != "h" {
-        throw NetworkError("Connection refused by " + url)
-    }
-    out "SUCCESS: Fetched " + url
+task level3() {
+    out "Executing level 3... Calling imported module."
+    
+    # This call will crash inside the imported module, 
+    # testing cross-file stack tracing!
+    errMod.crash()
 }
 
-// 1. Test ValueError
-try {
-    fetchResource("")
-} catch (ValueError e) {
-    out "CAUGHT EXPECTED: " + str(e)
-} catch (Error e) {
-    out "FAIL: Caught by base Error block instead of ValueError: " + str(e)
+task level2() {
+    out "Executing level 2..."
+    level3()
 }
 
-// 2. Test NetworkError
-try {
-    fetchResource("ftp://myserver.com")
-} catch (NetworkError e) {
-    out "CAUGHT EXPECTED: " + str(e)
-} catch e {
-    out "FAIL: Caught by untyped block instead of NetworkError."
+task level1() {
+    out "Executing level 1..."
+    level2()
 }
 
-// 3. Test Base IOError inheritance
-try {
-    throw  IOError("File 'config.json' missing or corrupt.")
-} catch (Error e) {
-    out "CAUGHT EXPECTED by Base Class (Error fallback): " + str(e)
-}
+out "============================================="
+out "      EZ Error Handling & Trace Test         "
+out "============================================="
 
-out "\nAll tests passed! Exceptions are fully object-oriented natively!"
+# Start the chain of function calls
+level1()

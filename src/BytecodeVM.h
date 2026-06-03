@@ -16,6 +16,12 @@
 // Bytecode Virtual Machine - Stack-based execution
 // ============================================================================
 
+// Register a source file's text into the global source registry so that
+// runtimeError() can display the offending source line as a snippet.
+// Source registry functions
+void EZ_RegisterSource(const std::string& filename, const std::string& source);
+const std::string* EZ_GetSourceLine(const std::string& filename, int line);
+
 class BytecodeVM : public RuntimeContext {
 public:
     bool traceExecution = false;
@@ -69,6 +75,7 @@ private:
         Value*         slots; // base stack pointer (arg0 is slots[0])
         size_t         localCount;
         std::string    functionName;
+        std::string    filename;   // Source file this frame belongs to
         int            line;
 
         const Chunk& chunk() const { return function->chunk; }

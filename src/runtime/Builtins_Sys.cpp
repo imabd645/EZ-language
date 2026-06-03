@@ -60,6 +60,19 @@ void registerSysBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
+    interp.defineGlobal("Exception", Value::makeNativeFunction("Exception", -1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            std::string message = args.size() > 0 ? args[0].toString() : "Unknown Error";
+            double code = args.size() > 1 && args[1].isNumber() ? args[1].asNumber() : 0.0;
+            
+            auto dict = std::make_shared<EZDictionary>();
+            dict->map["message"] = Value(message);
+            dict->map["code"] = Value(code);
+            dict->map["stackTrace"] = Value("");
+            
+            return Value(dict);
+        }));
+
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();

@@ -234,6 +234,10 @@ struct Local {
     bool isCaptured;     // Closed over by closure
     bool isConst;        // Const variable
     bool isStackResident; // True if it occupies a slot on the execution stack (needs POP)
+    
+    // For debug tracking
+    size_t startPC;
+    size_t localVarInfoIdx;
 };
 
 // ============================================================================
@@ -243,6 +247,16 @@ struct Upvalue {
     enum class Type { LOCAL, UPVALUE };
     Type type;
     size_t index;        // Local slot or upvalue index
+};
+
+// ============================================================================
+// Local Variable Debug Info (runtime tracking)
+// ============================================================================
+struct LocalVarInfo {
+    std::string name;
+    size_t slot;
+    size_t startPC;
+    size_t endPC;
 };
 
 // ============================================================================
@@ -257,6 +271,9 @@ struct BytecodeFunction {
     std::vector<Upvalue> upvalues;
     size_t upvalueCount;
     size_t localCount;
+    
+    // Debug info for crash dumps
+    std::vector<LocalVarInfo> localVars;
     
     // Nested compiled functions referenced by CLOSURE opcodes.
     // CLOSURE operand N → nestedFunctions[N].

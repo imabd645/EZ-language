@@ -1401,6 +1401,11 @@ void BytecodeCompiler::endScope() {
 
     while (!current->locals.empty() &&
            current->locals.back().depth > current->scopeDepth) {
+           
+        // Update debug info endPC
+        size_t debugIdx = current->locals.back().localVarInfoIdx;
+        current->function->localVars[debugIdx].endPC = currentChunk().code.size();
+           
         if (current->locals.back().isCaptured) {
             emitOp(OpCode::CLOSE_UPVALUE);
             emitByte(static_cast<uint8_t>(current->locals.size() - 1));
@@ -1419,6 +1424,19 @@ size_t BytecodeCompiler::addLocal(const std::string& name, bool isConst) {
     local.isCaptured = false;
     local.isConst = isConst;
     local.isStackResident = true; // Default to true (VarDecl, loop vars, params)
+    
+    local.startPC = currentChunk().code.size();
+    
+    // Add to function's debug info
+    LocalVarInfo info;
+    info.name = name;
+    info.slot = current->locals.size();
+    info.startPC = local.startPC;
+    info.endPC = SIZE_MAX; // Will be updated on endScope, SIZE_MAX if it lives until function return
+    
+    current->function->localVars.push_back(info);
+    local.localVarInfoIdx = current->function->localVars.size() - 1;
+    
     current->locals.push_back(local);
     if (current->locals.size() > current->maxLocals) {
         current->maxLocals = current->locals.size();

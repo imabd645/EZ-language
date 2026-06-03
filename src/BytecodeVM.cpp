@@ -1299,6 +1299,29 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(THROW) {
                     {
                         Value exc = *(--stackTop);
+                        
+                        if (exc.isDictionary()) {
+                            auto dict = exc.asDictionaryPtr();
+                            if (dict->map.count("stackTrace")) {
+                                std::string st = "";
+                                for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+                                    int currentLine = it->line;
+                                    if (it->function && !it->function->chunk.lines.empty()) {
+                                        size_t offset = (size_t)(it->ip - it->function->chunk.code.data());
+                                        if (offset > 0) offset--;
+                                        if (offset < it->function->chunk.lines.size()) {
+                                            currentLine = (int)it->function->chunk.lines[offset];
+                                        }
+                                    }
+                                    std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
+                                    st += "  File \"" + (it->filename.empty() ? "<unknown>" : it->filename) +
+                                          "\", line " + std::to_string(currentLine) +
+                                          ", in " + fn + "\n";
+                                }
+                                dict->map["stackTrace"] = Value(st);
+                            }
+                        }
+                        
                         pendingException = exc;
                         if (!tryStack.empty()) {
                             TryBlock tb = tryStack.back(); tryStack.pop_back();
@@ -1312,7 +1335,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = exc;
                         } else {
                             SYNC_IP();
-                            runtimeError("Uncaught exception: " + exc.toString());
+                            if (exc.isDictionary() && exc.asDictionaryPtr()->map.count("message")) {
+                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->map["message"].toString());
+                            } else {
+                                runtimeError("Uncaught exception: " + exc.toString());
+                            }
                             return;
                         }
                     }
@@ -2030,19 +2057,39 @@ Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
 
 void BytecodeVM::printStackTrace() const {
     // Collect frames innermost-first, skip duplicate <main> frames
-    struct TraceEntry { std::string func; std::string file; int line; };
+    struct TraceEntry { 
+        std::string func; 
+        std::string file; 
+        int line; 
+        std::vector<std::pair<std::string, std::string>> locals;
+    };
     std::vector<TraceEntry> trace;
     for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
         int currentLine = it->line;
+        size_t pc = 0;
         if (it->function && !it->function->chunk.lines.empty()) {
             size_t offset = (size_t)(it->ip - it->function->chunk.code.data());
             if (offset > 0) offset--;
+            pc = offset;
             if (offset < it->function->chunk.lines.size()) {
                 currentLine = (int)it->function->chunk.lines[offset];
             }
         }
+        
+        std::vector<std::pair<std::string, std::string>> activeLocals;
+        if (it->function) {
+            for (const auto& var : it->function->localVars) {
+                if (var.startPC <= pc && pc <= var.endPC) {
+                    // Make sure the slot is within the currently accessible stack frame
+                    if (var.slot < (size_t)(stackTop - it->slots)) {
+                        activeLocals.push_back({var.name, (it->slots + var.slot)->toString()});
+                    }
+                }
+            }
+        }
+        
         std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
-        trace.push_back({fn, it->filename, currentLine});
+        trace.push_back({fn, it->filename, currentLine, activeLocals});
     }
 
     if (trace.empty()) return;
@@ -2059,6 +2106,13 @@ void BytecodeVM::printStackTrace() const {
                 size_t indent = srcLine->find_first_not_of(" \t");
                 if (indent == std::string::npos) indent = 0;
                 std::cerr << "    " << srcLine->substr(indent) << "\n";
+            }
+        }
+        // Dump local variables
+        if (!tit->locals.empty()) {
+            std::cerr << "    Local variables:\n";
+            for (const auto& local : tit->locals) {
+                std::cerr << "      " << local.first << " = " << local.second << "\n";
             }
         }
     }

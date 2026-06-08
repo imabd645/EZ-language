@@ -27,6 +27,8 @@ struct GUIState {
     std::map<HWND, Value> callbacks;      // Legacy callbacks
     std::map<HWND, std::map<std::string, Value>> eventCallbacks; // New multi-event system
     std::map<HWND, WidgetStyle> styles;
+    std::map<HWND, HDC> memDCs;          // Double buffering
+    std::map<HWND, HBITMAP> memBitmaps;  // Double buffering
     std::map<UINT_PTR, Value> timerCallbacks;
     std::map<HWND, std::vector<UINT_PTR>> hwndTimers; // Track timers per window
     std::map<int, Value> menuCallbacks;
@@ -1127,27 +1129,71 @@ void registerGUIBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("gui_is_key_down", Value::makeNativeFunction("gui_is_key_down", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value { return Value((double)((GetAsyncKeyState((int)vNum(args[0])) & 0x8000) ? 1 : 0)); }));
-    interp.defineGlobal("gui_draw_rect", Value::makeNativeFunction("gui_draw_rect", 8,
+    auto getDCForDraw = [](HWND hwnd, bool& isMem) -> HDC {
+        if (g_gui.memDCs.count(hwnd)) { isMem = true; return g_gui.memDCs[hwnd]; }
+        isMem = false; return GetDC(hwnd);
+    };
+    auto releaseDCForDraw = [](HWND hwnd, HDC hdc, bool isMem) {
+        if (!isMem) ReleaseDC(hwnd, hdc);
+    };
+
+    interp.defineGlobal("gui_begin_draw", Value::makeNativeFunction("gui_begin_draw", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            if (!g_gui.memDCs.count(hwnd)) {
+                HDC hdcWin = GetDC(hwnd);
+                HDC hdcMem = CreateCompatibleDC(hdcWin);
+                RECT rc; GetClientRect(hwnd, &rc);
+                HBITMAP hBmp = CreateCompatibleBitmap(hdcWin, rc.right, rc.bottom);
+                SelectObject(hdcMem, hBmp);
+                g_gui.memDCs[hwnd] = hdcMem;
+                g_gui.memBitmaps[hwnd] = hBmp;
+                ReleaseDC(hwnd, hdcWin);
+            }
+            return Value();
+        }));
+
+    interp.defineGlobal("gui_end_draw", Value::makeNativeFunction("gui_end_draw", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            if (g_gui.memDCs.count(hwnd)) {
+                HDC hdcWin = GetDC(hwnd);
+                HDC hdcMem = g_gui.memDCs[hwnd];
+                RECT rc; GetClientRect(hwnd, &rc);
+                BitBlt(hdcWin, 0, 0, rc.right, rc.bottom, hdcMem, 0, 0, SRCCOPY);
+                DeleteDC(hdcMem);
+                DeleteObject(g_gui.memBitmaps[hwnd]);
+                g_gui.memDCs.erase(hwnd);
+                g_gui.memBitmaps.erase(hwnd);
+                ReleaseDC(hwnd, hdcWin);
+            }
+            return Value();
+        }));
+
+    interp.defineGlobal("gui_draw_rect", Value::makeNativeFunction("gui_draw_rect", 8,
+        [getDCForDraw, releaseDCForDraw](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])]; int x = (int)vNum(args[1]), y = (int)vNum(args[2]), w = (int)vNum(args[3]), h = (int)vNum(args[4]);
             COLORREF color = RGB((int)vNum(args[5]), (int)vNum(args[6]), (int)vNum(args[7]));
-            HDC hdc = GetDC(hwnd); HBRUSH brush = CreateSolidBrush(color); RECT rect = { x, y, x + w, y + h }; FillRect(hdc, &rect, brush);
-            DeleteObject(brush); ReleaseDC(hwnd, hdc); return Value();
+            bool isMem = false; HDC hdc = getDCForDraw(hwnd, isMem);
+            HBRUSH brush = CreateSolidBrush(color); RECT rect = { x, y, x + w, y + h }; FillRect(hdc, &rect, brush);
+            DeleteObject(brush); releaseDCForDraw(hwnd, hdc, isMem); return Value();
         }));
     interp.defineGlobal("gui_draw_circle", Value::makeNativeFunction("gui_draw_circle", 7,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+        [getDCForDraw, releaseDCForDraw](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])]; int x = (int)vNum(args[1]), y = (int)vNum(args[2]), radius = (int)vNum(args[3]);
             COLORREF color = RGB((int)vNum(args[4]), (int)vNum(args[5]), (int)vNum(args[6]));
-            HDC hdc = GetDC(hwnd); HBRUSH brush = CreateSolidBrush(color); HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, brush);
+            bool isMem = false; HDC hdc = getDCForDraw(hwnd, isMem);
+            HBRUSH brush = CreateSolidBrush(color); HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, brush);
             HPEN pen = CreatePen(PS_SOLID, 1, color); HPEN oldPen = (HPEN)SelectObject(hdc, pen);
             Ellipse(hdc, x - radius, y - radius, x + radius, y + radius);
-            SelectObject(hdc, oldBrush); DeleteObject(brush); SelectObject(hdc, oldPen); DeleteObject(pen); ReleaseDC(hwnd, hdc); return Value();
+            SelectObject(hdc, oldBrush); DeleteObject(brush); SelectObject(hdc, oldPen); DeleteObject(pen); releaseDCForDraw(hwnd, hdc, isMem); return Value();
         }));
     interp.defineGlobal("gui_clear", Value::makeNativeFunction("gui_clear", 4,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+        [getDCForDraw, releaseDCForDraw](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])]; COLORREF color = RGB((int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]));
-            HDC hdc = GetDC(hwnd); RECT rect; GetClientRect(hwnd, &rect); HBRUSH brush = CreateSolidBrush(color);
-            FillRect(hdc, &rect, brush); DeleteObject(brush); ReleaseDC(hwnd, hdc); return Value();
+            bool isMem = false; HDC hdc = getDCForDraw(hwnd, isMem);
+            RECT rect; GetClientRect(hwnd, &rect); HBRUSH brush = CreateSolidBrush(color);
+            FillRect(hdc, &rect, brush); DeleteObject(brush); releaseDCForDraw(hwnd, hdc, isMem); return Value();
         }));
     interp.defineGlobal("gui_get_client_size", Value::makeNativeFunction("gui_get_client_size", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -1155,14 +1201,14 @@ void registerGUIBuiltins(RuntimeContext& interp) {
             return Value::makeArray({ Value((double)rect.right), Value((double)rect.bottom) });
         }));
     interp.defineGlobal("gui_draw_text", Value::makeNativeFunction("gui_draw_text", 8,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+        [getDCForDraw, releaseDCForDraw](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])]; std::string text = vStr(args[1]);
             int x = (int)vNum(args[2]), y = (int)vNum(args[3]), size = (int)vNum(args[4]);
             COLORREF color = RGB((int)vNum(args[5]), (int)vNum(args[6]), (int)vNum(args[7]));
-            HDC hdc = GetDC(hwnd);
+            bool isMem = false; HDC hdc = getDCForDraw(hwnd, isMem);
             HFONT hFont = CreateFont(-(int)size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, "Segoe UI");
             HFONT oldFont = (HFONT)SelectObject(hdc, hFont); SetTextColor(hdc, color); SetBkMode(hdc, TRANSPARENT);
             TextOut(hdc, x, y, text.c_str(), (int)text.length());
-            SelectObject(hdc, oldFont); DeleteObject(hFont); ReleaseDC(hwnd, hdc); return Value();
+            SelectObject(hdc, oldFont); DeleteObject(hFont); releaseDCForDraw(hwnd, hdc, isMem); return Value();
         }));
 }

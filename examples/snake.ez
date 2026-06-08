@@ -1,0 +1,251 @@
+use "game"
+
+WIDTH = 600
+HEIGHT = 600
+CELL_SIZE = 20
+
+app = createGame("EZ Snake Pro 🐍", WIDTH, HEIGHT)
+app.setFPS(60)
+
+# --- Game State ---
+# Grid: dynamically calculated based on current window size
+GRID_W = WIDTH / CELL_SIZE
+GRID_H = HEIGHT / CELL_SIZE
+
+# Snake is a list of [x, y] coordinates. Head is index 0.
+snake = []
+snakeDirX = 1
+snakeDirY = 0
+
+# Input buffering to prevent turning backwards in a single tick
+nextDirX = 1
+nextDirY = 0
+
+# Apple
+appleX = 15
+appleY = 15
+
+# Game Stats
+score = 0
+highScore = 0
+gameOver = false
+
+# Timing (Snake moves every N frames for that classic grid feel)
+moveTimer = 0
+moveDelay = 6 # Lower is faster
+
+# --- Core Mechanics ---
+task resetGame() {
+    # Start in the middle
+    sx = GRID_W / 2
+    sy = GRID_H / 2
+    
+    snake = [
+        [sx, sy],
+        [sx - 1, sy],
+        [sx - 2, sy]
+    ]
+    
+    snakeDirX = 1
+    snakeDirY = 0
+    nextDirX = 1
+    nextDirY = 0
+    
+    score = 0
+    gameOver = false
+    moveTimer = 0
+    
+    spawnApple()
+}
+
+task spawnApple() {
+    valid = false
+    # Loop until we find an empty spot
+    while true {
+        valid = true
+        appleX = floor(clock() % GRID_W)
+        appleY = floor((clock() / 13) % GRID_H)
+        
+        # Make sure it's not on the snake
+        get segment in snake {
+            when appleX == segment[0] and appleY == segment[1] {
+                valid = false
+            }
+        }
+        
+        when valid { escape }
+    }
+}
+
+resetGame()
+
+# --- Physics & Logic ---
+app.onUpdateCall(|| {
+    when gameOver {
+        when app.isKeyDown(KEYS.SPACE) {
+            resetGame()
+        }
+        give false
+    }
+
+    # Input handling (Buffering ensures we don't instantly suicide by turning 180)
+    when (app.isKeyDown(KEYS.UP) or app.isKeyDown(KEYS.W)) and snakeDirY != 1 {
+        nextDirX = 0
+        nextDirY = -1
+    }
+    when (app.isKeyDown(KEYS.DOWN) or app.isKeyDown(KEYS.S)) and snakeDirY != -1 {
+        nextDirX = 0
+        nextDirY = 1
+    }
+    when (app.isKeyDown(KEYS.LEFT) or app.isKeyDown(KEYS.A)) and snakeDirX != 1 {
+        nextDirX = -1
+        nextDirY = 0
+    }
+    when (app.isKeyDown(KEYS.RIGHT) or app.isKeyDown(KEYS.D)) and snakeDirX != -1 {
+        nextDirX = 1
+        nextDirY = 0
+    }
+
+    # Update dynamic grid size
+    winSize = app.getSize()
+    curW = winSize[0]
+    curH = winSize[1]
+    GRID_W = curW / CELL_SIZE
+    GRID_H = curH / CELL_SIZE
+
+    # Move snake based on timer
+    moveTimer = moveTimer + 1
+    when moveTimer >= moveDelay {
+        moveTimer = 0
+        
+        # Apply buffered direction
+        snakeDirX = nextDirX
+        snakeDirY = nextDirY
+
+        headX = snake[0][0]
+        headY = snake[0][1]
+        
+        # Calculate new head position
+        newHeadX = headX + snakeDirX
+        newHeadY = headY + snakeDirY
+
+        # 1. Wall Collision (Game Over)
+        when newHeadX < 0 or newHeadX >= GRID_W or newHeadY < 0 or newHeadY >= GRID_H {
+            gameOver = true
+            when score > highScore { highScore = score }
+            give false
+        }
+
+        # 2. Self Collision (Game Over)
+        get segment in snake {
+            when newHeadX == segment[0] and newHeadY == segment[1] {
+                gameOver = true
+                when score > highScore { highScore = score }
+                give false
+            }
+        }
+
+        # Insert new head at the beginning
+        insert(snake, 0, [newHeadX, newHeadY])
+
+        # 3. Apple Collision
+        when newHeadX == appleX and newHeadY == appleY {
+            score = score + 10
+            spawnApple()
+            
+            # Speed up the snake slightly as it gets longer
+            when score % 50 == 0 and moveDelay > 3 {
+                moveDelay = moveDelay - 1
+            }
+        } other {
+            # Didn't eat, remove the tail end
+            pop(snake)
+        }
+    }
+})
+
+# --- Graphics ---
+app.onDrawCall(|| {
+    # 1. Background (Dark Grid)
+    app.clear(18, 18, 22)
+    
+    winSize = app.getSize()
+    curW = winSize[0]
+    curH = winSize[1]
+    
+    # Draw Grid Lines
+    i = 0
+    while i <= GRID_W {
+        app.drawRect(i * CELL_SIZE, 0, 1, curH, 40, 40, 50)
+        i = i + 1
+    }
+    i = 0
+    while i <= GRID_H {
+        app.drawRect(0, i * CELL_SIZE, curW, 1, 40, 40, 50)
+        i = i + 1
+    }
+    
+    # 2. Draw Apple (Glowing Red)
+    ax = appleX * CELL_SIZE
+    ay = appleY * CELL_SIZE
+    # Apple glow
+    app.drawCircle(ax + CELL_SIZE/2, ay + CELL_SIZE/2, CELL_SIZE/2 + 2, 255, 50, 50)
+    # Apple core
+    app.drawCircle(ax + CELL_SIZE/2, ay + CELL_SIZE/2, CELL_SIZE/2 - 2, 255, 100, 100)
+    
+    # 3. Draw Snake (Neon Green)
+    i = 0
+    get segment in snake {
+        px = segment[0] * CELL_SIZE
+        py = segment[1] * CELL_SIZE
+        
+        when i == 0 {
+            # Draw Head
+            app.drawRect(px, py, CELL_SIZE, CELL_SIZE, 0, 255, 100)
+            # Eyes based on direction
+            eyeSize = 4
+            when snakeDirX == 1 { # Right
+                app.drawRect(px + 12, py + 4, eyeSize, eyeSize, 0, 0, 0)
+                app.drawRect(px + 12, py + 12, eyeSize, eyeSize, 0, 0, 0)
+            }
+            when snakeDirX == -1 { # Left
+                app.drawRect(px + 4, py + 4, eyeSize, eyeSize, 0, 0, 0)
+                app.drawRect(px + 4, py + 12, eyeSize, eyeSize, 0, 0, 0)
+            }
+            when snakeDirY == 1 { # Down
+                app.drawRect(px + 4, py + 12, eyeSize, eyeSize, 0, 0, 0)
+                app.drawRect(px + 12, py + 12, eyeSize, eyeSize, 0, 0, 0)
+            }
+            when snakeDirY == -1 { # Up
+                app.drawRect(px + 4, py + 4, eyeSize, eyeSize, 0, 0, 0)
+                app.drawRect(px + 12, py + 4, eyeSize, eyeSize, 0, 0, 0)
+            }
+        } other {
+            # Draw Body - Slight gradient or just solid
+            shade = 255 - (i * 2)
+            when shade < 100 { shade = 100 }
+            
+            # Draw slightly smaller body chunks for a jointed look
+            app.drawRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2, 0, shade, 50)
+        }
+        i = i + 1
+    }
+
+    # 4. HUD
+    # Top Bar
+    app.drawRect(0, 0, curW, 30, 30, 30, 40)
+    app.drawText("SCORE: " + str(score), 10, 5, 20, 255, 255, 255)
+    app.drawText("HIGH: " + str(highScore), curW - 120, 5, 20, 255, 215, 0)
+
+    # 5. Game Over Overlay
+    when gameOver {
+        # Dimming effect
+        app.drawRect(0, 0, curW, curH, 0, 0, 0) # Fake alpha dim by using dark color
+        app.drawRect(curW/2 - 160, curH/2 - 80, 320, 160, 20, 20, 30)
+        app.drawText("GAME OVER", curW/2 - 95, curH/2 - 50, 35, 255, 50, 50)
+        app.drawText("Final Score: " + str(score), curW/2 - 70, curH/2, 20, 255, 255, 255)
+        app.drawText("Press SPACE to Play Again", curW/2 - 125, curH/2 + 40, 20, 150, 255, 150)
+    }
+})
+
+app.run()

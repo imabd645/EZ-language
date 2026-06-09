@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <map>
+#include <curl/curl.h>
 
 namespace fs = std::filesystem;
 
@@ -36,8 +37,23 @@ private:
     std::unordered_map<std::string, Package> installedPackages;
     
     bool downloadFile(const std::string& url, const std::string& outputPath) {
-        std::string cmd = "curl -L -o \"" + outputPath + "\" \"" + url + "\" > nul 2>&1";
-        return system(cmd.c_str()) == 0;
+        CURL* curl = curl_easy_init();
+        if (!curl) return false;
+        FILE* fp = fopen(outputPath.c_str(), "wb");
+        if (!fp) {
+            curl_easy_cleanup(curl);
+            return false;
+        }
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+        CURLcode res = curl_easy_perform(curl);
+        fclose(fp);
+        curl_easy_cleanup(curl);
+        return res == CURLE_OK;
     }
     
     // Extract using system tar

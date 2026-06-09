@@ -1,0 +1,37 @@
+print("=== Testing SSL ===")
+print("Running secure http_get (expected to fail if no CA bundle is present on this machine)...")
+try {
+    response = http_get("https://google.com")
+    print("http_get response length: " + toString(length(response)))
+} catch e {
+    print("Caught expected SSL error: " + e)
+}
+
+print("\nRunning insecure fetch...")
+secure_opts = {}
+secure_opts["insecure"] = true
+secure_opts["method"] = "GET"
+fetch_res = await fetch("https://google.com", secure_opts)
+print("fetch response length: " + toString(length(fetch_res)))
+
+print("\n=== Testing os_call Exception Handling ===")
+try {
+    result = os_call(0, "int")
+    if (result == nil) {
+        print("os_call correctly returned nil/error on null pointer")
+    }
+} catch e {
+    print("Caught os_call error: " + e)
+}
+
+print("\n=== Testing GC ===")
+task make_cycle() {
+    a = {}
+    b = {}
+    a["ref"] = b
+    b["ref"] = a
+}
+make_cycle()
+make_cycle()
+gc()
+print("GC executed without crash!")

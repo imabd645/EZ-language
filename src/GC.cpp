@@ -145,6 +145,7 @@ void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
     for (GCObject* cand : toClear) {
         if (stillValid.count(cand)) {
             cand->gc_clear();
+            unregisterObject(cand);
         }
     }
 

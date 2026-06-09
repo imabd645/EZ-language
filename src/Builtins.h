@@ -12,7 +12,6 @@ void registerMathBuiltins(RuntimeContext& interp);
 void registerStringBuiltins(RuntimeContext& interp);
 void registerDataBuiltins(RuntimeContext& interp);
 void registerSysBuiltins(RuntimeContext& interp);
-void registerPDFBuiltins(RuntimeContext& interp);
 void registerBufferBuiltins(RuntimeContext& interp);
 void registerConcurrencyBuiltins(RuntimeContext& interp);
 

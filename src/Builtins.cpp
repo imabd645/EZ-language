@@ -7,7 +7,6 @@ void registerBuiltins(RuntimeContext& interp) {
     registerStringBuiltins(interp);
     registerDataBuiltins(interp);
     registerSysBuiltins(interp);
-    registerPDFBuiltins(interp);
     registerBufferBuiltins(interp);
     registerConcurrencyBuiltins(interp);
 }

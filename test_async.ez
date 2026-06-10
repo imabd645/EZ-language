@@ -1,0 +1,8 @@
+print("Testing background dictionary allocation...")
+task f() {
+    print("Inside task")
+    return {}
+}
+fut = async(f)
+res = await(fut)
+print("Finished")

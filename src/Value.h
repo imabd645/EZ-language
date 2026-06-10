@@ -14,6 +14,10 @@
 #include "AST.h"
 #include "GCObject.h"
 
+// Forward-declare EZFuture (defined in EZFuture.h / EZFuture.cpp)
+// Only files that actually construct or await futures need to include EZFuture.h.
+struct EZFuture;
+
 class RuntimeContext;
 class Environment;
 struct Value;
@@ -66,7 +70,7 @@ struct Value {
     using ClassPtr = std::shared_ptr<EZClass>;
     using InstancePtr = std::shared_ptr<EZInstance>;
     using DictionaryPtr = std::shared_ptr<EZDictionary>;
-    using FuturePtr = std::shared_ptr<std::shared_future<Value>>;
+    using FuturePtr = std::shared_ptr<EZFuture>;
     using SuperPtr = std::shared_ptr<EZSuper>;
     using BufferPtr = std::shared_ptr<EZBuffer>;
     using MutexPtr = std::shared_ptr<EZMutex>;
@@ -239,7 +243,7 @@ struct Value {
                               bool variadic = false);
     static Value makeNativeFunction(const std::string& name, int arity, NativeFn fn);
     static Value makeDictionary();
-    static Value makeFuture(std::shared_future<Value> fut);
+    static Value makeFuture(std::shared_ptr<EZFuture> fut);
     static Value makeSuper(InstancePtr instance, ClassPtr parentKlass);
     static Value makeClosure(ClosureValPtr closure);
 };
@@ -531,7 +535,7 @@ inline Value Value::makeNativeFunction(const std::string& name, int arity, Nativ
 
 inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionary>()); }
 inline Value Value::makeSuper(InstancePtr instance, ClassPtr parentKlass) { return Value(std::make_shared<EZSuper>(instance, parentKlass)); }
-inline Value Value::makeFuture(std::shared_future<Value> fut) { return Value(std::make_shared<std::shared_future<Value>>(fut)); }
+inline Value Value::makeFuture(std::shared_ptr<EZFuture> fut) { return Value(fut); }
 inline Value Value::makeClosure(ClosureValPtr closure) { return Value(closure); }
 
 #endif // VALUE_H

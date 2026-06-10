@@ -22,6 +22,10 @@
 #include <conio.h>
 #include <shellapi.h>
 
+// Include EZFuture (Windows-native future, must be after windows.h)
+#define EZFUTURE_IMPL
+#include "../EZFuture.h"
+
 #ifdef _WIN32
 
 #ifdef _MSC_VER
@@ -230,24 +234,23 @@ void registerSysBuiltins(RuntimeContext& interp) {
             std::vector<Value> closedArgs;
             for (auto& a : fnArgs) closedArgs.push_back(closeUpvals(a));
 
-            auto promise = std::make_shared<std::promise<Value>>();
-            std::shared_future<Value> fut = promise->get_future().share();
+            auto ezFut = std::make_shared<EZFuture>();
 
-            std::thread([promise, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
                 try {
                     BytecodeVM threadVM(globalEnv);
                     threadVM.traceExecution = false;
                     threadVM.importThreadState(tState);
                     for (auto& uv : *threadUpvalues) threadVM.adoptUpvalue(std::move(uv));
                     Value result = threadVM.callFunction(closedFunc, closedArgs, 0, "native");
-                    promise->set_value(result);
+                    ezFut->set(result);
                 } catch(std::exception& e) {
                     std::cerr << "[spawn-thread] uncaught: " << e.what() << std::endl;
-                    promise->set_value(Value());
+                    ezFut->set(Value());
                 }
             }).detach();
 
-            return Value::makeFuture(fut);
+            return Value::makeFuture(ezFut);
         }));
 
     auto awaitFn = [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {

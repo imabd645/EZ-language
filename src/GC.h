@@ -18,14 +18,14 @@ public:
     
     // Tracking list management
     void registerObject(GCObject* obj) {
-        std::lock_guard<std::mutex> lock(gc_mutex);
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
         obj->gc_next = head;
         if (head) head->gc_prev = obj;
         head = obj;
     }
     
     void unregisterObject(GCObject* obj) {
-        std::lock_guard<std::mutex> lock(gc_mutex);
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
         if (obj->gc_prev) obj->gc_prev->gc_next = obj->gc_next;
         if (obj->gc_next) obj->gc_next->gc_prev = obj->gc_prev;
         if (obj == head) head = obj->gc_next;
@@ -47,12 +47,12 @@ public:
     }
     
     void addTemporaryRoot(GCObject* obj) {
-        std::lock_guard<std::mutex> lock(gc_mutex);
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
         tempRoots.insert(obj);
     }
     
     void removeTemporaryRoot(GCObject* obj) {
-        std::lock_guard<std::mutex> lock(gc_mutex);
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
         tempRoots.erase(obj);
     }
     
@@ -82,7 +82,7 @@ public:
 private:
     GarbageCollector() = default;
     
-    std::mutex gc_mutex;
+    std::recursive_mutex gc_mutex;
     GCObject* head = nullptr;
     std::weak_ptr<Environment> rootEnv;
     std::unordered_set<GCObject*> tempRoots;

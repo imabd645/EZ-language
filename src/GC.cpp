@@ -89,7 +89,7 @@ void Environment::gc_mark() {
 
 void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
                                const std::vector<std::shared_ptr<Environment>>* envStack) {
-    std::lock_guard<std::mutex> lock(gc_mutex);
+    std::lock_guard<std::recursive_mutex> lock(gc_mutex);
     if (isCollecting) return;
     isCollecting = true;
     collectionCount++;

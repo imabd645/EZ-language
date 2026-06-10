@@ -19,6 +19,10 @@
 #include <ws2tcpip.h>
 #endif
 
+// Include EZFuture (Windows-native future) after windows headers
+#define EZFUTURE_IMPL
+#include "../EZFuture.h"
+
 static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;
@@ -142,8 +146,10 @@ void registerNetBuiltins(RuntimeContext& interp) {
             Value options;
             if (args.size() > 1) options = args[1];
             
-            std::shared_future<Value> fut = std::async(std::launch::async, 
-                [url, options]() -> Value {
+            auto ezFut = std::make_shared<EZFuture>();
+            
+            std::thread([url, options, ezFut]() {
+                try {
                     auto makeError = [](const std::string& msg) {
                         Value err = Value::makeDictionary();
                         err.asDictionaryPtr()->map["error"] = Value(msg);
@@ -151,7 +157,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
                     };
 
                     CURL* curl = curl_easy_init();
-                    if (!curl) { return makeError("CURL init failed"); }
+                    if (!curl) { ezFut->set(makeError("CURL init failed")); return; }
                     std::string response;
                     std::string method = "GET";
                     std::string body;
@@ -198,12 +204,20 @@ void registerNetBuiltins(RuntimeContext& interp) {
                     if (headers) curl_slist_free_all(headers);
                     curl_easy_cleanup(curl);
                     
-                    if (res != CURLE_OK) { return makeError("Fetch failed: " + std::string(curl_easy_strerror(res))); }
+                    if (res != CURLE_OK) {
+                        ezFut->set(makeError("Fetch failed: " + std::string(curl_easy_strerror(res))));
+                        return;
+                    }
                     
-                    return Value(response);
-                }).share();
+                    ezFut->set(Value(response));
+                } catch(std::exception& e) {
+                    ezFut->set(Value());
+                } catch(...) {
+                    ezFut->set(Value());
+                }
+            }).detach();
                 
-            return Value::makeFuture(fut);
+            return Value::makeFuture(ezFut);
         }));
 
 

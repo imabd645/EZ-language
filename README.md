@@ -27,7 +27,7 @@
 
 ## What is EZ?
 
-EZ is a scripting language built from scratch — bytecode compiler, stack VM, garbage collector, and a full standard library ecosystem — all written in C++17. It replaces cryptic programming symbols with plain English keywords so code reads like what it actually does.
+EZ is a scripting language built from scratch  bytecode compiler, stack VM, garbage collector, and a full standard library ecosystem — all written in C++17. It replaces cryptic programming symbols with plain English keywords so code reads like what it actually does.
 
 ```ez
 # A taste of EZ

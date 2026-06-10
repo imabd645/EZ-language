@@ -16,6 +16,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"escape", TokenType::ESCAPE},
     {"skip", TokenType::SKIP},
     {"get", TokenType::GET},
+    {"match", TokenType::MATCH},
     {"and", TokenType::AND},
     {"or", TokenType::OR},
     {"not", TokenType::NOT},

@@ -192,7 +192,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_RETURN, &&handle_CLOSURE, &&handle_CLOSE_UPVALUE, &&handle_MAKE_ARRAY,
         &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
-        &&handle_GET_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
+        &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
         &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
         &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
         &&handle_HAS_GLOBAL
@@ -1088,6 +1088,27 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             SYNC_IP();
                             runtimeError("Not iterable: " + v.typeName());
+                            return;
+                        }
+                    }
+                    DISPATCH();
+                }
+                CASE_CODE(GET_DICT_ITER) {
+                    {
+                        Value v = *(--stackTop);
+                        if (v.isDictionary()) {
+                            std::vector<Value> pairs;
+                            {
+                                auto dictPtr = v.asDictionaryPtr();
+                                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                                for (auto& [k, val] : dictPtr->map) {
+                                    pairs.push_back(Value::makeArray({Value(k), val}));
+                                }
+                            }
+                            *stackTop++ = Value::makeArray({Value::makeArray(pairs), Value(0LL)});
+                        } else {
+                            SYNC_IP();
+                            runtimeError("Not a dictionary: " + v.typeName());
                             return;
                         }
                     }

@@ -103,6 +103,7 @@ private:
     void compileWhile(const WhileStmt& stmt);
     void compileRepeat(const RepeatStmt& stmt);
     void compileGet(const GetStmt& stmt);
+    void compileMatch(const MatchStmt& stmt);
     void compileTask(const TaskStmt& stmt);
     void compileGive(const GiveStmt& stmt);
     void compileUse(const UseStmt& stmt);

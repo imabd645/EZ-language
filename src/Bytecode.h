@@ -96,6 +96,7 @@ enum class OpCode : uint8_t {
     
     // Iterators
     GET_ITER,            // Get iterator from iterable
+    GET_DICT_ITER,       // Get KV iterator from dictionary
     ITER_NEXT,           // offset: Next value or jump
     ITER_HAS_NEXT,       // Check if iterator has more
     

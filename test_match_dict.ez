@@ -1,0 +1,23 @@
+out "=== Test Match ==="
+x = 42
+match x {
+    1   => out "one"
+    42  => out "forty-two"    // Should print this
+    other => out "other"
+}
+
+lang = "EZ"
+match lang {
+    "Python" => out "python"
+    "EZ"     => out "ez lang!"   // Should print this
+    other    => out "unknown"
+}
+
+out "=== Test Dict KV Iteration ==="
+person = {}
+person["name"] = "Alice"
+person["age"]  = "30"
+
+get [k, v] in person {
+    out k + " = " + v
+}

@@ -608,6 +608,8 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
             compileRepeat(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<GetStmt>>) {
             compileGet(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<MatchStmt>>) {
+            compileMatch(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<TaskStmt>>) {
             compileTask(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<GiveStmt>>) {
@@ -777,7 +779,11 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     // Push the iterable and convert it to an iterator object
     compileExpr(stmt.iterable);
-    emitOp(OpCode::GET_ITER);
+    if (!stmt.valueVariable.empty()) {
+        emitOp(OpCode::GET_DICT_ITER);
+    } else {
+        emitOp(OpCode::GET_ITER);
+    }
 
     beginScope();
 
@@ -789,35 +795,57 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
               static_cast<uint8_t>(iterVar));
     emitOp(OpCode::POP);
-    // After STORE_LOCAL + POP the value is NOT on the expression stack; it only
-    // lives in frame.slots[iterVar].
 
-    // Loop variable that receives each element (slot N+1)
+    // Loop variable that receives each element (or key)
     size_t loopVar = addLocal(stmt.variable);
     current->locals.back().isStackResident = false;
     markInitialized();
-    // Seed loopVar with nil so the slot exists in frame memory
     emitOp(OpCode::LOAD_NIL);
     emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
               static_cast<uint8_t>(loopVar));
     emitOp(OpCode::POP);
+    
+    // Optional second variable for value in dict iteration
+    size_t loopValueVar = 0;
+    if (!stmt.valueVariable.empty()) {
+        loopValueVar = addLocal(stmt.valueVariable);
+        current->locals.back().isStackResident = false;
+        markInitialized();
+        emitOp(OpCode::LOAD_NIL);
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                  static_cast<uint8_t>(loopValueVar));
+        emitOp(OpCode::POP);
+    }
 
     startLoop();
     size_t loopStart = currentChunk().code.size();
     loopStack.back().start = loopStart;
 
-    // ITER_NEXT: load iterator, attempt advance; jump forward on exhaustion.
-    // The VM pops the iterator value left by LOAD_LOCAL, either:
-    //   - pushes the next element and falls through, OR
-    //   - jumps to exitJump (iterator exhausted).
     emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
               static_cast<uint8_t>(iterVar));
-    size_t exitJump = emitJump(OpCode::ITER_NEXT);  // 3-byte instruction
+    size_t exitJump = emitJump(OpCode::ITER_NEXT);
 
-    // Store the value that ITER_NEXT left on the stack into loopVar
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-              static_cast<uint8_t>(loopVar));
-    emitOp(OpCode::POP);
+    if (!stmt.valueVariable.empty()) {
+        // We have [key, value] on the stack. Destructure it.
+        emitOp(OpCode::DUP); // [array, array]
+        
+        // key = array[0]
+        compileExpr(std::make_shared<Expr>(currentLine, currentFile, std::make_shared<LiteralExpr>(0LL)));
+        emitOp(OpCode::INDEX_GET); // [array, key]
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
+        emitOp(OpCode::POP); // [array]
+        
+        // value = array[1]
+        compileExpr(std::make_shared<Expr>(currentLine, currentFile, std::make_shared<LiteralExpr>(1LL)));
+        emitOp(OpCode::INDEX_GET); // [value]
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopValueVar));
+        emitOp(OpCode::POP); // []
+    } else {
+        // Store the value that ITER_NEXT left on the stack into loopVar
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                  static_cast<uint8_t>(loopVar));
+        emitOp(OpCode::POP);
+    }
 
     compileStmt(stmt.body);
     emitLoop(loopStart);
@@ -829,6 +857,46 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     endLoop();
     endScope();
 }
+
+void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
+    compileExpr(stmt.subject);
+
+    std::vector<size_t> endJumps;
+
+    for (const auto& arm : stmt.arms) {
+        if (!arm.pattern) {
+            // Default arm ('other')
+            // Pop the subject since we matched it
+            emitOp(OpCode::POP);
+            compileStmt(arm.body);
+            endJumps.push_back(emitJump(OpCode::JUMP));
+        } else {
+            // DUP the subject
+            emitOp(OpCode::DUP);
+            compileExpr(arm.pattern);
+            emitOp(OpCode::EQUAL);
+
+            size_t nextArmJump = emitJump(OpCode::JUMP_IF_FALSE); // This pops the boolean result
+            
+            // Match! Pop the subject
+            emitOp(OpCode::POP);
+            
+            compileStmt(arm.body);
+            endJumps.push_back(emitJump(OpCode::JUMP));
+
+            // Not a match, jump here
+            patchJump(nextArmJump);
+        }
+    }
+
+    // Pop the subject at the very end in case nothing matched
+    emitOp(OpCode::POP);
+
+    for (size_t jump : endJumps) {
+        patchJump(jump);
+    }
+}
+
 
 void BytecodeCompiler::emitClosure(const TaskStmt& stmt) {
     if (!current) {

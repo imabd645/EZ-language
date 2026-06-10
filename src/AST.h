@@ -226,6 +226,7 @@ struct WhenStmt;
 struct WhileStmt;
 struct RepeatStmt;
 struct GetStmt;
+struct MatchStmt;
 struct TaskStmt;
 struct GiveStmt;
 struct EscapeStmt;
@@ -247,6 +248,7 @@ using StmtVariant = std::variant<
     std::shared_ptr<WhileStmt>,
     std::shared_ptr<RepeatStmt>,
     std::shared_ptr<GetStmt>,
+    std::shared_ptr<MatchStmt>,
     std::shared_ptr<TaskStmt>,
     std::shared_ptr<GiveStmt>,
     std::shared_ptr<EscapeStmt>,
@@ -329,15 +331,31 @@ struct RepeatStmt {
         : variable(var), start(std::move(start)), end(std::move(end)), body(std::move(body)) {}
 };
 
-// Foreach loop (get x in array)
+// Foreach loop (get x in array or get [k,v] in dict)
 struct GetStmt {
     std::string variable;
+    std::string valueVariable; // Optional second variable for dict KV iteration
     ExprPtr iterable;
     StmtPtr body;
     
-    GetStmt(const std::string& var, ExprPtr iter, StmtPtr body)
-        : variable(var), iterable(std::move(iter)), body(std::move(body)) {}
+    GetStmt(const std::string& var, const std::string& valVar, ExprPtr iter, StmtPtr body)
+        : variable(var), valueVariable(valVar), iterable(std::move(iter)), body(std::move(body)) {}
 };
+
+struct MatchArm {
+    ExprPtr pattern; // nullptr indicates the 'other' (default) arm
+    StmtPtr body;
+};
+
+// Match statement (match x { 1 => ... other => ... })
+struct MatchStmt {
+    ExprPtr subject;
+    std::vector<MatchArm> arms;
+    
+    MatchStmt(ExprPtr subject, std::vector<MatchArm> arms)
+        : subject(std::move(subject)), arms(std::move(arms)) {}
+};
+
 
 // Function definition (task)
 struct TaskStmt {
@@ -556,7 +574,15 @@ inline StmtPtr makeRepeatStmt(int line, const std::string& file, const std::stri
 }
 
 inline StmtPtr makeGetStmt(int line, const std::string& file, const std::string& var, ExprPtr iter, StmtPtr body) {
-    return std::make_shared<Stmt>(line, file, std::make_shared<GetStmt>(var, std::move(iter), std::move(body)));
+    return std::make_shared<Stmt>(line, file, std::make_shared<GetStmt>(var, "", std::move(iter), std::move(body)));
+}
+
+inline StmtPtr makeGetKVStmt(int line, const std::string& file, const std::string& keyVar, const std::string& valVar, ExprPtr iter, StmtPtr body) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<GetStmt>(keyVar, valVar, std::move(iter), std::move(body)));
+}
+
+inline StmtPtr makeMatchStmt(int line, const std::string& file, ExprPtr subject, std::vector<MatchArm> arms) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<MatchStmt>(std::move(subject), std::move(arms)));
 }
 
 inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, 

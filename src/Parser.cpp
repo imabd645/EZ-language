@@ -154,6 +154,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::WHILE)) return whileStatement();
     if (match(TokenType::REPEAT)) return repeatStatement();
     if (match(TokenType::GET)) return getStatement();
+    if (match(TokenType::MATCH)) return matchStatement();
     if (match(TokenType::STATIC)) return staticStatement();
     if (match(TokenType::TASK)) return taskStatement();
     if (match(TokenType::GIVE)) return giveStatement();
@@ -280,9 +281,23 @@ StmtPtr Parser::repeatStatement() {
 StmtPtr Parser::getStatement() {
     int line = previous().line;
     
-    // get x in array
-    Token varToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'get'");
-    std::string varName = varToken.lexeme;
+    std::string keyName;
+    std::string valName;
+    std::string filename;
+    
+    if (match(TokenType::LBRACKET)) {
+        Token keyToken = consume(TokenType::IDENTIFIER, "Expected key variable name after '['");
+        keyName = keyToken.lexeme;
+        filename = keyToken.filename;
+        consume(TokenType::COMMA, "Expected ',' between key and value variables");
+        Token valToken = consume(TokenType::IDENTIFIER, "Expected value variable name");
+        valName = valToken.lexeme;
+        consume(TokenType::RBRACKET, "Expected ']' after value variable");
+    } else {
+        Token varToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'get'");
+        keyName = varToken.lexeme;
+        filename = varToken.filename;
+    }
     
     consume(TokenType::IN, "Expected 'in' after variable name");
     
@@ -297,7 +312,47 @@ StmtPtr Parser::getStatement() {
         body = statement();
     }
     
-    return makeGetStmt(line, varToken.filename, varName, iterable, body);
+    if (!valName.empty()) {
+        return makeGetKVStmt(line, filename, keyName, valName, iterable, body);
+    }
+    return makeGetStmt(line, filename, keyName, iterable, body);
+}
+
+StmtPtr Parser::matchStatement() {
+    int line = previous().line;
+    std::string filename = previous().filename;
+    
+    ExprPtr subject = expression();
+    skipNewlines();
+    
+    consume(TokenType::LBRACE, "Expected '{' before match arms");
+    skipNewlines();
+    
+    std::vector<MatchArm> arms;
+    
+    while (!check(TokenType::RBRACE) && !isAtEnd()) {
+        MatchArm arm;
+        if (match(TokenType::OTHER)) {
+            arm.pattern = nullptr;
+        } else {
+            arm.pattern = expression();
+        }
+        
+        consume(TokenType::ARROW, "Expected '=>' after match pattern");
+        
+        if (match(TokenType::LBRACE)) {
+            arm.body = blockStatement();
+        } else {
+            arm.body = statement();
+        }
+        
+        arms.push_back(arm);
+        skipNewlines();
+    }
+    
+    consume(TokenType::RBRACE, "Expected '}' after match arms");
+    
+    return makeMatchStmt(line, filename, subject, std::move(arms));
 }
 
 StmtPtr Parser::taskStatement() {

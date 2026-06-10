@@ -166,6 +166,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::GET_METHOD: return "GET_METHOD";
         case OpCode::SUPER_CALL: return "SUPER_CALL";
         case OpCode::GET_ITER: return "GET_ITER";
+        case OpCode::GET_DICT_ITER: return "GET_DICT_ITER";
         case OpCode::ITER_NEXT: return "ITER_NEXT";
         case OpCode::ITER_HAS_NEXT: return "ITER_HAS_NEXT";
         case OpCode::TRY_START: return "TRY_START";

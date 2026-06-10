@@ -27,6 +27,7 @@ enum class TokenType {
     ESCAPE,
     SKIP,
     GET,
+    MATCH,
     AND,
     OR,
     NOT,
@@ -139,6 +140,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::ESCAPE: return "ESCAPE";
         case TokenType::SKIP: return "SKIP";
         case TokenType::GET: return "GET";
+        case TokenType::MATCH: return "MATCH";
         case TokenType::AND: return "AND";
         case TokenType::OR: return "OR";
         case TokenType::NOT: return "NOT";

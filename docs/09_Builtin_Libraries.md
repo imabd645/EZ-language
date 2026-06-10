@@ -1,34 +1,142 @@
-# Built-in Libraries and APIs
+# Exhaustive Built-in Libraries Reference
 
-EZ includes a rich set of built-in functions available globally.
+EZ ships with a massive standard library exposed as global functions.
 
-## Core Functions
-- `out <value>`: Prints to the console.
-- `len(collection)`: Returns the length of an array, string, or dictionary.
-- `typeOf(value)`: Returns the string representation of a value's type.
-- `clock()`: Returns the current timestamp.
+## 1. Console & File I/O
+```ez
+// Standard Console Output
+out "Hello Console"
+print("Multiple", "arguments", "supported")
 
-## String Manipulation
-- `substr(str, start, length)`
-- `split(str, delimiter)`
-- `join(array, delimiter)`
-- `upper(str)`, `lower(str)`, `trim(str)`
-- `replace(str, old, new)`
-- `startsWith(str, prefix)`, `endsWith(str, suffix)`
-- **Regex**: `reMatch(pattern, str)`, `reSearch(pattern, str)`, `reReplace(pattern, replace, str)`
+// Console Input
+name = input("Enter your name: ")
+out "Hello, " + name
 
-## Network APIs
-EZ features built-in libcurl integration for networking.
-- `http_get(url)`: Performs a GET request.
-- `http_post(url, body)`: Performs a POST request.
-- `fetch(url, options)`: Advanced async request returning a Future.
-- `url_encode(str)`, `url_decode(str)`
+// Terminal formatting (Windows Console API)
+color(10) // Green text
+out "Success!"
+reset()   // Reset color
+clear()   // Clear screen
+gotoxy(10, 5) // Move cursor to X:10, Y:5
+getch()   // Pause and wait for single keystroke
 
-## FFI and System Interop
-- `os_load_lib(path)`: Loads a native DLL/so.
-- `os_get_func(lib, name)`: Retrieves a function pointer.
-- `os_call(funcPtr, returnType, [args])`: Calls a native C function.
+// File I/O
+writeFile("test.txt", "Hello File System!")
+content = readFile("test.txt")
+out content
+```
 
-Memory allocation for FFI:
-- `os_alloc(size)`, `os_free(ptr)`
-- `os_write_uint32(ptr, offset, value)`, `os_read_uint32(ptr, offset)`
+## 2. System & Process
+```ez
+clock()      // Float timestamp (e.g., 170000000.123)
+stop(500)    // Sleep thread for 500ms
+exit(1)      // Exit application with error code 1
+panic("A fatal unrecoverable error occurred") 
+```
+
+## 3. Math API
+Standard numeric operations.
+```ez
+out floor(4.9)   // 4
+out ceil(4.1)    // 5
+out round(4.5)   // 5
+out abs(-100)    // 100
+out sqrt(64)     // 8.0
+out pow(2, 8)    // 256.0
+out min(10, 20)  // 10
+out max(10, 20)  // 20
+
+// Randomization
+out rand()         // Float between 0.0 and 1.0
+out randint(1, 10) // Integer between 1 and 10
+```
+
+## 4. String Manipulation
+Strings in EZ are immutable. All transformation functions return a new string.
+```ez
+str = "  EZ Language is powerful  "
+
+out len(str)                           // Character count
+out trim(str)                          // "EZ Language is powerful"
+out upper(str)                         // Uppercase
+out lower(str)                         // Lowercase
+out substr("Hello World", 0, 5)        // "Hello"
+out replace("apple", "p", "b")         // "abble"
+out startsWith("EZ Lang", "EZ")        // true
+out endsWith("EZ Lang", "Lang")        // true
+
+// ASCII Code conversions
+out ord("A") // 65
+out chr(65)  // "A"
+
+// Array to String conversions
+arr = split("apple,banana,cherry", ",") // ["apple", "banana", "cherry"]
+out join(arr, " | ")                    // "apple | banana | cherry"
+```
+
+### Regular Expressions (C++ `std::regex` wrapper)
+```ez
+text = "Contact us at support@example.com"
+when reMatch("[\\w.-]+@[\\w.-]+", text) {
+    out "Contains email!"
+}
+
+// reSearch returns an array of matched substrings
+emails = reSearch("[\\w.-]+@[\\w.-]+", text)
+
+// Replace matches
+censored = reReplace("[\\w.-]+@[\\w.-]+", "[REDACTED]", text)
+```
+
+## 5. Networking (libcurl Integration)
+EZ provides a zero-setup networking library capable of handling SSL and complex HTTP requests.
+```ez
+// Synchronous GET
+html = http_get("https://example.com")
+
+// Synchronous POST
+response = http_post("https://api.example.com/data", "{\"name\":\"EZ\"}")
+
+// Asynchronous Fetch (Returns a Future)
+options = {
+    "method": "GET",
+    "headers": ["Authorization: Bearer Token", "Accept: application/json"],
+    "insecure": false 
+}
+future = fetch("https://api.example.com", options)
+result = await(future) // wait for response without blocking GUI
+out result
+```
+
+## 6. FFI (Foreign Function Interface) & Raw Memory
+EZ can interact with native C-compiled DLLs directly. This is extremely powerful but highly dangerous!
+
+### FFI Example: Calling Windows API `MessageBoxA`
+```ez
+// 1. Load the native Windows DLL
+user32 = os_load_lib("user32.dll")
+
+// 2. Extract the function pointer
+MessageBoxA = os_get_func(user32, "MessageBoxA")
+
+// 3. Allocate a string buffer in raw memory for the title and text
+titlePtr = os_alloc(256)
+textPtr = os_alloc(256)
+os_write_string(titlePtr, 0, "FFI Alert")
+os_write_string(textPtr, 0, "Hello directly from user32.dll!")
+
+// 4. Call the function: HWND (0), Text (ptr), Title (ptr), Type (0)
+// os_call(funcPtr, returnType, args...)
+result = os_call(MessageBoxA, "int", 0, textPtr, titlePtr, 0)
+
+// 5. CRITICAL: Free the unmanaged memory!
+os_free(titlePtr)
+os_free(textPtr)
+```
+
+## 7. Edge Cases & Pitfalls
+- **Regex Invalid Syntax**: Passing an invalid regular expression string to `reMatch` or `reSearch` will cause a runtime exception to bubble up from the internal regex engine. Always wrap user-supplied regex strings in a `try/catch`.
+- **String Out of Bounds**: Calling `substr` or `substring` with indices larger than the string length will result in an "out of bounds" fatal error. Always check `len()` first!
+- **Network Timeouts**: The `http_get` and `fetch` calls have an internal timeout (usually 30 seconds). If a server hangs, the call will eventually throw an exception indicating a network failure.
+- **FFI Memory Leaks**: Memory allocated via `os_alloc` completely bypasses the EZ Garbage Collector. If you fail to call `os_free()`, your script will leak memory indefinitely.
+- **Access Violation (0xC0000005)**: Using `os_read_byte`, `os_write_byte`, or passing bad pointers to `os_call` will trigger an OS-level Access Violation, terminating the VM instantly and bypassing all `try/catch` blocks.

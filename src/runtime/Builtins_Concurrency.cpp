@@ -41,63 +41,57 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             }
             int ms = static_cast<int>(args[0].asInteger());
             if (ms > 0) {
+                GarbageCollector::instance().leaveVMExecution();
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                GarbageCollector::instance().enterVMExecution();
             }
             return Value();
         }));
 
-    static std::mutex atomicMutex;
+    // class Atomic
+    auto atomicClass = std::make_shared<EZClass>("Atomic");
     
-    // atomic_inc(name) — atomically increment a GLOBAL variable by 1
-    interp.defineGlobal("atomic_inc", Value::makeNativeFunction("atomic_inc", 1,
+    // Atomic.init(initial)
+    atomicClass->methods["init"] = Value::makeNativeFunction("init", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) { interp.runtimeError("atomic_inc() expects variable name", 0, ""); return Value(); }
-            std::string name = args[0].asString();
-            std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
-            Value val = env->get(name, 0);
-            long long current_val = 0;
-            if (val.isInteger()) current_val = val.asInteger();
-            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
-            
-            long long new_val = current_val + 1;
-            env->assign(name, Value(new_val));
-            return Value(new_val);
-        }));
-
-    // atomic_dec(name) — atomically decrement a GLOBAL variable by 1
-    interp.defineGlobal("atomic_dec", Value::makeNativeFunction("atomic_dec", 1,
+            // args[0] is the instance, args[1] is the initial value
+            auto instance = args[0].asInstance();
+            long long initial = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
+            instance->setProperty("_atomic", Value::makeAtomic(initial));
+            return args[0];
+        });
+        
+    atomicClass->methods["get"] = Value::makeNativeFunction("get", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) { interp.runtimeError("atomic_dec() expects variable name", 0, ""); return Value(); }
-            std::string name = args[0].asString();
-            std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
-            Value val = env->get(name, 0);
-            long long current_val = 0;
-            if (val.isInteger()) current_val = val.asInteger();
-            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
-            
-            long long new_val = current_val - 1;
-            env->assign(name, Value(new_val));
-            return Value(new_val);
-        }));
-
-    // atomic_add(name, amount) — atomically add amount to a GLOBAL variable
-    interp.defineGlobal("atomic_add", Value::makeNativeFunction("atomic_add", 2,
+            auto instance = args[0].asInstance();
+            auto atomic = instance->getProperty("_atomic").asAtomicPtr();
+            return Value(atomic->val.load());
+        });
+        
+    atomicClass->methods["set"] = Value::makeNativeFunction("set", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) { interp.runtimeError("atomic_add() expects variable name", 0, ""); return Value(); }
-            if (!args[1].isNumber()) { interp.runtimeError("atomic_add() expects number amount", 0, ""); return Value(); }
-            std::string name = args[0].asString();
-            long long amount = args[1].isInteger() ? args[1].asInteger() : static_cast<long long>(args[1].asFloat());
-            std::lock_guard<std::mutex> lock(atomicMutex);
-            auto env = interp.getGlobalEnv();
-            Value val = env->get(name, 0);
-            long long current_val = 0;
-            if (val.isInteger()) current_val = val.asInteger();
-            else if (val.isFloat()) current_val = static_cast<long long>(val.asFloat());
-            
-            long long new_val = current_val + amount;
-            env->assign(name, Value(new_val));
-            return Value(new_val);
-        }));
+            auto instance = args[0].asInstance();
+            auto atomic = instance->getProperty("_atomic").asAtomicPtr();
+            long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
+            atomic->val.store(v);
+            return Value(v);
+        });
+        
+    atomicClass->methods["add"] = Value::makeNativeFunction("add", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto atomic = instance->getProperty("_atomic").asAtomicPtr();
+            long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
+            return Value(atomic->val.fetch_add(v) + v);
+        });
+        
+    atomicClass->methods["sub"] = Value::makeNativeFunction("sub", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto atomic = instance->getProperty("_atomic").asAtomicPtr();
+            long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
+            return Value(atomic->val.fetch_sub(v) - v);
+        });
+        
+    interp.defineGlobal("Atomic", Value(atomicClass));
 }

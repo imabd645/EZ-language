@@ -64,9 +64,36 @@ public:
         tempRoots.erase(obj);
     }
     
+    std::atomic<bool> gc_requested{false};
+    std::mutex stw_mutex;
+    std::condition_variable stw_cv;
+    std::atomic<int> active_vm_threads{0};
+
+    void enterVMExecution() {
+        active_vm_threads++;
+        checkGC();
+    }
+
+    void leaveVMExecution() {
+        active_vm_threads--;
+        if (gc_requested.load(std::memory_order_relaxed)) {
+            stw_cv.notify_all();
+        }
+    }
+
+    void checkGC() {
+        if (gc_requested.load(std::memory_order_relaxed)) {
+            active_vm_threads--;
+            stw_cv.notify_all();
+            std::unique_lock<std::mutex> lock(stw_mutex);
+            stw_cv.wait(lock, [this]() { return !gc_requested.load(); });
+            active_vm_threads++;
+        }
+    }
     // Cycle detection collection
     void collect(std::shared_ptr<Environment> current = nullptr, 
-                 const std::vector<std::shared_ptr<Environment>>* envStack = nullptr);
+                 const std::vector<std::shared_ptr<Environment>>* envStack = nullptr,
+                 bool callerIsVM = false);
     
     // Register/unregister external roots (e.g. BytecodeVM instances)
     void registerRoot(IGCRoot* root) {
@@ -89,9 +116,10 @@ public:
     
     // Check if threshold reached and collect
     void collectIfThresholdReached(std::shared_ptr<Environment> current = nullptr,
-                                   const std::vector<std::shared_ptr<Environment>>* envStack = nullptr) {
+                                   const std::vector<std::shared_ptr<Environment>>* envStack = nullptr,
+                                   bool callerIsVM = false) {
         if (allocCount > gcThreshold) {
-            collect(current, envStack);
+            collect(current, envStack, callerIsVM);
             allocCount = 0;
         }
     }
@@ -115,6 +143,12 @@ private:
     std::atomic<size_t> allocCount{0};
     std::atomic<size_t> collectionCount{0};
     std::atomic<size_t> gcThreshold{50000};
+};
+
+class VMScope {
+public:
+    VMScope();
+    ~VMScope();
 };
 
 // Helper to create GC-tracked string

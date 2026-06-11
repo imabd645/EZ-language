@@ -51,13 +51,11 @@ private:
         std::string currentParentClass;
         
         size_t maxLocals;
+        int compilerId;
         
         bool isHarvesting;  // Force top-level assignments to be locals (for modules)
 
-        Compiler(const std::string& name, size_t arity, Compiler* parent = nullptr)
-            : function(std::make_shared<BytecodeFunction>(name, arity)),
-              enclosing(parent), scopeDepth(0), currentClass(""), currentParentClass(""),
-              maxLocals(0), isHarvesting(false) {}
+        Compiler(const std::string& name, size_t arity, Compiler* parent = nullptr);
     };
     
     Compiler* current;

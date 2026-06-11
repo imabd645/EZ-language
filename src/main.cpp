@@ -7,7 +7,6 @@
 #include <algorithm>
 #include "Lexer.h"
 #include "Parser.h"
-#include "BytecodeInterpreter.h"
 #include "BytecodeCompiler.h"
 #include "BytecodeVM.h"
 #include "PackageManager.h"
@@ -60,11 +59,18 @@ void runFromSource(const std::string& source, const std::string& path) {
         exit(65);
     }
     
-    // Use BytecodeInterpreter for faster execution
-    BytecodeInterpreter interpreter;
-    interpreter.setExecutionMode(ExecutionMode::BYTECODE_ONLY);  // Force bytecode for max speed
+    auto globalEnv = std::make_shared<Environment>();
+    BytecodeVM vm(globalEnv);
+    BytecodeCompiler compiler;
+    
+    CompileResult result = compiler.compile(statements);
+    if (!result.success) {
+        std::cerr << " Error: " << result.error << std::endl;
+        exit(65);
+    }
+    
     try {
-        interpreter.interpret(statements);
+        vm.execute(result.mainFunction);
     } catch (const RuntimeError& e) {
         // runtimeError() already printed the formatted error + stack trace
         exit(70); 
@@ -143,34 +149,31 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
         std::cout << "  -> Packed " << vfsName << " (" << content.length() << " bytes)\n";
     }
     
-    // Naive string search for 'use "..."'
-    size_t pos = 0;
-    while ((pos = content.find("use ", pos)) != std::string::npos) {
-        size_t startQuote = content.find("\"", pos);
-        if (startQuote != std::string::npos && startQuote < pos + 10) {
-            size_t endQuote = content.find("\"", startQuote + 1);
-            if (endQuote != std::string::npos) {
-                std::string usePath = content.substr(startQuote + 1, endQuote - startQuote - 1);
-                
-                // Try resolving usePath
-                std::vector<std::string> searchPaths = {
-                    baseDir + "/lib/" + usePath + ".ez",
-                    baseDir + "/lib/" + usePath + "/main.ez",
-                    "C:/ezlib/" + usePath + ".ez",
-                    "C:/ezlib/" + usePath + "/main.ez",
-                    usePath,
-                    usePath + ".ez"
-                };
-                
-                for (const auto& sp : searchPaths) {
-                    if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
-                        findDependencies(sp, visited, filesToPack, baseDir);
-                        break;
-                    }
+    // Lexer-based search for dependencies
+    Lexer lexer(content, normalizedPath);
+    auto tokens = lexer.tokenize();
+    for (size_t i = 0; i < tokens.size(); i++) {
+        if (tokens[i].type == TokenType::USE && i + 1 < tokens.size() && tokens[i+1].type == TokenType::STRING) {
+            std::string usePath;
+            try { usePath = std::get<std::string>(tokens[i+1].literal); } catch(...) { continue; }
+            
+            // Try resolving usePath
+            std::vector<std::string> searchPaths = {
+                baseDir + "/lib/" + usePath + ".ez",
+                baseDir + "/lib/" + usePath + "/main.ez",
+                "C:/ezlib/" + usePath + ".ez",
+                "C:/ezlib/" + usePath + "/main.ez",
+                usePath,
+                usePath + ".ez"
+            };
+            
+            for (const auto& sp : searchPaths) {
+                if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
+                    findDependencies(sp, visited, filesToPack, baseDir);
+                    break;
                 }
             }
         }
-        pos += 4;
     }
 }
 
@@ -299,31 +302,28 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     visited.insert(normalizedMain);
     
     // Now crawl the main file's content manually for the first level, then let findDependencies handle the rest
-    size_t pos = 0;
-    std::string mainContent = buffer.str();
-    while ((pos = mainContent.find("use ", pos)) != std::string::npos) {
-        size_t startQuote = mainContent.find("\"", pos);
-        if (startQuote != std::string::npos && startQuote < pos + 10) {
-            size_t endQuote = mainContent.find("\"", startQuote + 1);
-            if (endQuote != std::string::npos) {
-                std::string usePath = mainContent.substr(startQuote + 1, endQuote - startQuote - 1);
-                std::vector<std::string> searchPaths = {
-                    baseDir + "/lib/" + usePath + ".ez",
-                    baseDir + "/lib/" + usePath + "/main.ez",
-                    "C:/ezlib/" + usePath + ".ez",
-                    "C:/ezlib/" + usePath + "/main.ez",
-                    usePath,
-                    usePath + ".ez"
-                };
-                for (const auto& sp : searchPaths) {
-                    if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
-                        findDependencies(sp, visited, filesToPack, baseDir);
-                        break;
-                    }
+    // Lexer-based search for dependencies
+    Lexer lexer(buffer.str(), entryScript);
+    auto tokens = lexer.tokenize();
+    for (size_t i = 0; i < tokens.size(); i++) {
+        if (tokens[i].type == TokenType::USE && i + 1 < tokens.size() && tokens[i+1].type == TokenType::STRING) {
+            std::string usePath;
+            try { usePath = std::get<std::string>(tokens[i+1].literal); } catch(...) { continue; }
+            std::vector<std::string> searchPaths = {
+                baseDir + "/lib/" + usePath + ".ez",
+                baseDir + "/lib/" + usePath + "/main.ez",
+                "C:/ezlib/" + usePath + ".ez",
+                "C:/ezlib/" + usePath + "/main.ez",
+                usePath,
+                usePath + ".ez"
+            };
+            for (const auto& sp : searchPaths) {
+                if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
+                    findDependencies(sp, visited, filesToPack, baseDir);
+                    break;
                 }
             }
         }
-        pos += 4;
     }
     
     // 3. Build VFS Blob
@@ -399,7 +399,9 @@ void runRepl() {
     std::cout << "Type 'exit' to quit" << std::endl;
     std::cout << std::endl;
     
-    BytecodeInterpreter interpreter;
+    auto globalEnv = std::make_shared<Environment>();
+    BytecodeVM vm(globalEnv);
+    BytecodeCompiler compiler;
     std::string line;
     std::string multiline;
     int openBraces = 0;
@@ -441,7 +443,12 @@ void runRepl() {
             
             if (!parser.hasError()) {
                 try {
-                    interpreter.interpret(statements);
+                    CompileResult result = compiler.compile(statements);
+                    if (result.success) {
+                        vm.execute(result.mainFunction);
+                    } else {
+                        std::cerr << "Compile error: " << result.error << std::endl;
+                    }
                 } catch (const std::exception& e) {
                     std::cerr << "Error: " << e.what() << std::endl;
                 }

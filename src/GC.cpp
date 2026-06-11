@@ -87,12 +87,31 @@ void Environment::gc_mark() {
     for (auto& pair : variables) GarbageCollector::markValue(pair.second);
 }
 
+thread_local int tls_vm_depth = 0;
+
+VMScope::VMScope() {
+    if (tls_vm_depth++ == 0) GarbageCollector::instance().enterVMExecution();
+}
+VMScope::~VMScope() {
+    if (--tls_vm_depth == 0) GarbageCollector::instance().leaveVMExecution();
+}
+
 void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
-                               const std::vector<std::shared_ptr<Environment>>* envStack) {
+                               const std::vector<std::shared_ptr<Environment>>* envStack,
+                               bool callerIsVM) {
     std::lock_guard<std::recursive_mutex> lock(gc_mutex);
     if (isCollecting) return;
     isCollecting = true;
     collectionCount++;
+
+    // Stop-The-World
+    gc_requested.store(true, std::memory_order_release);
+    {
+        std::unique_lock<std::mutex> stw_lock(stw_mutex);
+        stw_cv.wait(stw_lock, [this, callerIsVM]() {
+            return active_vm_threads.load(std::memory_order_acquire) <= (callerIsVM ? 1 : 0);
+        });
+    }
 
     // Phase 1: Reset all marks
     GCObject* obj = head;
@@ -155,6 +174,11 @@ void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
     }
 
     stillValid.clear();
+    
+    // Resume-The-World
+    gc_requested.store(false, std::memory_order_release);
+    stw_cv.notify_all();
+    
     isCollecting = false;
 }
 

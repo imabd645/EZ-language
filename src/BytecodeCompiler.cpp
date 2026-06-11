@@ -22,6 +22,15 @@ static std::string getDirectoryName(const std::string& path) {
 // BytecodeCompiler Implementation
 // ============================================================================
 
+static int globalCompilerIdCounter = 0;
+
+BytecodeCompiler::Compiler::Compiler(const std::string& name, size_t arity, Compiler* parent)
+    : function(std::make_shared<BytecodeFunction>(name, arity)),
+      enclosing(parent), scopeDepth(0), currentClass(""), currentParentClass(""),
+      maxLocals(0), isHarvesting(false) {
+    compilerId = ++globalCompilerIdCounter;
+}
+
 BytecodeCompiler::BytecodeCompiler() : current(nullptr), currentLine(0), hadError(false) {}
 
 CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) {
@@ -1113,25 +1122,33 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         ~ModuleCleaner() { set.erase(path); }
     } cleaner(absolutePath, compilingModules);
     
-    // Register the module source so runtimeError() can show snippets from it
-    {
-        extern void EZ_RegisterSource(const std::string&, const std::string&);
-        EZ_RegisterSource(absolutePath, source);
-    }
-
-    // Compile the imported file
-    Lexer lexer(source, absolutePath);
-    auto tokens = lexer.tokenize();
-    if (lexer.hasError()) {
-        error("Lexer error in module '" + absolutePath + "'");
-        return;
-    }
+    std::vector<StmtPtr> statements;
+    static std::unordered_map<std::string, std::vector<StmtPtr>> astCache;
     
-    Parser parser(tokens);
-    auto statements = parser.parse();
-    if (parser.hasError()) {
-        error("Parser error in module '" + absolutePath + "'");
-        return;
+    if (astCache.count(absolutePath)) {
+        statements = astCache[absolutePath];
+    } else {
+        // Register the module source so runtimeError() can show snippets from it
+        {
+            extern void EZ_RegisterSource(const std::string&, const std::string&);
+            EZ_RegisterSource(absolutePath, source);
+        }
+
+        // Compile the imported file
+        Lexer lexer(source, absolutePath);
+        auto tokens = lexer.tokenize();
+        if (lexer.hasError()) {
+            error("Lexer error in module '" + absolutePath + "'");
+            return;
+        }
+        
+        Parser parser(tokens);
+        statements = parser.parse();
+        if (parser.hasError()) {
+            error("Parser error in module '" + absolutePath + "'");
+            return;
+        }
+        astCache[absolutePath] = statements;
     }
     
     // Handle namespacing if an alias is provided
@@ -1140,11 +1157,27 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         alias = "*";
     }
 
+    std::string execFlag = "__module_cache_" + std::to_string(std::hash<std::string>{}(absolutePath));
+    size_t flagIdx = identifierConstant(execFlag);
+
     if (alias == "*") {
-        // Global import: splash all statements into current function
+        // Global import: splash all statements into current function if not executed
+        emitOp(OpCode::HAS_GLOBAL);
+        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
+        size_t skipExec = emitJump(OpCode::JUMP_IF_TRUE);
+        
+        size_t trueIdx = current->function->chunk.addConstant(Constant(true));
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((trueIdx >> 8) & 0xFF), static_cast<uint8_t>(trueIdx & 0xFF));
+        emitOp(OpCode::STORE_GLOBAL);
+        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
+        emitOp(OpCode::POP);
+
         for (const auto& s : statements) {
             compileStmt(s);
         }
+        
+        patchJump(skipExec);
     } else {
         // Namespaced import: wrap in a module closure and return a dictionary of locals
         Compiler moduleCompiler(alias + "_module", 0, current);
@@ -1203,7 +1236,11 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         size_t nestedIdx = current->function->nestedFunctions.size();
         current->function->nestedFunctions.push_back(moduleFunc);
 
-        // In the parent scope, create the closure, call it, and store the result in the alias
+        emitOp(OpCode::HAS_GLOBAL);
+        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
+        size_t skipExec = emitJump(OpCode::JUMP_IF_TRUE);
+
+        // In the parent scope, create the closure, call it, and store the result in the cache
         emitOp(OpCode::CLOSURE);
         emitBytes(static_cast<uint8_t>((nestedIdx >> 8) & 0xFF),
                   static_cast<uint8_t>(nestedIdx & 0xFF));
@@ -1217,11 +1254,30 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         emitOp(OpCode::CALL);
         emitByte(0); // 0 args
 
-        size_t aliasIdx = identifierConstant(alias);
+        // Store to global cache
         emitOp(OpCode::STORE_GLOBAL);
-        emitBytes(static_cast<uint8_t>((aliasIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(aliasIdx & 0xFF));
-        emitOp(OpCode::POP); // pop result of assignment
+        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
+        emitOp(OpCode::POP);
+        
+        patchJump(skipExec);
+        
+        // Load from global cache and store into the requested alias
+        emitOp(OpCode::LOAD_GLOBAL);
+        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
+
+        size_t aliasIdx = identifierConstant(alias);
+        if (current->scopeDepth > 0) {
+            size_t slot = addLocal(alias);
+            markInitialized();
+            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                      static_cast<uint8_t>(slot));
+            emitOp(OpCode::POP);
+        } else {
+            emitOp(OpCode::STORE_GLOBAL);
+            emitBytes(static_cast<uint8_t>((aliasIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(aliasIdx & 0xFF));
+            emitOp(OpCode::POP);
+        }
     }
 }
 
@@ -1357,8 +1413,8 @@ void BytecodeCompiler::compileInterface(const InterfaceStmt& stmt) {
 }
 
 void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {
-    // Mangle name to avoid global collisions and function collisions: __static_<funcName>_<varName>
-    std::string mangledName = "__static_" + current->function->name + "_" + stmt.name;
+    // Mangle name to avoid global collisions and function collisions: __static_<id>_<funcName>_<varName>
+    std::string mangledName = "__static_" + std::to_string(current->compilerId) + "_" + current->function->name + "_" + stmt.name;
     current->statics[stmt.name] = mangledName;
     globals.insert(mangledName); // Ensure it's treated as a global
     

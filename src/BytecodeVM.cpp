@@ -98,6 +98,7 @@ void BytecodeVM::importThreadState(const ThreadState& state) {
 
 Value BytecodeVM::execute(BytecodeFunctionPtr function,
                            const std::vector<Value>& args) {
+    VMScope gc_scope;
     // Ensure constants are resolved for this function and all nested ones
     function->chunk.resolveConstants();
     
@@ -207,6 +208,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_HAS_GLOBAL
     };
     #define DISPATCH() { \
+        GarbageCollector::instance().checkGC(); \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
@@ -215,6 +217,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #else
     #define DISPATCH() break
     #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
+        GarbageCollector::instance().checkGC(); \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction))
     #define CASE_CODE(name) case OpCode::name:
@@ -1012,7 +1015,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
                     }
                     DISPATCH();
                 }
@@ -1203,7 +1206,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         auto iface = std::make_shared<EZInterface>(name, methods);
                         *stackTop++ = Value(iface);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
                     }
                     DISPATCH();
                 }
@@ -1265,7 +1268,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         globalEnv->define(className, Value(klass));
                         *stackTop++ = Value(klass);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
                     }
                     DISPATCH();
                 }
@@ -1310,7 +1313,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
                         *stackTop++ = Value(closure);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
                     }
                     DISPATCH();
                 }

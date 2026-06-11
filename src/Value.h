@@ -37,6 +37,7 @@ struct EZBuffer;
 struct EZMutex;
 struct EZClosure;
 struct UpvalueObj;
+struct EZAtomic;
 
 using NativeFn = std::function<Value(RuntimeContext&, const std::vector<Value>&)>;
 
@@ -58,7 +59,8 @@ enum class ValueType {
     MUTEX,
     BOUND_METHOD,
     CLOSURE_VAL,
-    INTERFACE
+    INTERFACE,
+    ATOMIC
 };
 
 struct Value {
@@ -77,6 +79,7 @@ struct Value {
     using BoundMethodPtr = std::shared_ptr<EZBoundMethod>;
     using ClosureValPtr = std::shared_ptr<EZClosure>;
     using InterfacePtr = std::shared_ptr<struct EZInterface>;
+    using AtomicPtr = std::shared_ptr<EZAtomic>;
 
     std::variant<
         std::nullptr_t,     // NIL
@@ -96,7 +99,8 @@ struct Value {
         MutexPtr,           // MUTEX
         BoundMethodPtr,     // BOUND_METHOD
         ClosureValPtr,      // CLOSURE_VAL
-        InterfacePtr        // INTERFACE
+        InterfacePtr,       // INTERFACE
+        AtomicPtr           // ATOMIC
     > m_data;
     
     // Constructors
@@ -126,6 +130,7 @@ struct Value {
     Value(MutexPtr val) : m_data(val) {}
     Value(ClosureValPtr val) : m_data(val) {}
     Value(InterfacePtr val) : m_data(val) {}
+    Value(AtomicPtr val) : m_data(val) {}
     
     // Type checking — O(1) via index lookup table
     // Table order must match the std::variant alternative order in m_data exactly.
@@ -148,7 +153,8 @@ struct Value {
             ValueType::MUTEX,            // 14: MutexPtr
             ValueType::BOUND_METHOD,     // 15: BoundMethodPtr
             ValueType::CLOSURE_VAL,      // 16: ClosureValPtr
-            ValueType::INTERFACE         // 17: InterfacePtr
+            ValueType::INTERFACE,        // 17: InterfacePtr
+            ValueType::ATOMIC            // 18: AtomicPtr
         };
         return typeTable[m_data.index()];
     }
@@ -172,6 +178,7 @@ struct Value {
     bool isBoundMethod() const { return std::holds_alternative<BoundMethodPtr>(m_data); }
     bool isClosure() const { return std::holds_alternative<ClosureValPtr>(m_data); }
     bool isInterface() const { return std::holds_alternative<InterfacePtr>(m_data); }
+    bool isAtomic() const { return std::holds_alternative<AtomicPtr>(m_data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass() || isBoundMethod() || isClosure(); }
     
     // Value extraction
@@ -214,6 +221,7 @@ struct Value {
     ClosureValPtr asClosure() const { try{return std::get<ClosureValPtr>(m_data);}catch(...){std::cerr<<"[Value] asClosure fail, index="<<index()<<"\n";throw;} }
     BufferPtr asBufferPtr() const { try{return std::get<BufferPtr>(m_data);}catch(...){std::cerr<<"[Value] asBufferPtr fail, index="<<index()<<"\n";throw;} }
     MutexPtr asMutexPtr() const { try{return std::get<MutexPtr>(m_data);}catch(...){std::cerr<<"[Value] asMutexPtr fail, index="<<index()<<"\n";throw;} }
+    AtomicPtr asAtomicPtr() const { try{return std::get<AtomicPtr>(m_data);}catch(...){std::cerr<<"[Value] asAtomicPtr fail, index="<<index()<<"\n";throw;} }
 
     // Convenience accessors for builtins
     EZArray& asArray();
@@ -246,6 +254,7 @@ struct Value {
     static Value makeFuture(std::shared_ptr<EZFuture> fut);
     static Value makeSuper(InstancePtr instance, ClassPtr parentKlass);
     static Value makeClosure(ClosureValPtr closure);
+    static Value makeAtomic(long long initial);
 };
 
 // --- GCObject-derived structs that use Value ---
@@ -425,6 +434,13 @@ struct EZMutex : public GCObject {
     void unlock() { mtx.unlock(); }
 };
 
+struct EZAtomic : public GCObject {
+    std::atomic<long long> val;
+    EZAtomic(long long initial = 0) : val(initial) {}
+    void gc_mark() override { gc_marked = true; }
+    void gc_clear() override {}
+};
+
 // --- Value Method Implementations (at the end for type completion) ---
 
 inline EZArray& Value::asArray() { try{return *std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asArray fail, index="<<index()<<"\n";throw;} }
@@ -537,5 +553,6 @@ inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionar
 inline Value Value::makeSuper(InstancePtr instance, ClassPtr parentKlass) { return Value(std::make_shared<EZSuper>(instance, parentKlass)); }
 inline Value Value::makeFuture(std::shared_ptr<EZFuture> fut) { return Value(fut); }
 inline Value Value::makeClosure(ClosureValPtr closure) { return Value(closure); }
+inline Value Value::makeAtomic(long long initial) { return Value(std::make_shared<EZAtomic>(initial)); }
 
 #endif // VALUE_H

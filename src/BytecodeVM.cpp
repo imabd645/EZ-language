@@ -309,7 +309,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value obj = *(--stackTop);
                         if (obj.isInstance()) {
                             Value val = obj.asInstance()->getProperty(propName);
-                            if (val.isFunction() || val.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
+                            if (val.isFunction() || val.isClosure() || val.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
                             else *stackTop++ = val;
                         } else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
@@ -336,7 +336,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     currentClass = currentClass->parent;
                                 }
                             }
-                            if (method.isFunction() || method.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
+                            if (method.isFunction() || method.isClosure() || method.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
                             else *stackTop++ = method;
                         } else {
                             SYNC_IP();
@@ -1285,7 +1285,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             Value m = inst->klass->methods.count(method) ? inst->klass->methods.at(method) : Value();
                             --stackTop;
                             if (m.isNil()) *stackTop++ = Value();
-                            else if (m.isFunction() || m.isClosure()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(instVal, m));
+                            else if (m.isFunction() || m.isClosure() || m.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(instVal, m));
                             else *stackTop++ = m;
                         } else {
                             SYNC_IP();

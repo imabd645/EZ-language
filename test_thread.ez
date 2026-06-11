@@ -1,0 +1,553 @@
+# ============================================================================
+# thread library — production test suite
+# Run with: ez test_thread.ez
+# ============================================================================
+use "thread"
+
+passed = 0
+failed = 0
+
+task test(name, fn) {
+    try {
+        fn()
+        color(10)
+        out "  [PASS] " + name
+        reset()
+        passed = passed + 1
+    } catch e {
+        color(12)
+        out "  [FAIL] " + name + " -- " + str(e)
+        reset()
+        failed = failed + 1
+    }
+}
+
+task assertEqual(a, b, msg) {
+    when a != b {
+        throw (msg + ": expected " + str(b) + " got " + str(a))
+    }
+}
+
+# ============================================================================
+out "=== 1. sleep / delay ==="
+
+test("sleep does not throw", || {
+    sleep(10)
+})
+
+test("delay resolves to nil after ms", || {
+    d = delay(20)
+    result = await(d)
+    assertEqual(result, nil, "delay result")
+})
+
+# ============================================================================
+out "=== 2. all() ==="
+
+test("all returns results in order", || {
+    task slow1() { wait(50)  give 1 }
+    task slow2() { wait(10)  give 2 }
+    task slow3() { wait(30)  give 3 }
+
+    f1 = spawn(slow1)
+    f2 = spawn(slow2)
+    f3 = spawn(slow3)
+
+    results = all([f1, f2, f3])
+    assertEqual(results[0], 1, "all[0]")
+    assertEqual(results[1], 2, "all[1]")
+    assertEqual(results[2], 3, "all[2]")
+})
+
+test("all with empty list returns empty", || {
+    r = all([])
+    assertEqual(len(r), 0, "all empty")
+})
+
+# ============================================================================
+out "=== 3. allSettled() ==="
+
+test("allSettled captures success", || {
+    task okTask() { give 42 }
+    f = spawn(okTask)
+    results = allSettled([f])
+    assertEqual(results[0]["ok"], true, "ok flag")
+    assertEqual(results[0]["value"], 42, "settled value")
+})
+
+test("allSettled captures error without throwing", || {
+    task badTask() { throw "oops" }
+    f = spawn(badTask)
+    results = allSettled([f])
+    assertEqual(results[0]["ok"], false, "ok flag")
+    assertEqual(results[0]["error"], "oops", "error message")
+})
+
+test("allSettled mixed results", || {
+    task goodTask() { give "good" }
+    task boomTask() { throw "boom" }
+    f1 = spawn(goodTask)
+    f2 = spawn(boomTask)
+    results = allSettled([f1, f2])
+    assertEqual(results[0]["ok"], true, "r0")
+    assertEqual(results[1]["ok"], false, "r1")
+})
+
+# ============================================================================
+out "=== 4. parallelMap() ==="
+
+test("parallelMap doubles numbers", || {
+    numbers = [1, 2, 3, 4, 5]
+    results = parallelMap(numbers, |x| { give x * 2 })
+    assertEqual(results[0], 2, "pm[0]")
+    assertEqual(results[2], 6, "pm[2]")
+    assertEqual(results[4], 10, "pm[4]")
+})
+
+test("parallelMap empty returns empty", || {
+    results = parallelMap([], |x| { give x })
+    assertEqual(len(results), 0, "pm empty")
+})
+
+test("parallelMap preserves order (slow items)", || {
+    task slowCalc(x) {
+        wait(50 - x * 5)
+        give x * x
+    }
+    items = [0, 1, 2, 3, 4]
+    results = parallelMap(items, slowCalc)
+    assertEqual(results[0], 0, "r0")
+    assertEqual(results[1], 1, "r1")
+    assertEqual(results[2], 4, "r2")
+    assertEqual(results[3], 9, "r3")
+    assertEqual(results[4], 16, "r4")
+})
+
+# ============================================================================
+out "=== 5. parallelFilter() ==="
+
+test("parallelFilter keeps even numbers", || {
+    items = [1, 2, 3, 4, 5, 6]
+    evens = parallelFilter(items, |x| { give x % 2 == 0 })
+    assertEqual(len(evens), 3, "filter count")
+})
+
+# ============================================================================
+out "=== 6. parallelForEach() ==="
+
+test("parallelForEach runs side effects", || {
+    shared = {"count": 0}
+    items = [1, 2, 3, 4, 5]
+    parallelForEach(items, |x| { shared["count"] = shared["count"] + 1 })
+    assertEqual(shared["count"], 5, "forEach count")
+})
+
+# ============================================================================
+out "=== 7. parallelMapBatched() ==="
+
+test("parallelMapBatched processes all items", || {
+    items = [1, 2, 3, 4, 5, 6, 7]
+    results = parallelMapBatched(items, |x| { give x + 10 }, 3)
+    assertEqual(len(results), 7, "batched count")
+    assertEqual(results[0], 11, "batched[0]")
+    assertEqual(results[6], 17, "batched[6]")
+})
+
+# ============================================================================
+out "=== 8. TaskGroup ==="
+
+test("TaskGroup waits for all tasks", || {
+    group = createGroup()
+    task computeSq(n) { wait(20)  give n * n }
+    group.add(computeSq, 3)
+    group.add(computeSq, 4)
+    group.add(computeSq, 5)
+    results = group.wait()
+    assertEqual(results[0], 9, "tg[0]")
+    assertEqual(results[1], 16, "tg[1]")
+    assertEqual(results[2], 25, "tg[2]")
+})
+
+test("TaskGroup size returns count", || {
+    group = createGroup()
+    task noopTask(x) { give x }
+    group.add(noopTask, 1)
+    group.add(noopTask, 2)
+    assertEqual(group.size(), 2, "group size")
+    group.wait()
+})
+
+test("TaskGroup waitSettled captures errors", || {
+    group = createGroup()
+    task goodItem(x) { give x }
+    task badItem(x)  { throw "fail " + str(x) }
+    group.add(goodItem, 42)
+    group.add(badItem, 99)
+    results = group.waitSettled()
+    assertEqual(results[0]["ok"], true, "tg settled ok")
+    assertEqual(results[1]["ok"], false, "tg settled fail")
+})
+
+# ============================================================================
+out "=== 9. deferred() ==="
+
+test("deferred resolves correctly", || {
+    d = deferred()
+    spawn(|| {
+        wait(20)
+        d.resolve("hello from deferred")
+    })
+    result = await(d.future)
+    assertEqual(result, "hello from deferred", "deferred value")
+})
+
+# ============================================================================
+out "=== 10. retry() ==="
+
+test("retry succeeds on first attempt", || {
+    calls = {"n": 0}
+    result = retry(|| {
+        calls["n"] = calls["n"] + 1
+        give "ok"
+    }, 3, 0)
+    assertEqual(result, "ok", "retry result")
+    assertEqual(calls["n"], 1, "retry calls")
+})
+
+test("retry retries on failure and eventually succeeds", || {
+    calls = {"n": 0}
+    result = retry(|| {
+        calls["n"] = calls["n"] + 1
+        when calls["n"] < 3 { throw "not yet" }
+        give "success"
+    }, 5, 1)
+    assertEqual(result, "success", "retry eventual")
+    assertEqual(calls["n"], 3, "retry attempt count")
+})
+
+test("retry throws after max attempts", || {
+    threw = false
+    try {
+        retry(|| { throw "always fails" }, 3, 1)
+    } catch e {
+        threw = true
+    }
+    assertEqual(threw, true, "retry throws")
+})
+
+# ============================================================================
+out "=== 11. withTimeout() ==="
+
+test("withTimeout resolves fast futures", || {
+    task fastTask() { wait(10)  give "done" }
+    fut = spawn(fastTask)
+    result = withTimeout(fut, 1000)
+    assertEqual(result, "done", "timeout resolve")
+})
+
+test("withTimeout throws on slow future", || {
+    threw = false
+    try {
+        task slowTask() { wait(500)  give "late" }
+        fut = spawn(slowTask)
+        withTimeout(fut, 50)
+    } catch e {
+        threw = true
+    }
+    assertEqual(threw, true, "timeout throws")
+})
+
+test("timeoutFn wraps a function", || {
+    result = timeoutFn(|| { wait(10)  give 99 }, 500)
+    assertEqual(result, 99, "timeoutFn result")
+})
+
+# ============================================================================
+out "=== 12. Channel ==="
+
+test("Channel send and receive", || {
+    ch = createChannel()
+    ch.send("hello")
+    ch.send("world")
+    assertEqual(ch.receive(), "hello", "ch r1")
+    assertEqual(ch.receive(), "world", "ch r2")
+})
+
+test("Channel len", || {
+    ch = createChannel()
+    ch.send(1)
+    ch.send(2)
+    ch.send(3)
+    assertEqual(ch.len(), 3, "ch len")
+})
+
+test("Channel tryReceive empty returns nil", || {
+    ch = createChannel()
+    result = ch.tryReceive()
+    assertEqual(result, nil, "tryReceive empty")
+})
+
+test("Channel producer/consumer pattern", || {
+    ch = createChannel()
+
+    task producerTask(c) {
+        i = 0
+        while i < 5 {
+            c.send(i)
+            wait(5)
+            i = i + 1
+        }
+    }
+
+    spawn(producerTask, ch)
+
+    sum = 0
+    i = 0
+    while i < 5 {
+        val = ch.receive()
+        sum = sum + val
+        i = i + 1
+    }
+    assertEqual(sum, 10, "ch sum 0+1+2+3+4")
+})
+
+test("Channel closed send throws", || {
+    threw = false
+    ch = createChannel()
+    ch.close()
+    try {
+        ch.send("oops")
+    } catch e {
+        threw = true
+    }
+    assertEqual(threw, true, "closed send throws")
+})
+
+test("Channel drain", || {
+    ch = createChannel()
+    ch.send("a")
+    ch.send("b")
+    ch.send("c")
+    items = ch.drain()
+    assertEqual(len(items), 3, "drain count")
+    assertEqual(items[0], "a", "drain[0]")
+    assertEqual(ch.len(), 0, "drained empty")
+})
+
+test("Channel receiveTimeout throws on timeout", || {
+    threw = false
+    ch = createChannel()
+    try {
+        ch.receiveTimeout(30)
+    } catch e {
+        threw = true
+    }
+    assertEqual(threw, true, "ch receiveTimeout")
+})
+
+# ============================================================================
+out "=== 13. Mutex ==="
+
+test("Mutex acquire and release", || {
+    m = createMutex()
+    m.acquire()
+    assertEqual(m.isLocked(), true, "locked")
+    m.release()
+    assertEqual(m.isLocked(), false, "unlocked")
+})
+
+test("Mutex tryAcquire when free", || {
+    m = createMutex()
+    got = m.tryAcquire()
+    assertEqual(got, true, "tryAcquire free")
+    m.release()
+})
+
+test("Mutex tryAcquire when locked", || {
+    m = createMutex()
+    m.acquire()
+    got = m.tryAcquire()
+    assertEqual(got, false, "tryAcquire locked")
+    m.release()
+})
+
+test("Mutex withLock releases even on error", || {
+    m = createMutex()
+    threw = false
+    try {
+        m.withLock(|| { throw "inside lock" })
+    } catch e {
+        threw = true
+    }
+    assertEqual(threw, true, "withLock threw")
+    assertEqual(m.isLocked(), false, "released after error")
+})
+
+test("Mutex protects counter from race", || {
+    m = createMutex()
+    shared = {"count": 0}
+
+    task incrementSafe(state) {
+        repeat i = 0 to 49 {
+            m.withLock(|| {
+                state["count"] = state["count"] + 1
+            })
+        }
+    }
+
+    f1 = spawn(incrementSafe, shared)
+    f2 = spawn(incrementSafe, shared)
+    await(f1)
+    await(f2)
+
+    assertEqual(shared["count"], 100, "mutex counter")
+})
+
+# ============================================================================
+out "=== 14. Semaphore ==="
+
+test("Semaphore acquire and release", || {
+    sem = createSemaphore(3)
+    assertEqual(sem.available(), 3, "initial")
+    sem.acquire()
+    assertEqual(sem.available(), 2, "after acquire")
+    sem.release()
+    assertEqual(sem.available(), 3, "after release")
+})
+
+test("Semaphore tryAcquire respects limit", || {
+    sem = createSemaphore(1)
+    got = sem.tryAcquire()
+    assertEqual(got, true, "first tryAcquire")
+    got2 = sem.tryAcquire()
+    assertEqual(got2, false, "second tryAcquire")
+    sem.release()
+})
+
+test("Semaphore withPermit", || {
+    sem = createSemaphore(2)
+    result = sem.withPermit(|| { give "inside" })
+    assertEqual(result, "inside", "semaphore withPermit")
+    assertEqual(sem.available(), 2, "restored after permit")
+})
+
+test("Semaphore limits concurrency", || {
+    sem = createSemaphore(2)
+    active = {"count": 0, "max": 0}
+
+    task semWork(state) {
+        sem.acquire()
+        state["count"] = state["count"] + 1
+        when state["count"] > state["max"] {
+            state["max"] = state["count"]
+        }
+        wait(20)
+        state["count"] = state["count"] - 1
+        sem.release()
+    }
+
+    tasks = []
+    repeat i = 0 to 4 {
+        push(tasks, spawn(semWork, active))
+    }
+    get t in tasks { await(t) }
+
+    when active["max"] > 2 {
+        throw "concurrency exceeded 2: was " + str(active["max"])
+    }
+})
+
+# ============================================================================
+out "=== 15. WorkerPool ==="
+
+test("WorkerPool mapAll processes all items", || {
+    pool = createPool(3)
+    results = pool.mapAll([1, 2, 3, 4, 5], |x| { give x * 2 })
+    assertEqual(len(results), 5, "pool results count")
+})
+
+# ============================================================================
+out "=== 16. throttle() ==="
+
+test("throttle limits call rate", || {
+    calls = {"n": 0}
+    fn = || { calls["n"] = calls["n"] + 1   give calls["n"] }
+    throttled = throttle(fn, 50)
+
+    throttled()
+    throttled()  # ignored (within 50ms)
+    throttled()  # ignored
+    assertEqual(calls["n"], 1, "throttle call count")
+})
+
+# ============================================================================
+out "=== 17. memoizeAsync() ==="
+
+test("memoizeAsync caches results", || {
+    calls = {"n": 0}
+    expensive = |x| {
+        calls["n"] = calls["n"] + 1
+        give x * x
+    }
+    memo = memoizeAsync(expensive)
+
+    r1 = memo(5)
+    r2 = memo(5)  # should use cache
+    r3 = memo(6)  # different arg
+
+    assertEqual(r1, 25, "memo r1")
+    assertEqual(r2, 25, "memo r2")
+    assertEqual(r3, 36, "memo r3")
+    assertEqual(calls["n"], 2, "memo call count")
+})
+
+# ============================================================================
+out "=== 18. times() and sequential() ==="
+
+test("times runs fn n times in parallel", || {
+    results = times(5, |i| { give i * 2 })
+    assertEqual(len(results), 5, "times count")
+    assertEqual(results[0], 0, "times[0]")
+    assertEqual(results[4], 8, "times[4]")
+})
+
+test("sequential runs in order", || {
+    order = []
+    sequential([
+        || { push(order, "a")   give "a" },
+        || { push(order, "b")   give "b" },
+        || { push(order, "c")   give "c" }
+    ])
+    assertEqual(order[0], "a", "seq order 0")
+    assertEqual(order[1], "b", "seq order 1")
+    assertEqual(order[2], "c", "seq order 2")
+})
+
+# ============================================================================
+out "=== 19. thread namespace ==="
+
+test("thread dict has all keys", || {
+    assertEqual(typeOf(thread["all"]),          "function", "thread.all")
+    assertEqual(typeOf(thread["parallelMap"]),  "function", "thread.parallelMap")
+    assertEqual(typeOf(thread["createGroup"]),  "function", "thread.createGroup")
+    assertEqual(typeOf(thread["createChannel"]),"function", "thread.createChannel")
+    assertEqual(typeOf(thread["createMutex"]),  "function", "thread.createMutex")
+    assertEqual(typeOf(thread["sleep"]),        "function", "thread.sleep")
+    assertEqual(typeOf(thread["deferred"]),     "function", "thread.deferred")
+    assertEqual(typeOf(thread["withTimeout"]),  "function", "thread.withTimeout")
+})
+
+# ============================================================================
+out ""
+total = passed + failed
+out "======================================"
+color(10)
+out "  " + str(passed) + " passed"
+reset()
+when failed > 0 {
+    color(12)
+    out "  " + str(failed) + " failed"
+    reset()
+}
+out "  " + str(total) + " total"
+out "======================================"

@@ -58,6 +58,7 @@ BytecodeVM::BytecodeVM()
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
     globalEnv = std::make_shared<Environment>();
+    GarbageCollector::instance().registerRoot(this);
     initBuiltins();
 }
 
@@ -68,11 +69,19 @@ BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
     stackTop = stack.data();
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
+    GarbageCollector::instance().registerRoot(this);
     initBuiltins();
 }
 
 BytecodeVM::~BytecodeVM() {
+    GarbageCollector::instance().unregisterRoot(this);
     // allUpvalues unique_ptrs handle cleanup automatically
+}
+
+void BytecodeVM::gcMarkRoots() {
+    for (Value* slot = stack.data(); slot < stackTop; ++slot) {
+        GarbageCollector::markValue(*slot);
+    }
 }
 
 Value BytecodeVM::execute(BytecodeFunctionPtr function) {
@@ -1003,6 +1012,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
                     }
                     DISPATCH();
                 }
@@ -1193,6 +1203,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         auto iface = std::make_shared<EZInterface>(name, methods);
                         *stackTop++ = Value(iface);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
                     }
                     DISPATCH();
                 }
@@ -1254,6 +1265,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         globalEnv->define(className, Value(klass));
                         *stackTop++ = Value(klass);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
                     }
                     DISPATCH();
                 }
@@ -1298,6 +1310,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
                         *stackTop++ = Value(closure);
+                        GarbageCollector::instance().collectIfThresholdReached(globalEnv);
                     }
                     DISPATCH();
                 }
@@ -2012,6 +2025,11 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
     BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
 
     compiledFunctionCache[func] = bfunc;
+    
+    // Clear AST data to free memory, as it's no longer needed after bytecode compilation
+    func->body.clear();
+    func->defaultValues.clear();
+    
     return bfunc;
 }
 

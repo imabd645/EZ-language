@@ -5,7 +5,7 @@
 #include <shared_mutex>
 
 // Helper to mark a Value's underlying GCObject
-static void markValue(const Value& val) {
+void GarbageCollector::markValue(const Value& val) {
     switch (val.type()) {
         case ValueType::ARRAY: val.asArrayPtr()->gc_mark(); break;
         case ValueType::INSTANCE: val.asInstance()->gc_mark(); break;
@@ -22,14 +22,14 @@ static void markValue(const Value& val) {
 void EZArray::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
-    for (auto& v : elements) markValue(v);
+    for (auto& v : elements) GarbageCollector::markValue(v);
 }
 
 void EZDictionary::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
     std::shared_lock<std::shared_mutex> lk(map_mutex);
-    for (auto& pair : map) markValue(pair.second);
+    for (auto& pair : map) GarbageCollector::markValue(pair.second);
 }
 
 void EZInstance::gc_mark() {
@@ -37,7 +37,7 @@ void EZInstance::gc_mark() {
     gc_marked = true;
     if (klass) klass->gc_mark();
     std::shared_lock<std::shared_mutex> lk(prop_mutex);
-    for (auto& pair : properties) markValue(pair.second);
+    for (auto& pair : properties) GarbageCollector::markValue(pair.second);
 }
 
 void EZFunction::gc_mark() {
@@ -51,7 +51,7 @@ void EZClosure::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
     for (auto uv : upvalues) {
-        if (uv) markValue(uv->closed);
+        if (uv) GarbageCollector::markValue(uv->closed);
     }
 }
 
@@ -63,8 +63,8 @@ void EZClosure::gc_clear() {
 void EZBoundMethod::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
-    markValue(receiver);
-    markValue(method);
+    GarbageCollector::markValue(receiver);
+    GarbageCollector::markValue(method);
 }
 
 void EZBoundMethod::gc_clear() {
@@ -76,15 +76,15 @@ void EZClass::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
     if (parent) parent->gc_mark();
-    for (auto& pair : methods) markValue(pair.second);
-    for (auto& pair : staticMembers) markValue(pair.second);
+    for (auto& pair : methods) GarbageCollector::markValue(pair.second);
+    for (auto& pair : staticMembers) GarbageCollector::markValue(pair.second);
 }
 
 void Environment::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
     if (parent) parent->gc_mark();
-    for (auto& pair : variables) markValue(pair.second);
+    for (auto& pair : variables) GarbageCollector::markValue(pair.second);
 }
 
 void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
@@ -122,6 +122,11 @@ void GarbageCollector::collect(std::shared_ptr<Environment> currentEnv,
     // Root 4: Temporary roots (explicitly pinned objects)
     for (GCObject* root : tempRoots) {
         if (root && !root->gc_marked) root->gc_mark();
+    }
+
+    // Root 5: External roots (e.g. BytecodeVM stacks)
+    for (IGCRoot* root : externalRoots) {
+        if (root) root->gcMarkRoots();
     }
 
     // Phase 3: Sweep — break internal references of unmarked objects

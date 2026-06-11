@@ -11,6 +11,7 @@
 #include "Value.h"
 #include "Environment.h"
 #include "RuntimeContext.h"
+#include "GC.h"
 
 // ============================================================================
 // Bytecode Virtual Machine - Stack-based execution
@@ -22,7 +23,7 @@
 void EZ_RegisterSource(const std::string& filename, const std::string& source);
 const std::string* EZ_GetSourceLine(const std::string& filename, int line);
 
-class BytecodeVM : public RuntimeContext {
+class BytecodeVM : public RuntimeContext, public IGCRoot {
 public:
     bool traceExecution = false;
     BytecodeVM();
@@ -44,6 +45,9 @@ public:
     Value eval(const std::string& code, const std::string& filename = "<eval>") override;
     std::string stringify(const Value& val, int line = 0, const std::string& filename = "") override;
     std::shared_ptr<Environment> getCurrentEnv() const override { return globalEnv; }
+
+    // GC Roots
+    void gcMarkRoots() override;
 
     // Stack depth query
     size_t getStackSize() const {

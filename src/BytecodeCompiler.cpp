@@ -1099,6 +1099,20 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         source = buffer.str();
     }
     
+    static std::unordered_set<std::string> compilingModules;
+    if (compilingModules.count(absolutePath)) {
+        error("Circular dependency detected when importing '" + absolutePath + "'");
+        return;
+    }
+    compilingModules.insert(absolutePath);
+    
+    struct ModuleCleaner {
+        std::string path;
+        std::unordered_set<std::string>& set;
+        ModuleCleaner(std::string p, std::unordered_set<std::string>& s) : path(p), set(s) {}
+        ~ModuleCleaner() { set.erase(path); }
+    } cleaner(absolutePath, compilingModules);
+    
     // Register the module source so runtimeError() can show snippets from it
     {
         extern void EZ_RegisterSource(const std::string&, const std::string&);

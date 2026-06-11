@@ -8,7 +8,15 @@
 #include "Value.h"
 #include "GCObject.h"
 
-// Simple cycle-detecting garbage collector
+class GarbageCollector;
+
+// Interface for external entities that hold GC roots
+class IGCRoot {
+public:
+    virtual ~IGCRoot() = default;
+    virtual void gcMarkRoots() = 0;
+};
+
 class GarbageCollector {
 public:
     static GarbageCollector& instance() {
@@ -60,6 +68,20 @@ public:
     void collect(std::shared_ptr<Environment> current = nullptr, 
                  const std::vector<std::shared_ptr<Environment>>* envStack = nullptr);
     
+    // Register/unregister external roots (e.g. BytecodeVM instances)
+    void registerRoot(IGCRoot* root) {
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
+        externalRoots.insert(root);
+    }
+    
+    void unregisterRoot(IGCRoot* root) {
+        std::lock_guard<std::recursive_mutex> lock(gc_mutex);
+        externalRoots.erase(root);
+    }
+    
+    // Mark a specific value (callable by external roots)
+    static void markValue(const Value& val);
+    
     // Increment count - called by GCObject constructor
     void incrementAllocCount() {
         allocCount++;
@@ -86,6 +108,7 @@ private:
     GCObject* head = nullptr;
     std::weak_ptr<Environment> rootEnv;
     std::unordered_set<GCObject*> tempRoots;
+    std::unordered_set<IGCRoot*> externalRoots;
     std::unordered_set<GCObject*> stillValid;
     bool isCollecting = false;
     

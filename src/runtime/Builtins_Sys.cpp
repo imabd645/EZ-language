@@ -23,7 +23,7 @@
 #include <shellapi.h>
 
 // Include EZFuture (Windows-native future, must be after windows.h)
-#define EZFUTURE_IMPL
+
 #include "../EZFuture.h"
 
 #ifdef _WIN32

@@ -206,7 +206,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
         &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
         &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
-        &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
+        &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_OP_AWAIT, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
         &&handle_HAS_GLOBAL
     };
     #define DISPATCH() { \
@@ -1496,7 +1496,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 // Call Dispatch Helper
 // ============================================================================
 
-bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount) {
+bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck) {
     if (callee.isNativeFunction()) {
         // Collect args from stack (they sit above the callee)
         std::vector<Value> args(stackTop - argCount, stackTop);
@@ -1599,7 +1599,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount) {
         ClosureState cs;
         if (closure) cs.upvalues = closure->upvalues;
         
-        if (bcFunc->isAsync) {
+        if (bcFunc->isAsync && !bypassAsyncCheck) {
             auto ezFut = std::make_shared<EZFuture>();
             
             // Extract arguments
@@ -1611,16 +1611,17 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount) {
             // Snapshot VM state needed
             auto globalEnv = this->globalEnv;
             Value closedFunc = callee;
+            bool shouldTrace = this->traceExecution;
             
-            EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs]() {
+            EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs, shouldTrace]() {
                 try {
                     auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
                     taskVM->taskFuture = ezFut;
-                    taskVM->traceExecution = false; // set to true for debugging
+                    taskVM->traceExecution = shouldTrace;
                     taskVM->push(closedFunc);
                     for (auto& a : closedArgs) taskVM->push(a);
                     
-                    if (taskVM->dispatchCall(closedFunc, closedArgs.size())) {
+                    if (taskVM->dispatchCall(closedFunc, closedArgs.size(), true)) {
                         taskVM->isYielded = false;
                         taskVM->run(0); // run until completion or yield
                         

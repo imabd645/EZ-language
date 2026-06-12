@@ -65,12 +65,12 @@ struct EZFuture {
 #ifdef EZFUTURE_IMPL
 #include "Value.h"  // provides full Value definition
 
-inline EZFuture::~EZFuture() {
+EZFuture::~EZFuture() {
     if (hEvent) CloseHandle(hEvent);
     delete result;
 }
 
-inline void EZFuture::set(const Value& val) {
+void EZFuture::set(const Value& val) {
     std::function<void()> callback;
     {
         std::lock_guard<std::mutex> lock(mtx);
@@ -84,7 +84,7 @@ inline void EZFuture::set(const Value& val) {
     if (callback) callback();
 }
 
-inline Value EZFuture::get() {
+Value EZFuture::get() {
     WaitForSingleObject(hEvent, INFINITE);
     std::lock_guard<std::mutex> lock(mtx);
     if (result) return *result;

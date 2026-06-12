@@ -44,7 +44,7 @@ static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-void runFromSource(const std::string& source, const std::string& path) {
+void runFromSource(const std::string& source, const std::string& path, bool traceExecution = false) {
     // Register source for error reporting (line snippets)
     EZ_RegisterSource(path, source);
 
@@ -64,6 +64,7 @@ void runFromSource(const std::string& source, const std::string& path) {
     
     auto globalEnv = std::make_shared<Environment>();
     BytecodeVM vm(globalEnv);
+    vm.traceExecution = traceExecution;
     BytecodeCompiler compiler;
     
     CompileResult result = compiler.compile(statements);
@@ -84,7 +85,7 @@ void runFromSource(const std::string& source, const std::string& path) {
     }
 }
 
-void runFile(const std::string& path) {
+void runFile(const std::string& path, bool traceExecution = false) {
     std::ifstream file(path);
     if (!file.is_open()) {
         std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
@@ -95,7 +96,7 @@ void runFile(const std::string& path) {
     buffer << file.rdbuf();
     std::string source = buffer.str();
     
-    runFromSource(source, path);
+    runFromSource(source, path, traceExecution);
 }
 
 bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem) {
@@ -398,13 +399,14 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     return true;
 }
 
-void runRepl() {
+void runRepl(bool traceExecution = false) {
     std::cout << "EZ Language Interpreter v1.0 (Bytecode Mode)" << std::endl;
     std::cout << "Type 'exit' to quit" << std::endl;
     std::cout << std::endl;
     
     auto globalEnv = std::make_shared<Environment>();
     BytecodeVM vm(globalEnv);
+    vm.traceExecution = traceExecution;
     BytecodeCompiler compiler;
     std::string line;
     std::string multiline;
@@ -605,11 +607,25 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         else {
-            runFile(cmd);
+            bool traceExecution = false;
+            for (int i = 2; i < argc; i++) {
+                std::string arg = argv[i];
+                if (arg == "--trace") {
+                    traceExecution = true;
+                }
+            }
+            runFile(cmd, traceExecution);
             return 0;
         }
     }
     
-    runRepl();
+    bool traceExecution = false;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--trace") {
+            traceExecution = true;
+        }
+    }
+    runRepl(traceExecution);
     return 0;
 }

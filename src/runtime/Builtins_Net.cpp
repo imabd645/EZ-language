@@ -20,7 +20,7 @@
 #endif
 
 // Include EZFuture (Windows-native future) after windows headers
-#define EZFUTURE_IMPL
+
 #include "../EZFuture.h"
 
 static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {

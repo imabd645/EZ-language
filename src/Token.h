@@ -23,7 +23,10 @@
 #undef INTERFACE
 #endif
 
-enum class TokenType {
+// Prevent collision with Windows API's TokenType in TOKEN_INFORMATION_CLASS
+#define TokenType TokenKind
+
+enum class TokenKind {
     // Literals
     NUMBER,
     STRING,

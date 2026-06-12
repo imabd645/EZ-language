@@ -124,7 +124,7 @@ private:
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);
-    bool dispatchCall(const Value& callee, uint8_t argCount);
+    bool dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck = false);
     void pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs);
 
     // ── Stack ─────────────────────────────────────────────────────────────────

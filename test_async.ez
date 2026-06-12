@@ -1,16 +1,14 @@
-async task fetch_data() {
-    print("Fetching data (simulating network request for 1 second)...");
-    await waitAsync(1000);
-    print("Data fetched!");
-    return "Secret Data: 42";
+async task myAsyncFunc() {
+    out "Starting async task..."
+    
+    // Simulate a network request or heavy I/O by yielding the task
+    // The main event loop will continue running while this waits
+    await waitAsync(1000)
+    
+    out "Async task resumed after 1 second!"
+    give "Task Complete"
 }
 
-async task main_async() {
-    print("Starting program...");
-    future = fetch_data();
-    print("Future created, waiting for it to resolve...");
-    result = await future;
-    print("Result: " + result);
-}
-
-main_async();
+out "Before calling async function"
+myAsyncFunc()
+out "After calling async function (this should print BEFORE the task finishes)"

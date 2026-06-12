@@ -93,10 +93,11 @@ get person in people {
 - **`toString()` override** — called automatically by `out` and string coercion
 
 ### Concurrency
-- **`async task`** — spawns the function on a background thread, returns a `FUTURE` value
-- **`await expr`** — blocks until the future resolves
-- **`async { ... }` blocks** — inline async expressions
-- **`spawn(fn)`** — detached background thread
+- **Non-blocking Event Loop** — Single-threaded async execution for efficient I/O without OS thread overhead
+- **`async task`** — Native coroutine that can be paused and resumed seamlessly via bytecode VM yielding
+- **`await expr`** — Non-blocking yield until a future resolves, freeing the VM to run other tasks
+- **`async { ... }` blocks** — Inline async expressions
+- **`spawn(fn)`** — Detached background OS thread for heavy CPU work
 - **First-class `Mutex()`** — `lock()` / `unlock()` as values
 - **Atomic operations** — `atomicAdd`, `atomicGet`, `atomicSet`
 
@@ -364,6 +365,21 @@ get item in ["alpha", "beta", "gamma"] {
 config = {"host": "localhost", "port": 8080}
 get key in config {
     out key + " = " + str(config[key])
+}
+
+# get [k, v] in  (for key, value in dictionary)
+get [k, v] in config {
+    out k + " = " + str(v)
+}
+
+# match statement (pattern matching / switch)
+state = "success"
+match state {
+    "loading" => out "Please wait..."
+    "success" => {
+        out "Operation completed!"
+    }
+    other => out "Unknown state"
 }
 
 # escape (break) and skip (continue)
@@ -891,10 +907,10 @@ out str(s.size())    # 2
 
 ## ⚡ Async & Concurrency
 
-EZ's concurrency model is built on `std::future`/`std::async` and exposes it with clean syntax.
+EZ's concurrency model is built on a custom native Event Loop, exposing true non-blocking I/O with clean syntax without the overhead of spawning OS threads per task.
 
 ```ez
-# Async task — runs on a background thread immediately
+# Async task — runs concurrently on the Event Loop
 async task fetchJson(url) {
     raw = http_get(url)
     give parse_json(raw)

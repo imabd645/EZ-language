@@ -97,6 +97,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     }
     current->function->defaultParamCount = defaultCount;
     current->function->isVariadic = task.isVariadic;
+    current->function->isAsync = task.isAsync;
 
     // Add parameters as the first locals (slot 0, 1, 2, …)
     for (const auto& param : task.params) {
@@ -201,6 +202,8 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
             compileDictionary(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) {
             compileSpread(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) {
+            compileAwait(*arg);
         }
     }, expr->variant);
 }
@@ -339,6 +342,11 @@ void BytecodeCompiler::compileUnary(const UnaryExpr& expr) {
         case TokenType::TILDE: emitOp(OpCode::BIT_NOT); break;
         default: error("Unknown unary operator");
     }
+}
+
+void BytecodeCompiler::compileAwait(const AwaitExpr& expr) {
+    compileExpr(expr.expression);
+    emitOp(OpCode::OP_AWAIT);
 }
 
 void BytecodeCompiler::compileCall(const CallExpr& expr) {
@@ -499,7 +507,7 @@ void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
 
     TaskStmt fakeTask(name, expr.params, std::vector<ExprPtr>{},
                       expr.body ? std::vector<StmtPtr>{} : expr.stmtBody,
-                      expr.isVariadic);
+                      expr.isVariadic, expr.isAsync);
 
     if (expr.body) {
         fakeTask.body.push_back(makeGiveStmt(0, "", expr.body));
@@ -1339,7 +1347,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             }
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
-            TaskStmt methodTask(member.name, params, defaults, member.body);
+            TaskStmt methodTask(member.name, params, defaults, member.body, false, member.isAsync);
             emitClosure(methodTask); // Pushes closure
         } else {
             if (member.initializer) {

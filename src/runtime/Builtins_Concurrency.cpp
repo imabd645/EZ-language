@@ -5,6 +5,8 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include "EventLoop.h"
+#include "../EZFuture.h"
 
 void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // mutex()
@@ -46,6 +48,31 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
                 GarbageCollector::instance().enterVMExecution();
             }
             return Value();
+        }));
+
+    // waitAsync(ms) - Returns a Future that resolves after ms milliseconds
+    interp.defineGlobal("waitAsync", Value::makeNativeFunction("waitAsync", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) {
+                interp.runtimeError("waitAsync() expects milliseconds (number)", 0, "");
+                return Value();
+            }
+            int ms = static_cast<int>(args[0].asInteger());
+            
+            auto fut = std::make_shared<EZFuture>();
+            
+            if (ms > 0) {
+                EventLoop::instance().retain();
+                std::thread([fut, ms]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                    fut->set(Value(true));
+                    EventLoop::instance().release();
+                }).detach();
+            } else {
+                fut->set(Value(true));
+            }
+            
+            return Value::makeFuture(fut);
         }));
 
     // class Atomic

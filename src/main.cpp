@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <csignal>
 #include <algorithm>
+#include "Value.h"
+#include "GC.h"
+#include "runtime/EventLoop.h"
 #include "Lexer.h"
 #include "Parser.h"
 #include "BytecodeCompiler.h"
@@ -71,6 +74,7 @@ void runFromSource(const std::string& source, const std::string& path) {
     
     try {
         vm.execute(result.mainFunction);
+        EventLoop::instance().run();
     } catch (const RuntimeError& e) {
         // runtimeError() already printed the formatted error + stack trace
         exit(70); 

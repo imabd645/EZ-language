@@ -25,6 +25,8 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"yes", TokenType::TRUE},
     {"no", TokenType::FALSE},
     {"nil", TokenType::NIL},
+    {"async", TokenType::ASYNC},
+    {"await", TokenType::AWAIT},
     // OOP keywords
     {"model", TokenType::MODEL},
     {"init", TokenType::INIT},

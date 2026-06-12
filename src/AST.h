@@ -33,6 +33,7 @@ struct SetExpr;
 struct DictionaryExpr;
 struct SpreadExpr;
 struct TernaryExpr;
+struct AwaitExpr;
 
 using ExprVariant = std::variant<
     std::shared_ptr<LiteralExpr>,
@@ -51,7 +52,8 @@ using ExprVariant = std::variant<
     std::shared_ptr<SetExpr>,
     std::shared_ptr<DictionaryExpr>,
     std::shared_ptr<SpreadExpr>,
-    std::shared_ptr<TernaryExpr>
+    std::shared_ptr<TernaryExpr>,
+    std::shared_ptr<AwaitExpr>
 >;
 
 struct Expr {
@@ -152,12 +154,13 @@ struct LambdaExpr {
     ExprPtr body;  // Expression body for single-expression lambdas
     std::vector<StmtPtr> stmtBody;  // Statement body for multi-statement lambdas
     bool isVariadic = false;
+    bool isAsync = false;
     
-    LambdaExpr(std::vector<std::string> params, ExprPtr body, bool variadic = false)
-        : params(std::move(params)), body(std::move(body)), isVariadic(variadic) {}
+    LambdaExpr(std::vector<std::string> params, ExprPtr body, bool variadic = false, bool isAsync = false)
+        : params(std::move(params)), body(std::move(body)), isVariadic(variadic), isAsync(isAsync) {}
     
-    LambdaExpr(std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false)
-        : params(std::move(params)), body(nullptr), stmtBody(std::move(stmtBody)), isVariadic(variadic) {}
+    LambdaExpr(std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false, bool isAsync = false)
+        : params(std::move(params)), body(nullptr), stmtBody(std::move(stmtBody)), isVariadic(variadic), isAsync(isAsync) {}
 };
 
 // Property access expression (self.name or obj.property)
@@ -214,6 +217,13 @@ struct TernaryExpr {
     
     TernaryExpr(ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr)
         : condition(std::move(cond)), thenBranch(std::move(thenBr)), elseBranch(std::move(elseBr)) {}
+};
+
+// Await expression (await expr)
+struct AwaitExpr {
+    ExprPtr expression;
+    
+    explicit AwaitExpr(ExprPtr expr) : expression(std::move(expr)) {}
 };
 
 // ============ STATEMENTS ============
@@ -364,11 +374,12 @@ struct TaskStmt {
     std::vector<ExprPtr> defaultValues; // nullptr = required, ExprPtr = default value
     std::vector<StmtPtr> body;
     bool isVariadic = false;
+    bool isAsync = false;
     
     TaskStmt(const std::string& name, std::vector<std::string> params, 
-             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false)
+             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)
         : name(name), params(std::move(params)), defaultValues(std::move(defaultValues)),
-          body(std::move(body)), isVariadic(variadic) {}
+          body(std::move(body)), isVariadic(variadic), isAsync(isAsync) {}
 };
 
 // Return statement (give)
@@ -395,6 +406,7 @@ struct ModelMember {
     MemberVisibility visibility;
     bool isStatic = false;
     bool isMethod;
+    bool isAsync = false;
     std::string name;
     ExprPtr initializer;  // For properties
     std::vector<std::string> params;  // For methods
@@ -536,12 +548,12 @@ inline ExprPtr makeLogicalExpr(int line, const std::string& file, ExprPtr left, 
     return std::make_shared<Expr>(line, file, std::make_shared<LogicalExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, ExprPtr body, bool variadic = false) {
-    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(body), variadic));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, ExprPtr body, bool variadic = false, bool isAsync = false) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(body), variadic, isAsync));
 }
 
-inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false) {
-    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(stmtBody), variadic));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false, bool isAsync = false) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(stmtBody), variadic, isAsync));
 }
 
 // Helper functions to create statements
@@ -586,9 +598,9 @@ inline StmtPtr makeMatchStmt(int line, const std::string& file, ExprPtr subject,
 }
 
 inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, 
-                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false) {
+                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false) {
     return std::make_shared<Stmt>(line, file, std::make_shared<TaskStmt>(name, std::move(params), 
-                                                                     std::move(defaultValues), std::move(body), variadic));
+                                                                     std::move(defaultValues), std::move(body), variadic, isAsync));
 }
 
 inline StmtPtr makeGiveStmt(int line, const std::string& file, ExprPtr val = nullptr) {

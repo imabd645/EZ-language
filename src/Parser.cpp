@@ -156,7 +156,18 @@ StmtPtr Parser::statement() {
     if (match(TokenType::GET)) return getStatement();
     if (match(TokenType::MATCH)) return matchStatement();
     if (match(TokenType::STATIC)) return staticStatement();
-    if (match(TokenType::TASK)) return taskStatement();
+    
+    bool isAsync = false;
+    if (match(TokenType::ASYNC)) {
+        isAsync = true;
+    }
+    
+    if (match(TokenType::TASK)) return taskStatement(isAsync);
+    if (isAsync) {
+        error(previous(), "Expected 'task' after 'async' modifier");
+        return nullptr;
+    }
+    
     if (match(TokenType::GIVE)) return giveStatement();
     if (match(TokenType::ESCAPE)) return escapeStatement();
     if (match(TokenType::SKIP)) return skipStatement();
@@ -355,7 +366,7 @@ StmtPtr Parser::matchStatement() {
     return makeMatchStmt(line, filename, subject, std::move(arms));
 }
 
-StmtPtr Parser::taskStatement() {
+StmtPtr Parser::taskStatement(bool isAsync) {
     int line = previous().line;
     
     // Allow any token as function name (for operator overloading)
@@ -421,7 +432,7 @@ StmtPtr Parser::taskStatement() {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic);
+    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic, isAsync);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -767,6 +778,12 @@ ExprPtr Parser::unary() {
         return makeUnaryExpr(op.line, op.filename, op.type, right);
     }
     
+    if (match(TokenType::AWAIT)) {
+        Token op = previous();
+        ExprPtr right = unary();
+        return std::make_shared<Expr>(op.line, op.filename, std::make_shared<AwaitExpr>(right));
+    }
+    
     return call();
 }
 
@@ -890,7 +907,15 @@ ExprPtr Parser::primary() {
     
     // Lambda expression: |params| => expr or |params| { body }
     if (match(TokenType::PIPE)) {
-        return lambdaExpression();
+        return lambdaExpression(false);
+    }
+    
+    // Async Lambda expression: async |params| => expr
+    if (match(TokenType::ASYNC)) {
+        if (match(TokenType::PIPE)) {
+            return lambdaExpression(true);
+        }
+        throw ParseError("Expected '|' for lambda after 'async'", previous().line);
     }
     
     if (match(TokenType::LBRACKET)) {
@@ -966,7 +991,7 @@ ExprPtr Parser::primary() {
 }
 
 // Lambda: |x, y| => x + y  OR  |x, y| { statements }
-ExprPtr Parser::lambdaExpression() {
+ExprPtr Parser::lambdaExpression(bool isAsync) {
     int line = previous().line;
     
     // Parse parameters
@@ -998,7 +1023,7 @@ ExprPtr Parser::lambdaExpression() {
         // Expression body
         skipNewlines();
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body, isVariadic);
+        return makeLambdaExpr(line, peek().filename, params, body, isVariadic, isAsync);
     } else if (match(TokenType::LBRACE)) {
         // Statement body
         skipNewlines();
@@ -1009,11 +1034,11 @@ ExprPtr Parser::lambdaExpression() {
             skipNewlines();
         }
         consume(TokenType::RBRACE, "Expected '}' after lambda body");
-        return makeLambdaExpr(line, peek().filename, params, stmtBody, isVariadic);
+        return makeLambdaExpr(line, peek().filename, params, stmtBody, isVariadic, isAsync);
     } else {
         // Default: treat as expression body without arrow
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body, isVariadic);
+        return makeLambdaExpr(line, peek().filename, params, body, isVariadic, isAsync);
     }
 }
 
@@ -1098,8 +1123,14 @@ StmtPtr Parser::modelStatement() {
                 consume(TokenType::RBRACE, "Expected '}' after init body");
             }
         }
+        // Check for async task (method)
+        bool isAsync = false;
+        if (match(TokenType::ASYNC)) {
+            isAsync = true;
+        }
+
         // Check for task (method)
-        else if (match(TokenType::TASK)) {
+        if (match(TokenType::TASK)) {
             // Allow keywords as method names
             advance();
             Token methodName = previous();
@@ -1144,6 +1175,7 @@ StmtPtr Parser::modelStatement() {
             member.visibility = visibility;
             member.isStatic = isStatic;
             member.isMethod = true;
+            member.isAsync = isAsync;
             member.name = methodName.lexeme;
             member.params = params;
             member.defaultValues = defaultValues;
@@ -1151,6 +1183,10 @@ StmtPtr Parser::modelStatement() {
             members.push_back(member);
         }
         // Property declaration
+        else if (isAsync) {
+            error(peek(), "Expected 'task' after 'async' modifier");
+            advance(); // Avoid infinite loop
+        }
         else if (check(TokenType::IDENTIFIER)) {
             Token propName = advance();
             

@@ -8,6 +8,8 @@
 #include "Parser.h"
 #include "Builtins.h"
 #include "GUIBuiltins.h"
+#include "runtime/EventLoop.h"
+#include "EZFuture.h"
 #include <thread>
 
 #define WIN32_LEAN_AND_MEAN
@@ -1192,6 +1194,46 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     }
                     DISPATCH();
                 }
+
+                CASE_CODE(OP_AWAIT) {
+                    {
+                        Value futVal = *(stackTop - 1);
+                        if (futVal.isFuture()) {
+                            auto fut = futVal.asFuture();
+                            if (fut->isReady()) {
+                                *(stackTop - 1) = fut->get();
+                            } else {
+                                SYNC_IP();
+                                this->isYielded = true;
+                                this->stackTop = stackTop;
+                                
+                                std::shared_ptr<BytecodeVM> sharedVM;
+                                try {
+                                    sharedVM = this->shared_from_this();
+                                } catch (const std::bad_weak_ptr&) {
+                                    // Main VM is stack allocated and kept alive by main()
+                                }
+                                BytecodeVM* rawVM = this;
+
+                                fut->then([sharedVM, rawVM, fut]() {
+                                    EventLoop::instance().pushTask([sharedVM, rawVM, fut]() {
+                                        rawVM->isYielded = false;
+                                        *(rawVM->stackTop - 1) = fut->get();
+                                        rawVM->run(0);
+                                        
+                                        if (!rawVM->isYielded && rawVM->taskFuture) {
+                                            Value result = (rawVM->stackTop > rawVM->stack.data()) ? *(rawVM->stackTop - 1) : Value();
+                                            rawVM->taskFuture->set(result);
+                                        }
+                                    });
+                                });
+                                return;
+                            }
+                        }
+                    }
+                    DISPATCH();
+                }
+
                 CASE_CODE(MAKE_INTERFACE) {
                     {
                         uint16_t nameIdx = READ_SHORT();
@@ -1557,6 +1599,51 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount) {
         ClosureState cs;
         if (closure) cs.upvalues = closure->upvalues;
         
+        if (bcFunc->isAsync) {
+            auto ezFut = std::make_shared<EZFuture>();
+            
+            // Extract arguments
+            std::vector<Value> closedArgs;
+            for (int i = 0; i < argCount; ++i) {
+                closedArgs.push_back(*(this->stackTop - argCount + i));
+            }
+            
+            // Snapshot VM state needed
+            auto globalEnv = this->globalEnv;
+            Value closedFunc = callee;
+            
+            EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs]() {
+                try {
+                    auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
+                    taskVM->taskFuture = ezFut;
+                    taskVM->traceExecution = false; // set to true for debugging
+                    taskVM->push(closedFunc);
+                    for (auto& a : closedArgs) taskVM->push(a);
+                    
+                    if (taskVM->dispatchCall(closedFunc, closedArgs.size())) {
+                        taskVM->isYielded = false;
+                        taskVM->run(0); // run until completion or yield
+                        
+                        if (!taskVM->isYielded) {
+                            Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
+                            ezFut->set(result);
+                        }
+                        // If yielded, OP_AWAIT inside taskVM handles setting up resumption.
+                    } else {
+                        // Native async function? (rare)
+                        Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
+                        ezFut->set(result);
+                    }
+                } catch (const std::exception& e) {
+                    ezFut->set(Value()); // Could set an error value if EZFuture supports it
+                }
+            });
+            
+            this->stackTop -= (argCount + 1);
+            push(Value::makeFuture(ezFut));
+            return false; // Result is already pushed (Future)
+        }
+
         // SYNC before pushing frame so the frame starts at the correct stack boundary
         this->stackTop = stackTop;
         pushCallFrame(bcFunc, argCount, cs);

@@ -4,6 +4,25 @@
 #include <string>
 #include <variant>
 
+#ifdef TRUE
+#undef TRUE
+#endif
+#ifdef FALSE
+#undef FALSE
+#endif
+#ifdef IN
+#undef IN
+#endif
+#ifdef OUT
+#undef OUT
+#endif
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef INTERFACE
+#undef INTERFACE
+#endif
+
 enum class TokenType {
     // Literals
     NUMBER,
@@ -31,6 +50,8 @@ enum class TokenType {
     AND,
     OR,
     NOT,
+    ASYNC,
+    AWAIT,
     
     // OOP Keywords
     MODEL,

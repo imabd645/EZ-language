@@ -1,8 +1,16 @@
-print("Testing background dictionary allocation...")
-task f() {
-    print("Inside task")
-    return {}
+async task fetch_data() {
+    print("Fetching data (simulating network request for 1 second)...");
+    await waitAsync(1000);
+    print("Data fetched!");
+    return "Secret Data: 42";
 }
-fut = async(f)
-res = await(fut)
-print("Finished")
+
+async task main_async() {
+    print("Starting program...");
+    future = fetch_data();
+    print("Future created, waiting for it to resolve...");
+    result = await future;
+    print("Result: " + result);
+}
+
+main_async();

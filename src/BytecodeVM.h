@@ -1,4 +1,3 @@
-
 #ifndef BYTECODE_VM_H
 #define BYTECODE_VM_H
 
@@ -23,7 +22,7 @@
 void EZ_RegisterSource(const std::string& filename, const std::string& source);
 const std::string* EZ_GetSourceLine(const std::string& filename, int line);
 
-class BytecodeVM : public RuntimeContext, public IGCRoot {
+class BytecodeVM : public RuntimeContext, public IGCRoot, public std::enable_shared_from_this<BytecodeVM> {
 public:
     bool traceExecution = false;
     BytecodeVM();
@@ -120,6 +119,8 @@ private:
 
     // Execution flag
     bool running;
+    bool isYielded = false;
+    std::shared_ptr<EZFuture> taskFuture;
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);

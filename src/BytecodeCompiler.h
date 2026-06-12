@@ -90,6 +90,7 @@ private:
     void compileSet(const SetExpr& expr);
     void compileDictionary(const DictionaryExpr& expr);
     void compileSpread(const SpreadExpr& expr);
+    void compileAwait(const AwaitExpr& expr);
     
     // === Statement Compilation ===
     void compileStmt(const StmtPtr& stmt);

@@ -111,6 +111,9 @@ enum class OpCode : uint8_t {
     TYPE_OF,             // Push type name
     IS_INSTANCE_OF,      // Check if instance of class name (string on stack)
     
+    // Async
+    OP_AWAIT,            // Wait for Future to resolve
+    
     // Models / OOP
     MAKE_INTERFACE,      // name_idx, method_count: Create an interface
     MAKE_CLASS,          // name_idx, method_count, interface_count: Create a class
@@ -168,6 +171,7 @@ struct FunctionConstant {
     std::string name;
     size_t arity;
     bool isVariadic;
+    bool isAsync;
     size_t upvalueCount;
     std::vector<std::string> paramNames;
     std::vector<Constant> defaultValues; // NIL = no default
@@ -268,6 +272,7 @@ struct BytecodeFunction {
     std::string filename;  // Source file this function was defined in
     size_t arity;
     bool isVariadic;
+    bool isAsync;
     Chunk chunk;
     std::vector<Upvalue> upvalues;
     size_t upvalueCount;
@@ -285,7 +290,7 @@ struct BytecodeFunction {
     size_t defaultParamCount;
 
     BytecodeFunction(const std::string& name, size_t arity)
-        : name(name), filename(""), arity(arity), isVariadic(false),
+        : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false),
           upvalueCount(0), localCount(0), defaultParamCount(0) {}
 };
 

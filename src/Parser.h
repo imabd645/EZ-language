@@ -53,7 +53,7 @@ private:
     StmtPtr getStatement();
     StmtPtr matchStatement();
     StmtPtr staticStatement();
-    StmtPtr taskStatement();
+    StmtPtr taskStatement(bool isAsync = false);
     StmtPtr giveStatement();
     StmtPtr escapeStatement();
     StmtPtr skipStatement();
@@ -85,7 +85,7 @@ private:
     ExprPtr primary();
     
     ExprPtr finishCall(ExprPtr callee);
-    ExprPtr lambdaExpression();
+    ExprPtr lambdaExpression(bool isAsync = false);
 };
 
 #endif // PARSER_H

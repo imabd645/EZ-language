@@ -154,6 +154,8 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
 
     run(frames.size());
 
+    if (isYielded) return Value();
+
     // Result is the top value before we restore
     Value result = (stackTop > stack.data()) ? *(stackTop - 1) : Value();
 

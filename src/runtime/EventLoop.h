@@ -9,8 +9,8 @@
 class EventLoop {
 public:
     static EventLoop& instance() {
-        static EventLoop loop;
-        return loop;
+        static EventLoop* loop = new EventLoop();
+        return *loop;
     }
 
     // Push a task to be executed on the main event loop thread

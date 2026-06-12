@@ -84,6 +84,9 @@ void registerNetBuiltins(RuntimeContext& interp) {
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, ssl_verify);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, ssl_verifyhost);
+#ifdef CURLSSLOPT_NATIVE_CA
+            curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
@@ -130,6 +133,9 @@ void registerNetBuiltins(RuntimeContext& interp) {
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, ssl_verify); 
             curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, ssl_verifyhost);
+#ifdef CURLSSLOPT_NATIVE_CA
+            curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
             
             CURLcode code = curl_easy_perform(curl);
@@ -190,6 +196,9 @@ void registerNetBuiltins(RuntimeContext& interp) {
                     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
                     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, ssl_verify);
                     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, ssl_verifyhost);
+#ifdef CURLSSLOPT_NATIVE_CA
+                    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
                     
                     if (method == "POST") {
                         curl_easy_setopt(curl, CURLOPT_POST, 1L);

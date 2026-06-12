@@ -1,5 +1,6 @@
 #include "EventLoop.h"
 #include <iostream>
+#include "../Environment.h"
 #define EZFUTURE_IMPL
 #include "../EZFuture.h"
 

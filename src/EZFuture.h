@@ -24,11 +24,14 @@ struct EZFuture {
     HANDLE   hEvent;
     std::mutex mtx;
     Value*   result;  // heap-allocated copy of the result
+    bool     hasError;
+    std::string errorMsg;
     std::function<void()> onReady;
 
     EZFuture()
         : hEvent(CreateEvent(nullptr, TRUE, FALSE, nullptr))
         , result(nullptr)
+        , hasError(false)
     {}
 
     ~EZFuture();
@@ -38,6 +41,10 @@ struct EZFuture {
 
     // Store a result and signal the event.
     void set(const Value& val);
+
+    void setError(const std::string& msg);
+    bool isError() const { return hasError; }
+    std::string getError() const { return errorMsg; }
 
     // Block until ready, then return the stored result.
     Value get();
@@ -84,9 +91,27 @@ void EZFuture::set(const Value& val) {
     if (callback) callback();
 }
 
+void EZFuture::setError(const std::string& msg) {
+    std::function<void()> callback;
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+        if (!result && !hasError) {
+            hasError = true;
+            errorMsg = msg;
+        }
+        if (onReady) {
+            callback = std::move(onReady);
+            onReady = nullptr;
+        }
+    }
+    SetEvent(hEvent);
+    if (callback) callback();
+}
+
 Value EZFuture::get() {
     WaitForSingleObject(hEvent, INFINITE);
     std::lock_guard<std::mutex> lock(mtx);
+    if (hasError) throw std::runtime_error(errorMsg);
     if (result) return *result;
     return Value();
 }

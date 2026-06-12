@@ -120,6 +120,7 @@ private:
     // Execution flag
     bool running;
     bool isYielded = false;
+    bool isAsyncTask = false;
     std::shared_ptr<EZFuture> taskFuture;
 
     // ── Core ──────────────────────────────────────────────────────────────────

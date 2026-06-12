@@ -1220,12 +1220,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 fut->then([sharedVM, rawVM, fut]() {
                                     EventLoop::instance().pushTask([sharedVM, rawVM, fut]() {
                                         rawVM->isYielded = false;
-                                        *(rawVM->stackTop - 1) = fut->get();
+                                        if (fut->isError()) {
+                                            // Re-execute OP_AWAIT so it throws from inside the interpret loop
+                                            if (!rawVM->frames.empty()) {
+                                                rawVM->frames.back().ip -= 1;
+                                            }
+                                        } else {
+                                            *(rawVM->stackTop - 1) = fut->get();
+                                        }
                                         rawVM->run(0);
                                         
                                         if (!rawVM->isYielded && rawVM->taskFuture) {
-                                            Value result = (rawVM->stackTop > rawVM->stack.data()) ? *(rawVM->stackTop - 1) : Value();
-                                            rawVM->taskFuture->set(result);
+                                            if (!rawVM->running && !rawVM->frames.empty()) {
+                                                std::string errMsg = rawVM->pendingException.isString() ? rawVM->pendingException.toString() : "Async task failed with an exception";
+                                                rawVM->taskFuture->setError(errMsg);
+                                            } else {
+                                                Value result = (rawVM->stackTop > rawVM->stack.data()) ? *(rawVM->stackTop - 1) : Value();
+                                                rawVM->taskFuture->set(result);
+                                            }
                                         }
                                     });
                                 });
@@ -1463,7 +1475,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
             // this->stackTop is restored to the exact level it was at the start of the 'try' block.
             goto dispatch_start;
         }
-        // Uncaught RuntimeError: already printed in runtimeError()
+        // Uncaught RuntimeError: already printed in runtimeError() (if not async task)
+        pendingException = Value(e.what());
         SYNC_IP();
     } catch (const std::exception& e) {
         if (!tryStack.empty()) {
@@ -1481,13 +1494,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
             goto dispatch_start;
         }
         // Uncaught std exception — format like our runtime errors
-        std::string fname = frames.empty() ? "" : frames.back().filename;
-        int ln = frames.empty() ? 0 : frames.back().line;
-        std::cerr << "\nError: " << e.what() << std::endl;
-        if (ln > 0) std::cerr << "  at line " << ln;
-        if (!fname.empty()) std::cerr << " in " << fname;
-        if (ln > 0 || !fname.empty()) std::cerr << std::endl;
-        printStackTrace();
+        pendingException = Value(e.what());
+        if (!isAsyncTask) {
+            std::string fname = frames.empty() ? "" : frames.back().filename;
+            int ln = frames.empty() ? 0 : frames.back().line;
+            std::cerr << "\nError: " << e.what() << std::endl;
+            if (ln > 0) std::cerr << "  at line " << ln;
+            if (!fname.empty()) std::cerr << " in " << fname;
+            if (ln > 0 || !fname.empty()) std::cerr << std::endl;
+            printStackTrace();
+        }
+        running = false;
         SYNC_IP();
     }
 }
@@ -1620,6 +1637,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                     auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
                     taskVM->taskFuture = ezFut;
                     taskVM->traceExecution = shouldTrace;
+                    taskVM->isAsyncTask = true;
                     taskVM->push(closedFunc);
                     for (auto& a : closedArgs) taskVM->push(a);
                     
@@ -1628,17 +1646,26 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                         taskVM->run(0); // run until completion or yield
                         
                         if (!taskVM->isYielded) {
-                            Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
-                            ezFut->set(result);
+                            if (!taskVM->running && !taskVM->frames.empty()) {
+                                std::string errMsg = taskVM->pendingException.isString() ? taskVM->pendingException.toString() : "Async task failed with an exception";
+                                ezFut->setError(errMsg);
+                            } else {
+                                Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
+                                ezFut->set(result);
+                            }
                         }
                         // If yielded, OP_AWAIT inside taskVM handles setting up resumption.
                     } else {
                         // Native async function? (rare)
-                        Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
-                        ezFut->set(result);
+                        if (!taskVM->running) {
+                            ezFut->setError("Async native function failed");
+                        } else {
+                            Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();
+                            ezFut->set(result);
+                        }
                     }
                 } catch (const std::exception& e) {
-                    ezFut->set(Value()); // Could set an error value if EZFuture supports it
+                    ezFut->setError(e.what());
                 }
             });
             
@@ -2000,6 +2027,9 @@ void BytecodeVM::doNot() { push(Value(!pop().isTruthy())); }
 void BytecodeVM::runtimeError(const std::string& message, int line, const std::string& filename) {
     if (pendingException.isNil()) {
         pendingException = Value(message);
+    }
+    if (running && tryStack.empty() && !isAsyncTask) {
+        std::cerr << "\nError: " << message << std::endl;
     }
 
     // Resolve the actual fault location: prefer the caller-supplied line/file,

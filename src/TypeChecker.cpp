@@ -194,12 +194,9 @@ void TypeChecker::checkVarDecl(const VarDeclStmt& stmt) {
     TypeInfo declaredType = TypeInfo::fromAST(stmt.typeHint);
     if (stmt.initializer) {
         TypeInfo initType = checkExpr(stmt.initializer);
-        if (declaredType != initType) {
-            // Note: error only if not Any
-            if (declaredType.baseType != "Any" && initType.baseType != "Any") {
-                error(stmt.initializer ? stmt.initializer->line : 0, 
-                      "Type mismatch in declaration of '" + stmt.name + "'. Expected " + declaredType.toString() + " but got " + initType.toString());
-            }
+        if (initType.baseType != "Any" && declaredType != initType) {
+            error(stmt.initializer,
+                  "Type mismatch in variable declaration.", "Expected " + declaredType.toString() + " but got " + initType.toString());
         }
     }
     declareVariable(stmt.name, declaredType);
@@ -240,7 +237,7 @@ void TypeChecker::checkGive(const GiveStmt& stmt) {
     
     if (expectedType != retType) {
         if (expectedType.baseType != "Any" && retType.baseType != "Any") {
-            error(stmt.value ? stmt.value->line : 0, 
+            error(stmt.value, 
                   "Type mismatch in return statement. Expected " + expectedType.toString() + " but got " + retType.toString());
         }
     }
@@ -413,26 +410,23 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
                 error(expr.index, "Array index must be a number");
             }
             if (valType.baseType != "Any" && objType.typeArgs[0].baseType != "Any" && valType != objType.typeArgs[0]) {
-                error(expr.value ? expr.value->line : 0, "Type mismatch in array assignment. Expected " + objType.typeArgs[0].toString() + " but got " + valType.toString());
+                error(expr.value, "Type mismatch in array assignment. Expected " + objType.typeArgs[0].toString() + " but got " + valType.toString());
             }
         } else if (objType.baseType == "Dict" && objType.typeArgs.size() == 2) {
             if (indexType.baseType != "Any" && indexType.baseType != objType.typeArgs[0].baseType) {
                 error(expr.index, "Dictionary index expected " + objType.typeArgs[0].toString() + " but got " + indexType.toString());
             }
             if (valType.baseType != "Any" && objType.typeArgs[1].baseType != "Any" && valType != objType.typeArgs[1]) {
-                error(expr.value ? expr.value->line : 0, "Type mismatch in dictionary assignment. Expected " + objType.typeArgs[1].toString() + " but got " + valType.toString());
+                error(expr.value, "Type mismatch in dictionary assignment. Expected " + objType.typeArgs[1].toString() + " but got " + valType.toString());
             }
         }
         return valType;
     }
     
     TypeInfo declaredType = resolveVariable(expr.name);
-    if (declaredType != valType) {
-        if (declaredType.baseType != "Any" && valType.baseType != "Any") {
-            // Can't assign wrong type
-            error(expr.value ? expr.value->line : 0, 
-                  "Type mismatch in assignment to '" + expr.name + "'. Expected " + declaredType.toString() + " but got " + valType.toString());
-        }
+    if (valType.baseType != "Any" && declaredType.baseType != "Any" && declaredType != valType) {
+        error(expr.value,
+              "Type mismatch in variable assignment.", "Expected " + declaredType.toString() + " but got " + valType.toString());
     }
     
     return valType;

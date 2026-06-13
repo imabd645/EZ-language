@@ -640,11 +640,27 @@ StmtPtr Parser::structStatement() {
     consume(TokenType::LBRACE, "Expected '{' before struct body");
     
     std::vector<std::string> fields;
+    std::vector<TypeASTPtr> types;
+    std::vector<ExprPtr> defaults;
     skipNewlines();
     
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         Token field = consume(TokenType::IDENTIFIER, "Expected field name");
         fields.push_back(field.lexeme);
+        
+        TypeASTPtr typeHint = nullptr;
+        if (match(TokenType::COLON)) {
+            typeHint = parseType();
+        } else {
+            typeHint = std::make_shared<TypeAST>("Any");
+        }
+        types.push_back(typeHint);
+        
+        ExprPtr defVal = nullptr;
+        if (match(TokenType::EQUAL)) {
+            defVal = expression();
+        }
+        defaults.push_back(defVal);
         
         if (match(TokenType::COMMA)) {
             skipNewlines();
@@ -655,7 +671,7 @@ StmtPtr Parser::structStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
     
-    return makeStructStmt(line, column, length, nameToken.filename, name, fields);
+    return makeStructStmt(line, column, length, nameToken.filename, name, fields, types, defaults);
 }
 
 StmtPtr Parser::useStatement() {
@@ -1357,14 +1373,36 @@ StmtPtr Parser::interfaceStatement() {
     consume(TokenType::LBRACE, "Expected '{' after interface name");
     skipNewlines();
     
-    std::vector<std::string> methods;
+    std::vector<InterfaceMethod> methods;
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         consume(TokenType::TASK, "Expected 'task' in interface definition");
         Token methodToken = consume(TokenType::IDENTIFIER, "Expected method name");
         consume(TokenType::LPAREN, "Expected '(' after method name");
-        while (!check(TokenType::RPAREN) && !isAtEnd()) advance();
+        
+        InterfaceMethod method;
+        method.name = methodToken.lexeme;
+        
+        if (!check(TokenType::RPAREN)) {
+            do {
+                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
+                method.params.push_back(paramToken.lexeme);
+                
+                if (match(TokenType::COLON)) {
+                    method.paramTypes.push_back(parseType());
+                } else {
+                    method.paramTypes.push_back(std::make_shared<TypeAST>("Any"));
+                }
+            } while (match(TokenType::COMMA));
+        }
         consume(TokenType::RPAREN, "Expected ')' after method parameters");
-        methods.push_back(methodToken.lexeme);
+        
+        if (match(TokenType::ARROW)) {
+            method.returnType = parseType();
+        } else {
+            method.returnType = std::make_shared<TypeAST>("Any");
+        }
+        
+        methods.push_back(method);
         skipNewlines();
     }
     consume(TokenType::RBRACE, "Expected '}' after interface body");

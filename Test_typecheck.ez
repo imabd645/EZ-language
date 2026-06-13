@@ -1,0 +1,73 @@
+// Test_typecheck.ez
+// Comprehensive test for new type-checking features
+
+// 1. Struct Declarations and Default Values
+struct User {
+    name: string
+    age: number = 25 // OK
+    // isStudent: bool = "yes" // UNCOMMENT TO TEST ERROR: Type mismatch in struct field default value
+}
+
+// 2. Interfaces with full signatures
+interface Logger {
+    task log(message: string, level: number) -> bool
+}
+
+// 3. Models and self keyword
+model Person {
+    name: string = ""
+    
+    init(name: string) {
+        self.name = name // OK
+    }
+    
+    task greet() {
+        out "Hello, " + self.name // OK
+    }
+}
+
+// self.name = "outside" // UNCOMMENT TO TEST ERROR: 'self' cannot be used outside of a model or class
+
+// 4. Logical Operators
+x: bool = true
+y: bool = false
+if x and y {
+    out "Both true"
+}
+// z: bool = x and "string" // UNCOMMENT TO TEST ERROR: Logical operator expected bool but got string
+
+// 5. Control Flow (Loops and Escape/Skip)
+i: number = 0
+while i < 10 {
+    if i == 5 {
+        skip // continue
+    }
+    if i == 8 {
+        escape // break
+    }
+    i = i + 1
+}
+
+// escape // UNCOMMENT TO TEST ERROR: break or continue statement outside of a loop
+
+// 6. Collections and Generics
+arr: Array[number] = [1, 2, 3]
+first: number = arr[0] // OK
+// arr[1] = "string" // UNCOMMENT TO TEST ERROR: Type mismatch in array assignment
+
+dict: Dict[string, number] = {"a": 1, "b": 2}
+val: number = dict["a"] // OK
+// dict[1] = 2 // UNCOMMENT TO TEST ERROR: Dictionary index expected string but got number
+
+// 7. Await and Tasks
+async task fetchData() -> Task[string] {
+    give "data"
+}
+
+task main() {
+    // result type is string, not Task[string]
+    result: string = await fetchData()
+    out result
+}
+
+main()

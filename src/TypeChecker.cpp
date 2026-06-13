@@ -131,12 +131,21 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements) {
             FunctionSignature sig;
             for (size_t i = 0; i < structStmt->fields.size(); ++i) {
                 sig.paramNames.push_back(structStmt->fields[i]);
-                TypeInfo fieldType = TypeInfo("Any");
+                TypeInfo fieldType = TypeInfo::fromAST(structStmt->types[i]);
                 sig.paramTypes.push_back(fieldType);
                 declareVariable(structStmt->name + "." + structStmt->fields[i], fieldType);
             }
             sig.returnType = TypeInfo(structStmt->name);
             declareFunction(structStmt->name, sig);
+        } else if (std::holds_alternative<std::shared_ptr<InterfaceStmt>>(stmt->variant)) {
+            auto interfaceStmt = std::get<std::shared_ptr<InterfaceStmt>>(stmt->variant);
+            for (const auto& method : interfaceStmt->methods) {
+                FunctionSignature methodSig;
+                for (const auto& p : method.params) methodSig.paramNames.push_back(p);
+                for (const auto& t : method.paramTypes) methodSig.paramTypes.push_back(TypeInfo::fromAST(t));
+                methodSig.returnType = TypeInfo::fromAST(method.returnType);
+                declareFunction(interfaceStmt->name + "." + method.name, methodSig);
+            }
         }
     }
     
@@ -224,10 +233,15 @@ void TypeChecker::checkGive(const GiveStmt& stmt) {
         retType = checkExpr(stmt.value);
     }
     
-    if (currentReturnType != retType) {
-        if (currentReturnType.baseType != "Any" && retType.baseType != "Any") {
+    TypeInfo expectedType = currentReturnType;
+    if ((expectedType.baseType == "Task" || expectedType.baseType == "Future") && expectedType.typeArgs.size() == 1) {
+        expectedType = expectedType.typeArgs[0];
+    }
+    
+    if (expectedType != retType) {
+        if (expectedType.baseType != "Any" && retType.baseType != "Any") {
             error(stmt.value ? stmt.value->line : 0, 
-                  "Type mismatch in return statement. Expected " + currentReturnType.toString() + " but got " + retType.toString());
+                  "Type mismatch in return statement. Expected " + expectedType.toString() + " but got " + retType.toString());
         }
     }
 }
@@ -316,7 +330,14 @@ void TypeChecker::checkModel(const ModelStmt& stmt) {
 void TypeChecker::checkStruct(const StructStmt& stmt) {
     beginScope();
     for (size_t i = 0; i < stmt.fields.size(); ++i) {
-        declareVariable(stmt.fields[i], TypeInfo("Any"));
+        TypeInfo declaredType = TypeInfo::fromAST(stmt.types[i]);
+        if (stmt.defaults[i]) {
+            TypeInfo defaultType = checkExpr(stmt.defaults[i]);
+            if (declaredType.baseType != "Any" && defaultType.baseType != "Any" && declaredType != defaultType) {
+                error(stmt.defaults[i], "Type mismatch in struct field default value.", "Expected " + declaredType.toString() + " but got " + defaultType.toString());
+            }
+        }
+        declareVariable(stmt.fields[i], declaredType);
     }
     endScope();
 }

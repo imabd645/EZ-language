@@ -1402,7 +1402,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
 void BytecodeCompiler::compileInterface(const InterfaceStmt& stmt) {
     // Push method names as constants
     for (const auto& method : stmt.methods) {
-        size_t methodIdx = identifierConstant(method);
+        size_t methodIdx = identifierConstant(method.name);
         emitOp(OpCode::LOAD_CONST);
         emitBytes(static_cast<uint8_t>((methodIdx >> 8) & 0xFF),
                   static_cast<uint8_t>(methodIdx & 0xFF));

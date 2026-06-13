@@ -445,13 +445,20 @@ struct StaticStmt {
         : name(name), initializer(std::move(init)) {}
 };
 
+struct InterfaceMethod {
+    std::string name;
+    std::vector<std::string> params;
+    std::vector<TypeASTPtr> paramTypes;
+    TypeASTPtr returnType;
+};
+
 // Interface definition
 struct InterfaceStmt {
     int line;
     std::string name;
-    std::vector<std::string> methods;
+    std::vector<InterfaceMethod> methods;
     
-    InterfaceStmt(int line, const std::string& name, std::vector<std::string> methods)
+    InterfaceStmt(int line, const std::string& name, std::vector<InterfaceMethod> methods)
         : line(line), name(name), methods(std::move(methods)) {}
 };
 
@@ -483,9 +490,11 @@ struct ModelStmt {
 struct StructStmt {
     std::string name;
     std::vector<std::string> fields;
+    std::vector<TypeASTPtr> types;
+    std::vector<ExprPtr> defaults;
     
-    StructStmt(const std::string& name, std::vector<std::string> fields)
-        : name(name), fields(std::move(fields)) {}
+    StructStmt(const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults)
+        : name(name), fields(std::move(fields)), types(std::move(types)), defaults(std::move(defaults)) {}
 };
 
 // Use statement (import)
@@ -667,7 +676,7 @@ inline ExprPtr makeTernaryExpr(int line, int column, int length, const std::stri
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<TernaryExpr>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
-inline StmtPtr makeInterfaceStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> methods) {
+inline StmtPtr makeInterfaceStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<InterfaceMethod> methods) {
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
 }
 
@@ -683,8 +692,8 @@ inline StmtPtr makeModelStmt(int line, int column, int length, const std::string
         std::move(initDefaultValues), std::move(initBody), std::move(members)));
 }
 
-inline StmtPtr makeStructStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> fields) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<StructStmt>(name, std::move(fields)));
+inline StmtPtr makeStructStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults) {
+    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<StructStmt>(name, std::move(fields), std::move(types), std::move(defaults)));
 }
 
 inline StmtPtr makeUseStmt(int line, int column, int length, const std::string& file, const std::string& path, const std::string& alias = "") {

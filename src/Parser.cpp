@@ -137,8 +137,44 @@ void Parser::synchronize() {
 
 // ============ Statement Parsing ============
 
+TypeASTPtr Parser::parseType() {
+    Token typeToken = consume(TokenType::IDENTIFIER, "Expected type name");
+    std::string baseType = typeToken.lexeme;
+    
+    std::vector<TypeASTPtr> typeArgs;
+    if (match(TokenType::LBRACKET)) {
+        do {
+            typeArgs.push_back(parseType());
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACKET, "Expected ']' after type arguments");
+    }
+    
+    return std::make_shared<TypeAST>(baseType, typeArgs);
+}
+
+StmtPtr Parser::varDeclStatement() {
+    int line = peek().line;
+    std::string filename = peek().filename;
+    
+    Token nameToken = consume(TokenType::IDENTIFIER, "Expected variable name");
+    consume(TokenType::COLON, "Expected ':' after variable name");
+    
+    TypeASTPtr typeHint = parseType();
+    
+    ExprPtr initializer = nullptr;
+    if (match(TokenType::EQUAL)) {
+        initializer = expression();
+    }
+    
+    return makeVarDeclStmt(line, filename, nameToken.lexeme, initializer, typeHint);
+}
+
+
 StmtPtr Parser::declaration() {
     try {
+        if (check(TokenType::IDENTIFIER) && current + 1 < tokens.size() && tokens[current + 1].type == TokenType::COLON) {
+            return varDeclStatement();
+        }
         return statement();
     } catch (const ParseError& e) {
         error(peek(), e.what());
@@ -377,6 +413,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     consume(TokenType::LPAREN, "Expected '(' after function name");
     
     std::vector<std::string> params;
+    std::vector<TypeASTPtr> paramTypes;
     std::vector<ExprPtr> defaultValues;
     bool hadDefault = false;
     bool isVariadic = false;
@@ -387,6 +424,15 @@ StmtPtr Parser::taskStatement(bool isAsync) {
                 isVariadic = true;
                 Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
                 params.push_back(paramToken.lexeme);
+            
+            TypeASTPtr pType = nullptr;
+            if (match(TokenType::COLON)) {
+                pType = parseType();
+            } else {
+                pType = std::make_shared<TypeAST>("Any");
+            }
+            paramTypes.push_back(pType);
+                paramTypes.push_back(std::make_shared<TypeAST>("Any"));
                 defaultValues.push_back(nullptr);
                 if (check(TokenType::COMMA)) {
                     error(peek(), "Rest parameter must be the last parameter");
@@ -399,6 +445,14 @@ StmtPtr Parser::taskStatement(bool isAsync) {
                 throw ParseError("Expected parameter name", paramToken.line);
             }
             params.push_back(paramToken.lexeme);
+            
+            TypeASTPtr pType = nullptr;
+            if (match(TokenType::COLON)) {
+                pType = parseType();
+            } else {
+                pType = std::make_shared<TypeAST>("Any");
+            }
+            paramTypes.push_back(pType);
             
             // Check for default value: param = expr
             if (match(TokenType::EQUAL)) {
@@ -415,6 +469,13 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     }
     
     consume(TokenType::RPAREN, "Expected ')' after parameters");
+    
+    TypeASTPtr returnType = nullptr;
+    if (match(TokenType::ARROW)) {
+        returnType = parseType();
+    } else {
+        returnType = std::make_shared<TypeAST>("Any");
+    }
     skipNewlines();
     
     std::vector<StmtPtr> body;
@@ -432,7 +493,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, defaultValues, body, isVariadic, isAsync);
+    return makeTaskStmt(line, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
 }
 
 StmtPtr Parser::giveStatement() {
@@ -1023,7 +1084,7 @@ ExprPtr Parser::lambdaExpression(bool isAsync) {
         // Expression body
         skipNewlines();
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body, isVariadic, isAsync);
+        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
     } else if (match(TokenType::LBRACE)) {
         // Statement body
         skipNewlines();
@@ -1034,11 +1095,11 @@ ExprPtr Parser::lambdaExpression(bool isAsync) {
             skipNewlines();
         }
         consume(TokenType::RBRACE, "Expected '}' after lambda body");
-        return makeLambdaExpr(line, peek().filename, params, stmtBody, isVariadic, isAsync);
+        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), stmtBody, nullptr, isVariadic, isAsync);
     } else {
         // Default: treat as expression body without arrow
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, body, isVariadic, isAsync);
+        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
     }
 }
 
@@ -1213,7 +1274,9 @@ StmtPtr Parser::modelStatement() {
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
     // Use the peek().filename or current filename
-    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initDefaultValues, initBody, members);
+    std::vector<TypeASTPtr> initParamTypes(initParams.size(), std::make_shared<TypeAST>("Any"));
+    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
+                         initDefaultValues, initBody, members);
 }
 
 // Interface definition

@@ -42,9 +42,13 @@ private:
     // Error handling
     void error(const Token& token, const std::string& message);
     void synchronize();
+    
+    // Type parsing
+    TypeASTPtr parseType();
 
     // Statement parsing
     StmtPtr declaration();
+    StmtPtr varDeclStatement();
     StmtPtr statement();
     StmtPtr outStatement();
     StmtPtr whenStatement();

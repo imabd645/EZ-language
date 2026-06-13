@@ -14,6 +14,17 @@ struct Stmt;
 using ExprPtr = std::shared_ptr<Expr>;
 using StmtPtr = std::shared_ptr<Stmt>;
 
+struct TypeAST;
+using TypeASTPtr = std::shared_ptr<TypeAST>;
+
+struct TypeAST {
+    std::string baseType;
+    std::vector<TypeASTPtr> typeArgs;
+    
+    TypeAST(const std::string& base) : baseType(base) {}
+    TypeAST(const std::string& base, std::vector<TypeASTPtr> args) : baseType(base), typeArgs(std::move(args)) {}
+};
+
 // ============ EXPRESSIONS ============
 
 struct LiteralExpr;
@@ -151,16 +162,18 @@ struct LogicalExpr {
 // Lambda expression (anonymous function)
 struct LambdaExpr {
     std::vector<std::string> params;
+    std::vector<TypeASTPtr> paramTypes;
     ExprPtr body;  // Expression body for single-expression lambdas
     std::vector<StmtPtr> stmtBody;  // Statement body for multi-statement lambdas
+    TypeASTPtr returnType;
     bool isVariadic = false;
     bool isAsync = false;
     
-    LambdaExpr(std::vector<std::string> params, ExprPtr body, bool variadic = false, bool isAsync = false)
-        : params(std::move(params)), body(std::move(body)), isVariadic(variadic), isAsync(isAsync) {}
+    LambdaExpr(std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, ExprPtr body, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false)
+        : params(std::move(params)), paramTypes(std::move(paramTypes)), body(std::move(body)), returnType(std::move(returnType)), isVariadic(variadic), isAsync(isAsync) {}
     
-    LambdaExpr(std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false, bool isAsync = false)
-        : params(std::move(params)), body(nullptr), stmtBody(std::move(stmtBody)), isVariadic(variadic), isAsync(isAsync) {}
+    LambdaExpr(std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, std::vector<StmtPtr> stmtBody, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false)
+        : params(std::move(params)), paramTypes(std::move(paramTypes)), body(nullptr), stmtBody(std::move(stmtBody)), returnType(std::move(returnType)), isVariadic(variadic), isAsync(isAsync) {}
 };
 
 // Property access expression (self.name or obj.property)
@@ -299,9 +312,10 @@ struct OutStmt {
 struct VarDeclStmt {
     std::string name;
     ExprPtr initializer;
+    TypeASTPtr typeHint;
     
-    VarDeclStmt(const std::string& name, ExprPtr init)
-        : name(name), initializer(std::move(init)) {}
+    VarDeclStmt(const std::string& name, ExprPtr init, TypeASTPtr typeHint = nullptr)
+        : name(name), initializer(std::move(init)), typeHint(std::move(typeHint)) {}
 };
 
 // Block of statements
@@ -371,15 +385,17 @@ struct MatchStmt {
 struct TaskStmt {
     std::string name;
     std::vector<std::string> params;
+    std::vector<TypeASTPtr> paramTypes;
     std::vector<ExprPtr> defaultValues; // nullptr = required, ExprPtr = default value
+    TypeASTPtr returnType;
     std::vector<StmtPtr> body;
     bool isVariadic = false;
     bool isAsync = false;
     
-    TaskStmt(const std::string& name, std::vector<std::string> params, 
-             std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)
-        : name(name), params(std::move(params)), defaultValues(std::move(defaultValues)),
-          body(std::move(body)), isVariadic(variadic), isAsync(isAsync) {}
+    TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
+             std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)
+        : name(name), params(std::move(params)), paramTypes(std::move(paramTypes)), defaultValues(std::move(defaultValues)),
+          returnType(std::move(returnType)), body(std::move(body)), isVariadic(variadic), isAsync(isAsync) {}
 };
 
 // Return statement (give)
@@ -408,8 +424,10 @@ struct ModelMember {
     bool isMethod;
     bool isAsync = false;
     std::string name;
+    TypeASTPtr typeHint; // For properties and methods (return type)
     ExprPtr initializer;  // For properties
     std::vector<std::string> params;  // For methods
+    std::vector<TypeASTPtr> paramTypes; // For methods
     std::vector<ExprPtr> defaultValues; // For methods
     std::vector<StmtPtr> body;  // For methods
 };
@@ -440,6 +458,7 @@ struct ModelStmt {
     std::string parentName;  // For inheritance (empty if none)
     std::vector<std::string> interfaces; // For implements
     std::vector<std::string> initParams;
+    std::vector<TypeASTPtr> initParamTypes;
     std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
@@ -447,11 +466,12 @@ struct ModelStmt {
     ModelStmt(int line, const std::string& name, const std::string& parent,
               std::vector<std::string> interfaces,
               std::vector<std::string> initParams, 
+              std::vector<TypeASTPtr> initParamTypes,
               std::vector<ExprPtr> initDefaultValues,
               std::vector<StmtPtr> initBody,
               std::vector<ModelMember> members)
         : line(line), name(name), parentName(parent), interfaces(std::move(interfaces)),
-          initParams(std::move(initParams)), initDefaultValues(std::move(initDefaultValues)),
+          initParams(std::move(initParams)), initParamTypes(std::move(initParamTypes)), initDefaultValues(std::move(initDefaultValues)),
           initBody(std::move(initBody)), members(std::move(members)) {}
 };
 
@@ -548,12 +568,12 @@ inline ExprPtr makeLogicalExpr(int line, const std::string& file, ExprPtr left, 
     return std::make_shared<Expr>(line, file, std::make_shared<LogicalExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, ExprPtr body, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(body), variadic, isAsync));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, ExprPtr body, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(body), std::move(returnType), variadic, isAsync));
 }
 
-inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<StmtPtr> stmtBody, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(stmtBody), variadic, isAsync));
+inline ExprPtr makeLambdaExpr(int line, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, std::vector<StmtPtr> stmtBody, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
+    return std::make_shared<Expr>(line, file, std::make_shared<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(stmtBody), std::move(returnType), variadic, isAsync));
 }
 
 // Helper functions to create statements
@@ -565,8 +585,8 @@ inline StmtPtr makeOutStmt(int line, const std::string& file, ExprPtr expr) {
     return std::make_shared<Stmt>(line, file, std::make_shared<OutStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeVarDeclStmt(int line, const std::string& file, const std::string& name, ExprPtr init) {
-    return std::make_shared<Stmt>(line, file, std::make_shared<VarDeclStmt>(name, std::move(init)));
+inline StmtPtr makeVarDeclStmt(int line, const std::string& file, const std::string& name, ExprPtr init, TypeASTPtr typeHint = nullptr) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<VarDeclStmt>(name, std::move(init), std::move(typeHint)));
 }
 
 inline StmtPtr makeBlockStmt(int line, const std::string& file, std::vector<StmtPtr> stmts) {
@@ -597,10 +617,10 @@ inline StmtPtr makeMatchStmt(int line, const std::string& file, ExprPtr subject,
     return std::make_shared<Stmt>(line, file, std::make_shared<MatchStmt>(std::move(subject), std::move(arms)));
 }
 
-inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, 
-                            std::vector<ExprPtr> defaultValues, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Stmt>(line, file, std::make_shared<TaskStmt>(name, std::move(params), 
-                                                                     std::move(defaultValues), std::move(body), variadic, isAsync));
+inline StmtPtr makeTaskStmt(int line, const std::string& file, const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
+                            std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false) {
+    return std::make_shared<Stmt>(line, file, std::make_shared<TaskStmt>(name, std::move(params), std::move(paramTypes),
+                                                                     std::move(defaultValues), std::move(returnType), std::move(body), variadic, isAsync));
 }
 
 inline StmtPtr makeGiveStmt(int line, const std::string& file, ExprPtr val = nullptr) {
@@ -650,11 +670,12 @@ inline StmtPtr makeInterfaceStmt(int line, const std::string& file, const std::s
 inline StmtPtr makeModelStmt(int line, const std::string& file, const std::string& name, const std::string& parent,
                              std::vector<std::string> interfaces,
                              std::vector<std::string> initParams, 
+                             std::vector<TypeASTPtr> initParamTypes,
                              std::vector<ExprPtr> initDefaultValues,
                              std::vector<StmtPtr> initBody,
                              std::vector<ModelMember> members) {
     return std::make_shared<Stmt>(line, file, std::make_shared<ModelStmt>(
-        line, name, parent, std::move(interfaces), std::move(initParams), 
+        line, name, parent, std::move(interfaces), std::move(initParams), std::move(initParamTypes),
         std::move(initDefaultValues), std::move(initBody), std::move(members)));
 }
 

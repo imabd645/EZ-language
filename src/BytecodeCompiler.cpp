@@ -505,7 +505,7 @@ void BytecodeCompiler::compileTernary(const TernaryExpr& expr) {
 void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
     std::string name = "<lambda>";
 
-    TaskStmt fakeTask(name, expr.params, std::vector<ExprPtr>{},
+    TaskStmt fakeTask(name, expr.params, std::vector<TypeASTPtr>(expr.params.size(), std::make_shared<TypeAST>("Any")), std::vector<ExprPtr>{}, nullptr,
                       expr.body ? std::vector<StmtPtr>{} : expr.stmtBody,
                       expr.isVariadic, expr.isAsync);
 
@@ -1321,7 +1321,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         params.insert(params.end(), stmt.initParams.begin(), stmt.initParams.end());
         std::vector<ExprPtr> defaults = {nullptr}; // for 'self'
         defaults.insert(defaults.end(), stmt.initDefaultValues.begin(), stmt.initDefaultValues.end());
-        TaskStmt initTask("init", params, defaults, stmt.initBody);
+        TaskStmt initTask("init", params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, stmt.initBody);
         emitClosure(initTask); // Pushes closure
         
         // Push isStatic flag (false for constructor)
@@ -1347,7 +1347,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             }
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
-            TaskStmt methodTask(member.name, params, defaults, member.body, false, member.isAsync);
+            TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
             emitClosure(methodTask); // Pushes closure
         } else {
             if (member.initializer) {

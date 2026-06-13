@@ -10,6 +10,7 @@
 #include "runtime/EventLoop.h"
 #include "Lexer.h"
 #include "Parser.h"
+#include "TypeChecker.h"
 #include "BytecodeCompiler.h"
 #include "BytecodeVM.h"
 #include "PackageManager.h"
@@ -59,6 +60,11 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     std::vector<StmtPtr> statements = parser.parse();
     
     if (parser.hasError()) {
+        exit(65);
+    }
+    
+    TypeChecker typeChecker;
+    if (!typeChecker.check(statements)) {
         exit(65);
     }
     
@@ -448,15 +454,18 @@ void runRepl(bool traceExecution = false) {
             std::vector<StmtPtr> statements = parser.parse();
             
             if (!parser.hasError()) {
-                try {
-                    CompileResult result = compiler.compile(statements);
-                    if (result.success) {
-                        vm.execute(result.mainFunction);
-                    } else {
-                        std::cerr << "Compile error: " << result.error << std::endl;
+                TypeChecker typeChecker;
+                if (typeChecker.check(statements)) {
+                    try {
+                        CompileResult result = compiler.compile(statements);
+                        if (result.success) {
+                            vm.execute(result.mainFunction);
+                        } else {
+                            std::cerr << "Compile error: " << result.error << std::endl;
+                        }
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error: " << e.what() << std::endl;
                     }
-                } catch (const std::exception& e) {
-                    std::cerr << "Error: " << e.what() << std::endl;
                 }
                 multiline.clear();
             }

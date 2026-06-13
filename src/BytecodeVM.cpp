@@ -2143,7 +2143,7 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
     BytecodeCompiler compiler;
 
     // Build a minimal TaskStmt from the EZFunction
-    TaskStmt fakeTask(func->name, func->params, func->defaultValues,
+    TaskStmt fakeTask(func->name, func->params, std::vector<TypeASTPtr>(func->params.size(), std::make_shared<TypeAST>("Any")), func->defaultValues, nullptr,
                       func->body, func->isVariadic);
     BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
 

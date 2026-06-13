@@ -49,6 +49,7 @@ struct TypeInfo {
 };
 
 struct FunctionSignature {
+    std::vector<std::string> paramNames;
     std::vector<TypeInfo> paramTypes;
     TypeInfo returnType;
 };
@@ -69,6 +70,7 @@ private:
     
     Environment* currentEnv;
     TypeInfo currentReturnType;
+    std::string currentModel; // Tracks enclosing model for 'self'
     bool hadError;
     
     void beginScope();
@@ -78,6 +80,9 @@ private:
     void declareFunction(const std::string& name, const FunctionSignature& sig);
     FunctionSignature* resolveFunction(const std::string& name);
     
+    void error(const ExprPtr& expr, const std::string& message, const std::string& hint = "");
+    void error(const StmtPtr& stmt, const std::string& message, const std::string& hint = "");
+    void error(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint = "");
     void error(int line, const std::string& message);
     
     // Statements
@@ -90,6 +95,13 @@ private:
     void checkWhile(const WhileStmt& stmt);
     void checkRepeat(const RepeatStmt& stmt);
     void checkGet(const GetStmt& stmt);
+    void checkModel(const ModelStmt& stmt);
+    void checkStruct(const StructStmt& stmt);
+    void checkInterface(const InterfaceStmt& stmt);
+    void checkTry(const TryStmt& stmt);
+    void checkThrow(const ThrowStmt& stmt);
+    void checkMatch(const MatchStmt& stmt);
+    void checkStatic(const StaticStmt& stmt);
     
     // Expressions
     TypeInfo checkExpr(const ExprPtr& expr);
@@ -99,6 +111,16 @@ private:
     TypeInfo checkCall(const CallExpr& expr);
     TypeInfo checkIdentifier(const IdentifierExpr& expr);
     TypeInfo checkLiteral(const LiteralExpr& expr);
+    TypeInfo checkLambda(const LambdaExpr& expr);
+    TypeInfo checkPropertyAccess(const PropertyAccessExpr& expr);
+    TypeInfo checkSet(const SetExpr& expr);
+    TypeInfo checkSelf(const SelfExpr& expr);
+    TypeInfo checkNew(const NewExpr& expr);
+    TypeInfo checkIndex(const IndexExpr& expr);
+    TypeInfo checkDictionary(const DictionaryExpr& expr);
+    TypeInfo checkSpread(const SpreadExpr& expr);
+    TypeInfo checkTernary(const TernaryExpr& expr);
+    TypeInfo checkAwait(const AwaitExpr& expr);
 };
 
 #endif // TYPE_CHECKER_H

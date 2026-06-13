@@ -123,6 +123,8 @@ void Lexer::scanToken() {
         case '-':
             if (match('=')) {
                 addToken(TokenType::MINUS_EQUAL);
+            } else if (match('>')) {
+                addToken(TokenType::ARROW);
             } else {
                 addToken(TokenType::MINUS);
             }

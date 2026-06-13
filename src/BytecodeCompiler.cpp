@@ -510,7 +510,7 @@ void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
                       expr.isVariadic, expr.isAsync);
 
     if (expr.body) {
-        fakeTask.body.push_back(makeGiveStmt(0, "", expr.body));
+        fakeTask.body.push_back(makeGiveStmt(0, 0, 0, "", expr.body));
     }
 
     // Record how many functions exist before compiling (so we know the index)
@@ -847,13 +847,13 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
         emitOp(OpCode::DUP); // [array, array]
         
         // key = array[0]
-        compileExpr(std::make_shared<Expr>(currentLine, currentFile, std::make_shared<LiteralExpr>(0LL)));
+        compileExpr(std::make_shared<Expr>(currentLine, 0, 0, currentFile, std::make_shared<LiteralExpr>(0LL)));
         emitOp(OpCode::INDEX_GET); // [array, key]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
         emitOp(OpCode::POP); // [array]
         
         // value = array[1]
-        compileExpr(std::make_shared<Expr>(currentLine, currentFile, std::make_shared<LiteralExpr>(1LL)));
+        compileExpr(std::make_shared<Expr>(currentLine, 0, 0, currentFile, std::make_shared<LiteralExpr>(1LL)));
         emitOp(OpCode::INDEX_GET); // [value]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopValueVar));
         emitOp(OpCode::POP); // []

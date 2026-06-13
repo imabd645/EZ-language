@@ -154,6 +154,8 @@ TypeASTPtr Parser::parseType() {
 
 StmtPtr Parser::varDeclStatement() {
     int line = peek().line;
+    int column = peek().column;
+    int length = peek().lexeme.length();
     std::string filename = peek().filename;
     
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected variable name");
@@ -166,7 +168,7 @@ StmtPtr Parser::varDeclStatement() {
         initializer = expression();
     }
     
-    return makeVarDeclStmt(line, filename, nameToken.lexeme, initializer, typeHint);
+    return makeVarDeclStmt(line, column, length, filename, nameToken.lexeme, initializer, typeHint);
 }
 
 
@@ -220,11 +222,13 @@ StmtPtr Parser::statement() {
 StmtPtr Parser::outStatement() {
     Token op = previous();
     ExprPtr value = expression();
-    return makeOutStmt(op.line, op.filename, value);
+    return makeOutStmt(op.line, op.column, op.lexeme.length(), op.filename, value);
 }
 
 StmtPtr Parser::whenStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     ExprPtr condition = expression();
     skipNewlines();
@@ -259,7 +263,7 @@ StmtPtr Parser::whenStatement() {
         if (thenStmts.size() == 1) {
             thenBranch = thenStmts[0];
         } else {
-            thenBranch = makeBlockStmt(line, peek().filename, thenStmts);
+            thenBranch = makeBlockStmt(line, column, length, peek().filename, thenStmts);
         }
     }
     
@@ -279,11 +283,13 @@ StmtPtr Parser::whenStatement() {
         }
     }
     
-    return makeWhenStmt(line, peek().filename, condition, thenBranch, elseBranch);
+    return makeWhenStmt(line, column, length, peek().filename, condition, thenBranch, elseBranch);
 }
 
 StmtPtr Parser::whileStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     ExprPtr condition = expression();
     skipNewlines();
@@ -295,11 +301,13 @@ StmtPtr Parser::whileStatement() {
         body = statement();
     }
     
-    return makeWhileStmt(line, peek().filename, condition, body);
+    return makeWhileStmt(line, column, length, peek().filename, condition, body);
 }
 
 StmtPtr Parser::repeatStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     // repeat i = 0 to 10
     Token varToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'repeat'");
@@ -322,11 +330,13 @@ StmtPtr Parser::repeatStatement() {
         body = statement();
     }
     
-    return makeRepeatStmt(line, varToken.filename, varName, startValue, endValue, body);
+    return makeRepeatStmt(line, column, length, varToken.filename, varName, startValue, endValue, body);
 }
 
 StmtPtr Parser::getStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     std::string keyName;
     std::string valName;
@@ -360,13 +370,15 @@ StmtPtr Parser::getStatement() {
     }
     
     if (!valName.empty()) {
-        return makeGetKVStmt(line, filename, keyName, valName, iterable, body);
+        return makeGetKVStmt(line, column, length, filename, keyName, valName, iterable, body);
     }
-    return makeGetStmt(line, filename, keyName, iterable, body);
+    return makeGetStmt(line, column, length, filename, keyName, iterable, body);
 }
 
 StmtPtr Parser::matchStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     std::string filename = previous().filename;
     
     ExprPtr subject = expression();
@@ -399,11 +411,13 @@ StmtPtr Parser::matchStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after match arms");
     
-    return makeMatchStmt(line, filename, subject, std::move(arms));
+    return makeMatchStmt(line, column, length, filename, subject, std::move(arms));
 }
 
 StmtPtr Parser::taskStatement(bool isAsync) {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     // Allow any token as function name (for operator overloading)
     advance();
@@ -493,11 +507,13 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
+    return makeTaskStmt(line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
 }
 
 StmtPtr Parser::giveStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     ExprPtr value = nullptr;
     if (!check(TokenType::NEWLINE) && !check(TokenType::END_OF_FILE) && !check(TokenType::RBRACE)) {
@@ -511,17 +527,17 @@ StmtPtr Parser::giveStatement() {
         }
     }
     
-    return makeGiveStmt(line, peek().filename, value);
+    return makeGiveStmt(line, column, length, peek().filename, value);
 }
 
 StmtPtr Parser::escapeStatement() {
     Token op = previous();
-    return makeEscapeStmt(op.line, op.filename);
+    return makeEscapeStmt(op.line, op.column, op.lexeme.length(), op.filename);
 }
 
 StmtPtr Parser::skipStatement() {
     Token op = previous();
-    return makeSkipStmt(op.line, op.filename);
+    return makeSkipStmt(op.line, op.column, op.lexeme.length(), op.filename);
 }
 
 StmtPtr Parser::staticStatement() {
@@ -529,11 +545,13 @@ StmtPtr Parser::staticStatement() {
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'static'");
     consume(TokenType::EQUAL, "Expected '=' after static variable name");
     ExprPtr value = expression();
-    return makeStaticStmt(op.line, op.filename, nameToken.lexeme, value);
+    return makeStaticStmt(op.line, op.column, op.lexeme.length(), op.filename, nameToken.lexeme, value);
 }
 
 StmtPtr Parser::tryStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     std::string filename = previous().filename;
     
     consume(TokenType::LBRACE, "Expected '{' after 'try'");
@@ -572,17 +590,19 @@ StmtPtr Parser::tryStatement() {
         error(peek(), "Expected at least one 'catch' block");
     }
     
-    return makeTryStmt(line, filename, tryBlock, std::move(catchBlocks));
+    return makeTryStmt(line, column, length, filename, tryBlock, std::move(catchBlocks));
 }
 
 StmtPtr Parser::throwStatement() {
     Token op = previous();
     ExprPtr expr = expression();
-    return makeThrowStmt(op.line, op.filename, expr);
+    return makeThrowStmt(op.line, op.column, op.lexeme.length(), op.filename, expr);
 }
 
 StmtPtr Parser::blockStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     std::vector<StmtPtr> statements;
     
     skipNewlines();
@@ -595,21 +615,25 @@ StmtPtr Parser::blockStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after block");
     
-    return makeBlockStmt(line, peek().filename, statements);
+    return makeBlockStmt(line, column, length, peek().filename, statements);
 }
 
 StmtPtr Parser::expressionStatement() {
     int line = peek().line;
+    int column = peek().column;
+    int length = peek().lexeme.length();
     ExprPtr expr = expression();
     
     // Check if this is a variable declaration (assignment to new variable)
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
     // Otherwise, treat as regular assignment statement
-    return makeExprStmt(line, peek().filename, expr);
+    return makeExprStmt(line, column, length, peek().filename, expr);
 }
 
 StmtPtr Parser::structStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected struct name");
     std::string name = nameToken.lexeme;
     
@@ -631,11 +655,13 @@ StmtPtr Parser::structStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
     
-    return makeStructStmt(line, nameToken.filename, name, fields);
+    return makeStructStmt(line, column, length, nameToken.filename, name, fields);
 }
 
 StmtPtr Parser::useStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     if (!match(TokenType::STRING)) {
         throw ParseError("Expected string path after 'use'", peek().line);
     }
@@ -655,7 +681,7 @@ StmtPtr Parser::useStatement() {
         }
     }
     
-    return makeUseStmt(line, pathToken.filename, path, alias);
+    return makeUseStmt(line, column, length, pathToken.filename, path, alias);
 }
 
 // ============ Expression Parsing ============
@@ -682,19 +708,19 @@ ExprPtr Parser::assignment() {
                 case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
                 default: binOp = TokenType::PLUS; break;
             }
-            value = makeBinaryExpr(op.line, op.filename, expr, binOp, value);
+            value = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, binOp, value);
         }
         
         if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr->variant)) {
             std::string name = std::get<std::shared_ptr<IdentifierExpr>>(expr->variant)->name;
-            return makeAssignExpr(op.line, op.filename, name, value);
+            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, name, value);
         } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(expr->variant)) {
             auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(expr->variant);
             // Handle obj[idx] = val where obj can be complex
-            return makeAssignExpr(op.line, op.filename, "", value, indexExpr->index, indexExpr->object);
+            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, "", value, indexExpr->index, indexExpr->object);
         } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr->variant)) {
             auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(expr->variant);
-            return makeSetExpr(op.line, op.filename, propExpr->object, propExpr->property, value);
+            return makeSetExpr(op.line, op.column, op.lexeme.length(), op.filename, propExpr->object, propExpr->property, value);
         }
         
         error(op, "Invalid assignment target");
@@ -711,7 +737,7 @@ ExprPtr Parser::ternary() {
         ExprPtr thenBranch = expression();
         consume(TokenType::COLON, "Expected ':' after then branch of ternary operator");
         ExprPtr elseBranch = ternary(); // Right-associative
-        expr = makeTernaryExpr(op.line, op.filename, expr, thenBranch, elseBranch);
+        expr = makeTernaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, thenBranch, elseBranch);
     }
     
     return expr;
@@ -723,7 +749,7 @@ ExprPtr Parser::logicalOr() {
     while (match(TokenType::OR)) {
         Token op = previous();
         ExprPtr right = logicalAnd();
-        expr = makeLogicalExpr(op.line, op.filename, expr, TokenType::OR, right);
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::OR, right);
     }
     
     return expr;
@@ -735,7 +761,7 @@ ExprPtr Parser::logicalAnd() {
     while (match(TokenType::AND)) {
         Token op = previous();
         ExprPtr right = bitwiseOr();
-        expr = makeLogicalExpr(op.line, op.filename, expr, TokenType::AND, right);
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::AND, right);
     }
     
     return expr;
@@ -746,7 +772,7 @@ ExprPtr Parser::bitwiseOr() {
     while (match(TokenType::PIPE)) {
         Token op = previous();
         ExprPtr right = bitwiseXor();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     return expr;
 }
@@ -756,7 +782,7 @@ ExprPtr Parser::bitwiseXor() {
     while (match(TokenType::CARET)) {
         Token op = previous();
         ExprPtr right = bitwiseAnd();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     return expr;
 }
@@ -766,7 +792,7 @@ ExprPtr Parser::bitwiseAnd() {
     while (match(TokenType::AMPERSAND)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     return expr;
 }
@@ -777,7 +803,7 @@ ExprPtr Parser::equality() {
     while (match({TokenType::EQUAL_EQUAL, TokenType::BANG_EQUAL})) {
         Token op = previous();
         ExprPtr right = comparison();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -790,7 +816,7 @@ ExprPtr Parser::comparison() {
                   TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
         Token op = previous();
         ExprPtr right = bitwiseShift();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -802,7 +828,7 @@ ExprPtr Parser::bitwiseShift() {
     while (match({TokenType::LSHIFT, TokenType::RSHIFT})) {
         Token op = previous();
         ExprPtr right = term();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -814,7 +840,7 @@ ExprPtr Parser::term() {
     while (match({TokenType::PLUS, TokenType::MINUS})) {
         Token op = previous();
         ExprPtr right = factor();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -826,7 +852,7 @@ ExprPtr Parser::factor() {
     while (match({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
         Token op = previous();
         ExprPtr right = unary();
-        expr = makeBinaryExpr(op.line, op.filename, expr, op.type, right);
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     
     return expr;
@@ -836,13 +862,13 @@ ExprPtr Parser::unary() {
     if (match({TokenType::BANG, TokenType::MINUS, TokenType::NOT, TokenType::TILDE})) {
         Token op = previous();
         ExprPtr right = unary();
-        return makeUnaryExpr(op.line, op.filename, op.type, right);
+        return makeUnaryExpr(op.line, op.column, op.lexeme.length(), op.filename, op.type, right);
     }
     
     if (match(TokenType::AWAIT)) {
         Token op = previous();
         ExprPtr right = unary();
-        return std::make_shared<Expr>(op.line, op.filename, std::make_shared<AwaitExpr>(right));
+        return std::make_shared<Expr>(op.line, op.column, op.lexeme.length(), op.filename, std::make_shared<AwaitExpr>(right));
     }
     
     return call();
@@ -858,12 +884,12 @@ ExprPtr Parser::call() {
             Token op = previous();
             ExprPtr index = expression();
             consume(TokenType::RBRACKET, "Expected ']' after index");
-            expr = makeIndexExpr(op.line, op.filename, expr, index);
+            expr = makeIndexExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, index);
         } else if (match(TokenType::DOT)) {
             // Allow keywords as property names
             advance();
             Token name = previous();
-            expr = makePropertyAccessExpr(name.line, name.filename, expr, name.lexeme);
+            expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme);
         } else {
             // Check if next non-newline token is a DOT (Multi-line chaining support)
             size_t temp = current;
@@ -878,7 +904,7 @@ ExprPtr Parser::call() {
                 if (isAtEnd()) throw ParseError("Expected property name after '.'", peek().line);
                 advance(); 
                 Token name = previous();
-                expr = makePropertyAccessExpr(name.line, name.filename, expr, name.lexeme);
+                expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme);
             } else {
                 break;
             }
@@ -890,12 +916,14 @@ ExprPtr Parser::call() {
 
 ExprPtr Parser::finishCall(ExprPtr callee) {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     std::vector<ExprPtr> arguments;
     
     if (!check(TokenType::RPAREN)) {
         do {
             if (match(TokenType::ELLIPSIS)) {
-                arguments.push_back(makeSpreadExpr(line, peek().filename, expression()));
+                arguments.push_back(makeSpreadExpr(line, column, length, peek().filename, expression()));
             } else {
                 arguments.push_back(expression());
             }
@@ -904,16 +932,18 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
     
     consume(TokenType::RPAREN, "Expected ')' after arguments");
     
-    return makeCallExpr(line, peek().filename, callee, arguments);
+    return makeCallExpr(line, column, length, peek().filename, callee, arguments);
 }
 
 ExprPtr Parser::primary() {
     int line = peek().line;
+    int column = peek().column;
+    int length = peek().lexeme.length();
     std::string filename = peek().filename;
     
-    if (match(TokenType::FALSE)) return makeLiteralExpr(line, filename, false);
-    if (match(TokenType::TRUE)) return makeLiteralExpr(line, filename, true);
-    if (match(TokenType::NIL)) return makeLiteralExpr(line, filename, nullptr);
+    if (match(TokenType::FALSE)) return makeLiteralExpr(line, column, length, filename, false);
+    if (match(TokenType::TRUE)) return makeLiteralExpr(line, column, length, filename, true);
+    if (match(TokenType::NIL)) return makeLiteralExpr(line, column, length, filename, nullptr);
     
     if (match(TokenType::NEW)) {
         Token t = previous();
@@ -927,43 +957,43 @@ ExprPtr Parser::primary() {
             }
             consume(TokenType::RPAREN, "Expected ')' after arguments");
         }
-        return makeNewExpr(t.line, t.filename, nameToken.lexeme, args);
+        return makeNewExpr(t.line, t.column, t.lexeme.length(), t.filename, nameToken.lexeme, args);
     }
     
     if (match(TokenType::NUMBER)) {
         Token t = previous();
         if (std::holds_alternative<long long>(t.literal)) {
-            return makeLiteralExpr(t.line, t.filename, std::get<long long>(t.literal));
+            return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<long long>(t.literal));
         }
-        return makeLiteralExpr(t.line, t.filename, std::get<double>(t.literal));
+        return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<double>(t.literal));
     }
     
     if (match(TokenType::STRING)) {
         Token t = previous();
-        return makeLiteralExpr(t.line, t.filename, std::get<std::string>(t.literal));
+        return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<std::string>(t.literal));
     }
     
     if (match(TokenType::IDENTIFIER)) {
         Token t = previous();
-        return makeIdentifierExpr(t.line, t.filename, t.lexeme);
+        return makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, t.lexeme);
     }
     
     if (match(TokenType::SUPER)) {
         Token t = previous();
-        return makeIdentifierExpr(t.line, t.filename, "super");
+        return makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, "super");
     }
     
     // Self reference
     if (match(TokenType::SELF)) {
         Token t = previous();
-        return makeSelfExpr(t.line, t.filename);
+        return makeSelfExpr(t.line, t.column, t.lexeme.length(), t.filename);
     }
     
     if (match(TokenType::IN)) {
         Token t = previous();
         // Special case for 'in' keyword used alone (not as operator)
         // Historically mapped to __input__
-        return makeCallExpr(t.line, t.filename, makeIdentifierExpr(t.line, t.filename, "__input__"), {});
+        return makeCallExpr(t.line, t.column, t.lexeme.length(), t.filename, makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, "__input__"), {});
     }
     
     // Lambda expression: |params| => expr or |params| { body }
@@ -987,7 +1017,7 @@ ExprPtr Parser::primary() {
             do {
                 skipNewlines();
                 if (match(TokenType::ELLIPSIS)) {
-                    elements.push_back(makeSpreadExpr(line, filename, expression()));
+                    elements.push_back(makeSpreadExpr(line, column, length, filename, expression()));
                 } else {
                     elements.push_back(expression());
                 }
@@ -996,12 +1026,14 @@ ExprPtr Parser::primary() {
         }
         
         consume(TokenType::RBRACKET, "Expected ']' after array elements");
-        return makeArrayExpr(line, filename, elements);
+        return makeArrayExpr(line, column, length, filename, elements);
     }
     
     // Dictionary literal
     if (match(TokenType::LBRACE)) {
         int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
         std::vector<std::pair<ExprPtr, ExprPtr>> pairs;
         
         skipNewlines();
@@ -1010,7 +1042,7 @@ ExprPtr Parser::primary() {
             
             if (std::holds_alternative<std::shared_ptr<AssignExpr>>(expr->variant)) {
                  auto assign = std::get<std::shared_ptr<AssignExpr>>(expr->variant);
-                 ExprPtr key = makeLiteralExpr(expr->line, expr->filename, assign->name);
+                 ExprPtr key = makeLiteralExpr(expr->line, expr->column, expr->length, expr->filename, assign->name);
                  pairs.push_back({key, assign->value});
             } else {
                  ExprPtr key = expr;
@@ -1024,7 +1056,7 @@ ExprPtr Parser::primary() {
                  // If the key is an identifier, convert it to a string literal
                  if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(key->variant)) {
                       auto ident = std::get<std::shared_ptr<IdentifierExpr>>(key->variant);
-                      key = makeLiteralExpr(key->line, key->filename, ident->name);
+                      key = makeLiteralExpr(key->line, key->column, key->length, key->filename, ident->name);
                  }
                  
                  ExprPtr value = expression();
@@ -1039,7 +1071,7 @@ ExprPtr Parser::primary() {
         }
         
         consume(TokenType::RBRACE, "Expected '}' after dictionary");
-        return makeDictionaryExpr(line, filename, pairs);
+        return makeDictionaryExpr(line, column, length, filename, pairs);
     }
     
     if (match(TokenType::LPAREN)) {
@@ -1054,6 +1086,8 @@ ExprPtr Parser::primary() {
 // Lambda: |x, y| => x + y  OR  |x, y| { statements }
 ExprPtr Parser::lambdaExpression(bool isAsync) {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     // Parse parameters
     std::vector<std::string> params;
@@ -1084,7 +1118,7 @@ ExprPtr Parser::lambdaExpression(bool isAsync) {
         // Expression body
         skipNewlines();
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
     } else if (match(TokenType::LBRACE)) {
         // Statement body
         skipNewlines();
@@ -1095,11 +1129,11 @@ ExprPtr Parser::lambdaExpression(bool isAsync) {
             skipNewlines();
         }
         consume(TokenType::RBRACE, "Expected '}' after lambda body");
-        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), stmtBody, nullptr, isVariadic, isAsync);
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), stmtBody, nullptr, isVariadic, isAsync);
     } else {
         // Default: treat as expression body without arrow
         ExprPtr body = expression();
-        return makeLambdaExpr(line, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
     }
 }
 
@@ -1107,6 +1141,8 @@ ExprPtr Parser::lambdaExpression(bool isAsync) {
 // Syntax: model Name extends Parent { init(params) { body } shown/hidden members and methods }
 StmtPtr Parser::modelStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected model name");
     std::string name = nameToken.lexeme;
@@ -1131,6 +1167,7 @@ StmtPtr Parser::modelStatement() {
     skipNewlines();
     
     std::vector<std::string> initParams;
+    std::vector<TypeASTPtr> initParamTypes;
     std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
@@ -1161,6 +1198,12 @@ StmtPtr Parser::modelStatement() {
                     Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
                     initParams.push_back(paramToken.lexeme);
                     
+                    if (match(TokenType::COLON)) {
+                        initParamTypes.push_back(parseType());
+                    } else {
+                        initParamTypes.push_back(std::make_shared<TypeAST>("Any"));
+                    }
+                    
                     if (match(TokenType::EQUAL)) {
                         initDefaultValues.push_back(expression());
                         hadDefault = true;
@@ -1183,12 +1226,12 @@ StmtPtr Parser::modelStatement() {
                 }
                 consume(TokenType::RBRACE, "Expected '}' after init body");
             }
-        }
-        // Check for async task (method)
-        bool isAsync = false;
-        if (match(TokenType::ASYNC)) {
-            isAsync = true;
-        }
+        } else {
+            // Check for async task (method)
+            bool isAsync = false;
+            if (match(TokenType::ASYNC)) {
+                isAsync = true;
+            }
 
         // Check for task (method)
         if (match(TokenType::TASK)) {
@@ -1198,6 +1241,7 @@ StmtPtr Parser::modelStatement() {
             consume(TokenType::LPAREN, "Expected '(' after method name");
             
             std::vector<std::string> params;
+            std::vector<TypeASTPtr> paramTypes;
             std::vector<ExprPtr> defaultValues;
             if (!check(TokenType::RPAREN)) {
                 bool hadDefault = false;
@@ -1207,6 +1251,12 @@ StmtPtr Parser::modelStatement() {
                         throw ParseError("Expected parameter name", paramToken.line);
                     }
                     params.push_back(paramToken.lexeme);
+                    
+                    if (match(TokenType::COLON)) {
+                        paramTypes.push_back(parseType());
+                    } else {
+                        paramTypes.push_back(std::make_shared<TypeAST>("Any"));
+                    }
                     
                     if (match(TokenType::EQUAL)) {
                         defaultValues.push_back(expression());
@@ -1219,6 +1269,14 @@ StmtPtr Parser::modelStatement() {
             }
             
             consume(TokenType::RPAREN, "Expected ')' after method parameters");
+            skipNewlines();
+            
+            TypeASTPtr returnType = nullptr;
+            if (match(TokenType::ARROW)) {
+                returnType = parseType();
+            } else {
+                returnType = std::make_shared<TypeAST>("Any");
+            }
             skipNewlines();
             
             std::vector<StmtPtr> body;
@@ -1239,6 +1297,8 @@ StmtPtr Parser::modelStatement() {
             member.isAsync = isAsync;
             member.name = methodName.lexeme;
             member.params = params;
+            member.paramTypes = paramTypes;
+            member.typeHint = returnType;
             member.defaultValues = defaultValues;
             member.body = body;
             members.push_back(member);
@@ -1251,6 +1311,11 @@ StmtPtr Parser::modelStatement() {
         else if (check(TokenType::IDENTIFIER)) {
             Token propName = advance();
             
+            TypeASTPtr typeHint = nullptr;
+            if (match(TokenType::COLON)) {
+                typeHint = parseType();
+            }
+            
             ExprPtr initializer = nullptr;
             if (match(TokenType::EQUAL)) {
                 initializer = expression();
@@ -1261,11 +1326,13 @@ StmtPtr Parser::modelStatement() {
             member.isStatic = isStatic;
             member.isMethod = false;
             member.name = propName.lexeme;
+            member.typeHint = typeHint;
             member.initializer = initializer;
             members.push_back(member);
         } else {
             error(peek(), "Unexpected token in model body");
             advance(); // Avoid infinite loop
+        }
         }
         
         skipNewlines();
@@ -1274,8 +1341,7 @@ StmtPtr Parser::modelStatement() {
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
     // Use the peek().filename or current filename
-    std::vector<TypeASTPtr> initParamTypes(initParams.size(), std::make_shared<TypeAST>("Any"));
-    return makeModelStmt(line, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
+    return makeModelStmt(line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
                          initDefaultValues, initBody, members);
 }
 
@@ -1283,6 +1349,8 @@ StmtPtr Parser::modelStatement() {
 // Syntax: interface Name { task method1() task method2() ... }
 StmtPtr Parser::interfaceStatement() {
     int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected interface name");
     
     skipNewlines();
@@ -1301,5 +1369,5 @@ StmtPtr Parser::interfaceStatement() {
     }
     consume(TokenType::RBRACE, "Expected '}' after interface body");
     
-    return makeInterfaceStmt(line, nameToken.filename, nameToken.lexeme, methods);
+    return makeInterfaceStmt(line, column, length, nameToken.filename, nameToken.lexeme, methods);
 }

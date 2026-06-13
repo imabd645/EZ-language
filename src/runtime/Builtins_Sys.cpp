@@ -431,6 +431,58 @@ void registerSysBuiltins(RuntimeContext& interp) {
 #endif
         }));
 
+    interp.defineGlobal("os_read_float32", Value::makeNativeFunction("os_read_float32", 2,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            float val = *(float*)(base + offset);
+            return Value((double)val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_float32", Value::makeNativeFunction("os_write_float32", 3,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(float*)(base + offset) = (float)args[2].asFloat();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
+    interp.defineGlobal("os_read_float64", Value::makeNativeFunction("os_read_float64", 2,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            double val = *(double*)(base + offset);
+            return Value(val);
+#else
+            return Value(0.0);
+#endif
+        }));
+
+    interp.defineGlobal("os_write_float64", Value::makeNativeFunction("os_write_float64", 3,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
+            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
+            size_t offset = (size_t)args[1].asNumber();
+            *(double*)(base + offset) = args[2].asFloat();
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
     interp.defineGlobal("os_read_byte", Value::makeNativeFunction("os_read_byte", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32

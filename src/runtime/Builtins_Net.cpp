@@ -22,6 +22,7 @@
 // Include EZFuture (Windows-native future) after windows headers
 
 #include "../EZFuture.h"
+#include "EventLoop.h"
 
 static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -153,6 +154,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() > 1) options = args[1];
             
             auto ezFut = std::make_shared<EZFuture>();
+            EventLoop::instance().retain();
             
             std::thread([url, options, ezFut]() {
                 try {
@@ -220,10 +222,11 @@ void registerNetBuiltins(RuntimeContext& interp) {
                     
                     ezFut->set(Value(response));
                 } catch(std::exception& e) {
-                    ezFut->set(Value());
+                    ezFut->setError(e.what());
                 } catch(...) {
-                    ezFut->set(Value());
+                    ezFut->setError("Unknown error in fetch");
                 }
+                EventLoop::instance().release();
             }).detach();
                 
             return Value::makeFuture(ezFut);

@@ -52,6 +52,7 @@ struct FunctionSignature {
     std::vector<std::string> paramNames;
     std::vector<TypeInfo> paramTypes;
     TypeInfo returnType;
+    bool isVariadic = false;
 };
 
 class TypeChecker {
@@ -69,9 +70,10 @@ private:
     };
     
     Environment* currentEnv;
-    TypeInfo currentReturnType;
+    TypeInfo currentReturnType = TypeInfo("Any");
     std::string currentModel; // Tracks enclosing model for 'self'
-    bool hadError;
+    int loopDepth = 0;
+    bool hadError = false;
     
     void beginScope();
     void endScope();

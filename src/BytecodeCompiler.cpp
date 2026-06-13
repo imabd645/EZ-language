@@ -521,7 +521,7 @@ void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
     // so the VM can resolve CLOSURE <n> at runtime.
     if (current) {
         size_t nestedIdx = current->function->nestedFunctions.size();
-        current->function->nestedFunctions.push_back(func);
+    current->function->nestedFunctions.push_back(func);
 
         emitOp(OpCode::CLOSURE);
         emitBytes(static_cast<uint8_t>((nestedIdx >> 8) & 0xFF),
@@ -915,7 +915,7 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
 }
 
 
-void BytecodeCompiler::emitClosure(const TaskStmt& stmt) {
+void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
     if (!current) {
         error("emitClosure: no active compiler");
         return;
@@ -925,6 +925,7 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt) {
     // enclosing BytecodeFunction so the VM index is stable.
     size_t nestedIdx = current->function->nestedFunctions.size();
     BytecodeFunctionPtr func = compileFunction(stmt, stmt.name);
+    func->isMethod = isMethod;
     current->function->nestedFunctions.push_back(func);
 
     // Emit CLOSURE <nestedIdx> (16-bit) + upvalue descriptors
@@ -1322,7 +1323,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         std::vector<ExprPtr> defaults = {nullptr}; // for 'self'
         defaults.insert(defaults.end(), stmt.initDefaultValues.begin(), stmt.initDefaultValues.end());
         TaskStmt initTask("init", params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, stmt.initBody);
-        emitClosure(initTask); // Pushes closure
+        emitClosure(initTask, true); // Pushes closure
         
         // Push isStatic flag (false for constructor)
         emitOp(OpCode::LOAD_FALSE);
@@ -1348,7 +1349,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
             TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
-            emitClosure(methodTask); // Pushes closure
+            emitClosure(methodTask, true); // Pushes closure
         } else {
             if (member.initializer) {
                 compileExpr(member.initializer);

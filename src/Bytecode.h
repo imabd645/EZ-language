@@ -273,6 +273,7 @@ struct BytecodeFunction {
     size_t arity;
     bool isVariadic;
     bool isAsync;
+    bool isMethod;
     Chunk chunk;
     std::vector<Upvalue> upvalues;
     size_t upvalueCount;
@@ -290,7 +291,7 @@ struct BytecodeFunction {
     size_t defaultParamCount;
 
     BytecodeFunction(const std::string& name, size_t arity)
-        : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false),
+        : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false), isMethod(false),
           upvalueCount(0), localCount(0), defaultParamCount(0) {}
 };
 

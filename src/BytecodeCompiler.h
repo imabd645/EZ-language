@@ -135,7 +135,7 @@ private:
     void patchJump(size_t offset);
     void emitLoop(size_t loopStart);
     void emitReturn();
-    void emitClosure(const TaskStmt& stmt);
+    void emitClosure(const TaskStmt& stmt, bool isMethod = false);
     
     // === Helpers ===
     size_t makeConstant(const Constant& constant);

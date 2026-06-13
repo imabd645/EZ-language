@@ -1605,12 +1605,17 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         } else {
             size_t minArity = (bcFunc->arity > bcFunc->defaultParamCount)
                                ? bcFunc->arity - bcFunc->defaultParamCount : 0;
+            
+            size_t reportedMinArity = bcFunc->isMethod && minArity > 0 ? minArity - 1 : minArity;
+            size_t reportedArgCount = bcFunc->isMethod && argCount > 0 ? argCount - 1 : argCount;
+            size_t reportedArity = bcFunc->isMethod && bcFunc->arity > 0 ? bcFunc->arity - 1 : bcFunc->arity;
+            
             if (argCount < minArity) {
-                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(minArity) + " args but got " + std::to_string(argCount));
+                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
             if (argCount > bcFunc->arity) {
-                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(bcFunc->arity) + " args but got " + std::to_string(argCount));
+                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
         }

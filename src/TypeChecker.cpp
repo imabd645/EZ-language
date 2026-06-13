@@ -103,6 +103,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements) {
             for (const auto& p : task->params) sig.paramNames.push_back(p);
             for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo::fromAST(task->returnType);
+            sig.isVariadic = task->isVariadic;
             declareFunction(task->name, sig);
         } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(stmt->variant)) {
             auto model = std::get<std::shared_ptr<ModelStmt>>(stmt->variant);
@@ -111,12 +112,28 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements) {
             for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo(model->name);
             declareFunction(model->name, sig);
+            
+            // Register model methods so PropertyAccessExpr can find them
+            for (const auto& member : model->members) {
+                if (member.isMethod) {
+                    FunctionSignature methodSig;
+                    for (const auto& p : member.params) methodSig.paramNames.push_back(p);
+                    for (const auto& t : member.paramTypes) methodSig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    methodSig.returnType = TypeInfo::fromAST(member.typeHint);
+                    declareFunction(model->name + "." + member.name, methodSig);
+                } else {
+                    TypeInfo propType = TypeInfo::fromAST(member.typeHint);
+                    declareVariable(model->name + "." + member.name, propType);
+                }
+            }
         } else if (std::holds_alternative<std::shared_ptr<StructStmt>>(stmt->variant)) {
             auto structStmt = std::get<std::shared_ptr<StructStmt>>(stmt->variant);
             FunctionSignature sig;
             for (size_t i = 0; i < structStmt->fields.size(); ++i) {
                 sig.paramNames.push_back(structStmt->fields[i]);
-                sig.paramTypes.push_back(TypeInfo("Any")); // Assuming structs don't have explicit param types for now
+                TypeInfo fieldType = TypeInfo("Any");
+                sig.paramTypes.push_back(fieldType);
+                declareVariable(structStmt->name + "." + structStmt->fields[i], fieldType);
             }
             sig.returnType = TypeInfo(structStmt->name);
             declareFunction(structStmt->name, sig);
@@ -154,7 +171,11 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
         else if constexpr (std::is_same_v<T, std::shared_ptr<ThrowStmt>>) checkThrow(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<MatchStmt>>) checkMatch(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<StaticStmt>>) checkStatic(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<EscapeStmt>>) {} // No checking needed
+        else if constexpr (std::is_same_v<T, std::shared_ptr<EscapeStmt>>) {
+            if (loopDepth == 0) {
+                error(0, "break or continue statement outside of a loop"); // EscapeStmt does not store line currently
+            }
+        }
         else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {} // No checking needed
         else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {} // No checking needed
     }, stmt->variant);
@@ -225,7 +246,9 @@ void TypeChecker::checkWhen(const WhenStmt& stmt) {
 
 void TypeChecker::checkWhile(const WhileStmt& stmt) {
     checkExpr(stmt.condition);
+    loopDepth++;
     checkStmt(stmt.body);
+    loopDepth--;
 }
 
 void TypeChecker::checkRepeat(const RepeatStmt& stmt) {
@@ -233,7 +256,9 @@ void TypeChecker::checkRepeat(const RepeatStmt& stmt) {
     declareVariable(stmt.variable, TypeInfo("number"));
     checkExpr(stmt.start);
     checkExpr(stmt.end);
+    loopDepth++;
     checkStmt(stmt.body);
+    loopDepth--;
     endScope();
 }
 
@@ -288,9 +313,18 @@ void TypeChecker::checkModel(const ModelStmt& stmt) {
     currentModel = previousModel;
 }
 
-void TypeChecker::checkStruct(const StructStmt& stmt) {}
+void TypeChecker::checkStruct(const StructStmt& stmt) {
+    beginScope();
+    for (size_t i = 0; i < stmt.fields.size(); ++i) {
+        declareVariable(stmt.fields[i], TypeInfo("Any"));
+    }
+    endScope();
+}
 
-void TypeChecker::checkInterface(const InterfaceStmt& stmt) {}
+void TypeChecker::checkInterface(const InterfaceStmt& stmt) {
+    // Interface currently only defines signatures which are registered in first pass (if they were).
+    // Let's just traverse it in case we add default implementations later.
+}
 
 void TypeChecker::checkTry(const TryStmt& stmt) {
     checkStmt(stmt.tryBlock);
@@ -350,8 +384,24 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
     TypeInfo valType = checkExpr(expr.value);
     
     if (expr.index) {
-        checkExpr(expr.object);
-        checkExpr(expr.index);
+        TypeInfo objType = checkExpr(expr.object);
+        TypeInfo indexType = checkExpr(expr.index);
+        
+        if (objType.baseType == "Array" && objType.typeArgs.size() == 1) {
+            if (indexType.baseType != "Any" && indexType.baseType != "number") {
+                error(expr.index, "Array index must be a number");
+            }
+            if (valType.baseType != "Any" && objType.typeArgs[0].baseType != "Any" && valType != objType.typeArgs[0]) {
+                error(expr.value ? expr.value->line : 0, "Type mismatch in array assignment. Expected " + objType.typeArgs[0].toString() + " but got " + valType.toString());
+            }
+        } else if (objType.baseType == "Dict" && objType.typeArgs.size() == 2) {
+            if (indexType.baseType != "Any" && indexType.baseType != objType.typeArgs[0].baseType) {
+                error(expr.index, "Dictionary index expected " + objType.typeArgs[0].toString() + " but got " + indexType.toString());
+            }
+            if (valType.baseType != "Any" && objType.typeArgs[1].baseType != "Any" && valType != objType.typeArgs[1]) {
+                error(expr.value ? expr.value->line : 0, "Type mismatch in dictionary assignment. Expected " + objType.typeArgs[1].toString() + " but got " + valType.toString());
+            }
+        }
         return valType;
     }
     
@@ -382,6 +432,14 @@ TypeInfo TypeChecker::checkBinary(const BinaryExpr& expr) {
                expr.op == TokenType::LESS || expr.op == TokenType::LESS_EQUAL ||
                expr.op == TokenType::GREATER || expr.op == TokenType::GREATER_EQUAL) {
         return TypeInfo("bool");
+    } else if (expr.op == TokenType::AND || expr.op == TokenType::OR) {
+        if (left.baseType != "Any" && left.baseType != "bool") {
+            error(expr.left, "Logical operator expected bool but got " + left.toString());
+        }
+        if (right.baseType != "Any" && right.baseType != "bool") {
+            error(expr.right, "Logical operator expected bool but got " + right.toString());
+        }
+        return TypeInfo("bool");
     }
     
     return TypeInfo("Any");
@@ -401,17 +459,39 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
     std::vector<TypeInfo> argTypes;
     for (const auto& arg : expr.arguments) argTypes.push_back(checkExpr(arg));
     
+    std::string name = "<unknown>";
+    FunctionSignature* sig = nullptr;
+    
     if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr.callee->variant)) {
-        std::string name = std::get<std::shared_ptr<IdentifierExpr>>(expr.callee->variant)->name;
-        FunctionSignature* sig = resolveFunction(name);
-        if (sig) {
-            // Only verify arity if not variadic, but for simplicity we skip variadic check here or just check basic args
+        name = std::get<std::shared_ptr<IdentifierExpr>>(expr.callee->variant)->name;
+        sig = resolveFunction(name);
+    } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant)) {
+        auto propAccess = std::get<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant);
+        TypeInfo objType = checkExpr(propAccess->object);
+        if (objType.baseType != "Any") {
+            name = objType.baseType + "." + propAccess->property;
+            sig = resolveFunction(name);
+        }
+    }
+    
+    if (sig) {
+        // Only verify arity if not variadic, but for simplicity we skip variadic check here or just check basic args
             // In EZ, builtins aren't in this environment. So `sig` might be null for builtins!
             // If sig exists, we verify it.
-            if (argTypes.size() != sig->paramTypes.size()) {
-                // If the signature is not marked variadic... wait, FunctionSignature doesn't have isVariadic.
-                // We'll just tolerate it or skip checking if size mismatches for now.
-                // Actually, let's keep it strict if size matches, but if not we can't reliably check without isVariadic flag.
+            if (!sig->isVariadic && argTypes.size() != sig->paramTypes.size()) {
+                std::string signatureStr = "Function signature: " + name + "(";
+                for (size_t j = 0; j < sig->paramTypes.size(); ++j) {
+                    if (j < sig->paramNames.size()) signatureStr += sig->paramNames[j] + ":";
+                    signatureStr += sig->paramTypes[j].toString();
+                    if (j + 1 < sig->paramTypes.size()) signatureStr += ", ";
+                }
+                signatureStr += ")";
+                std::string msg = "'" + name + "' expected " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                error(expr.callee, msg, signatureStr);
+            } else if (sig->isVariadic && argTypes.size() < (sig->paramTypes.size() > 0 ? sig->paramTypes.size() - 1 : 0)) {
+                size_t minArgs = sig->paramTypes.size() > 0 ? sig->paramTypes.size() - 1 : 0;
+                std::string msg = "'" + name + "' expected at least " + std::to_string(minArgs) + " args but got " + std::to_string(argTypes.size());
+                error(expr.callee, msg);
             } else {
                 for (size_t i = 0; i < argTypes.size(); i++) {
                     if (argTypes[i] != sig->paramTypes[i] && argTypes[i].baseType != "Any" && sig->paramTypes[i].baseType != "Any") {
@@ -444,7 +524,6 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
             }
             return sig->returnType;
         }
-    }
     return TypeInfo("Any");
 }
 
@@ -482,7 +561,21 @@ TypeInfo TypeChecker::checkLambda(const LambdaExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
-    checkExpr(expr.object);
+    TypeInfo objType = checkExpr(expr.object);
+    if (objType.baseType != "Any") {
+        std::string propKey = objType.baseType + "." + expr.property;
+        Environment* env = currentEnv;
+        while (env) {
+            if (env->variables.count(propKey)) {
+                return env->variables[propKey];
+            }
+            if (env->functions.count(propKey)) {
+                return TypeInfo("Callable"); // Or Function type
+            }
+            env = env->enclosing;
+        }
+        error(0, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
+    }
     return TypeInfo("Any");
 }
 
@@ -493,7 +586,7 @@ TypeInfo TypeChecker::checkSet(const SetExpr& expr) {
 
 TypeInfo TypeChecker::checkSelf(const SelfExpr& expr) {
     if (currentModel.empty()) {
-        // error: 'self' outside of model (ignoring for now to not break dynamic usage)
+        error(0, "'self' cannot be used outside of a model or class");
         return TypeInfo("Any");
     }
     return TypeInfo(currentModel);
@@ -505,17 +598,44 @@ TypeInfo TypeChecker::checkNew(const NewExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkIndex(const IndexExpr& expr) {
-    checkExpr(expr.object);
-    checkExpr(expr.index);
+    TypeInfo objType = checkExpr(expr.object);
+    TypeInfo indexType = checkExpr(expr.index);
+    if (objType.baseType == "Array" && objType.typeArgs.size() == 1) {
+        if (indexType.baseType != "Any" && indexType.baseType != "number") {
+            error(expr.index, "Array index must be a number");
+        }
+        return objType.typeArgs[0];
+    } else if (objType.baseType == "Dict" && objType.typeArgs.size() == 2) {
+        if (indexType.baseType != "Any" && indexType.baseType != objType.typeArgs[0].baseType) {
+            error(expr.index, "Dictionary index expected " + objType.typeArgs[0].toString() + " but got " + indexType.toString());
+        }
+        return objType.typeArgs[1];
+    } else if (objType.baseType == "string") {
+        if (indexType.baseType != "Any" && indexType.baseType != "number") {
+            error(expr.index, "String index must be a number");
+        }
+        return TypeInfo("string");
+    }
     return TypeInfo("Any");
 }
 
 TypeInfo TypeChecker::checkDictionary(const DictionaryExpr& expr) {
+    TypeInfo keyType = TypeInfo("Any");
+    TypeInfo valType = TypeInfo("Any");
+    bool first = true;
     for (const auto& pair : expr.pairs) {
-        checkExpr(pair.first);
-        checkExpr(pair.second);
+        TypeInfo k = checkExpr(pair.first);
+        TypeInfo v = checkExpr(pair.second);
+        if (first) {
+            keyType = k;
+            valType = v;
+            first = false;
+        } else {
+            if (k.baseType != "Any" && keyType.baseType != "Any" && k != keyType) keyType = TypeInfo("Any");
+            if (v.baseType != "Any" && valType.baseType != "Any" && v != valType) valType = TypeInfo("Any");
+        }
     }
-    return TypeInfo("Any");
+    return TypeInfo("Dict", {keyType, valType});
 }
 
 TypeInfo TypeChecker::checkSpread(const SpreadExpr& expr) {
@@ -530,5 +650,9 @@ TypeInfo TypeChecker::checkTernary(const TernaryExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkAwait(const AwaitExpr& expr) {
-    return checkExpr(expr.expression);
+    TypeInfo awaitedType = checkExpr(expr.expression);
+    if ((awaitedType.baseType == "Task" || awaitedType.baseType == "Future") && awaitedType.typeArgs.size() == 1) {
+        return awaitedType.typeArgs[0];
+    }
+    return awaitedType;
 }

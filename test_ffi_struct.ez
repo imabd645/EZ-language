@@ -1,0 +1,27 @@
+out "=== Testing C-Struct FFI ==="
+
+# Define a struct layout corresponding to:
+# struct Test {
+#    int8 a;     // 1 byte
+#    // 3 bytes padding
+#    int32 b;    // 4 bytes
+#    float64 c;  // 8 bytes
+# };
+# Expected Size: 16 bytes.
+
+layout = ["i8", "i32", "f64"]
+values = [42, 100000, 3.14159]
+
+out "Packing values: " + str(values)
+packed_buffer = os_struct_pack(layout, values)
+
+out "Unpacking values from buffer..."
+unpacked = os_struct_unpack(layout, packed_buffer)
+
+out "Unpacked result: " + str(unpacked)
+
+when unpacked[0] == 42 and unpacked[1] == 100000 and unpacked[2] == 3.14159 {
+    out "TEST PASSED! Memory layout and padding are correct."
+} other {
+    out "TEST FAILED! Values do not match."
+}

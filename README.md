@@ -12,22 +12,27 @@
 ```
 
 **A dynamically-typed, bytecode-compiled programming language with natural English syntax**
+**and an optional static type checker.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
 [![Language](https://img.shields.io/badge/written%20in-C%2B%2B17-orange.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
-[![Packages](https://img.shields.io/badge/packages-19-green.svg?style=flat-square)](https://github.com/imabd645/ezlib)
-[![Version](https://img.shields.io/badge/version-1.0-purple.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
 
-[Quick Start](#-quick-start) · [Syntax Guide](#-language-syntax) · [Built-ins](#-built-in-functions) · [OOP](#-object-oriented-programming) · [Async](#-async--concurrency) · [Packages](#-package-manager) · [Standard Library](#-standard-library)
+[Quick Start](#-quick-start) · [Syntax Guide](#-language-syntax) · [Type Checker](#-optional-static-type-checker) · [Built-ins](#-built-in-functions-c-runtime) · [OOP](#-object-oriented-programming) · [Async](#-async--concurrency) · [Native FFI](#-native-ffi) · [GUI](#-gui-framework) · [Bundling](#-bundling-standalone-executables)
 
 </div>
 
 ---
 
+## ⚠️ A note on this README
+
+This document is written directly from the C++ source (`src/`) of this repository — the lexer, parser, type checker, bytecode compiler, VM, and the runtime builtins that are actually registered in C++. Anything implemented purely as an EZ-language standard-library package (in the separate [`ezlib`](https://github.com/imabd645/ezlib) registry — `math`, `crypto`, `db`, `pdf`, `fs`, `os`, `gui`, `collections`, etc.) is **not** part of this repository and is called out explicitly where relevant, since those packages aren't present here and their exact API can't be verified from this codebase.
+
+---
+
 ## What is EZ?
 
-EZ is a scripting language built from scratch  bytecode compiler, stack VM, garbage collector, and a full standard library ecosystem — all written in C++17. It replaces cryptic programming symbols with plain English keywords so code reads like what it actually does.
+EZ is a scripting language built from scratch — bytecode compiler, stack VM, garbage collector, optional static type checker, and a Win32 GUI/FFI layer — all written in C++17. It replaces conventional keywords with plain English: `when` instead of `if`, `task` instead of `function`, `give` instead of `return`, `other` instead of `else`.
 
 ```ez
 # A taste of EZ
@@ -43,73 +48,35 @@ get person in people {
 }
 ```
 
-**Why EZ exists:** The goal is a language where beginners can focus on *thinking like a programmer*, not fighting with syntax. `when` instead of `if`, `task` instead of `function`, `give` instead of `return` — every keyword was chosen to be self-explanatory on first read.
-
 ---
 
 ## Table of Contents
 
-- [Features](#-features)
 - [Architecture](#-architecture)
-- [Installation](#-installation)
+- [Installation & Building](#-installation--building)
 - [Quick Start](#-quick-start)
 - [Language Syntax](#-language-syntax)
+  - [Comments](#comments)
   - [Variables & Types](#variables--types)
+  - [Strings & Interpolation](#strings--interpolation)
   - [Operators](#operators)
   - [Control Flow](#control-flow)
   - [Functions & Lambdas](#functions--lambdas)
   - [Arrays & Dictionaries](#arrays--dictionaries)
-  - [Object-Oriented Programming](#-object-oriented-programming)
-  - [Error Handling](#error-handling)
-  - [Modules](#modules)
-- [Built-in Functions](#-built-in-functions)
+- [Optional Static Type Checker](#-optional-static-type-checker)
+- [Object-Oriented Programming](#-object-oriented-programming)
+  - [Operator Overloading](#operator-overloading)
+- [Error Handling](#error-handling)
+- [Modules (`use`)](#modules-use)
+- [Built-in Functions (C++ Runtime)](#-built-in-functions-c-runtime)
 - [Async & Concurrency](#-async--concurrency)
 - [Native FFI](#-native-ffi)
-- [GUI Framework](#-gui-framework)
-- [Package Manager](#-package-manager)
-- [Standard Library](#-standard-library)
-- [Roadmap](#-roadmap)
+- [GUI Framework (raw builtins)](#-gui-framework)
+- [Bundling Standalone Executables](#-bundling-standalone-executables)
+- [REPL](#-repl)
+- [The `ezlib` Standard Library (external)](#-the-ezlib-standard-library-external)
+- [Known Gaps & Caveats](#-known-gaps--caveats)
 - [Contributing](#-contributing)
-
----
-
-## ✨ Features
-
-### Language Core
-- **Natural English keywords** — `out`, `when`, `other`, `repeat`, `task`, `give`, `escape`, `skip`, `get`
-- **Dynamic typing** with 18 runtime value types including a dedicated `INTEGER` path for fast integer arithmetic
-- **Bytecode compilation** — source compiles to a custom stack-VM ISA before execution
-- **Tail call optimization** — `give myFunc(...)` at tail position reuses the stack frame; 20,000-deep recursion without overflow
-- **First-class closures** with Lua-style upvalues that migrate to the heap when their scope exits
-- **Compile-time constant folding** — `3 + 4 * 2` evaluated at compile time, not runtime
-- **String interpolation**, raw strings, ternary expressions (`cond ? a : b`), spread operator (`...arr`)
-
-### Object-Oriented Programming
-- **`model`** — classes with `init` constructors, `self` references, `hidden`/`shown` access modifiers
-- **Single inheritance** via `extends` + `super` calls
-- **`interface` / `implements`** with runtime method-presence validation
-- **`static`** fields and methods on models
-- **`struct`** for lightweight data holders
-- **`toString()` override** — called automatically by `out` and string coercion
-
-### Concurrency
-- **Non-blocking Event Loop** — Single-threaded async execution for efficient I/O without OS thread overhead
-- **`async task`** — Native coroutine that can be paused and resumed seamlessly via bytecode VM yielding
-- **`await expr`** — Non-blocking yield until a future resolves, freeing the VM to run other tasks
-- **`async { ... }` blocks** — Inline async expressions
-- **`spawn(fn)`** — Detached background OS thread for heavy CPU work
-- **First-class `Mutex()`** — `lock()` / `unlock()` as values
-- **Atomic operations** — `atomicAdd`, `atomicGet`, `atomicSet`
-
-### Runtime
-- **Garbage collector** — cycle-detecting mark-sweep over a doubly-linked intrusive list, threshold-triggered (default 50,000 allocations)
-- **Stack traces** — file, line, and call frame reported on runtime errors
-- **Native FFI** — call any Windows DLL function directly: `os_load_lib("ws2_32.dll")` + `os_get_func(handle, "WSAStartup")`
-- **Package manager** — `ez install <name>` downloads from the [ezlib registry](https://github.com/imabd645/ezlib)
-- **Module system** — `use "path/to/file"` or `use "name" as alias` for namespaced imports
-
-### Standard Library (19 packages, 6,664 lines of EZ)
-Math · HTTP client · Web server · AI SDK · GUI · Testing · Collections · Regex · ORM · DateTime · Crypto · File system · OS · Logging · PDF · Threading · and more
 
 ---
 
@@ -118,64 +85,106 @@ Math · HTTP client · Web server · AI SDK · GUI · Testing · Collections · 
 ```
 source.ez
     │
-    ▼  Lexer.cpp  (565 lines, 37 token types)
+    ▼  Lexer.cpp        (581 lines, ~50 token types)
 Token stream
     │
-    ▼  Parser.cpp  (1,136 lines, recursive descent)
-AST  (std::variant, 17 expression + 18 statement node types)
+    ▼  Parser.cpp        (1,411 lines, recursive descent)
+AST  (std::variant — 17 expression + ~20 statement node types, in AST.h)
     │
-    ▼  BytecodeCompiler.cpp  (1,598 lines)
+    ▼  TypeChecker.cpp   (673 lines) — OPTIONAL static analysis pass
+       · Validates type annotations on vars, params, returns, structs
+       · Catches: type mismatches, 'self' misuse, break/continue outside loops
+    │
+    ▼  BytecodeCompiler.cpp (1,774 lines)
        · Upvalue resolution   · Constant folding
-       · TCO detection        · Scope management
-Bytecode chunks  (~80 opcodes, stack-VM ISA)
+       · TCO detection        · Scope management   · static-local desugaring
+Bytecode chunks  (~85 opcodes, stack-VM ISA — see Bytecode.h)
     │
-    ▼  BytecodeVM.cpp  (1,954 lines)
-       · Closure capture      · Async/Future dispatch
+    ▼  BytecodeVM.cpp   (2,286 lines)
+       · Closure capture      · Async/Future dispatch (via EventLoop)
        · Exception handling   · Interface validation
-Runtime values  (std::variant, 18 types, O(1) type lookup)
+       · Operator-overload dispatch on model instances
+Runtime values  (Value.h — std::variant, 19 alternatives, O(1) type lookup)
     │
-    ▼  GarbageCollector  (mark-sweep, intrusive linked list)
+    ▼  GarbageCollector (GC.cpp/.h)
+       · Cycle-detecting mark-sweep over an intrusive doubly-linked list
+       · Threshold-triggered (default 50,000 allocations)
+       · Stop-the-world coordination across spawned OS threads
 ```
 
-**Total C++ source:** ~12,600 lines across 20 files, targeting Windows x64 with C++17.
+**Source layout** (`src/`):
+
+| File | Lines | Role |
+|---|---|---|
+| `BytecodeVM.cpp` / `.h` | 2,286 / 160 | The interpreter loop, opcode dispatch, operator overloading, FFI crash guards |
+| `BytecodeCompiler.cpp` / `.h` | 1,774 / 173 | AST → bytecode, scope/upvalue resolution, constant folding |
+| `Parser.cpp` / `.h` | 1,411 / 95 | Recursive-descent parser → AST |
+| `GUIBuiltins.cpp` / `.h` | 1,214 / — | ~70 raw Win32/GDI+ `gui_*` native functions |
+| `runtime/Builtins_Sys.cpp` | 766 | FFI (`os_*`), console I/O, concurrency primitives, exceptions |
+| `AST.h` | 715 | All expression & statement node definitions |
+| `TypeChecker.cpp` / `.h` | 673 / 128 | Optional static type-checking pass |
+| `main.cpp` | 640 | CLI entry point, REPL, `bundle` packer, PE patching |
+| `Lexer.cpp` / `.h` | 581 / — | Tokenizer, string interpolation desugaring |
+| `Value.h` | 558 | The 19-variant runtime `Value` type |
+| `runtime/Builtins_Data.cpp` | 449 | Array/dict/JSON/metaprogramming builtins |
+| `Bytecode.cpp` / `.h` | 333 / 311 | Opcode definitions, constant pool, disassembler |
+| `runtime/Builtins_Net.cpp` | 236 | `http_get`/`http_post`/`fetch`/URL encoding |
+| `Token.h` | 224 | Token type enum and keyword table |
+| `runtime/Builtins_String.cpp` | 216 | String manipulation builtins |
+| `GC.cpp` / `.h` | 187 / 178 | Garbage collector |
+| `PackageManager.h` | 284 | `ez install` / `ez init` / `ez list` |
+| `BytecodeCompiler.h` | 173 | Compiler scope/local/upvalue bookkeeping |
+| `runtime/Builtins_Concurrency.cpp` | 124 | `spawn`, `Mutex`, `Atomic`, `wait`/`waitAsync` |
+| `runtime/Builtins_IO.cpp` | 113 | File read/write/append/lines |
+| `EZFuture.h` | 120 | Future/promise object for `async`/`await` |
+| `runtime/Builtins_Buffer.cpp` | 104 | `buffer()`, `buf_*` raw byte buffers |
+| `runtime/Builtins_Math.cpp` | 104 | `floor/ceil/abs/sqrt/pow/rand/...` |
+| `MiniJson.h` | 179 | JSON parser/serializer used by `parse_json`/`to_json` |
+
+**Total:** ~14,700 lines of C++ across the files actually present in `src/`, targeting Windows x64 with C++17 (the code includes `<windows.h>` directly and uses MinGW/MSVC-specific structures, so it is **Windows-only**).
 
 ---
 
-## 🚀 Installation
+## 🚀 Installation & Building
 
 ### Prerequisites
 
 | Dependency | Purpose |
 |---|---|
 | C++17 compiler (MinGW-w64 / MSVC) | Building the interpreter |
-| CMake 3.10+ | Build system (optional) |
-| libcurl | HTTP client/server |
-| libsqlite3 | Database builtins |
-| Win32 SDK | GUI, FFI, threading |
+| CMake 3.10+ | Build system |
+| libcurl | HTTP client (`http_get`, `http_post`, `fetch`) |
+| libsqlite3 | Linked by CMake, though no `db_*` builtins currently exist in C++ (see [Known Gaps](#-known-gaps--caveats)) |
+| Win32 SDK (`dwmapi`, `uxtheme`) | GUI dark-mode/theme APIs |
 
-### Build from Source
+### Build with CMake
 
 ```bash
 git clone https://github.com/imabd645/EZ-language.git
 cd EZ-language
 
-# Using CMake
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles"
 cmake --build .
+```
 
-# Or direct g++ (MinGW)
+This produces `ez.exe` and links against `sqlite3 curl ws2_32 pthread` (plus `dwmapi uxtheme` on Windows), per `CMakeLists.txt`.
+
+> **Note:** `CMakeLists.txt`'s `SOURCES` list currently does **not** include `runtime/Builtins_Buffer.cpp` or `runtime/Builtins_Concurrency.cpp`, and references a `runtime/Builtins_DB.cpp` that does not exist in the tree. A manual `g++` invocation listing every file under `src/` and `src/runtime/` (as below) is the reliable way to get a complete build with buffer/concurrency/FFI support.
+
+### Build directly with g++ (MinGW)
+
+```bash
 g++ -std=c++17 -O2 -o ez.exe \
-    src/main.cpp src/Lexer.cpp src/Parser.cpp \
-    src/Bytecode.cpp src/BytecodeCompiler.cpp \
-    src/BytecodeVM.cpp src/BytecodeInterpreter.cpp \
+    src/main.cpp src/Lexer.cpp src/Parser.cpp src/TypeChecker.cpp \
+    src/Bytecode.cpp src/BytecodeCompiler.cpp src/BytecodeVM.cpp \
     src/Builtins.cpp src/GUIBuiltins.cpp \
     src/GC.cpp src/GCObject.cpp \
     src/runtime/Builtins_IO.cpp src/runtime/Builtins_Math.cpp \
     src/runtime/Builtins_Net.cpp src/runtime/Builtins_String.cpp \
     src/runtime/Builtins_Data.cpp src/runtime/Builtins_Sys.cpp \
     src/runtime/Builtins_Buffer.cpp src/runtime/Builtins_Concurrency.cpp \
-    src/runtime/Builtins_PDF.cpp \
+    src/runtime/EventLoop.cpp \
     -lsqlite3 -lcurl -lws2_32 -lpthread -ldwmapi -luxtheme \
     -I src
 ```
@@ -188,9 +197,10 @@ g++ -std=c++17 -O2 -o ez.exe \
 4. Restart your terminal
 
 ```bash
-ez --version     # confirm it works
+ez --help        # show usage
 ez hello.ez      # run a script
-ez              # start the REPL
+ez --trace hello.ez   # run with bytecode execution tracing
+ez               # start the REPL
 ```
 
 ---
@@ -217,7 +227,6 @@ age  = 19
 pi   = 3.14159
 active = true
 
-# Output
 out "Name: " + name
 out "Age:  " + str(age)
 
@@ -228,7 +237,7 @@ when age >= 18 {
     out name + " is a minor"
 }
 
-# Loop — repeat N to M (inclusive)
+# repeat i = N to M — inclusive on both ends, auto-detects reverse direction
 repeat i = 1 to 5 {
     out "Count: " + str(i)
 }
@@ -255,20 +264,32 @@ out str(double(5))    # 10
 
 ## 📚 Language Syntax
 
-### Variables & Types
+### Comments
 
-Variables are dynamically typed. No declaration keyword — just assign.
+EZ supports three comment styles:
 
 ```ez
-# Numbers — two internal types: double and long long
-x     = 42          # INTEGER (long long)
-pi    = 3.14159     # NUMBER  (double)
-big   = 0xFF        # hex literal
+# Hash comment (line)
+// Double-slash comment (line)
+/* Block comment, supports /* nesting */ */
+```
 
-# Strings
+### Variables & Types
+
+Variables are dynamically typed by default (optional static types are covered in the [Type Checker](#-optional-static-type-checker) section below). No declaration keyword is needed — just assign.
+
+```ez
+# Numbers — two internal runtime types: INTEGER (long long) and NUMBER (double)
+x     = 42          # INTEGER
+pi    = 3.14159     # NUMBER (double)
+big   = 0xFF        # hex literal -> INTEGER (255)
+
+# Strings (single or double quotes — both behave the same)
 msg   = "Hello, EZ!"
-raw   = r"C:\Users\file.txt"           # raw string — backslashes literal
-interp = "Pi is approximately ${pi}"  # string interpolation
+msg2  = 'also fine'
+
+# Raw strings — prefix r before a quote disables escape processing
+raw   = r"C:\Users\file.txt"
 
 # Booleans — yes/no are aliases for true/false
 flag1 = true
@@ -286,7 +307,30 @@ x *= 3
 x /= 4
 ```
 
-**Type names** (returned by `typeOf()`): `"number"`, `"integer"`, `"string"`, `"boolean"`, `"array"`, `"dictionary"`, `"function"`, `"nil"`, `"model"`, `"future"`, `"buffer"`, `"mutex"`
+**Runtime type names** (returned by `typeOf()`): `"nil"`, `"bool"`, `"integer"`, `"float"`, `"string"`, `"array"`, `"dictionary"`, `"function"`, `"model"`, `"instance"`, `"future"`, `"buffer"`, `"mutex"`, `"interface"`, `"super"`.
+
+> Note: `typeOf` distinguishes `"integer"` (whole numbers, stored as `long long` for fast arithmetic) from `"float"` (doubles). Both satisfy `isNumber()` checks in the runtime.
+
+### Strings & Interpolation
+
+EZ has **three** string forms:
+
+```ez
+"double quoted"     # supports escapes: \n \t \r \0 \\ \" \' and \xNN (hex byte)
+'single quoted'     # identical semantics to double quotes
+r"raw string"       # backslashes are literal — no escape processing
+```
+
+**Template strings use backticks with `{expr}` interpolation** (not `${...}`):
+
+```ez
+name = "Abdullah"
+age  = 19
+out `Hello {name}, you are {age + 1} next year`
+# -> Hello Abdullah, you are 20 next year
+```
+
+Internally the lexer desugars a backtick template into string concatenation with `str(...)` calls around each `{...}` expression — so `` `A{1+1}B` `` becomes `("A" + str(1+1) + "B")`. A backtick string with no `{}` interpolation is just a plain string literal.
 
 ### Operators
 
@@ -297,7 +341,6 @@ out 10 - 3      # 7
 out 10 * 3      # 30
 out 10 / 3      # 3.333...
 out 10 % 3      # 1  (modulo)
-out 2 ** 8      # 256 (power)
 
 # Comparison
 out 5 == 5      # true
@@ -313,9 +356,9 @@ out true or  false    # true
 out not true          # false
 
 # Bitwise
-out 0b1010 & 0b1100   # 8   (AND)
-out 0b1010 | 0b0101   # 15  (OR)
-out 0b1010 ^ 0b1100   # 6   (XOR)
+out 10 & 12           # 8   (AND)
+out 10 | 5            # 15  (OR)
+out 10 ^ 12           # 6   (XOR)
 out ~5                 # bitwise NOT
 out 1 << 3             # 8   (left shift)
 out 16 >> 2            # 4   (right shift)
@@ -323,15 +366,20 @@ out 16 >> 2            # 4   (right shift)
 # Ternary
 label = age >= 18 ? "adult" : "minor"
 
-# Spread
+# Spread (in array literals and function calls)
 a = [1, 2, 3]
 b = [...a, 4, 5]      # [1, 2, 3, 4, 5]
 ```
 
+> **`**` is not a real operator.** Although a `POW` opcode exists in the bytecode ISA, the lexer never produces a `**`/power token — there is only a single `*` (multiply) operator. For exponentiation, use the `pow(base, exp)` builtin. Writing `2 ** 8` will lex as two consecutive `*` tokens and will not parse as exponentiation.
+
+> **`0b...` binary literals are not supported** by the lexer — only decimal numbers and `0x...` hexadecimal literals are recognized.
+
 ### Control Flow
 
+#### `when` / `other when` / `other` (if / else if / else)
+
 ```ez
-# when / other when / other  (if / else if / else)
 score = 85
 
 when score >= 90 {
@@ -343,36 +391,64 @@ when score >= 90 {
 } other {
     out "F"
 }
+```
 
-# while loop
+`other when ...` is parsed as a single nested `when` statement attached as the `else` branch — this is the **only** way to chain conditions. A bare `when` block immediately followed by another `when` block (without `other`) is parsed as **two independent statements**, not an if/else-if chain.
+
+EZ also supports a brace-less single-statement form for short conditionals:
+
+```ez
+when x == 5 { escape }
+when x % 2 == 0 { skip }
+```
+
+#### `while` loop
+
+```ez
 n = 1
 while n <= 10 {
     out str(n)
     n += 1
 }
+```
 
-# repeat N to M  (for i = N; i <= M; i++)
-repeat i = 1 to 100 {
-    out str(i)
+#### `repeat i = N to M` (inclusive range loop)
+
+The compiler emits `loopVar <= endVar` as the loop condition — **both bounds are inclusive**. If `N > M` (and both are literal constants), the compiler automatically detects this and emits a decrementing loop (`loopVar >= endVar`) instead.
+
+```ez
+repeat i = 1 to 5 {
+    out str(i)     # prints 1 2 3 4 5
 }
 
-# get ... in  (for-each)
+repeat i = 5 to 1 {
+    out str(i)     # prints 5 4 3 2 1 (auto reverse)
+}
+```
+
+#### `get ... in ...` (for-each)
+
+```ez
+# Iterate an array
 get item in ["alpha", "beta", "gamma"] {
     out item
 }
 
-# get ... in  (for key in dictionary)
+# Iterate dictionary keys
 config = {"host": "localhost", "port": 8080}
 get key in config {
     out key + " = " + str(config[key])
 }
 
-# get [k, v] in  (for key, value in dictionary)
+# Destructure key AND value
 get [k, v] in config {
     out k + " = " + str(v)
 }
+```
 
-# match statement (pattern matching / switch)
+#### `match` (pattern matching)
+
+```ez
 state = "success"
 match state {
     "loading" => out "Please wait..."
@@ -381,8 +457,16 @@ match state {
     }
     other => out "Unknown state"
 }
+```
 
-# escape (break) and skip (continue)
+Each arm is `<expression> => <statement-or-block>`; the special `other` arm (no expression) is the default/fallback case. There is no support for value ranges, multiple values per arm, or destructuring patterns in `match` — each arm pattern is evaluated and compared with `==` against the subject.
+
+#### `escape` and `skip`
+
+- `escape` — break out of the nearest enclosing loop (`while`, `repeat`, `get`).
+- `skip` — continue to the next iteration.
+
+```ez
 repeat i = 1 to 10 {
     when i == 5 { escape }
     when i % 2 == 0 { skip }
@@ -405,7 +489,7 @@ task greet(name, greeting) {
     give greeting + ", " + name + "!"
 }
 
-# Variadic functions
+# Variadic functions (... prefix on the last parameter)
 task sum(...nums) {
     total = 0
     get n in nums { total += n }
@@ -419,10 +503,11 @@ task factorial(n) {
     give n * factorial(n - 1)
 }
 
-# Tail-call optimized recursion (20,000+ levels)
+# Tail-call optimized recursion (give f(...) in tail position reuses
+# the current stack frame — supports 20,000+ levels of recursion)
 task count(n, acc) {
     when n == 0 { give acc }
-    give count(n - 1, acc + 1)    # TCO — no stack overflow
+    give count(n - 1, acc + 1)    # TCO
 }
 
 # Lambda — single expression
@@ -435,13 +520,8 @@ clamp = |val, lo, hi| {
     give val
 }
 
-# Higher-order functions
-task applyTwice(f, x) {
-    give f(f(x))
-}
-out str(applyTwice(double, 3))    # 12
-
-# Closures
+# Closures — Lua-style upvalues, migrate to the heap when their
+# enclosing scope exits
 task makeCounter() {
     count = 0
     give || {
@@ -453,15 +533,25 @@ counter = makeCounter()
 out str(counter())    # 1
 out str(counter())    # 2
 out str(counter())    # 3
-
-# Async task
-async task fetchUser(id) {
-    data = http_get("https://api.example.com/users/" + str(id))
-    give data
-}
-future = fetchUser(1)
-result = await future
 ```
+
+#### `static` locals (persistent variables across calls)
+
+A `static name = expr` statement inside a `task` body declares a variable whose initializer runs **only on the first call** — its value persists across subsequent calls to the same function, similar to a `static` local in C:
+
+```ez
+task tick() {
+    static count = 0
+    count += 1
+    give count
+}
+
+out str(tick())   # 1
+out str(tick())   # 2
+out str(tick())   # 3
+```
+
+Internally each `static` variable is compiled to a uniquely-mangled global (`__static_<compilerId>_<funcName>_<varName>`) and is only initialized the first time the declaration executes (checked via a `HAS_GLOBAL` test).
 
 ### Arrays & Dictionaries
 
@@ -469,9 +559,9 @@ result = await future
 # Array literals
 primes = [2, 3, 5, 7, 11]
 
-# Indexing (0-based)
+# Indexing (0-based, supports negative indices from the end)
 out str(primes[0])      # 2
-out str(primes[-1])     # 11  (negative indexing from end)
+out str(primes[-1])     # 11
 
 # Array operations
 push(primes, 13)
@@ -485,7 +575,7 @@ out str(primes[1:3])    # [3, 5]
 args = [3, 4]
 out str(add(...args))
 
-# Dictionary (hash map)
+# Dictionary (hash map) — keys are strings
 user = {
     "name": "Alice",
     "age":  30,
@@ -496,19 +586,60 @@ out user["name"]                    # Alice
 out str(user["age"])                # 30
 out str(has_key(user, "email"))     # false
 
-# Add / update
 user["email"] = "alice@example.com"
 
-# Iterate
 get key in user {
     out key + ": " + str(user[key])
 }
 
-# Dictionary functions
 out str(keys(user))     # ["name", "age", "tags", "email"]
 out str(len(user))      # 4
 dictRemove(user, "tags")
 ```
+
+---
+
+## 🔍 Optional Static Type Checker
+
+EZ ships with an opt-in static type checker (`TypeChecker.cpp`, ~673 lines) that runs **after parsing and before bytecode compilation**. If it reports an error, the script exits with status 65 before any code runs. Type annotations are entirely optional — untyped code (everything shown above) checks fine because unannotated variables default to type `Any`, which is compatible with everything.
+
+### Type annotation syntax
+
+```ez
+# Variable declarations with type annotations
+x: bool = true
+i: number = 0
+arr: Array[number] = [1, 2, 3]
+dict: Dict[string, number] = {"a": 1, "b": 2}
+
+# Function/task signatures
+task add(a: number, b: number) -> number {
+    give a + b
+}
+
+# Struct fields with types and defaults
+struct User {
+    name: string
+    age: number = 25
+}
+
+# Interface method signatures
+interface Logger {
+    task log(message: string, level: number) -> bool
+}
+```
+
+### What the type checker validates
+
+- **Type mismatches** in variable declarations (`arr[1] = "string"` where `arr: Array[number]` → error).
+- **Dictionary key/value types**: `dict["key"]` must match the declared `Dict[K, V]` key type, e.g. `dict[1] = 2` on a `Dict[string, number]` is an error.
+- **Logical operator operands**: `and`/`or` operands must be `bool` (`x and "string"` → error).
+- **`self` usage**: `self` can only be referenced inside a `model`'s `init` or methods — using `self` at top-level is an error.
+- **Loop control statements**: `escape`/`skip` (break/continue) outside of any loop is an error.
+- **Generic container types**: `Array[T]` and `Dict[K, V]` with nested type arguments are supported in the type grammar (`TypeInfo` / `TypeAST`).
+- Any type written as `Any` (or omitted) is treated as compatible with everything — it's the universal escape hatch for dynamic code.
+
+If you never write `:` type annotations, this entire pass is effectively a no-op pass-through, and EZ behaves as a purely dynamically-typed language.
 
 ---
 
@@ -555,7 +686,7 @@ model Dog extends Animal {
 
     task learnTrick(trick) {
         push(self.tricks, trick)
-        give self    # enable method chaining
+        give self    # enables method chaining
     }
 
     shown perform() {
@@ -572,12 +703,14 @@ rex.perform()    # Rex performs: sit
                  # Rex performs: roll over
 ```
 
+When a class `extends` a parent, all of the parent's methods are copied into the child's method table at class-creation time (unless overridden) — inheritance is implemented as a one-time method-table merge, not a runtime lookup chain.
+
 ### Interfaces
 
 ```ez
 interface Serializable {
-    toJson
-    fromJson
+    task toJson()
+    task fromJson(json)
 }
 
 model Config implements Serializable {
@@ -595,10 +728,11 @@ model Config implements Serializable {
     }
 }
 
-# Runtime validates that Config has toJson and fromJson
 cfg = Config({"debug": true, "port": 3000})
 out cfg.toJson()
 ```
+
+When a model with `implements SomeInterface` is created, the VM checks (at class-creation time) that every method named in the interface exists in the class's method table. If a required method is missing, EZ raises a runtime error: `Model 'X' fails to implement interface 'Serializable': missing task 'fromJson'`. This is presence-only validation — argument and return types of interface methods are not checked at runtime.
 
 ### Static Members
 
@@ -641,12 +775,74 @@ p.y = 20
 out str(p.x) + ", " + str(p.y)
 ```
 
----
-
-### Error Handling
+Structs may also carry type annotations and default values when used with the [type checker](#-optional-static-type-checker):
 
 ```ez
-# try / catch / throw
+struct User {
+    name: string
+    age: number = 25
+}
+```
+
+### Operator Overloading
+
+The parser allows **any token** to be used as a function name inside a `model` body — this is what enables operator overloading. The bytecode VM checks for a matching method on a model instance before falling back to the built-in numeric/structural behavior.
+
+**Overloadable** (looked up by name on the left-hand instance):
+
+| Operator | Method name | Notes |
+|---|---|---|
+| `+` | `task +(other)` | |
+| `-` (binary) | `task -(other)` | |
+| `*` | `task *(other)` | |
+| `/` | `task /(other)` | |
+| `==` | `task ==(other)` | |
+| `<` | `task <(other)` | |
+| `>` | `task >(other)` | |
+| `>=` | `task >=(other)` | |
+| `-` (unary negation) | `task neg()` | invoked for `-v` |
+
+**Not overloadable** — `<=` and `!=` always fall back to the default numeric/structural comparison (`doLessEq` / `doNotEqual`) regardless of whether the instance defines `<=` or `!=` methods. If you need consistent `<=`/`!=` behaviour for a custom type, define `<` and `==` and compose them at the call site, or expose a named helper method like `lte()`.
+
+```ez
+model Vector {
+    init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    task +(other) {
+        give Vector(self.x + other.x, self.y + other.y)
+    }
+
+    task ==(other) {
+        give self.x == other.x and self.y == other.y
+    }
+
+    task neg() {
+        give Vector(-self.x, -self.y)
+    }
+
+    task toString() {
+        give "Vector(" + str(self.x) + ", " + str(self.y) + ")"
+    }
+}
+
+v1 = Vector(10, 20)
+v2 = Vector(5, 5)
+v3 = v1 + v2          # Vector(15, 25)
+v1 += v2              # desugars to v1 = v1 + v2
+out str(v1 == v3)     # true
+v4 = -v2              # Vector(-5, -5)
+```
+
+---
+
+## Error Handling
+
+### `try` / `catch` / `throw`
+
+```ez
 task divide(a, b) {
     when b == 0 {
         throw "Division by zero"
@@ -659,24 +855,47 @@ try {
 } catch e {
     out "Caught: " + str(e)    # Caught: Division by zero
 }
+```
 
-# Throw any value — string, number, or model
-model AppError {
-    init(code, message) {
-        self.code    = code
-        self.message = message
-    }
+### Typed catches and model-based exceptions
+
+`catch (TypeName e)` matches only if the thrown value is an instance of `TypeName` (or one of its subclasses, via `extends`). Multiple typed `catch` clauses can be chained, with an untyped `catch e` as a final catch-all:
+
+```ez
+model MathError {
+    init(msg) { self.msg = msg }
+}
+
+model NetworkError {
+    init(msg) { self.msg = msg }
 }
 
 try {
-    throw AppError(404, "Not found")
+    throw MathError("division by zero")
+} catch (MathError e) {
+    out "Math error: " + e.msg
+} catch (NetworkError e) {
+    out "Network error: " + e.msg
 } catch e {
-    when typeOf(e) == "model" {
-        out "Error " + str(e.code) + ": " + e.message
-    }
+    out "Unknown: " + str(e)
 }
+```
 
-# Nested try-catch
+Subclasses (`model DerivedError extends MathError`) are caught by a `catch (MathError e)` clause as well — the VM walks the instance's class chain when matching catch types.
+
+### Built-in `Exception` helper
+
+A native `Exception(message, code)` constructor returns a plain dictionary with `message`, `code`, and `stackTrace` keys — useful as a lightweight, allocation-free alternative to defining your own error models:
+
+```ez
+err = Exception("Not found", 404)
+out err["message"]   # Not found
+out str(err["code"]) # 404
+```
+
+### Nested try/catch and re-throw
+
+```ez
 try {
     try {
         throw "inner"
@@ -689,7 +908,13 @@ try {
 }
 ```
 
-### Modules
+### `panic`
+
+`panic(message)` immediately raises a fatal runtime error (the same mechanism used for internal VM errors) — it is not catchable by `try`/`catch` and terminates the script with exit code 70.
+
+---
+
+## Modules (`use`)
 
 ```ez
 # Import entire file — all its globals become available
@@ -697,89 +922,123 @@ use "lib/utils.ez"
 
 # Namespaced import — access via alias.name
 use "lib/math.ez" as math
-out str(math.sqrt(25))    # 5
+out str(math.sqrt(25))
 
-# Import everything from a module into current scope
+# Import everything from a module into the current scope
 use "lib/helpers.ez" as *
 
-# Install and use a package (after: ez install collections)
+# Import an installed package (after `ez install <name>`)
 use "collections"
-s = Set().add(1).add(2).add(1)
-out str(s.size())    # 2
 ```
+
+`use` resolves paths relative to `lib/<name>.ez`, `lib/<name>/main.ez`, `C:/ezlib/<name>.ez`, or `C:/ezlib/<name>/main.ez`, in addition to the literal path given. This same resolution logic is also how `ez bundle` discovers transitive dependencies to pack into a standalone executable.
 
 ---
 
-## 🔧 Built-in Functions
+## 🔧 Built-in Functions (C++ Runtime)
 
-### Input / Output
+Everything in this section is registered directly as a native function in the C++ source (`src/Builtins.cpp` and `src/runtime/Builtins_*.cpp`) and is always available, with no `use` statement required.
+
+### Output, Input & Console
 
 | Function | Description |
 |---|---|
-| `out expr` | Print value with newline |
-| `input(prompt)` | Read a line from stdin |
-| `color(code)` | Set Windows console text color (0–255) |
+| `out expr` | Print value with newline (language statement, not a function call) |
+| `print(val)` | Print without a trailing newline |
+| `input(prompt)` / `__input__` | Read a line from stdin |
+| `color(code)` | Set Windows console text color |
 | `reset()` | Reset console color |
+| `clear()` | Clear the console screen |
+| `gotoxy(x, y)` | Move console cursor |
+| `getch()` | Read a single character without echo |
 
 ### Type Conversion & Inspection
 
 | Function | Description |
 |---|---|
 | `str(val)` | Convert any value to string |
-| `num(val)` | Parse string to number |
-| `int(val)` | Convert to integer |
-| `bool(val)` | Convert to boolean |
-| `typeOf(val)` | Return type name as string |
+| `num(val)` | Parse string/value to number |
+| `typeOf(val)` / `type(val)` | Return the runtime type name as a string |
 | `len(val)` | Length of string, array, or dictionary |
 
 ### String Functions
 
 | Function | Description |
 |---|---|
-| `substr(s, start, len)` | Extract substring |
+| `substr(s, start, len)` / `substring(s, start, end)` | Extract substring |
 | `split(s, delim)` | Split string to array |
 | `join(arr, delim)` | Join array to string |
-| `upper(s)` / `lower(s)` | Case conversion |
+| `upper(s)` / `toUpper(s)` | Uppercase |
+| `lower(s)` / `toLower(s)` | Lowercase |
 | `trim(s)` | Strip leading/trailing whitespace |
 | `replace(s, old, new)` | Replace substring |
-| `contains(s, sub)` | Check if substring exists |
+| `contains(s, sub)` | Substring check (also works on arrays for membership) |
 | `startsWith(s, prefix)` | Prefix check |
 | `endsWith(s, suffix)` | Suffix check |
-| `indexOf(s, sub)` | First index or -1 |
-| `ord(char)` | Character to ASCII code |
-| `chr(code)` | ASCII code to character |
-| `repeat(s, n)` | Repeat string N times |
-| `padLeft(s, w, char)` | Left-pad to width |
-| `padRight(s, w, char)` | Right-pad to width |
+| `indexOf(s_or_arr, val)` | First index, or -1 |
+| `ord(char)` | Character → ASCII code |
+| `chr(code)` | ASCII code → character |
 
-### Array Functions
+### Array & Dictionary Functions
 
 | Function | Description |
 |---|---|
 | `push(arr, val)` | Append to array |
 | `pop(arr)` | Remove and return last element |
-| `shift(arr)` | Remove and return first element |
-| `unshift(arr, val)` | Prepend to array |
+| `insert(arr, idx, val)` | Insert at index |
+| `remove(arr, val_or_idx)` | Remove an element |
 | `reverse(arr)` | Reverse in place |
 | `sort(arr)` | Sort in place |
 | `slice(arr, start, end)` | Return sub-array |
-| `concat(a, b)` | Merge two arrays |
-| `indexOf(arr, val)` | Find value index |
-| `includes(arr, val)` | Boolean membership check |
-| `filter(arr, fn)` | Return elements where fn returns true |
+| `range(start, end[, step])` | Generate an array of numbers |
+| `filter(arr, fn)` | Return elements where `fn` returns true |
 | `map(arr, fn)` | Transform each element |
-| `reduce(arr, fn, init)` | Fold array to single value |
-| `flat(arr)` | Flatten nested arrays |
+| `reduce(arr, fn, init)` | Fold array to a single value |
+| `forEach(arr, fn)` | Call `fn` for each element (no return value) |
+| `every(arr, fn)` | True if `fn` is true for all elements |
+| `some(arr, fn)` | True if `fn` is true for any element |
+| `find(arr, fn)` | First element matching `fn`, or `nil` |
+| `keys(dict)` | Array of dictionary keys |
+| `values(dict)` | Array of dictionary values |
+| `has_key(dict, key)` | Boolean key check |
+| `dictRemove(dict, key)` | Delete a key |
 
-### Dictionary Functions
+### JSON
 
 | Function | Description |
 |---|---|
-| `keys(dict)` | Array of keys |
-| `values(dict)` | Array of values |
-| `has_key(dict, key)` | Boolean key check |
-| `dictRemove(dict, key)` | Delete a key |
-| `merge(a, b)` | Merge two dicts (b wins on conflict) |
+| `parse_json(str)` | Parse a JSON string to an EZ value (via `MiniJson.h`) |
+| `to_json(val)` | Serialize an EZ value to a JSON string |
+
+### File I/O
+
+| Function | Description |
+|---|---|
+| `readFile(path)` | Read entire file as a string |
+| `writeFile(path, content)` | Write/overwrite a file |
+| `appendFile(path, content)` | Append to a file |
+| `readLines(path)` | Read file as an array of lines |
+| `writeLine(path, line)` | Write a single line |
+| `appendLine(path, line)` | Append a single line |
+
+### HTTP Client (via libcurl)
+
+| Function | Description |
+|---|---|
+| `http_get(url[, headers])` | HTTP GET |
+| `http_post(url, body[, headers])` | HTTP POST |
+| `fetch(url[, options])` | Generic HTTP request helper |
+| `url_encode(str)` / `url_decode(str)` | URL component encoding |
+
+> `http_put`, `http_delete`, and `startServer(port, handler)` (web server) are **not** present as C++ builtins in this repository.
+
+### Regular Expressions
+
+| Function | Description |
+|---|---|
+| `reMatch(text, pattern)` | Test if `text` matches `pattern` |
+| `reSearch(text, pattern)` | Find first match, return captured groups |
+| `reReplace(text, pattern, repl)` | Replace first match |
 
 ### Math Functions
 
@@ -790,109 +1049,34 @@ out str(s.size())    # 2
 | `round(x)` | Round to nearest integer |
 | `abs(x)` | Absolute value |
 | `sqrt(x)` | Square root |
-| `pow(base, exp)` | Exponentiation |
+| `pow(base, exp)` | Exponentiation (use this instead of `**`) |
 | `min(a, b)` | Minimum of two values |
 | `max(a, b)` | Maximum of two values |
-| `rand()` | Random float [0, 1) |
+| `rand()` | Random float in `[0, 1)` |
 | `randint(lo, hi)` | Random integer in range |
-| `xor(a, b)` | Bitwise XOR |
-| `pi` | 3.141592653589793 |
 
-### File I/O
+### Buffers (raw byte storage)
 
 | Function | Description |
 |---|---|
-| `readFile(path)` | Read entire file as string |
-| `writeFile(path, content)` | Write/overwrite file |
-| `appendFile(path, content)` | Append to file |
-| `readLines(path)` | Read file as array of lines |
-| `writeLine(path, line)` | Write single line |
-| `deleteFile(path)` | Delete a file |
-| `listDir(path)` | List directory contents |
-| `fs_exists(path)` | Check if path exists |
+| `buffer(size_or_string)` | Allocate a raw byte buffer, or build one from a string |
+| `buf_size(buf)` | Buffer length in bytes |
+| `buf_fill(buf, byteVal)` | Fill the buffer with a byte value |
+| `buf_copy(src, dst, ...)` | Bulk-copy bytes between buffers |
+| `buf_to_str(buf)` | Decode buffer contents as a UTF-8 string |
+| `buf[i]` / `buf[i] = v` | Index a buffer directly to read/write a byte |
 
-### JSON
+### Concurrency Primitives
 
 | Function | Description |
 |---|---|
-| `parse_json(str)` | Parse JSON string to EZ value |
-| `to_json(val)` | Serialize EZ value to JSON string |
-
-### Database (SQLite)
-
-| Function | Description |
-|---|---|
-| `db_open(path)` | Open/create SQLite database, returns handle |
-| `db_execute(handle, sql)` | Run non-returning SQL |
-| `db_query(handle, sql)` | Run SELECT, returns array of dicts |
-| `db_last_insert_id(handle)` | Last auto-increment ID |
-| `db_begin(handle)` | Begin transaction |
-| `db_commit(handle)` | Commit transaction |
-| `db_rollback(handle)` | Rollback transaction |
-| `db_close(handle)` | Close database |
-
-### HTTP (via libcurl)
-
-| Function | Description |
-|---|---|
-| `http_get(url, headers?)` | HTTP GET |
-| `http_post(url, body, headers?)` | HTTP POST |
-| `http_put(url, body, headers?)` | HTTP PUT |
-| `http_delete(url, headers?)` | HTTP DELETE |
-| `startServer(port, handler)` | Start HTTP server |
-
-### Regular Expressions
-
-| Function | Description |
-|---|---|
-| `reMatch(text, pattern)` | Test if text matches pattern |
-| `reSearch(text, pattern)` | Find first match, return groups array |
-| `reReplace(text, pattern, repl)` | Replace first match |
-
-### Crypto & Encoding
-
-| Function | Description |
-|---|---|
-| `md5(str)` | MD5 hex digest |
-| `sha256(str)` | SHA-256 hex digest |
-| `base64_encode(str)` | Base64 encode |
-| `base64_decode(str)` | Base64 decode |
-| `hmac_sha256(key, msg)` | HMAC-SHA256 hex digest |
-
-### Time & System
-
-| Function | Description |
-|---|---|
-| `clock()` | Milliseconds since process start |
-| `wait(ms)` | Sleep for N milliseconds |
-| `exit(code)` | Exit process |
-| `exec(cmd)` | Execute shell command, return output |
-| `getenv(name)` | Read environment variable |
-| `setenv(name, val)` | Set environment variable |
-
-### Concurrency
-
-| Function | Description |
-|---|---|
-| `spawn(fn, ...args)` | Start detached thread |
-| `await future` | Block until future resolves |
+| `spawn(fn, ...args)` | Start a detached OS thread running `fn(...args)` |
+| `await expr` / `sync expr` | Block until a `Future` resolves (`sync` is an alias for `await` as a function call) |
+| `waitAsync(ms)` | Non-blocking delay (yields to the event loop) |
+| `wait(ms)` / `stop(ms)` | Blocking sleep for `ms` milliseconds |
 | `mutex()` | Create a `Mutex` value |
-| `lock(mu, fn)` | Acquire mutex, run fn, release |
-| `atomicAdd(ref, n)` | Atomic integer add |
-| `atomicGet(ref)` | Atomic integer read |
-| `atomicSet(ref, n)` | Atomic integer write |
-
-### Buffers
-
-| Function | Description |
-|---|---|
-| `Buffer(size)` | Allocate raw byte buffer |
-| `buf.readU8(offset)` | Read unsigned byte |
-| `buf.writeU8(offset, val)` | Write unsigned byte |
-| `buf.readU32(offset)` | Read 32-bit unsigned int |
-| `buf.writeU32(offset, val)` | Write 32-bit unsigned int |
-| `buf.readString(offset, len)` | Read UTF-8 string |
-| `buf.writeString(offset, str)` | Write UTF-8 string |
+| `lock(mu, fn)` | Acquire mutex, run `fn`, release |
+| `Atomic(initial)` | Create an atomic integer value |
 
 ### Metaprogramming
 
@@ -901,45 +1085,52 @@ out str(s.size())    # 2
 | `getattr(obj, name)` | Get property by name string |
 | `setattr(obj, name, val)` | Set property by name string |
 | `hasattr(obj, name)` | Check if property exists |
-| `typeOf(val)` | Runtime type name |
+
+### Errors & Process Control
+
+| Function | Description |
+|---|---|
+| `Exception(message, code)` | Construct a `{message, code, stackTrace}` dictionary |
+| `panic(message)` | Raise a fatal, uncatchable runtime error |
+| `exit(code)` | Terminate the process immediately |
+| `clock()` | Milliseconds since the Unix epoch (wall-clock, **not** process start) |
 
 ---
 
 ## ⚡ Async & Concurrency
 
-EZ's concurrency model is built on a custom native Event Loop, exposing true non-blocking I/O with clean syntax without the overhead of spawning OS threads per task.
+EZ's concurrency model combines a custom native **event loop** for cooperative async/await with **real OS threads** (`spawn`) for CPU-bound parallel work, plus thread-safe primitives (`Mutex`, `Atomic`).
+
+### `async task` + `await`
 
 ```ez
-# Async task — runs concurrently on the Event Loop
-async task fetchJson(url) {
-    raw = http_get(url)
-    give parse_json(raw)
+async task fetchUser(id) {
+    data = http_get("https://api.example.com/users/" + str(id))
+    give data
 }
 
-# Launch two fetches in parallel
-f1 = fetchJson("https://api.example.com/users")
-f2 = fetchJson("https://api.example.com/posts")
+f1 = fetchUser(1)
+f2 = fetchUser(2)
 
 out "Fetching in parallel..."
 
-# Await both — total time ≈ max(t1, t2), not t1 + t2
-users = await f1
-posts = await f2
+r1 = await f1
+r2 = await f2
+```
 
-out "Got " + str(len(users)) + " users"
-out "Got " + str(len(posts)) + " posts"
+### `async { ... }` blocks
 
-# Async block expression
+```ez
 result = await async {
     wait(500)
     give "done"
 }
 
 # Inline await
-out await fetchJson("https://api.example.com/status")
+out await fetchUser(3)
 ```
 
-### Thread-Safe Shared State
+### Thread-safe shared state with `Mutex`
 
 ```ez
 model SafeCounter {
@@ -961,688 +1152,239 @@ model SafeCounter {
 
 counter = SafeCounter()
 
-# Spawn 10 threads all incrementing
 futures = []
 repeat i = 1 to 10 {
-    f = async counter.increment()
+    f = spawn(|| { counter.increment() })
     push(futures, f)
 }
 
-# Wait for all
 get f in futures { await f }
 out str(counter.get())    # 10
 ```
+
+### Notes on `spawn`
+
+When `spawn(fn, ...args)` launches a new OS thread, the VM exports a snapshot of thread state (`exportThreadState`) and closes any upvalues captured by `fn` so the worker thread doesn't hold dangling pointers into the parent VM's stack. Shared mutable state (arrays, dictionaries, model instances) is `shared_ptr`-based and remains shared across threads — this is why `Mutex` and `Atomic` exist, to coordinate access to that shared state safely. The garbage collector coordinates a stop-the-world pause across all active VM threads (`active_vm_threads`) before each collection.
 
 ---
 
 ## 🔗 Native FFI
 
-EZ can call any exported function from any Windows DLL without writing C++.
+EZ can call into arbitrary Windows DLL exports through a family of `os_*` builtins. This is a **low-level** interface — there is no automatic argument marshalling beyond numbers, strings, booleans, and buffers, and calls are wrapped in a SEH/vectored-exception guard so a bad call raises an EZ runtime error instead of crashing the interpreter.
+
+### Loading a library and resolving a function pointer
 
 ```ez
-# Load a DLL
 kernel = os_load_lib("kernel32.dll")
-
-# Get a function pointer
-sleep_fn = os_get_func(kernel, "Sleep")
-
-# Call it (arguments passed as EZ values, auto-marshalled)
-sleep_fn(1000)    # sleep 1 second via Win32
-
-# Example: call MessageBox
-user32 = os_load_lib("user32.dll")
-msgbox = os_get_func(user32, "MessageBoxA")
-msgbox(0, "Hello from EZ!", "EZ FFI Demo", 0)
+sleepFn = os_get_func(kernel, "Sleep")
 ```
 
-This is how `ezserve` implements its web server — by directly calling `ws2_32.dll` (Winsock) from EZ code with zero C++ required.
+### Calling a function: `os_call(funcPtr, returnType, ...args)`
+
+`returnType` is one of `"int"`, `"float"`, `"ptr"`, or `"string"`. Up to **12** arguments are supported; each argument is coerced based on its EZ type — numbers become `intptr_t`, strings become `const char*` (via `.c_str()`), buffers become pointers to their backing storage, and booleans become `0`/`1`.
+
+```ez
+kernel = os_load_lib("kernel32.dll")
+sleepFn = os_get_func(kernel, "Sleep")
+os_call(sleepFn, "int", 1000)   # Sleep(1000) — pause for 1 second
+
+user32 = os_load_lib("user32.dll")
+msgBox = os_get_func(user32, "MessageBoxA")
+os_call(msgBox, "int", 0, "Hello from EZ!", "EZ FFI Demo", 0)
+```
+
+If `funcPtr` is null (library/function not found), or if the call itself crashes (access violation), `os_call` raises a catchable EZ runtime error rather than terminating the process.
+
+### Raw memory access
+
+For working with structs and pointers returned by Win32 APIs, EZ exposes direct memory read/write builtins:
+
+| Function | Description |
+|---|---|
+| `os_alloc(size)` / `os_free(ptr)` | Allocate/free a raw memory block, returns its address as an integer |
+| `os_read_byte(ptr, offset)` / `os_write_byte(ptr, offset, val)` | Single byte |
+| `os_read_uint16/32/64(ptr, offset)` / `os_write_uint16/32/64(ptr, offset, val)` | Unsigned integers of various widths |
+| `os_read_float32/64(ptr, offset)` / `os_write_float32/64(ptr, offset, val)` | Floats/doubles |
+| `os_read_string_ptr(ptr)` | Read a null-terminated C string from a pointer |
+| `os_write_string(ptr, offset, str)` | Write a string into memory |
+| `os_buffer_from_ptr(ptr, size)` | Wrap a raw pointer as an EZ `buffer` |
+| `os_buffer_addr(buf)` | Get the backing address of an EZ `buffer` |
+
+### Struct layout helpers
+
+| Function | Description |
+|---|---|
+| `os_struct_alloc(fieldTypeNames)` | Compute and allocate a buffer sized/aligned for a struct described by an array of type-name strings |
+| `os_struct_pack(layout, values[, buffer])` | Pack EZ values into a buffer according to a layout description |
+| `os_struct_unpack(layout, bufferOrPtr)` | Unpack a buffer/pointer into an array of EZ values according to a layout |
+
+### Misc
+
+| Function | Description |
+|---|---|
+| `os_get_proxy_wndproc()` | Returns a function pointer to an internal window-procedure trampoline (used by the GUI subsystem to route Win32 messages back into EZ callbacks) |
+
+This is the FFI layer used internally by the GUI subsystem to talk to `user32.dll`/`gdi32.dll`, and is general enough to call most `*32.dll` Win32 APIs that take simple scalar/pointer arguments.
 
 ---
 
 ## 🖥 GUI Framework
 
-EZ includes a native Win32/GDI+ GUI framework with a fluent OOP API.
+The C++ runtime exposes roughly **70 raw `gui_*` native functions** (`src/GUIBuiltins.cpp`, ~1,200 lines) that wrap a Win32/GDI+ window, control, and drawing layer. These are the actual primitives available in this repository; a higher-level fluent OOP API (`gui.window(...).panel(...).button(...)`, as seen in example scripts via `use "lib/gui.ez"` or `use "ezgame"`) is an EZ-language wrapper that lives in the external `ezlib`/example scripts, not in this C++ source.
 
-```ez
-use "gui"
+### Window management
 
-gui.setTheme("dark")    # Immersive dark mode (including title bar)
-
-win = gui.window("My App", 900, 600)
-
-# Panels — containers for grouping widgets
-sidebar = win.panel(0, 0, 200, 600).color("#1e1e1e")
-content = win.panel(200, 0, 700, 600)
-
-# Widgets
-sidebar.label("Navigation", 20, 20, 160, 30).font("Segoe UI", 16)
-sidebar.button("Home",     20,  60, 160, 36, || { showHome() })
-sidebar.button("Settings", 20, 106, 160, 36, || { showSettings() })
-sidebar.button("About",    20, 152, 160, 36, || { showAbout() })
-
-title = content.label("Welcome", 30, 30, 400, 48).font("Segoe UI", 28)
-
-input = content.input("", 30, 100, 400, 36)
-content.button("Submit", 30, 150, 120, 36, || {
-    val = input.getText()
-    out "Submitted: " + val
-})
-
-# Tabs
-tabs = win.tabs(200, 0, 700, 600)
-tabs.addTab("Dashboard")
-tabs.addTab("Reports")
-tabs.addTab("Users")
-
-# Dropdown
-dropdown = content.dropdown(30, 200, 200, 36, ["Option 1", "Option 2", "Option 3"])
-dropdown.onChange(|val| { out "Selected: " + val })
-
-# Canvas drawing
-canvas = content.canvas(30, 250, 400, 200)
-canvas.fillRect(0, 0, 400, 200, "#1a1a2e")
-canvas.drawCircle(200, 100, 60, "#e94560")
-canvas.drawText("EZ Canvas", 140, 95, "#ffffff", 18)
-
-# Scroll area
-scroll = content.scrollPanel(30, 30, 640, 500)
-repeat i = 1 to 50 {
-    scroll.label("Item " + str(i), 10, (i - 1) * 30, 200, 28)
-}
-
-win.run()    # blocks on event loop
-```
-
-### Available Widget Types
-
-| Widget | Method | Description |
-|---|---|---|
-| Window | `gui.window(title, w, h)` | Main application window |
-| Panel | `win.panel(x, y, w, h)` | Container / layout group |
-| Label | `.label(text, x, y, w, h)` | Static text |
-| Button | `.button(text, x, y, w, h, fn)` | Clickable button |
-| Input | `.input(placeholder, x, y, w, h)` | Single-line text field |
-| Checkbox | `.checkbox(label, x, y, w, h, fn)` | Toggle checkbox |
-| Slider | `.slider(x, y, w, h, min, max, fn)` | Range slider |
-| Dropdown | `.dropdown(x, y, w, h, options)` | Select list |
-| Tabs | `.tabs(x, y, w, h)` | Tab strip navigation |
-| ScrollPanel | `.scrollPanel(x, y, w, h)` | Scrollable container |
-| Canvas | `.canvas(x, y, w, h)` | 2D drawing surface |
-| ProgressBar | `.progressBar(x, y, w, h)` | Progress indicator |
-
----
-
-## 📦 Package Manager
-
-EZ comes with a built-in package manager that uses [ezlib](https://github.com/imabd645/ezlib) as its registry — a GitHub monorepo where packages are ZIP-downloaded and installed to `C:\ezlib`.
-
-### Commands
-
-```bash
-ez install <package>        # install a package
-ez install math             # install ezmath
-ez install ai               # install ezai (OpenAI, Claude, Gemini, DeepSeek)
-ez install collections      # install ezcollections
-ez update <package>         # update to latest version
-ez remove <package>         # uninstall a package
-ez list                     # show installed packages
-ez search <term>            # search the registry
-```
-
-### How It Works
-
-```
-ez install math
-    │
-    ├─ Fetch index.json from github.com/imabd645/ezlib
-    ├─ Resolve latest version (semver: ^, ~, >=)
-    ├─ Download ZIP archive via curl
-    ├─ Extract to C:\ezlib\math\
-    ├─ Read package.ez manifest
-    ├─ Recursively install dependencies
-    └─ Write C:\ezlib\packages.json
-```
-
-### Using a Package
-
-```ez
-# After: ez install math
-use "math"
-
-out str(math.isPrime(97))          # true
-out str(math.fibonacci(10))        # 55
-
-v = Vector2(3, 4)
-out str(v.length())                # 5.0
-
-s = stats([2, 4, 4, 4, 5, 5, 7, 9])
-out str(s.mean())                  # 5.0
-out str(s.stddev())                # 2.0
-```
-
-### Creating a Package
-
-```bash
-ez init mypackage
-```
-
-This generates:
-
-```
-mypackage/
-├── main.ez          # entry point
-└── package.ez       # manifest
-```
-
-`package.ez`:
-```json
-{
-  "name": "mypackage",
-  "version": "1.0.0",
-  "description": "A short description",
-  "author": "your-github-username",
-  "main": "main.ez",
-  "license": "MIT",
-  "dependencies": {}
-}
-```
-
-Push to GitHub as `imabd645/ez-mypackage` and anyone can install it with `ez install mypackage`.
-
----
-
-## 📚 Standard Library
-
-The [ezlib](https://github.com/imabd645/ezlib) registry contains 19 official packages totalling 6,664 lines of EZ code.
-
-### `math` — Mathematics
-
-```ez
-use "math"
-
-# Constants
-out str(math.PI)       # 3.141592653589793
-out str(math.PHI)      # 1.618033988749895  (golden ratio)
-
-# Trigonometry (degrees and radians)
-out str(math.sind(45))                  # 0.7071...
-out str(math.atan2d(1, 1))             # 45.0
-
-# Number theory
-out str(math.isPrime(97))              # true
-out str(math.gcd(48, 18))             # 6
-out str(math.fibonacci(10))            # 55
-
-# Statistics model
-s = stats([10, 20, 30, 40, 50])
-out str(s.mean())                      # 30.0
-out str(s.stddev())                    # 14.142...
-out str(s.percentile(75))             # 40.0
-q = s.quartiles()
-out str(q["iqr"])                      # 20.0
-
-# Vectors
-v1 = vec2(3, 4)
-v2 = vec2(1, 0)
-out str(v1.length())                   # 5.0
-out str(v1.dot(v2))                   # 3.0
-
-v3d = vec3(1, 2, 3)
-out str(v3d.normalize().length())     # 1.0
-
-# Random
-out str(math.randInt(1, 6))          # 1–6 dice roll
-out str(math.randNormal(0, 1))       # standard normal sample
-
-# Interpolation & easing
-out str(math.lerp(0, 100, 0.75))     # 75.0
-out str(math.easeInOutCubic(0.5))    # 0.5
-```
-
-### `test` — Testing Framework
-
-```ez
-use "test"
-
-describe("String utilities", || {
-    beforeEach(|| {
-        # setup runs before each test
-    })
-
-    it("trims whitespace", || {
-        assertEqual(trim("  hello  "), "hello")
-    })
-
-    it("splits on delimiter", || {
-        parts = split("a,b,c", ",")
-        assertDeepEqual(parts, ["a", "b", "c"])
-    })
-
-    it("detects substrings", || {
-        assert(contains("Hello World", "World"))
-    })
-})
-
-describe("Error handling", || {
-    it("throws on bad input", || {
-        assertThrows(|| {
-            divide(10, 0)
-        }, "Division by zero")
-    })
-})
-
-runTests()
-```
-
-**Assertion functions:** `assert`, `assertFalse`, `assertEqual`, `assertDeepEqual`, `assertNotEqual`, `assertNull`, `assertNotNull`, `assertType`, `assertContains`, `assertInArray`, `assertThrows`, `assertDoesNotThrow`, `assertApproxEqual`, `assertGreaterThan`, `assertLessThan`
-
-**Hooks:** `beforeEach`, `afterEach`, `beforeAll`, `afterAll`
-
-**Mocking:** `spy(fn)`, `stub(returnValue)`, `mock()`
-
-### `http` — HTTP Client
-
-```ez
-use "http"
-
-# GET
-response = HTTPRequest("GET", "https://api.github.com/users/imabd645")
-    .header("User-Agent", "EZ/1.0")
-    .send()
-
-when response.isOk() {
-    user = response.json()
-    out user["login"] + " has " + str(user["public_repos"]) + " repos"
-}
-
-# POST with JSON body — auto-serialized
-res = HTTPRequest("POST", "https://api.example.com/items")
-    .data({"name": "Widget", "price": 9.99})
-    .timeout(5000)
-    .retries(3)
-    .send()
-
-res.raiseForStatus()    # throws if 4xx/5xx
-out res.json()
-```
-
-### `serve` — Web Server
-
-```ez
-use "serve"
-
-app = App()
-
-app.get("/", |req| {
-    give {"status": 200, "body": "<h1>Hello from EZ!</h1>",
-          "headers": {"Content-Type": "text/html"}}
-})
-
-app.get("/api/health", |req| {
-    give {"status": 200, "body": to_json({"ok": true, "time": clock()})}
-})
-
-app.post("/api/echo", |req| {
-    data = parse_json(req["body"])
-    give {"status": 200, "body": to_json(data)}
-})
-
-# Serve static files from ./public/
-app.serveStatic("/static", "public")
-
-out "Listening on port 8080"
-app.listen(8080)
-```
-
-### `ai` — Unified AI SDK
-
-```ez
-use "ai"
-
-# Auto-detect provider from API key prefix
-response = ask("Explain closures in one sentence", myApiKey)
-out response
-
-# Explicit provider
-reply = anthropic("What is a monad?", claudeApiKey)
-reply = openai("Write a haiku about recursion", openaiKey)
-reply = gemini("Summarize quantum computing", geminiKey)
-reply = deepseek("Translate to French: hello world", deepseekKey)
-
-# Specific model
-reply = anthropic_model("Solve x^2 - 5x + 6 = 0", key, "claude-opus-4-6")
-
-# Multi-turn chat session
-chat = new_chat(myApiKey)
-chat_send(chat, "My name is Alice.")
-reply = chat_send(chat, "What is my name?")
-out reply    # Alice
-
-# With system prompt
-chat = new_chat_with_system(key, "You are a helpful math tutor.")
-reply = chat_send(chat, "Explain the Pythagorean theorem.")
-```
-
-### `collections` — Data Structures
-
-```ez
-use "collections"
-
-# Set — unique values, any type
-s = Set()
-s.add(1).add("two").add(true).add(1)   # duplicate 1 ignored
-out str(s.size())                       # 3
-out str(s.has("two"))                  # true
-s.remove(1)
-out str(s.toArray())
-
-# Map — typed key-value store
-m = Map()
-m.set(42, "answer").set("pi", 3.14)
-out str(m.get(42))                     # answer
-out str(m.has("missing"))             # false
-
-# Queue — FIFO
-q = Queue()
-q.enqueue("first").enqueue("second").enqueue("third")
-out q.dequeue()                        # first
-out q.peek()                           # second
-
-# Stack — LIFO
-st = Stack()
-st.push(10).push(20).push(30)
-out str(st.pop())                      # 30
-out str(st.peek())                     # 20
-
-# Counter — frequency map
-c = Counter(["a", "b", "a", "c", "a", "b"])
-out str(c.count("a"))                  # 3
-out str(c.mostCommon(2))              # [["a", 3], ["b", 2]]
-```
-
-### `datetime` — Date & Time
-
-```ez
-use "datetime"
-
-# Current timestamp
-ts = now()
-out format(ts)                              # 2026-01-15 14:32:08
-
-# Components
-comp = getComponents(ts)
-out str(comp["year"]) + "-" + str(comp["month"])
-
-# Arithmetic
-tomorrow = addTime(ts, 1, 0, 0, 0)         # +1 day
-nextHour = addTime(ts, 0, 1, 0, 0)         # +1 hour
-out str(diffDays(tomorrow, ts))            # 1
-
-# Relative formatting
-old = addTime(ts, -3, 0, 0, 0)
-out timeAgo(old)                           # "3 days ago"
-```
-
-### `db` — Database (SQLite)
-
-```ez
-use "database"
-
-db = Database("app.db")
-
-# Define table with schema dict
-users = db.define("users", {
-    "name":  "TEXT NOT NULL",
-    "email": "TEXT UNIQUE",
-    "score": "INTEGER DEFAULT 0"
-})
-
-# Fluent query builder
-results = db.query("SELECT * FROM users").where("score > 50").orderBy("score DESC").limit(10).run()
-
-# Transactions
-db.begin()
-try {
-    db.execute("INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com')")
-    db.execute("UPDATE users SET score = 100 WHERE name = 'Alice'")
-    db.commit()
-} catch e {
-    db.rollback()
-    out "Transaction failed: " + str(e)
-}
-db.close()
-```
-
-### `orm` — Object-Relational Mapper
-
-```ez
-use "orm"
-
-db = Database("shop.db")
-
-Product = db.define("products", {
-    "name":     "TEXT NOT NULL",
-    "price":    "REAL",
-    "category": "TEXT"
-})
-
-# CRUD
-id = Product.insert({"name": "Widget", "price": 9.99, "category": "tools"})
-product = Product.find(id)
-out product["name"]                              # Widget
-
-all = Product.findAll()
-widgets = Product.findWhere("category = 'tools'")
-
-Product.update(id, {"price": 7.99})
-Product.delete(id)
-```
-
-### `regex` — Regular Expressions
-
-```ez
-use "regex"
-
-# OOP interface
-email = Regex(r"^[\w.+-]+@[\w-]+\.[a-z]{2,}$")
-out str(email.match("user@example.com"))    # true
-out str(email.match("not-an-email"))        # false
-
-# Find all matches
-ip = Regex(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
-results = ip.findAll("Servers: 192.168.1.1 and 10.0.0.2")
-out str(len(results))                        # 2
-
-# Replace
-cleaned = Regex(r"\s+").replaceAll("too   much    space", " ")
-out cleaned    # "too much space"
-
-# Pre-built patterns
-out str(reEmail.match("alice@example.com"))  # true
-out str(reUrl.match("https://github.com"))  # true
-out str(reIPv4.match("192.168.1.1"))        # true
-out str(rePhone.match("+1-555-0100"))        # true
-```
-
-### `log` — Structured Logger
-
-```ez
-use "log"
-
-log.setLevel(DEBUG)              # DEBUG / INFO / WARN / ERROR / FATAL
-log.setFile("app.log")           # also write to file
-
-log.debug("Processing item 42")
-log.info("Server started on :8080")
-log.warn("Cache miss rate above 80%")
-log.error("Failed to connect to database")
-log.fatal("Unrecoverable state — shutting down")
-
-# Custom logger instance
-myLog = Logger()
-myLog.setLevel(WARN)
-myLog.enableConsole(true)
-myLog.warn("This won't go to default log")
-```
-
-### `fs` — File System
-
-```ez
-use "fs"
-
-# Read / write
-content = fs.readFile("data.txt")
-fs.writeFile("output.txt", "hello\n")
-fs.appendFile("log.txt", "entry\n")
-
-# Directory
-files = fs.listDir("./src", ".ez")      # filter by extension
-when not fs.exists("output/") {
-    fs.mkdir("output/")
-}
-
-# Copy / move
-fs.copyFile("src.txt", "dst.txt")
-fs.moveFile("old.txt", "new.txt")
-
-# Path helpers
-out fs.getExtension("report.pdf")      # .pdf
-out fs.getBasename("/usr/local/ez.exe") # ez.exe
-```
-
-### `os` — Operating System
-
-```ez
-use "os"
-
-# Environment
-home = os.getEnv("USERPROFILE")
-os.setEnv("MY_VAR", "hello")
-
-# Process execution
-output = os.exec("git log --oneline -5")
-out output
-
-# System info
-info = os.info()
-out info["os"]      # Windows
-out info["arch"]    # x64
-
-# Clipboard
-os.clipboard.set("Copied from EZ!")
-text = os.clipboard.get()
-
-# Notifications
-os.notify("EZ App", "Build completed successfully")
-
-# File dialog
-path = os.dialog.openFile("Open Script", "EZ Files (*.ez)\0*.ez\0")
-```
-
-### `thread` — High-Level Threading
-
-```ez
-use "thread"
-
-# Parallel map — fan out + collect
-results = thread.parallelMap([1, 2, 3, 4, 5], |n| {
-    wait(100)       # simulate I/O
-    give n * n
-})
-out str(results)    # [1, 4, 9, 16, 25]
-
-# Await all futures
-f1 = async expensiveComputation(data1)
-f2 = async expensiveComputation(data2)
-f3 = async expensiveComputation(data3)
-all_results = thread.all([f1, f2, f3])
-
-# Task group
-group = thread.createGroup()
-group.add(fetchUser, 1)
-group.add(fetchUser, 2)
-group.add(fetchUser, 3)
-users = group.wait()
-
-# Sleep
-thread.sleep(500)   # 500ms
-```
-
-### `crypto` — Cryptography
-
-```ez
-use "crypto"
-
-# Hashing
-out sha256("hello world")
-out md5("quick check")       # not for security use
-
-# HMAC
-tag = hmac_sha256("secret-key", "message body")
-out tag
-
-# Encoding
-encoded = base64_encode("Binary data: \x00\x01\x02")
-decoded = base64_decode(encoded)
-
-# Ciphers (educational)
-ciphertext = xorCipher("Hello, EZ!", "mykey")
-plaintext  = xorCipher(ciphertext, "mykey")   # XOR is its own inverse
-```
-
-### `gui` — Native GUI Framework
-
-> See [GUI Framework](#-gui-framework) section above for full documentation.
-
-### Package summary
-
-| Package | Install | Lines | Highlights |
-|---|---|---|---|
-| `math` | `ez install math` | 778 | Taylor trig, Box-Muller RNG, Statistics, Vector2/3 |
-| `test` | `ez install test` | 749 | Jest-style framework, 15 assertions, Spy/mock |
-| `http` | `ez install http` | 558 | Fluent builder, retries, auto-JSON, status constants |
-| `gui` | `ez install gui` | 806 | Win32 widgets, dark mode, canvas, tabs |
-| `serve` | `ez install serve` | 388 | Raw Winsock FFI, backpressure, MIME routing |
-| `ai` | `ez install ai` | 442 | OpenAI, Claude, Gemini, DeepSeek, multi-turn chat |
-| `collections` | `ez install collections` | 226 | Set, Map, Queue, Stack, LinkedList, Counter |
-| `regex` | `ez install regex` | 482 | Regex model, findAll, named groups, common patterns |
-| `pm` | `ez install pm` | 758 | Semver, ez.lock, remote index, recursive deps |
-| `orm` | `ez install orm` | 179 | Active-record CRUD over SQLite |
-| `db` | `ez install database` | 238 | Query builder, transactions, SQLite wrapper |
-| `datetime` | `ez install datetime` | 203 | Timestamps, formatting, arithmetic, relative time |
-| `crypto` | `ez install crypto` | 215 | SHA-256, HMAC, Base64, XOR/Caesar ciphers |
-| `fs` | `ez install fs` | 130 | Read/write/copy/move/list with path helpers |
-| `log` | `ez install log` | 102 | 5-level logger, color output, file appending |
-| `os` | `ez install os` | 193 | Env, exec, clipboard, dialogs, notifications |
-| `thread` | `ez install thread` | 63 | parallelMap, all(), TaskGroup |
-| `pdf` | `ez install pdf` | 61 | OOP wrapper over native pdf_* builtins |
-| `game` | `ez install game` | 93 | Delta-time game loop scaffold over GUI |
-
----
-
-## 🗺 Roadmap
-
-| Milestone | Status |
+| Function | Description |
 |---|---|
-| Bytecode VM + TCO | ✅ Done |
-| Closures + upvalues | ✅ Done |
-| Async/await + futures | ✅ Done |
-| OOP: models, interfaces, static | ✅ Done |
-| Native FFI (DLL calls from EZ) | ✅ Done |
-| Package manager v2 (semver, lock file) | ✅ Done |
-| GUI framework (Win32) | ✅ Done |
-| Linux / macOS support | 🔜 Planned |
-| Prepared statements (SQL injection fix) | 🔜 Planned |
-| Real-time timestamps in `clock()` | 🔜 Planned |
-| HTTPS / TLS in `serve` | 🔜 Planned |
-| REPL with persistent state | 🔜 Planned |
-| VSCode syntax extension | 🔜 Planned |
+| `gui_create_window(title, w, h, ...)` | Create a top-level window, returns a window handle/id |
+| `gui_set_title(win, title)` | Change window title |
+| `gui_resize(win, w, h)` | Resize window |
+| `gui_get_size(win)` / `gui_get_pos(win)` | Query window geometry |
+| `gui_center_window(win)` | Center on screen |
+| `gui_set_always_on_top(win, bool)` | Toggle topmost flag |
+| `gui_set_opacity(win, value)` | Set window transparency |
+| `gui_minimize(win)` / `gui_maximize(win)` / `gui_restore(win)` | Window state |
+| `gui_set_icon(win, path)` | Set window icon |
+| `gui_set_min_size(win, w, h)` | Set minimum window size |
+| `gui_accept_drop(win)` | Enable drag-and-drop file acceptance |
+| `gui_set_theme(theme)` | Set light/dark theme (immersive dark mode incl. title bar) |
+| `gui_show(win)` / `gui_hide(win)` | Show/hide window |
+| `gui_run()` | Enter the Win32 message loop (blocking) |
+| `gui_set_timer(win, ms, callback)` / `gui_kill_timer(win, id)` | Repeating timer callbacks |
+| `gui_is_key_down(vkCode)` | Poll keyboard state (used for games) |
+
+### Controls
+
+| Function | Description |
+|---|---|
+| `gui_create_label`, `gui_create_input`, `gui_create_button` | Basic widgets |
+| `gui_create_checkbox`, `gui_create_radio`, `gui_create_slider`, `gui_create_spinner` | Input controls |
+| `gui_create_dropdown`, `gui_add_dropdown_item`, `gui_get_dropdown_selected` | Dropdowns |
+| `gui_create_textarea`, `gui_create_groupbox`, `gui_create_separator` | Layout/text widgets |
+| `gui_create_panel`, `gui_create_scroll_panel`, `gui_set_scroll_range`, `gui_clear_widgets` | Containers |
+| `gui_create_tabs`, `gui_add_tab`, `gui_get_tab_selected` | Tab strips |
+| `gui_create_listview`, `gui_listview_add_column`, `gui_listview_add_row`, `gui_listview_get_row`, `gui_listview_get_selected`, `gui_listview_remove_row`, `gui_listview_clear` | List views |
+| `gui_create_treeview`, `gui_treeview_add`, `gui_treeview_get_selected`, `gui_treeview_clear` | Tree views |
+| `gui_create_datepicker`, `gui_datepicker_get`, `gui_datepicker_set` | Date pickers |
+| `gui_create_image`, `gui_set_image` | Image controls |
+| `gui_create_progress`, `gui_set_progress`, `gui_set_progress_range` | Progress bars |
+| `gui_create_menubar`, `gui_add_menu`, `gui_add_menu_item`, `gui_add_menu_separator`, `gui_set_menu_callback` | Menu bars |
+| `gui_create_context_menu`, `gui_show_context_menu` | Context (right-click) menus |
+| `gui_create_statusbar`, `gui_set_status_text` | Status bars |
+| `gui_create_toolbar`, `gui_add_toolbar_button` | Toolbars |
+| `gui_set_value(ctrl, val)` / `gui_get_value(ctrl)` | Generic get/set for control values |
+| `gui_get_checked` / `gui_set_checked` | Checkbox/radio state |
+| `gui_get_slider` / `gui_set_slider` | Slider value |
+| `gui_spinner_get` / `gui_spinner_set` | Spinner value |
+| `gui_set_pos(ctrl, x, y, w, h)` | Reposition/resize a control |
+| `gui_set_enabled(ctrl, bool)` | Enable/disable a control |
+| `gui_set_color(...)`, `gui_set_font(ctrl, family, size)`, `gui_set_tooltip(ctrl, text)` | Styling |
+| `gui_on(ctrl, event, callback)` / `gui_set_callback(ctrl, callback)` | Event binding |
+| `gui_luminance(r, g, b)` | Compute perceived luminance (used for theme contrast decisions) |
+
+### Drawing (Canvas)
+
+| Function | Description |
+|---|---|
+| `gui_begin_draw(target)` / `gui_end_draw(target)` | Begin/end a drawing batch on a canvas |
+| `gui_clear(target, r, g, b)` | Clear canvas to a solid color |
+| `gui_draw_rect(target, x, y, w, h, r, g, b, ...)` | Filled/outlined rectangle |
+| `gui_draw_circle(target, x, y, radius, r, g, b, ...)` | Circle |
+| `gui_draw_text(target, text, x, y, ...)` | Render text |
+| `gui_get_client_size(target)` | Get drawable area dimensions |
+
+### Dialogs
+
+| Function | Description |
+|---|---|
+| `gui_alert(title, message)` | Simple message box |
+| `gui_dialog_confirm(title, message)` | OK/Cancel dialog |
+| `gui_dialog_input(title, prompt)` | Text input dialog |
+| `gui_dialog_open_file(title, filter)` / `gui_dialog_save_file(title, filter)` | File pickers |
+| `gui_dialog_open_folder()` | Folder picker |
+| `gui_dialog_color_picker()` | Color picker |
+
+---
+
+## 📦 Bundling Standalone Executables
+
+EZ can package a script and all its `use`d dependencies into a single self-contained `.exe`:
+
+```bash
+ez bundle <entry_script.ez> [output.exe] [--gui] [--icon app.ico]
+```
+
+How it works:
+
+1. The entry script is read and lexed; every `use "path"` statement is resolved (against `lib/`, `C:/ezlib/`, and literal paths) and the dependency graph is crawled recursively.
+2. All discovered `.ez` files (plus the entry script as `__main__.ez`) are packed into an in-memory **virtual file system (VFS)** blob: `[fileCount][nameLen][name][contentLen][content]...`.
+3. The current `ez.exe` binary is copied to the output path.
+4. If `--icon app.ico` is given, the icon is injected into the `.exe`'s resources via `BeginUpdateResourceA`/`UpdateResourceA`/`EndUpdateResourceA` (parsing the `.ico` directory and rewriting it as a `GRPICONDIR` resource).
+5. The VFS blob is appended to the end of the `.exe`, followed by a 4-byte size and the 6-byte magic marker `EZPKV1`.
+6. If `--gui` is given, the PE header's `Subsystem` field is patched from console (3) to GUI (2) at byte offset `e_lfanew + 92`, hiding the console window when the bundled `.exe` runs.
+
+At startup, `ez.exe` checks its own file for the trailing `EZPKV1` marker; if present, it loads the embedded VFS, and if a `__main__.ez` entry exists, runs it directly instead of starting the REPL or reading `argv[1]` as a script path.
+
+---
+
+## 🖥 REPL
+
+Running `ez` with no arguments starts an interactive REPL:
+
+```
+EZ Language Interpreter v1.0 (Bytecode Mode)
+Type 'exit' to quit
+>>> x = 5
+>>> out x * 2
+10
+>>> exit
+Goodbye!
+```
+
+The REPL supports multi-line input — it counts `{`/`}` and keeps prompting with `...` until braces balance, then runs the type checker and bytecode compiler/VM on the accumulated input, sharing global state across REPL evaluations within the same session.
+
+CLI summary (`ez --help`):
+
+| Command | Description |
+|---|---|
+| `ez` | Run REPL (interactive mode) |
+| `ez <file.ez> [--trace]` | Run a script file, optionally tracing bytecode execution |
+| `ez install <pkg> [version]` | Install a package from the `ezlib` registry |
+| `ez list` | List installed packages |
+| `ez init <name>` | Scaffold a new package (`main.ez` + `package.ez`) |
+| `ez bundle <file.ez> [out.exe] [--gui] [--icon app.ico]` | Create a standalone executable |
+| `ez --help` / `-h` | Show usage |
+
+---
+
+## 📚 The `ezlib` Standard Library (external)
+
+The [`ezlib`](https://github.com/imabd645/ezlib) repository is a separate registry of EZ-language packages installed with `ez install <name>` to `C:\ezlib\`. Packages such as `math`, `crypto`, `db`/`orm`, `pdf`, `fs`, `os`, `datetime`, `regex`, `collections`, `test`, `log`, `thread`, `gui`, `serve`, `http`, and `ai` — along with higher-level fluent wrappers like the `gui.window()...` chained API and the `game`/`ezgame` module used in the Snake/Flappy Bird/Fighter Jets demos — are implemented in **EZ itself** on top of the C++ runtime primitives described above (mainly the `os_*` FFI and `gui_*` raw builtins).
+
+Because that repository is not part of this codebase, this README does **not** document its exact function signatures — refer to `ezlib` directly for that API surface. What *is* guaranteed by this repository is the underlying C++ runtime surface: the value types, operators, control flow, OOP system, type checker, the builtins listed in [Built-in Functions](#-built-in-functions-c-runtime), the FFI (`os_*`), and the raw GUI primitives (`gui_*`) that any `ezlib` package is ultimately built on.
+
+---
+
+## ⚠️ Known Gaps & Caveats
+
+A summary of places where this repository's source diverges from commonly-circulated descriptions of EZ:
+
+- **No `**` power operator** — the lexer does not produce a power token; use `pow(base, exp)`.
+- **No `0b...` binary literals** — only decimal and `0x...` hex literals are lexed.
+- **String interpolation uses `` `text {expr}` ``**, not `` `text ${expr}` ``.
+- **`<=` and `!=` cannot be operator-overloaded** on model instances, unlike `+ - * / == < > >= neg`.
+- **`CMakeLists.txt`'s source list is incomplete** — it omits `Builtins_Buffer.cpp` and `Builtins_Concurrency.cpp`, and references a non-existent `Builtins_DB.cpp`. Use the manual `g++` command above for a complete build.
+- **No `db_*` (SQLite) or `pdf_*` builtins exist in C++** despite `sqlite3` being linked by CMake — any database or PDF functionality must come from an `ezlib` package.
+- **No `md5`, `sha256`, `base64_encode/decode`, or `hmac_sha256` builtins exist in C++** — cryptographic helpers, if available, are `ezlib`-side.
+- **No `deleteFile`, `listDir`, `fs_exists`, `getenv`, `setenv`, or `exec` builtins exist in C++** — only `readFile`/`writeFile`/`appendFile`/`readLines`/`writeLine`/`appendLine`.
+- **No `http_put`, `http_delete`, or `startServer`** C++ builtins — only `http_get`, `http_post`, and `fetch`.
+- **Windows-only** — the code directly includes `<windows.h>` and Win32-specific structures (PE header patching, icon resources, `HMODULE`/`FARPROC` FFI), so it cannot be built on Linux/macOS as-is.
+- **`match` arms support only equality comparison** against literal/expression patterns plus an `other` default — no ranges, guards, or destructuring.
+- **`other when` is the only valid else-if chain syntax** — consecutive bare `when` blocks are independent statements, not an if/else-if/else chain.
 
 ---
 
 ## 🤝 Contributing
-
-Contributions are welcome. Here's how to get involved:
 
 ### Reporting Issues
 
@@ -1666,27 +1408,18 @@ git push origin feature/your-feature
 - 4 spaces for indentation in C++ source
 - Descriptive variable names — no single-letter identifiers except loop counters
 - Comment any non-obvious logic
-- If adding a new builtin, register it in the appropriate `Builtins_*.cpp` file and add it to `CMakeLists.txt`
-
-### Adding a Standard Library Package
-
-1. Fork [ezlib](https://github.com/imabd645/ezlib)
-2. Create a folder `ez<name>/` with `main.ez` and `package.ez`
-3. Add your package entry to `index.json`
-4. Open a PR — once merged, `ez install <name>` works for everyone
+- If adding a new builtin, register it in the appropriate `Builtins_*.cpp` file via `interp.defineGlobal(...)` and ensure the file is included in both `CMakeLists.txt` and any manual build commands
 
 ---
 
 ## 📄 License
 
-EZ Language and ezlib are released under the [MIT License](LICENSE).
+EZ Language is released under the [MIT License](LICENSE).
 
 ---
 
+Built from scratch by **Abdullah Masood**
 
-Built from scratch by **Abdullah Masood** 
+*A complete programming language: lexer → parser → optional type checker → bytecode compiler → stack VM → GC → native FFI/GUI layer*
 
-*A complete programming language: lexer → parser → bytecode compiler → stack VM → GC → standard library*
-
-[⭐ Star on GitHub](https://github.com/imabd645/EZ-language) · [📦 ezlib packages](https://github.com/imabd645/ezlib) · [🐛 Report a Bug](https://github.com/imabd645/EZ-language/issues)
-
+[⭐ Star on GitHub](https://github.com/imabd645/EZ-language) · [🐛 Report a Bug](https://github.com/imabd645/EZ-language/issues)

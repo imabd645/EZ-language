@@ -1232,79 +1232,7 @@ This is the FFI layer used internally by the GUI subsystem to talk to `user32.dl
 
 The C++ runtime exposes roughly **70 raw `gui_*` native functions** (`src/GUIBuiltins.cpp`, ~1,200 lines) that wrap a Win32/GDI+ window, control, and drawing layer. These are the actual primitives available in this repository; a higher-level fluent OOP API (`gui.window(...).panel(...).button(...)`, as seen in example scripts via `use "lib/gui.ez"` or `use "ezgame"`) is an EZ-language wrapper that lives in the external `ezlib`/example scripts, not in this C++ source.
 
-### Window management
 
-| Function | Description |
-|---|---|
-| `gui_create_window(title, w, h, ...)` | Create a top-level window, returns a window handle/id |
-| `gui_set_title(win, title)` | Change window title |
-| `gui_resize(win, w, h)` | Resize window |
-| `gui_get_size(win)` / `gui_get_pos(win)` | Query window geometry |
-| `gui_center_window(win)` | Center on screen |
-| `gui_set_always_on_top(win, bool)` | Toggle topmost flag |
-| `gui_set_opacity(win, value)` | Set window transparency |
-| `gui_minimize(win)` / `gui_maximize(win)` / `gui_restore(win)` | Window state |
-| `gui_set_icon(win, path)` | Set window icon |
-| `gui_set_min_size(win, w, h)` | Set minimum window size |
-| `gui_accept_drop(win)` | Enable drag-and-drop file acceptance |
-| `gui_set_theme(theme)` | Set light/dark theme (immersive dark mode incl. title bar) |
-| `gui_show(win)` / `gui_hide(win)` | Show/hide window |
-| `gui_run()` | Enter the Win32 message loop (blocking) |
-| `gui_set_timer(win, ms, callback)` / `gui_kill_timer(win, id)` | Repeating timer callbacks |
-| `gui_is_key_down(vkCode)` | Poll keyboard state (used for games) |
-
-### Controls
-
-| Function | Description |
-|---|---|
-| `gui_create_label`, `gui_create_input`, `gui_create_button` | Basic widgets |
-| `gui_create_checkbox`, `gui_create_radio`, `gui_create_slider`, `gui_create_spinner` | Input controls |
-| `gui_create_dropdown`, `gui_add_dropdown_item`, `gui_get_dropdown_selected` | Dropdowns |
-| `gui_create_textarea`, `gui_create_groupbox`, `gui_create_separator` | Layout/text widgets |
-| `gui_create_panel`, `gui_create_scroll_panel`, `gui_set_scroll_range`, `gui_clear_widgets` | Containers |
-| `gui_create_tabs`, `gui_add_tab`, `gui_get_tab_selected` | Tab strips |
-| `gui_create_listview`, `gui_listview_add_column`, `gui_listview_add_row`, `gui_listview_get_row`, `gui_listview_get_selected`, `gui_listview_remove_row`, `gui_listview_clear` | List views |
-| `gui_create_treeview`, `gui_treeview_add`, `gui_treeview_get_selected`, `gui_treeview_clear` | Tree views |
-| `gui_create_datepicker`, `gui_datepicker_get`, `gui_datepicker_set` | Date pickers |
-| `gui_create_image`, `gui_set_image` | Image controls |
-| `gui_create_progress`, `gui_set_progress`, `gui_set_progress_range` | Progress bars |
-| `gui_create_menubar`, `gui_add_menu`, `gui_add_menu_item`, `gui_add_menu_separator`, `gui_set_menu_callback` | Menu bars |
-| `gui_create_context_menu`, `gui_show_context_menu` | Context (right-click) menus |
-| `gui_create_statusbar`, `gui_set_status_text` | Status bars |
-| `gui_create_toolbar`, `gui_add_toolbar_button` | Toolbars |
-| `gui_set_value(ctrl, val)` / `gui_get_value(ctrl)` | Generic get/set for control values |
-| `gui_get_checked` / `gui_set_checked` | Checkbox/radio state |
-| `gui_get_slider` / `gui_set_slider` | Slider value |
-| `gui_spinner_get` / `gui_spinner_set` | Spinner value |
-| `gui_set_pos(ctrl, x, y, w, h)` | Reposition/resize a control |
-| `gui_set_enabled(ctrl, bool)` | Enable/disable a control |
-| `gui_set_color(...)`, `gui_set_font(ctrl, family, size)`, `gui_set_tooltip(ctrl, text)` | Styling |
-| `gui_on(ctrl, event, callback)` / `gui_set_callback(ctrl, callback)` | Event binding |
-| `gui_luminance(r, g, b)` | Compute perceived luminance (used for theme contrast decisions) |
-
-### Drawing (Canvas)
-
-| Function | Description |
-|---|---|
-| `gui_begin_draw(target)` / `gui_end_draw(target)` | Begin/end a drawing batch on a canvas |
-| `gui_clear(target, r, g, b)` | Clear canvas to a solid color |
-| `gui_draw_rect(target, x, y, w, h, r, g, b, ...)` | Filled/outlined rectangle |
-| `gui_draw_circle(target, x, y, radius, r, g, b, ...)` | Circle |
-| `gui_draw_text(target, text, x, y, ...)` | Render text |
-| `gui_get_client_size(target)` | Get drawable area dimensions |
-
-### Dialogs
-
-| Function | Description |
-|---|---|
-| `gui_alert(title, message)` | Simple message box |
-| `gui_dialog_confirm(title, message)` | OK/Cancel dialog |
-| `gui_dialog_input(title, prompt)` | Text input dialog |
-| `gui_dialog_open_file(title, filter)` / `gui_dialog_save_file(title, filter)` | File pickers |
-| `gui_dialog_open_folder()` | Folder picker |
-| `gui_dialog_color_picker()` | Color picker |
-
----
 
 ## 📦 Bundling Standalone Executables
 

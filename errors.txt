@@ -1,4 +1,0 @@
-error(stmt.line, "Type mismatch in property '" + member.name + "' initialization.");
-error(expr.left->line, "Invalid operand types for arithmetic operator.");
-error(expr.operand->line, "Invalid operand for unary minus.");
-error(expr.callee->line, "Type mismatch in argument " + std::to_string(i+1) + " for function '" + name + "'. Expected " + sig->paramTypes[i].toString() + " but got " + argTypes[i].toString());

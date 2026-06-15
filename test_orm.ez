@@ -1,0 +1,3 @@
+model User { id: int }
+u = User()
+out type(u)

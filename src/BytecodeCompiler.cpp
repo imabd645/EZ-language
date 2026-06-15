@@ -1308,6 +1308,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     }
     
     int memberCount = 0;
+    std::vector<std::pair<std::string, std::string>> propertyTypes;
     
     // 2. Synthesize "init" method if there's a constructor
     // Note: Always create 'init' if there are params, even if body is empty
@@ -1333,6 +1334,11 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     
     // 3. Push other members
     for (const auto& member : stmt.members) {
+        if (!member.isMethod && !member.isStatic) {
+            std::string typeStr = member.typeHint ? member.typeHint->baseType : "Any";
+            propertyTypes.push_back({member.name, typeStr});
+        }
+    
         // Push name
         size_t memberNameIdx = identifierConstant(member.name);
         emitOp(OpCode::LOAD_CONST);
@@ -1364,7 +1370,50 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         memberCount++;
     }
     
-    // 4. Push interfaces onto stack
+    // 4. Inject __properties__ static dictionary
+    {
+        size_t propsNameIdx = identifierConstant("__properties__");
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((propsNameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(propsNameIdx & 0xFF));
+
+        for (const auto& prop : propertyTypes) {
+            size_t keyIdx = identifierConstant(prop.first);
+            emitOp(OpCode::LOAD_CONST);
+            emitBytes(static_cast<uint8_t>((keyIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(keyIdx & 0xFF));
+
+            size_t valIdx = identifierConstant(prop.second);
+            emitOp(OpCode::LOAD_CONST);
+            emitBytes(static_cast<uint8_t>((valIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(valIdx & 0xFF));
+        }
+        
+        emitOp(OpCode::MAKE_DICT);
+        emitByte(static_cast<uint8_t>(propertyTypes.size()));
+        
+        // isStatic = true
+        emitOp(OpCode::LOAD_TRUE);
+        memberCount++;
+    }
+
+    // 4.1 Inject __name__ static string
+    {
+        size_t nameNameIdx = identifierConstant("__name__");
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((nameNameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(nameNameIdx & 0xFF));
+        
+        size_t valIdx = identifierConstant(stmt.name);
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((valIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(valIdx & 0xFF));
+                  
+        emitOp(OpCode::LOAD_TRUE);
+        memberCount++;
+    }
+
+    // 5. Push interfaces onto stack
     for (const auto& interfaceName : stmt.interfaces) {
         size_t idx = identifierConstant(interfaceName);
         emitOp(OpCode::LOAD_GLOBAL);
@@ -1372,7 +1421,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
                   static_cast<uint8_t>(idx & 0xFF));
     }
 
-    // 5. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount
+    // 6. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount
     size_t classNameIdx = identifierConstant(stmt.name);
     emitOp(OpCode::MAKE_CLASS);
     emitBytes(static_cast<uint8_t>((classNameIdx >> 8) & 0xFF),

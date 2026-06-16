@@ -831,6 +831,9 @@ ExprPtr Parser::comparison() {
     while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, 
                   TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
         Token op = previous();
+        if (op.type == TokenType::IN) {
+            std::cerr << "DEBUG: Created IN binary expr at line " << op.line << " in " << op.filename << std::endl;
+        }
         ExprPtr right = bitwiseShift();
         expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }

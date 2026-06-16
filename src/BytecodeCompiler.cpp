@@ -312,7 +312,7 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         case TokenType::GREATER:       emitOp(OpCode::GREATER);    break;
         case TokenType::GREATER_EQUAL: emitOp(OpCode::GREATER_EQ); break;
         default:
-            error("Unknown binary operator");
+            error("Unknown binary operator: " + std::to_string(static_cast<int>(expr.op)));
     }
 }
 

@@ -1,6 +1,7 @@
 #include "TypeChecker.h"
 #include <iostream>
 #include <fstream>
+#include <functional>
 
 TypeChecker::TypeChecker() : currentEnv(nullptr), currentReturnType("Any"), hadError(false) {}
 
@@ -160,7 +161,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             sig.returnType = TypeInfo(model->name);
             declareFunction(model->name, sig);
             
-            // Register model methods so PropertyAccessExpr can find them
+            // Register explicit member declarations
             for (const auto& member : model->members) {
                 if (member.isMethod) {
                     FunctionSignature methodSig;
@@ -173,6 +174,48 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                     declareVariable(model->name + "." + member.name, propType);
                 }
             }
+
+            // Register self.xxx properties from init body and all method bodies
+            // so that checkPropertyAccess can resolve them at type-check time.
+            std::function<void(const std::vector<StmtPtr>&)> scanBodyForSelfProps =
+                [&](const std::vector<StmtPtr>& body) {
+                    for (const auto& s : body) {
+                        if (!s) continue;
+                        // ExprStmt wrapping a SetExpr (self.xxx = ...)
+                        if (std::holds_alternative<std::shared_ptr<ExprStmt>>(s->variant)) {
+                            auto exprStmt = std::get<std::shared_ptr<ExprStmt>>(s->variant);
+                            if (exprStmt->expression &&
+                                std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expression->variant)) {
+                                auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expression->variant);
+                                if (setExpr->object &&
+                                    std::holds_alternative<std::shared_ptr<SelfExpr>>(setExpr->object->variant)) {
+                                    std::string key = model->name + "." + setExpr->name;
+                                    if (!currentEnv->variables.count(key))
+                                        declareVariable(key, TypeInfo("Any"));
+                                }
+                            }
+                        }
+                        // Also recurse into block bodies (when/while/etc.)
+                        if (std::holds_alternative<std::shared_ptr<BlockStmt>>(s->variant)) {
+                            scanBodyForSelfProps(std::get<std::shared_ptr<BlockStmt>>(s->variant)->statements);
+                        } else if (std::holds_alternative<std::shared_ptr<WhenStmt>>(s->variant)) {
+                            auto ws = std::get<std::shared_ptr<WhenStmt>>(s->variant);
+                            if (ws->thenBranch) scanBodyForSelfProps({ws->thenBranch});
+                            if (ws->elseBranch) scanBodyForSelfProps({ws->elseBranch});
+                        }
+                    }
+                };
+
+            // Scan init body
+            scanBodyForSelfProps(model->initBody);
+
+            // Scan all method bodies too (self.xxx set in non-init methods)
+            for (const auto& member : model->members) {
+                if (member.isMethod) {
+                    scanBodyForSelfProps(member.body);
+                }
+            }
+
         } else if (std::holds_alternative<std::shared_ptr<StructStmt>>(stmt->variant)) {
             auto structStmt = std::get<std::shared_ptr<StructStmt>>(stmt->variant);
             FunctionSignature sig;

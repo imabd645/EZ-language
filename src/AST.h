@@ -263,6 +263,7 @@ struct UseStmt;
 struct TryStmt;
 struct ThrowStmt;
 struct StaticStmt;
+struct ExportStmt;
 
 using StmtVariant = std::variant<
     std::shared_ptr<ExprStmt>,
@@ -284,7 +285,8 @@ using StmtVariant = std::variant<
     std::shared_ptr<TryStmt>,
     std::shared_ptr<ThrowStmt>,
     std::shared_ptr<InterfaceStmt>,
-    std::shared_ptr<StaticStmt>
+    std::shared_ptr<StaticStmt>,
+    std::shared_ptr<ExportStmt>
 >;
 
 struct Stmt {
@@ -528,6 +530,12 @@ struct ThrowStmt {
     explicit ThrowStmt(ExprPtr expr) : expression(std::move(expr)) {}
 };
 
+// Export statement — marks a declaration as publicly visible in namespaced module imports
+struct ExportStmt {
+    StmtPtr inner;  // The wrapped task/variable/model declaration
+    explicit ExportStmt(StmtPtr inner) : inner(std::move(inner)) {}
+};
+
 // Helper functions to create expressions
 inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, std::nullptr_t) {
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(nullptr));
@@ -710,6 +718,10 @@ inline StmtPtr makeThrowStmt(int line, int column, int length, const std::string
 
 inline StmtPtr makeStaticStmt(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr init) {
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<StaticStmt>(name, std::move(init)));
+}
+
+inline StmtPtr makeExportStmt(int line, int column, int length, const std::string& file, StmtPtr inner) {
+    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExportStmt>(std::move(inner)));
 }
 
 #endif // AST_H

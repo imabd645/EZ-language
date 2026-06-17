@@ -215,6 +215,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::USE)) return useStatement();
     if (match(TokenType::TRY)) return tryStatement();
     if (match(TokenType::THROW)) return throwStatement();
+    if (match(TokenType::EXPORT)) return exportStatement();
     
     return expressionStatement();
 }
@@ -698,6 +699,19 @@ StmtPtr Parser::useStatement() {
     }
     
     return makeUseStmt(line, column, length, pathToken.filename, path, alias);
+}
+
+StmtPtr Parser::exportStatement() {
+    Token tok = previous(); // the 'export' token
+    skipNewlines();
+    
+    // Parse the inner declaration
+    StmtPtr inner = statement();
+    if (!inner) {
+        error(tok, "Expected declaration after 'export'");
+        return nullptr;
+    }
+    return makeExportStmt(tok.line, tok.column, (int)tok.lexeme.length(), tok.filename, std::move(inner));
 }
 
 // ============ Expression Parsing ============

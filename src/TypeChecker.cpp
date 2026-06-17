@@ -233,6 +233,9 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
         }
         else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {} // No checking needed
         else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {} // No checking needed
+        else if constexpr (std::is_same_v<T, std::shared_ptr<ExportStmt>>) {
+            checkStmt(arg->inner); // Delegate to the inner declaration
+        }
     }, stmt->variant);
 }
 

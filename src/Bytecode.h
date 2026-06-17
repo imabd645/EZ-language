@@ -239,6 +239,7 @@ struct Local {
     bool isCaptured;     // Closed over by closure
     bool isConst;        // Const variable
     bool isStackResident; // True if it occupies a slot on the execution stack (needs POP)
+    bool exported;       // Visible when module is imported via namespaced use
     
     // For debug tracking
     size_t startPC;

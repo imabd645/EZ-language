@@ -42,7 +42,8 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"implements", TokenType::IMPLEMENTS},
     {"try", TokenType::TRY},
     {"catch", TokenType::CATCH},
-    {"throw", TokenType::THROW}
+    {"throw", TokenType::THROW},
+    {"export", TokenType::EXPORT}
 };
 
 Lexer::Lexer(const std::string& source, const std::string& filename) : source(source), filename(filename) {}

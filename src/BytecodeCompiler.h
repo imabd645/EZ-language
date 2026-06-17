@@ -113,6 +113,7 @@ private:
     void compileStatic(const StaticStmt& stmt);
     void compileTry(const TryStmt& stmt);
     void compileThrow(const ThrowStmt& stmt);
+    void compileExport(const ExportStmt& stmt);
     
     // === Scope Management ===
     void beginScope();

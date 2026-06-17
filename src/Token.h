@@ -72,6 +72,7 @@ enum class TokenKind {
     TRY,
     CATCH,
     THROW,
+    EXPORT,
 
     // Operators
     PLUS,
@@ -177,6 +178,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::TRY: return "TRY";
         case TokenType::CATCH: return "CATCH";
         case TokenType::THROW: return "THROW";
+        case TokenType::EXPORT: return "EXPORT";
         case TokenType::STRUCT: return "STRUCT";
         case TokenType::NEW: return "NEW";
         case TokenType::PLUS: return "PLUS";

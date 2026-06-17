@@ -633,6 +633,8 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
             compileGive(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {
             compileUse(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<ExportStmt>>) {
+            compileExport(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<EscapeStmt>>) {
             compileEscape(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {
@@ -1000,6 +1002,16 @@ void BytecodeCompiler::compileSkip(const SkipStmt& /*stmt*/) {
     emitContinue();
 }
 
+void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
+    // Compile the inner declaration normally
+    size_t localsBefore = current->locals.size();
+    compileStmt(stmt.inner);
+    // Mark all newly introduced locals as exported
+    for (size_t i = localsBefore; i < current->locals.size(); i++) {
+        current->locals[i].exported = true;
+    }
+}
+
 void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::string path = stmt.path;
     std::string absolutePath = path;
@@ -1206,13 +1218,20 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             compileStmt(s);
         }
 
-        // Harvest all locals into a dictionary for export
+        // Harvest locals into a dictionary for export
+        // Strategy: if the path ends in .ez (file inclusion), export all
+        // Otherwise (module import by name), only export marked ones.
+        bool isFileInclusion = (stmt.path.size() >= 3 &&
+            stmt.path.rfind(".ez") == stmt.path.size() - 3);
+
         emitOp(OpCode::MAKE_DICT);
-        emitByte(0); // Start with empty dict (0 pairs)
+        emitByte(0); // Start with empty dict
 
         for (const auto& local : current->locals) {
-            // We want to export all successfully initialized locals, skipping slot 0 dummy
             if (local.depth == 1 && !local.name.empty()) {
+                // Skip non-exported locals in module (non-.ez) imports
+                if (!isFileInclusion && !local.exported) continue;
+                
                 // DUP dict, load local, store property
                 emitOp(OpCode::DUP);
                 
@@ -1619,6 +1638,7 @@ size_t BytecodeCompiler::addLocal(const std::string& name, bool isConst) {
     local.depth   = current->scopeDepth;
     local.isCaptured = false;
     local.isConst = isConst;
+    local.exported = false;  // Default: not exported, only visible inside module
     local.isStackResident = true; // Default to true (VarDecl, loop vars, params)
     
     local.startPC = currentChunk().code.size();

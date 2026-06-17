@@ -75,6 +75,7 @@ private:
     ExprPtr currentExprContext; // Tracks current expression for error reporting
     int loopDepth = 0;
     bool hadError = false;
+    bool hasImports = false;
     
     void beginScope();
     void endScope();

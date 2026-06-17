@@ -135,6 +135,7 @@ FunctionSignature* TypeChecker::resolveFunction(const std::string& name) {
 
 bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins) {
     hadError = false;
+    hasImports = false;
     currentEnv = new Environment();
     
     for (const auto& builtin : builtins) {
@@ -232,7 +233,12 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
             }
         }
         else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {} // No checking needed
-        else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {} // No checking needed
+        else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {
+            hasImports = true;
+            if (!arg->alias.empty()) {
+                declareVariable(arg->alias, TypeInfo("Any"));
+            }
+        }
         else if constexpr (std::is_same_v<T, std::shared_ptr<ExportStmt>>) {
             checkStmt(arg->inner); // Delegate to the inner declaration
         }
@@ -626,6 +632,11 @@ TypeInfo TypeChecker::checkIdentifier(const IdentifierExpr& expr) {
             env = env->enclosing;
         }
     }
+    
+    if (hasImports) {
+        return TypeInfo("Any");
+    }
+    
     error(currentExprContext, "Variable '" + expr.name + "' is used before it is defined.");
     return TypeInfo("Any");
 }

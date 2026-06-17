@@ -58,7 +58,7 @@ struct FunctionSignature {
 class TypeChecker {
 public:
     TypeChecker();
-    bool check(const std::vector<StmtPtr>& statements);
+    bool check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins = {});
     
 private:
     struct Environment {
@@ -72,6 +72,7 @@ private:
     Environment* currentEnv;
     TypeInfo currentReturnType = TypeInfo("Any");
     std::string currentModel; // Tracks enclosing model for 'self'
+    ExprPtr currentExprContext; // Tracks current expression for error reporting
     int loopDepth = 0;
     bool hadError = false;
     
@@ -86,6 +87,11 @@ private:
     void error(const StmtPtr& stmt, const std::string& message, const std::string& hint = "");
     void error(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint = "");
     void error(int line, const std::string& message);
+
+    void warn(const ExprPtr& expr, const std::string& message, const std::string& hint = "");
+    void warn(const StmtPtr& stmt, const std::string& message, const std::string& hint = "");
+    void warn(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint = "");
+    void warn(int line, const std::string& message);
     
     // Statements
     void checkStmt(const StmtPtr& stmt);

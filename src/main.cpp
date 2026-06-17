@@ -63,14 +63,18 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
         exit(65);
     }
     
-    TypeChecker typeChecker;
-    if (!typeChecker.check(statements)) {
-        exit(65);
-    }
-    
     auto globalEnv = std::make_shared<Environment>();
     BytecodeVM vm(globalEnv);
     vm.traceExecution = traceExecution;
+    
+    std::vector<std::string> builtins;
+    for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    
+    TypeChecker typeChecker;
+    if (!typeChecker.check(statements, builtins)) {
+        exit(65);
+    }
+    
     BytecodeCompiler compiler;
     
     CompileResult result = compiler.compile(statements);
@@ -454,8 +458,11 @@ void runRepl(bool traceExecution = false) {
             std::vector<StmtPtr> statements = parser.parse();
             
             if (!parser.hasError()) {
+                std::vector<std::string> builtins;
+                for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+                
                 TypeChecker typeChecker;
-                if (typeChecker.check(statements)) {
+                if (typeChecker.check(statements, builtins)) {
                     try {
                         CompileResult result = compiler.compile(statements);
                         if (result.success) {

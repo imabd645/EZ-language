@@ -1,0 +1,18 @@
+# Test 1: Using a variable before it's defined
+out undefined_var
+
+# Test 2: Calling something that's not callable
+x = 5
+x()
+
+# Test 3: Accessing property on nil
+y = nil
+y.name
+
+# Test 4: Return type annotation violations (Warning)
+task getName() -> string {
+    give 5
+}
+getName()
+
+out "If you see this, the type checker didn't halt execution!"

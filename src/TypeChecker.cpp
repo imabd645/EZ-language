@@ -47,6 +47,48 @@ void TypeChecker::error(int line, const std::string& message) {
     error(line, 0, 0, "", message, "");
 }
 
+void TypeChecker::warn(const ExprPtr& expr, const std::string& message, const std::string& hint) {
+    if (expr) warn(expr->line, expr->column, expr->length, expr->filename, message, hint);
+    else warn(0, 0, 0, "", message, hint);
+}
+
+void TypeChecker::warn(const StmtPtr& stmt, const std::string& message, const std::string& hint) {
+    if (stmt) warn(stmt->line, stmt->column, stmt->length, stmt->filename, message, hint);
+    else warn(0, 0, 0, "", message, hint);
+}
+
+void TypeChecker::warn(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint) {
+    std::cerr << "\033[33mType Warning\033[0m at line " << line << ", column " << column << ":\n\n";
+
+    if (!filename.empty()) {
+        std::ifstream file(filename);
+        if (file.is_open()) {
+            std::string sourceLine;
+            for (int i = 1; i <= line; ++i) {
+                if (!std::getline(file, sourceLine)) break;
+            }
+            if (!sourceLine.empty()) {
+                std::cerr << "  " << sourceLine << "\n";
+                if (column > 0) {
+                    std::cerr << "  " << std::string(column - 1, ' ');
+                    int caretLen = length > 0 ? length : 1;
+                    std::cerr << std::string(caretLen, '^') << "\n";
+                }
+            }
+        }
+    }
+    
+    std::cerr << "  " << message << "\n";
+    if (!hint.empty()) {
+        std::cerr << "\n  Hint: " << hint << "\n";
+    }
+    std::cerr << "\n";
+}
+
+void TypeChecker::warn(int line, const std::string& message) {
+    warn(line, 0, 0, "", message, "");
+}
+
 void TypeChecker::beginScope() {
     currentEnv = new Environment(currentEnv);
 }
@@ -91,9 +133,13 @@ FunctionSignature* TypeChecker::resolveFunction(const std::string& name) {
     return nullptr;
 }
 
-bool TypeChecker::check(const std::vector<StmtPtr>& statements) {
+bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins) {
     hadError = false;
     currentEnv = new Environment();
+    
+    for (const auto& builtin : builtins) {
+        declareVariable(builtin, TypeInfo("Task"));
+    }
     
     // First pass: declare all functions
     for (const auto& stmt : statements) {
@@ -237,7 +283,7 @@ void TypeChecker::checkGive(const GiveStmt& stmt) {
     
     if (expectedType != retType) {
         if (expectedType.baseType != "Any" && retType.baseType != "Any") {
-            error(stmt.value, 
+            warn(stmt.value, 
                   "Type mismatch in return statement. Expected " + expectedType.toString() + " but got " + retType.toString());
         }
     }
@@ -376,7 +422,10 @@ void TypeChecker::checkStatic(const StaticStmt& stmt) {
 TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
     if (!expr) return TypeInfo("Any");
     
-    return std::visit([this](auto&& arg) -> TypeInfo {
+    ExprPtr prevExprContext = currentExprContext;
+    currentExprContext = expr;
+    
+    TypeInfo result = std::visit([this](auto&& arg) -> TypeInfo {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) return checkAssign(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) return checkBinary(*arg);
@@ -396,6 +445,9 @@ TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
         else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) return checkAwait(*arg);
         else return TypeInfo("Any");
     }, expr->variant);
+    
+    currentExprContext = prevExprContext;
+    return result;
 }
 
 TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
@@ -423,10 +475,24 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
         return valType;
     }
     
-    TypeInfo declaredType = resolveVariable(expr.name);
-    if (valType.baseType != "Any" && declaredType.baseType != "Any" && declaredType != valType) {
-        error(expr.value,
-              "Type mismatch in variable assignment.", "Expected " + declaredType.toString() + " but got " + valType.toString());
+    Environment* env = currentEnv;
+    bool found = false;
+    while (env) {
+        if (env->variables.count(expr.name)) {
+            found = true;
+            break;
+        }
+        env = env->enclosing;
+    }
+    
+    if (!found) {
+        declareVariable(expr.name, valType);
+    } else {
+        TypeInfo declaredType = resolveVariable(expr.name);
+        if (valType.baseType != "Any" && declaredType.baseType != "Any" && declaredType != valType) {
+            error(expr.value,
+                  "Type mismatch in variable assignment.", "Expected " + declaredType.toString() + " but got " + valType.toString());
+        }
     }
     
     return valType;
@@ -470,7 +536,13 @@ TypeInfo TypeChecker::checkUnary(const UnaryExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
-    checkExpr(expr.callee);
+    TypeInfo objType = checkExpr(expr.callee);
+    if (objType.baseType == "number" || objType.baseType == "string" || 
+        objType.baseType == "bool" || objType.baseType == "Array" || 
+        objType.baseType == "Dict" || objType.baseType == "nil") {
+        error(expr.callee, "Type '" + objType.baseType + "' is not callable.");
+    }
+
     std::vector<TypeInfo> argTypes;
     for (const auto& arg : expr.arguments) argTypes.push_back(checkExpr(arg));
     
@@ -543,7 +615,16 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkIdentifier(const IdentifierExpr& expr) {
-    return resolveVariable(expr.name);
+    if (currentEnv) {
+        Environment* env = currentEnv;
+        while (env) {
+            if (env->variables.count(expr.name)) return env->variables[expr.name];
+            if (env->functions.count(expr.name)) return TypeInfo("Callable");
+            env = env->enclosing;
+        }
+    }
+    error(currentExprContext, "Variable '" + expr.name + "' is used before it is defined.");
+    return TypeInfo("Any");
 }
 
 TypeInfo TypeChecker::checkLiteral(const LiteralExpr& expr) {
@@ -577,6 +658,10 @@ TypeInfo TypeChecker::checkLambda(const LambdaExpr& expr) {
 
 TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
     TypeInfo objType = checkExpr(expr.object);
+    if (objType.baseType == "nil") {
+        error(currentExprContext, "Cannot access property '" + expr.property + "' on nil.");
+        return TypeInfo("Any");
+    }
     if (objType.baseType != "Any") {
         std::string propKey = objType.baseType + "." + expr.property;
         Environment* env = currentEnv;

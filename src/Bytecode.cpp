@@ -284,7 +284,6 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             return offset + 2;
         }
         
-        case OpCode::LOAD_CONST:
         case OpCode::LOAD_GLOBAL_SLOT:
         case OpCode::STORE_GLOBAL_SLOT: {
             uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
@@ -296,6 +295,7 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             return offset + 3;
         }
 
+        case OpCode::LOAD_CONST:
         case OpCode::LOAD_GLOBAL:
         case OpCode::STORE_GLOBAL:
         case OpCode::LOAD_PROPERTY:

@@ -45,6 +45,11 @@ public:
     std::string stringify(const Value& val, int line = 0, const std::string& filename = "") override;
     std::shared_ptr<Environment> getCurrentEnv() const override { return globalEnv; }
 
+    // Initialize global slot table from compiler output (Issue C optimization)
+    // Seeds globalSlots[] from CompileResult and pre-populates any
+    // built-ins already stored in globalEnv.
+    void initGlobalSlots(const std::vector<std::string>& slotNames);
+
     // GC Roots
     void gcMarkRoots() override;
 
@@ -122,6 +127,10 @@ private:
     bool isYielded = false;
     bool isAsyncTask = false;
     std::shared_ptr<EZFuture> taskFuture;
+
+    // ── Global Slot Array (Issue C: O(1) global access) ──────────────────────
+    std::vector<Value>       globalSlots;     // indexed global storage
+    std::vector<std::string> globalSlotNames; // slot index -> name (for write-through)
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);

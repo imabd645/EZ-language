@@ -177,6 +177,9 @@ static const char* opcodeName(OpCode op) {
         case OpCode::TYPE_OF: return "TYPE_OF";
         case OpCode::BREAKPOINT: return "BREAKPOINT";
         case OpCode::LINE: return "LINE";
+        case OpCode::HAS_GLOBAL: return "HAS_GLOBAL";
+        case OpCode::LOAD_GLOBAL_SLOT: return "LOAD_GLOBAL_SLOT";
+        case OpCode::STORE_GLOBAL_SLOT: return "STORE_GLOBAL_SLOT";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -267,16 +270,21 @@ size_t Chunk::disassembleInstruction(size_t offset) const {
         
         case OpCode::LOAD_GLOBAL:
         case OpCode::STORE_GLOBAL:
+        case OpCode::LOAD_GLOBAL_SLOT:
+        case OpCode::STORE_GLOBAL_SLOT:
         case OpCode::LOAD_PROPERTY:
         case OpCode::STORE_PROPERTY:
+        case OpCode::HAS_GLOBAL:
         case OpCode::GET_METHOD: {
-            uint8_t idx = code[offset + 1];
-            std::cout << std::setw(4) << (int)idx << " ";
+            uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            std::cout << std::setw(4) << (int)idx;
             if (idx < constants.size()) {
+                std::cout << " (";
                 printConstant(constants[idx]);
+                std::cout << ")";
             }
             std::cout << std::endl;
-            return offset + 2;
+            return offset + 3;  // opcode + 2 bytes
         }
         
         case OpCode::JUMP:

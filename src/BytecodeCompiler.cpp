@@ -31,7 +31,15 @@ BytecodeCompiler::Compiler::Compiler(const std::string& name, size_t arity, Comp
     compilerId = ++globalCompilerIdCounter;
 }
 
-BytecodeCompiler::BytecodeCompiler() : current(nullptr), currentLine(0), hadError(false) {}
+BytecodeCompiler::BytecodeCompiler() : current(nullptr), currentLine(0), hadError(false), nextGlobalSlot(0) {}
+
+uint16_t BytecodeCompiler::globalSlotFor(const std::string& name) {
+    auto it = globalSlots.find(name);
+    if (it != globalSlots.end()) return it->second;
+    uint16_t slot = nextGlobalSlot++;
+    globalSlots[name] = slot;
+    return slot;
+}
 
 CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) {
     CompileResult result;
@@ -66,6 +74,12 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     result.mainFunction = current->function;
     result.mainFunction->localCount = current->maxLocals;
     result.mainFunction->filename = currentFile;  // propagate for stack traces
+    result.mainFunction->globalSlotCount = nextGlobalSlot;
+    // Export global slot name table for VM initialization
+    result.globalSlotNames.resize(nextGlobalSlot);
+    for (auto& [name, slot] : globalSlots) {
+        result.globalSlotNames[slot] = name;
+    }
     // compiledFunctions was populated as inner functions were compiled;
     // add main last so indices assigned during compilation are stable.
     compiledFunctions.push_back(current->function);
@@ -264,11 +278,19 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
             // LOAD self (handles closure capture if needed)
             emitLoadSelf();
             
-            // LOAD parent class
-            size_t parentIdx = identifierConstant(current->currentParentClass);
-            emitOp(OpCode::LOAD_GLOBAL);
-            emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
-                      static_cast<uint8_t>(parentIdx & 0xFF));
+            // LOAD parent class via slot if known, else fall back to string LOAD_GLOBAL
+            auto parentIt = globalSlots.find(current->currentParentClass);
+            if (parentIt != globalSlots.end()) {
+                uint16_t slot = parentIt->second;
+                emitOp(OpCode::LOAD_GLOBAL_SLOT);
+                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                          static_cast<uint8_t>(slot & 0xFF));
+            } else {
+                size_t parentIdx = identifierConstant(current->currentParentClass);
+                emitOp(OpCode::LOAD_GLOBAL);
+                emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(parentIdx & 0xFF));
+            }
             
             emitOp(OpCode::SUPER);
             return;
@@ -278,10 +300,11 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
         }
     }
 
-    size_t nameIdx = identifierConstant(expr.name);
-    emitOp(OpCode::LOAD_GLOBAL);
-    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-              static_cast<uint8_t>(nameIdx & 0xFF));
+    // Emit fast slot-based global load for all known globals
+    uint16_t slot = globalSlotFor(expr.name);
+    emitOp(OpCode::LOAD_GLOBAL_SLOT);
+    emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+              static_cast<uint8_t>(slot & 0xFF));
 }
 
 void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
@@ -431,10 +454,10 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
         // Check if it's a static variable in current or parent functions
         std::string mangled = resolveStatic(expr.name);
         if (!mangled.empty()) {
-            size_t nameIdx = identifierConstant(mangled);
-            emitOp(OpCode::STORE_GLOBAL);
-            emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                      static_cast<uint8_t>(nameIdx & 0xFF));
+            uint16_t slot = globalSlotFor(mangled);
+            emitOp(OpCode::STORE_GLOBAL_SLOT);
+            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                      static_cast<uint8_t>(slot & 0xFF));
             return;
         }
 
@@ -447,12 +470,12 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
             if (upvalue != -1) {
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_UPVALUE),
                           static_cast<uint8_t>(upvalue));
-            } else if (globals.count(expr.name) > 0 && !current->isHarvesting) {
-                // If it's a known global and we're NOT harvesting a module, update it
-                size_t nameIdx = identifierConstant(expr.name);
-                emitOp(OpCode::STORE_GLOBAL);
-                emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                          static_cast<uint8_t>(nameIdx & 0xFF));
+            } else if (globalSlots.count(expr.name) > 0 && !current->isHarvesting) {
+                // Known global — use fast slot path
+                uint16_t slot = globalSlots[expr.name];
+                emitOp(OpCode::STORE_GLOBAL_SLOT);
+                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                          static_cast<uint8_t>(slot & 0xFF));
             } else if (current->scopeDepth > 0) {
                 // Create a new local if we're in a function or module scope
                 local = addLocal(expr.name);
@@ -461,12 +484,11 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
                           static_cast<uint8_t>(local));
             } else {
-                // Default to global
-                globals.insert(expr.name);
-                size_t nameIdx = identifierConstant(expr.name);
-                emitOp(OpCode::STORE_GLOBAL);
-                emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                          static_cast<uint8_t>(nameIdx & 0xFF));
+                // Default to global — allocate a slot
+                uint16_t slot = globalSlotFor(expr.name);
+                emitOp(OpCode::STORE_GLOBAL_SLOT);
+                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                          static_cast<uint8_t>(slot & 0xFF));
             }
         }
         // The popped value caused STORE to consume the dup; original stays
@@ -671,11 +693,10 @@ void BytecodeCompiler::compileVarDecl(const VarDeclStmt& stmt) {
     }
 
     if (current->scopeDepth == 0) {
-        globals.insert(stmt.name);
-        size_t nameIdx = identifierConstant(stmt.name);
-        emitOp(OpCode::STORE_GLOBAL);
-        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(nameIdx & 0xFF));
+        uint16_t slot = globalSlotFor(stmt.name);
+        emitOp(OpCode::STORE_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                  static_cast<uint8_t>(slot & 0xFF));
         emitOp(OpCode::POP);
     } else {
         size_t localIdx = addLocal(stmt.name);
@@ -955,11 +976,11 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
                   static_cast<uint8_t>(slot));
     } else {
-        globals.insert(stmt.name);
-        size_t nameIdx = identifierConstant(stmt.name);
-        emitOp(OpCode::STORE_GLOBAL);
-        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(nameIdx & 0xFF));
+        // Global task — allocate a slot
+        uint16_t slot = globalSlotFor(stmt.name);
+        emitOp(OpCode::STORE_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                  static_cast<uint8_t>(slot & 0xFF));
     }
     emitOp(OpCode::POP);
 }
@@ -1190,6 +1211,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         size_t trueIdx = current->function->chunk.addConstant(Constant(true));
         emitOp(OpCode::LOAD_CONST);
         emitBytes(static_cast<uint8_t>((trueIdx >> 8) & 0xFF), static_cast<uint8_t>(trueIdx & 0xFF));
+        // Cache flag in globalEnv via string-based STORE_GLOBAL (dynamic runtime flag)
         emitOp(OpCode::STORE_GLOBAL);
         emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
         emitOp(OpCode::POP);
@@ -1301,9 +1323,10 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                       static_cast<uint8_t>(slot));
             emitOp(OpCode::POP);
         } else {
-            emitOp(OpCode::STORE_GLOBAL);
-            emitBytes(static_cast<uint8_t>((aliasIdx >> 8) & 0xFF),
-                      static_cast<uint8_t>(aliasIdx & 0xFF));
+            uint16_t aliasSlot = globalSlotFor(alias);
+            emitOp(OpCode::STORE_GLOBAL_SLOT);
+            emitBytes(static_cast<uint8_t>((aliasSlot >> 8) & 0xFF),
+                      static_cast<uint8_t>(aliasSlot & 0xFF));
             emitOp(OpCode::POP);
         }
     }
@@ -1320,10 +1343,18 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     if (stmt.parentName.empty()) {
         emitOp(OpCode::LOAD_NIL);
     } else {
-        size_t parentIdx = identifierConstant(stmt.parentName);
-        emitOp(OpCode::LOAD_GLOBAL);
-        emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(parentIdx & 0xFF));
+        auto parentIt = globalSlots.find(stmt.parentName);
+        if (parentIt != globalSlots.end()) {
+            uint16_t slot = parentIt->second;
+            emitOp(OpCode::LOAD_GLOBAL_SLOT);
+            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                      static_cast<uint8_t>(slot & 0xFF));
+        } else {
+            size_t parentIdx = identifierConstant(stmt.parentName);
+            emitOp(OpCode::LOAD_GLOBAL);
+            emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(parentIdx & 0xFF));
+        }
     }
     
     int memberCount = 0;
@@ -1434,10 +1465,18 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
 
     // 5. Push interfaces onto stack
     for (const auto& interfaceName : stmt.interfaces) {
-        size_t idx = identifierConstant(interfaceName);
-        emitOp(OpCode::LOAD_GLOBAL);
-        emitBytes(static_cast<uint8_t>((idx >> 8) & 0xFF),
-                  static_cast<uint8_t>(idx & 0xFF));
+        auto ifIt = globalSlots.find(interfaceName);
+        if (ifIt != globalSlots.end()) {
+            uint16_t slot = ifIt->second;
+            emitOp(OpCode::LOAD_GLOBAL_SLOT);
+            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                      static_cast<uint8_t>(slot & 0xFF));
+        } else {
+            size_t idx = identifierConstant(interfaceName);
+            emitOp(OpCode::LOAD_GLOBAL);
+            emitBytes(static_cast<uint8_t>((idx >> 8) & 0xFF),
+                      static_cast<uint8_t>(idx & 0xFF));
+        }
     }
 
     // 6. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount
@@ -1456,9 +1495,10 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
                   static_cast<uint8_t>(slot));
         // Do NOT emit POP! The local variable MUST remain on the stack.
     } else {
-        emitOp(OpCode::STORE_GLOBAL);
-        emitBytes(static_cast<uint8_t>((classNameIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(classNameIdx & 0xFF));
+        uint16_t slot = globalSlotFor(stmt.name);
+        emitOp(OpCode::STORE_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                  static_cast<uint8_t>(slot & 0xFF));
         emitOp(OpCode::POP);
     }
 
@@ -1483,9 +1523,10 @@ void BytecodeCompiler::compileInterface(const InterfaceStmt& stmt) {
     emitByte(static_cast<uint8_t>(stmt.methods.size()));
     
     // Store in global
-    emitOp(OpCode::STORE_GLOBAL);
-    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-              static_cast<uint8_t>(nameIdx & 0xFF));
+    uint16_t ifSlot = globalSlotFor(stmt.name);
+    emitOp(OpCode::STORE_GLOBAL_SLOT);
+    emitBytes(static_cast<uint8_t>((ifSlot >> 8) & 0xFF),
+              static_cast<uint8_t>(ifSlot & 0xFF));
     emitOp(OpCode::POP);
 }
 
@@ -1493,7 +1534,7 @@ void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {
     // Mangle name to avoid global collisions and function collisions: __static_<id>_<funcName>_<varName>
     std::string mangledName = "__static_" + std::to_string(current->compilerId) + "_" + current->function->name + "_" + stmt.name;
     current->statics[stmt.name] = mangledName;
-    globals.insert(mangledName); // Ensure it's treated as a global
+    // globalSlotFor() will allocate/reuse a slot on demand when the mangled name is first emitted
     
     size_t nameIdx = identifierConstant(mangledName);
     
@@ -1507,9 +1548,10 @@ void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {
     
     // 3. Initialization (runs only if HAS_GLOBAL was false)
     compileExpr(stmt.initializer);
-    emitOp(OpCode::STORE_GLOBAL);
-    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-              static_cast<uint8_t>(nameIdx & 0xFF));
+    uint16_t staticSlot = globalSlotFor(mangledName);
+    emitOp(OpCode::STORE_GLOBAL_SLOT);
+    emitBytes(static_cast<uint8_t>((staticSlot >> 8) & 0xFF),
+              static_cast<uint8_t>(staticSlot & 0xFF));
     emitOp(OpCode::POP);
     
     // 4. Patch jump

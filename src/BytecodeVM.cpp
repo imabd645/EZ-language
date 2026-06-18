@@ -80,9 +80,24 @@ BytecodeVM::~BytecodeVM() {
     // allUpvalues unique_ptrs handle cleanup automatically
 }
 
+void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
+    globalSlotNames = slotNames;
+    globalSlots.resize(slotNames.size(), Value());
+    // Pre-seed slots from globalEnv for any built-in names that share a slot name
+    for (size_t i = 0; i < slotNames.size(); ++i) {
+        if (!slotNames[i].empty() && globalEnv->contains(slotNames[i])) {
+            globalSlots[i] = globalEnv->get(slotNames[i]);
+        }
+    }
+}
+
 void BytecodeVM::gcMarkRoots() {
     for (Value* slot = stack.data(); slot < stackTop; ++slot) {
         GarbageCollector::markValue(*slot);
+    }
+    // Also mark global slots as roots
+    for (const Value& v : globalSlots) {
+        GarbageCollector::markValue(v);
     }
 }
 
@@ -209,10 +224,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
         &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
         &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_OP_AWAIT, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
-        &&handle_HAS_GLOBAL
+        &&handle_HAS_GLOBAL,
+        &&handle_LOAD_GLOBAL_SLOT,
+        &&handle_STORE_GLOBAL_SLOT
     };
     #define DISPATCH() { \
-        GarbageCollector::instance().checkGC(); \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
@@ -221,7 +237,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #else
     #define DISPATCH() break
     #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
-        GarbageCollector::instance().checkGC(); \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction))
     #define CASE_CODE(name) case OpCode::name:
@@ -303,6 +318,27 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     uint16_t nameIdx = READ_SHORT();
                     const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                     *stackTop++ = Value(globalEnv->contains(name));
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOAD_GLOBAL_SLOT) {
+                    uint16_t slot = READ_SHORT();
+                    // Fast O(1) indexed array access — no mutex, no hash lookup
+                    if (__builtin_expect(slot < globalSlots.size(), 1)) {
+                        *stackTop++ = globalSlots[slot];
+                    } else {
+                        // Slot not yet initialized — should not happen in well-formed bytecode
+                        *stackTop++ = Value();
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(STORE_GLOBAL_SLOT) {
+                    uint16_t slot = READ_SHORT();
+                    // O(1) direct array write — no mutex, no hash
+                    if (__builtin_expect(slot < globalSlots.size(), 1)) {
+                        globalSlots[slot] = *(stackTop - 1);
+                    }
                     DISPATCH();
                 }
 
@@ -394,10 +430,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(INC_LOCAL) {
                     Value& v = frame->slots[READ_BYTE()];
-                    if (v.m_data.index() == 12) { // INTEGER
-                        std::get<long long>(v.m_data)++;
-                    } else if (v.m_data.index() == 2) { // NUMBER (double)
-                        std::get<double>(v.m_data) += 1.0;
+                    if (v.isInteger()) { // INTEGER
+                        v = Value(v.asInteger() + 1LL);
+                    } else if (v.isFloat()) { // NUMBER (double)
+                        v = Value(v.asFloat() + 1.0);
                     } else {
                         v = Value(v.asNumber() + 1.0);
                     }
@@ -405,10 +441,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
                 CASE_CODE(DEC_LOCAL) {
                     Value& v = frame->slots[READ_BYTE()];
-                    if (v.m_data.index() == 12) { // INTEGER
-                        std::get<long long>(v.m_data)--;
-                    } else if (v.m_data.index() == 2) { // NUMBER (double)
-                        std::get<double>(v.m_data) -= 1.0;
+                    if (v.isInteger()) { // INTEGER
+                        v = Value(v.asInteger() - 1LL);
+                    } else if (v.isFloat()) { // NUMBER (double)
+                        v = Value(v.asFloat() - 1.0);
                     } else {
                         v = Value(v.asNumber() - 1.0);
                     }
@@ -418,10 +454,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(NEGATE) {
                     {
                         Value& v = stackTop[-1];
-                        if (v.m_data.index() == 12) {
-                            std::get<long long>(v.m_data) = -std::get<long long>(v.m_data);
-                        } else if (v.m_data.index() == 2) {
-                            std::get<double>(v.m_data) = -std::get<double>(v.m_data);
+                        if (v.isInteger()) {
+                            v = Value(-v.asInteger());
+                        } else if (v.isFloat()) {
+                            v = Value(-v.asFloat());
                         } else if (v.isInstance()) {
                             bool handled = false;
                             {
@@ -449,15 +485,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            long long res = std::get<long long>(a.m_data) + std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            long long res = a.asInteger() + b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() + b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -485,15 +521,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            long long res = std::get<long long>(a.m_data) - std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            long long res = a.asInteger() - b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() - b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -521,15 +557,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            long long res = std::get<long long>(a.m_data) * std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            long long res = a.asInteger() * b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() * b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -557,20 +593,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            long long al = std::get<long long>(a.m_data);
-                            long long bl = std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            long long al = a.asInteger();
+                            long long bl = b.asInteger();
                             if (bl == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
                             
                             if (al % bl == 0) {
                                 long long res = al / bl;
                                 stackTop -= 2;
-                                stackTop->m_data = res;
+                                *stackTop = Value(res);
                                 stackTop++;
                             } else {
                                 double res = static_cast<double>(al) / static_cast<double>(bl);
                                 stackTop -= 2;
-                                stackTop->m_data = res;
+                                *stackTop = Value(res);
                                 stackTop++;
                             }
                         } else if (a.isNumber() && b.isNumber()) {
@@ -578,7 +614,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             if (db == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
                             double res = a.asNumber() / db;
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -606,12 +642,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            long long bl = std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            long long bl = b.asInteger();
                             if (bl == 0) { SYNC_IP(); runtimeError("Modulo by zero"); return; }
-                            long long res = std::get<long long>(a.m_data) % bl;
+                            long long res = a.asInteger() % bl;
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else {
                             SYNC_IP(); this->stackTop = stackTop; doModulo(); stackTop = this->stackTop; LOAD_FRAME();
@@ -633,13 +669,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.m_data.index() == b.m_data.index()) {
                             bool res;
-                            if (a.m_data.index() == 12) res = (std::get<long long>(a.m_data) == std::get<long long>(b.m_data));
-                            else if (a.m_data.index() == 2) res = (std::get<double>(a.m_data) == std::get<double>(b.m_data));
-                            else if (a.m_data.index() == 1) res = (std::get<bool>(a.m_data) == std::get<bool>(b.m_data));
-                            else if (a.m_data.index() == 0) res = true;
+                            if (a.isInteger()) res = (a.asInteger() == b.asInteger());
+                            else if (a.isFloat()) res = (a.asFloat() == b.asFloat());
+                            else if (a.isBool()) res = (a.asBool() == b.asBool());
+                            else if (a.isNil()) res = true;
                             else { SYNC_IP(); this->stackTop = stackTop; doEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -668,15 +704,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            bool res = std::get<long long>(a.m_data) < std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = a.asInteger() < b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             bool res = a.asNumber() < b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -704,15 +740,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            bool res = std::get<long long>(a.m_data) <= std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = a.asInteger() <= b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             bool res = a.asNumber() <= b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else {
                             SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
@@ -724,15 +760,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            bool res = std::get<long long>(a.m_data) > std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = a.asInteger() > b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             bool res = a.asNumber() > b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -760,15 +796,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == 12 && b.m_data.index() == 12) {
-                            bool res = std::get<long long>(a.m_data) >= std::get<long long>(b.m_data);
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = a.asInteger() >= b.asInteger();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isNumber() && b.isNumber()) {
                             bool res = a.asNumber() >= b.asNumber();
                             stackTop -= 2;
-                            stackTop->m_data = res;
+                            *stackTop = Value(res);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -800,8 +836,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint32_t o = READ_INT(); 
                         const Value& v = *(--stackTop);
                         bool truthy;
-                        if (v.m_data.index() == 1) truthy = std::get<bool>(v.m_data);
-                        else if (v.m_data.index() == 0) truthy = false;
+                        if (v.isBool()) truthy = v.asBool();
+                        else if (v.isNil()) truthy = false;
                         else truthy = v.isTruthy();
                         if (!truthy) ip += o;
                     }
@@ -812,14 +848,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint32_t o = READ_INT(); 
                         const Value& v = *(--stackTop);
                         bool truthy;
-                        if (v.m_data.index() == 1) truthy = std::get<bool>(v.m_data);
-                        else if (v.m_data.index() == 0) truthy = false;
+                        if (v.isBool()) truthy = v.asBool();
+                        else if (v.isNil()) truthy = false;
                         else truthy = v.isTruthy();
                         if (truthy) ip += o;
                     }
                     DISPATCH(); 
                 }
-                CASE_CODE(LOOP)           ip -= READ_INT(); DISPATCH();
+                CASE_CODE(LOOP)           ip -= READ_INT(); GarbageCollector::instance().checkGC(); DISPATCH();
 
                 CASE_CODE(CALL) {
                     {
@@ -2097,6 +2133,14 @@ void BytecodeVM::defineGlobal(const std::string& name, const Value& value) {
 }
 
 Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
+    // Sync all slot values back into globalEnv so the new code can see
+    // globals that were written via STORE_GLOBAL_SLOT since the last sync.
+    for (size_t i = 0; i < globalSlots.size() && i < globalSlotNames.size(); ++i) {
+        if (!globalSlotNames[i].empty()) {
+            globalEnv->assign(globalSlotNames[i], globalSlots[i]);
+        }
+    }
+
     Lexer lexer(code, filename);
     std::vector<Token> tokens = lexer.tokenize();
     if (lexer.hasError()) return Value();
@@ -2108,6 +2152,23 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
     BytecodeCompiler compiler;
     CompileResult result = compiler.compile(statements);
     if (!result.success) return Value();
+
+    // Merge any new slots the eval'd code introduced
+    if (!result.globalSlotNames.empty()) {
+        size_t newCount = result.globalSlotNames.size();
+        if (newCount > globalSlots.size()) {
+            globalSlots.resize(newCount, Value());
+            globalSlotNames.resize(newCount);
+        }
+        for (size_t i = 0; i < newCount; ++i) {
+            if (globalSlotNames[i].empty() && !result.globalSlotNames[i].empty()) {
+                globalSlotNames[i] = result.globalSlotNames[i];
+                // Seed from globalEnv if already defined
+                if (globalEnv->contains(globalSlotNames[i]))
+                    globalSlots[i] = globalEnv->get(globalSlotNames[i]);
+            }
+        }
+    }
 
     return execute(result.mainFunction);
 }

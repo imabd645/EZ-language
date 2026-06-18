@@ -122,6 +122,10 @@ enum class OpCode : uint8_t {
     BREAKPOINT,          // Debugger breakpoint
     LINE,                // line_num: Source line info
     HAS_GLOBAL,          // name_idx: Push true if global exists
+
+    // Fast global slot access (Issue C optimization)
+    LOAD_GLOBAL_SLOT,    // slot_idx (uint16): globalSlots[slot] -> push
+    STORE_GLOBAL_SLOT,   // slot_idx (uint16): peek -> globalSlots[slot]
     
     END = 255            // End of chunk marker
 };
@@ -290,10 +294,11 @@ struct BytecodeFunction {
     // Number of parameters that have default values (rightmost N params).
     // Used by the VM to compute minArity = arity - defaultParamCount.
     size_t defaultParamCount;
+    size_t globalSlotCount;  // Number of global slots used (for LOAD/STORE_GLOBAL_SLOT)
 
     BytecodeFunction(const std::string& name, size_t arity)
         : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false), isMethod(false),
-          upvalueCount(0), localCount(0), defaultParamCount(0) {}
+          upvalueCount(0), localCount(0), defaultParamCount(0), globalSlotCount(0) {}
 };
 
 using BytecodeFunctionPtr = std::shared_ptr<BytecodeFunction>;
@@ -306,6 +311,8 @@ struct CompileResult {
     std::string error;
     BytecodeFunctionPtr mainFunction;  // Entry point
     std::vector<BytecodeFunctionPtr> functions;  // All functions
+    // Global slot table: index -> name (for VM initialization)
+    std::vector<std::string> globalSlotNames;
     
     CompileResult() : success(false) {}
 };

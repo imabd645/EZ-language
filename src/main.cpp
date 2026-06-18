@@ -82,6 +82,9 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
         std::cerr << " Error: " << result.error << std::endl;
         exit(65);
     }
+
+    // Initialize fast global slot array (Issue C: replaces mutex-locked hash lookups)
+    vm.initGlobalSlots(result.globalSlotNames);
     
     try {
         vm.execute(result.mainFunction);

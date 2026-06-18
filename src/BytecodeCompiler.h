@@ -67,8 +67,13 @@ private:
     bool hadError;
     std::string errorMessage;
     
-    // Set of known global identifiers to avoid shadowing
-    std::unordered_set<std::string> globals;
+    // Global slot table: name -> slot index (Issue C optimization)
+    std::unordered_map<std::string, uint16_t> globalSlots;
+    uint16_t nextGlobalSlot = 0;
+
+    // Allocate or look up a global slot index for a given name.
+    // Idempotent: repeated calls for the same name return the same slot.
+    uint16_t globalSlotFor(const std::string& name);
     
     // === Expression Compilation ===
     void compileExpr(const ExprPtr& expr);

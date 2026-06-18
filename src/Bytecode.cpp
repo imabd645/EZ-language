@@ -251,7 +251,6 @@ size_t Chunk::disassembleInstruction(size_t offset) const {
     std::cout << std::setw(16) << opcodeName(op) << " ";
     
     switch (op) {
-        case OpCode::LOAD_CONST:
         case OpCode::LOAD_LOCAL:
         case OpCode::STORE_LOCAL:
         case OpCode::LOAD_UPVALUE:
@@ -260,16 +259,15 @@ size_t Chunk::disassembleInstruction(size_t offset) const {
         case OpCode::NEW_INSTANCE:
         case OpCode::MAKE_ARRAY:
         case OpCode::MAKE_DICT:
-        case OpCode::INC_LOCAL: {
+        case OpCode::INC_LOCAL:
+        case OpCode::DEC_LOCAL: {
             uint8_t idx = code[offset + 1];
             std::cout << std::setw(4) << (int)idx << " ";
-            if (idx < constants.size()) {
-                printConstant(constants[idx]);
-            }
             std::cout << std::endl;
             return offset + 2;
         }
         
+        case OpCode::LOAD_CONST:
         case OpCode::LOAD_GLOBAL:
         case OpCode::STORE_GLOBAL:
         case OpCode::LOAD_GLOBAL_SLOT:

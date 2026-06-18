@@ -236,6 +236,75 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                 methodSig.returnType = TypeInfo::fromAST(method.returnType);
                 declareFunction(interfaceStmt->name + "." + method.name, methodSig);
             }
+        } else if (std::holds_alternative<std::shared_ptr<ExportStmt>>(stmt->variant)) {
+            auto exportStmt = std::get<std::shared_ptr<ExportStmt>>(stmt->variant);
+            std::vector<StmtPtr> innerVec;
+            innerVec.push_back(exportStmt->inner);
+            // Recursively process the inner statement for declarations
+            auto tempEnv = currentEnv; // Keep environment
+            std::vector<StmtPtr> tempStatements = innerVec;
+            for (const auto& innerStmt : tempStatements) {
+                if (std::holds_alternative<std::shared_ptr<TaskStmt>>(innerStmt->variant)) {
+                    auto task = std::get<std::shared_ptr<TaskStmt>>(innerStmt->variant);
+                    FunctionSignature sig;
+                    for (const auto& p : task->params) sig.paramNames.push_back(p);
+                    for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    sig.returnType = TypeInfo::fromAST(task->returnType);
+                    sig.isVariadic = task->isVariadic;
+                    declareFunction(task->name, sig);
+                } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(innerStmt->variant)) {
+                    auto model = std::get<std::shared_ptr<ModelStmt>>(innerStmt->variant);
+                    FunctionSignature sig;
+                    for (const auto& p : model->initParams) sig.paramNames.push_back(p);
+                    for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    sig.returnType = TypeInfo(model->name);
+                    declareFunction(model->name, sig);
+                    
+                    for (const auto& member : model->members) {
+                        if (member.isMethod) {
+                            FunctionSignature methodSig;
+                            for (const auto& p : member.params) methodSig.paramNames.push_back(p);
+                            for (const auto& t : member.paramTypes) methodSig.paramTypes.push_back(TypeInfo::fromAST(t));
+                            methodSig.returnType = TypeInfo::fromAST(member.typeHint);
+                            declareFunction(model->name + "." + member.name, methodSig);
+                        } else {
+                            TypeInfo propType = TypeInfo::fromAST(member.typeHint);
+                            declareVariable(model->name + "." + member.name, propType);
+                        }
+                    }
+
+                    std::function<void(const std::vector<StmtPtr>&)> scanBodyForSelfProps =
+                        [&](const std::vector<StmtPtr>& body) {
+                            for (const auto& s : body) {
+                                if (!s) continue;
+                                if (std::holds_alternative<std::shared_ptr<ExprStmt>>(s->variant)) {
+                                    auto exprStmt = std::get<std::shared_ptr<ExprStmt>>(s->variant);
+                                    if (exprStmt->expression &&
+                                        std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expression->variant)) {
+                                        auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expression->variant);
+                                        if (setExpr->object &&
+                                            std::holds_alternative<std::shared_ptr<SelfExpr>>(setExpr->object->variant)) {
+                                            std::string key = model->name + "." + setExpr->name;
+                                            if (!currentEnv->variables.count(key))
+                                                declareVariable(key, TypeInfo("Any"));
+                                        }
+                                    }
+                                }
+                                if (std::holds_alternative<std::shared_ptr<BlockStmt>>(s->variant)) {
+                                    scanBodyForSelfProps(std::get<std::shared_ptr<BlockStmt>>(s->variant)->statements);
+                                } else if (std::holds_alternative<std::shared_ptr<WhenStmt>>(s->variant)) {
+                                    auto ws = std::get<std::shared_ptr<WhenStmt>>(s->variant);
+                                    if (ws->thenBranch) scanBodyForSelfProps({ws->thenBranch});
+                                    if (ws->elseBranch) scanBodyForSelfProps({ws->elseBranch});
+                                }
+                            }
+                        };
+                    scanBodyForSelfProps(model->initBody);
+                    for (const auto& member : model->members) {
+                        if (member.isMethod) scanBodyForSelfProps(member.body);
+                    }
+                }
+            }
         }
     }
     

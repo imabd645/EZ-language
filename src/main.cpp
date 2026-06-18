@@ -11,8 +11,9 @@
 #include "Lexer.h"
 #include "Parser.h"
 #include "TypeChecker.h"
-#include "BytecodeCompiler.h"
 #include "BytecodeVM.h"
+#include "BytecodeCompiler.h"
+#include "BytecodeSerializer.h"
 #include "PackageManager.h"
 #include <windows.h>
 #include <cstdint>
@@ -99,6 +100,39 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
 }
 
 void runFile(const std::string& path, bool traceExecution = false) {
+    if (path.length() >= 4 && path.substr(path.length() - 4) == ".ezc") {
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            std::cerr << "Error: Could not open binary file '" << path << "'" << std::endl;
+            exit(65);
+        }
+        
+        std::vector<std::string> globalSlots;
+        std::shared_ptr<BytecodeFunction> mainFunc;
+        try {
+            mainFunc = BytecodeSerializer::deserialize(file, globalSlots);
+        } catch (const std::exception& e) {
+            std::cerr << "Error decoding .ezc file: " << e.what() << std::endl;
+            exit(65);
+        }
+        
+        auto globalEnv = std::make_shared<Environment>();
+        BytecodeVM vm(globalEnv);
+        vm.traceExecution = traceExecution;
+        vm.initGlobalSlots(globalSlots);
+        
+        try {
+            vm.execute(mainFunc);
+            EventLoop::instance().run();
+        } catch (const RuntimeError& e) {
+            exit(70); 
+        } catch (const std::exception& e) {
+            std::cerr << "Internal Error: " << e.what() << std::endl;
+            exit(70);
+        }
+        return;
+    }
+
     std::ifstream file(path);
     if (!file.is_open()) {
         std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
@@ -110,6 +144,120 @@ void runFile(const std::string& path, bool traceExecution = false) {
     std::string source = buffer.str();
     
     runFromSource(source, path, traceExecution);
+}
+
+void compileFileToEzc(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
+        exit(65);
+    }
+    
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+    
+    EZ_RegisterSource(path, source);
+    Lexer lexer(source, path);
+    std::vector<Token> tokens = lexer.tokenize();
+    if (lexer.hasError()) exit(65);
+    
+    Parser parser(tokens);
+    std::vector<StmtPtr> statements = parser.parse();
+    if (parser.hasError()) exit(65);
+    
+    auto globalEnv = std::make_shared<Environment>();
+    BytecodeVM vm(globalEnv); // This registers all built-in functions
+    
+    std::vector<std::string> builtins;
+    for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    
+    TypeChecker typeChecker;
+    if (!typeChecker.check(statements, builtins)) exit(65);
+    
+    BytecodeCompiler compiler;
+    CompileResult result = compiler.compile(statements);
+    if (!result.success) {
+        std::cerr << " Error: " << result.error << std::endl;
+        exit(65);
+    }
+    
+    std::string outPath = path;
+    size_t dot = outPath.find_last_of(".");
+    if (dot != std::string::npos) outPath = outPath.substr(0, dot);
+    outPath += ".ezc";
+    
+    std::ofstream outFile(outPath, std::ios::binary);
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Could not open output file '" << outPath << "'" << std::endl;
+        exit(65);
+    }
+    BytecodeSerializer::serialize(result.mainFunction, result.globalSlotNames, outFile);
+    std::cout << "Compiled successfully to " << outPath << std::endl;
+}
+
+void dumpFileToEzasm(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file '" << path << "'" << std::endl;
+        exit(65);
+    }
+    
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+    
+    EZ_RegisterSource(path, source);
+    Lexer lexer(source, path);
+    std::vector<Token> tokens = lexer.tokenize();
+    if (lexer.hasError()) exit(65);
+    
+    Parser parser(tokens);
+    std::vector<StmtPtr> statements = parser.parse();
+    if (parser.hasError()) exit(65);
+    
+    auto globalEnv = std::make_shared<Environment>();
+    BytecodeVM vm(globalEnv);
+    
+    std::vector<std::string> builtins;
+    for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    
+    TypeChecker typeChecker;
+    if (!typeChecker.check(statements, builtins)) exit(65);
+    
+    BytecodeCompiler compiler;
+    CompileResult result = compiler.compile(statements);
+    if (!result.success) {
+        std::cerr << " Error: " << result.error << std::endl;
+        exit(65);
+    }
+    
+    std::string outPath = path;
+    size_t dot = outPath.find_last_of(".");
+    if (dot != std::string::npos) outPath = outPath.substr(0, dot);
+    outPath += ".ezb";
+    
+    std::ofstream outFile(outPath);
+    if (!outFile.is_open()) {
+        std::cerr << "Error: Could not open output file '" << outPath << "'" << std::endl;
+        exit(65);
+    }
+    
+    auto old_buf = std::cout.rdbuf(outFile.rdbuf());
+    
+    std::function<void(const std::shared_ptr<BytecodeFunction>&)> dis;
+    dis = [&](const std::shared_ptr<BytecodeFunction>& f) {
+        f->chunk.disassemble(f->name.empty() ? "main" : f->name);
+        for (const auto& nf : f->nestedFunctions) {
+            std::cout << "\n";
+            dis(nf);
+        }
+    };
+    
+    dis(result.mainFunction);
+    
+    std::cout.rdbuf(old_buf);
+    std::cout << "Disassembled successfully to " << outPath << " (Open this in VS Code to review)" << std::endl;
 }
 
 bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem) {
@@ -627,13 +775,25 @@ int main(int argc, char* argv[]) {
         }
         else {
             bool traceExecution = false;
+            bool compileToEzc = false;
+            bool dumpToEzasm = false;
             for (int i = 2; i < argc; i++) {
                 std::string arg = argv[i];
                 if (arg == "--trace") {
                     traceExecution = true;
+                } else if (arg == "--compile" || arg == "-c" || arg == "--ezc") {
+                    compileToEzc = true;
+                } else if (arg == "--dump" || arg == "-d" || arg == "--ezasm") {
+                    dumpToEzasm = true;
                 }
             }
-            runFile(cmd, traceExecution);
+            if (compileToEzc) {
+                compileFileToEzc(cmd);
+            } else if (dumpToEzasm) {
+                dumpFileToEzasm(cmd);
+            } else {
+                runFile(cmd, traceExecution);
+            }
             return 0;
         }
     }

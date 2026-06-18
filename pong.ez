@@ -1,0 +1,140 @@
+use ezgame
+
+game = ezgame.createGame("EZ Pong - Retro Edition", 800, 600)
+
+state = {
+    "playerY": 250,
+    "aiY": 250,
+    "paddleW": 20,
+    "paddleH": 100,
+    "speed": 400,
+    "ballX": 400,
+    "ballY": 300,
+    "ballRadius": 10,
+    "ballVX": -350,
+    "ballVY": 350,
+    "p1Score": 0,
+    "p2Score": 0
+}
+
+task resetBall() {
+    state["ballX"] = 400
+    state["ballY"] = 300
+    state["ballVX"] = -state["ballVX"]
+    
+    # Cap speed if it gets too fast
+    when state["ballVX"] > 800 { state["ballVX"] = 800 }
+    when state["ballVX"] < -800 { state["ballVX"] = -800 }
+}
+
+game.onUpdateCall(|dt| {
+    # ----------------------------------------------------
+    # 1. Player Movement (Frame Independent via dt)
+    # ----------------------------------------------------
+    when game.isKeyDown(ezgame.KEYS.W) or game.isKeyDown(ezgame.KEYS.UP) {
+        state["playerY"] = state["playerY"] - (state["speed"] * dt)
+    }
+    when game.isKeyDown(ezgame.KEYS.S) or game.isKeyDown(ezgame.KEYS.DOWN) {
+        state["playerY"] = state["playerY"] + (state["speed"] * dt)
+    }
+    
+    # Clamp Player bounds
+    when state["playerY"] < 0 { state["playerY"] = 0 }
+    when state["playerY"] > 600 - state["paddleH"] { state["playerY"] = 600 - state["paddleH"] }
+    
+    # ----------------------------------------------------
+    # 2. AI Movement (Tracks ball with slight speed handicap)
+    # ----------------------------------------------------
+    aiCenter = state["aiY"] + (state["paddleH"] / 2)
+    when aiCenter < state["ballY"] - 15 {
+        state["aiY"] = state["aiY"] + (state["speed"] * 0.85 * dt)
+    }
+    when aiCenter > state["ballY"] + 15 {
+        state["aiY"] = state["aiY"] - (state["speed"] * 0.85 * dt)
+    }
+    
+    # Clamp AI bounds
+    when state["aiY"] < 0 { state["aiY"] = 0 }
+    when state["aiY"] > 600 - state["paddleH"] { state["aiY"] = 600 - state["paddleH"] }
+    
+    # ----------------------------------------------------
+    # 3. Ball Physics & Movement
+    # ----------------------------------------------------
+    state["ballX"] = state["ballX"] + (state["ballVX"] * dt)
+    state["ballY"] = state["ballY"] + (state["ballVY"] * dt)
+    
+    # Top/Bottom Wall Collisions
+    when state["ballY"] - state["ballRadius"] < 0 {
+        state["ballY"] = state["ballRadius"]
+        state["ballVY"] = -state["ballVY"]
+    }
+    when state["ballY"] + state["ballRadius"] > 600 {
+        state["ballY"] = 600 - state["ballRadius"]
+        state["ballVY"] = -state["ballVY"]
+    }
+    
+    # ----------------------------------------------------
+    # 4. AABB Collision Detection (Using new API)
+    # ----------------------------------------------------
+    
+    # Player Paddle (Left side: x = 30)
+    when ezgame.Collision.AABB(
+        30, state["playerY"], state["paddleW"], state["paddleH"], 
+        state["ballX"] - state["ballRadius"], state["ballY"] - state["ballRadius"], 
+        state["ballRadius"]*2, state["ballRadius"]*2
+    ) {
+        state["ballX"] = 30 + state["paddleW"] + state["ballRadius"]
+        state["ballVX"] = -state["ballVX"] * 1.05 # Speed up on hit
+    }
+    
+    # AI Paddle (Right side: x = 750)
+    when ezgame.Collision.AABB(
+        750, state["aiY"], state["paddleW"], state["paddleH"], 
+        state["ballX"] - state["ballRadius"], state["ballY"] - state["ballRadius"], 
+        state["ballRadius"]*2, state["ballRadius"]*2
+    ) {
+        state["ballX"] = 750 - state["ballRadius"]
+        state["ballVX"] = -state["ballVX"] * 1.05 # Speed up on hit
+    }
+    
+    # ----------------------------------------------------
+    # 5. Scoring System
+    # ----------------------------------------------------
+    when state["ballX"] < 0 {
+        state["p2Score"] = state["p2Score"] + 1
+        resetBall()
+    }
+    when state["ballX"] > 800 {
+        state["p1Score"] = state["p1Score"] + 1
+        resetBall()
+    }
+})
+
+game.onDrawCall(|| {
+    # Dark modern background
+    game.clear(15, 18, 25)
+    
+    # Center net (Using new native drawLine FFI primitive)
+    game.drawLine(400, 0, 400, 600, 100, 120, 150)
+    
+    # Player Paddle (Cyan)
+    game.drawRect(30, state["playerY"], state["paddleW"], state["paddleH"], 0, 255, 255)
+    
+    # AI Paddle (Magenta)
+    game.drawRect(750, state["aiY"], state["paddleW"], state["paddleH"], 255, 0, 255)
+    
+    # The Ball (Neon Yellow, using new fillCircle FFI primitive)
+    game.fillCircle(state["ballX"], state["ballY"], state["ballRadius"], 255, 255, 50)
+    
+    # Scores
+    game.drawText(str(state["p1Score"]), 300, 50, 40, 0, 255, 255)
+    game.drawText(str(state["p2Score"]), 470, 50, 40, 255, 0, 255)
+    
+    # Instructions
+    game.drawText("W / S to Move", 30, 550, 16, 100, 120, 150)
+})
+
+out "============================================="
+out " Starting EZ Pong (Powered by ezgame v2.0) "
+out "============================================="
+game.run()

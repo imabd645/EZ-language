@@ -232,7 +232,7 @@ void dumpFileToEzasm(const std::string& path) {
         exit(65);
     }
     
-    std::string outPath = path;
+    std::string outPath = path; 
     size_t dot = outPath.find_last_of(".");
     if (dot != std::string::npos) outPath = outPath.substr(0, dot);
     outPath += ".ezb";
@@ -247,7 +247,7 @@ void dumpFileToEzasm(const std::string& path) {
     
     std::function<void(const std::shared_ptr<BytecodeFunction>&)> dis;
     dis = [&](const std::shared_ptr<BytecodeFunction>& f) {
-        f->chunk.disassemble(f->name.empty() ? "main" : f->name);
+        f->chunk.disassemble(f->name.empty() ? "main" : f->name, &result.globalSlotNames);
         for (const auto& nf : f->nestedFunctions) {
             std::cout << "\n";
             dis(nf);

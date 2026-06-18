@@ -8,6 +8,23 @@
 // ============================================================================
 
 size_t Chunk::addConstant(const Constant& constant) {
+    if (constant.type == Constant::Type::INT || 
+        constant.type == Constant::Type::DOUBLE ||
+        constant.type == Constant::Type::STRING ||
+        constant.type == Constant::Type::BOOL ||
+        constant.type == Constant::Type::NIL) {
+        
+        for (size_t i = 0; i < constants.size(); ++i) {
+            const auto& c = constants[i];
+            if (c.type == constant.type) {
+                if (c.type == Constant::Type::INT && std::get<long long>(c.value) == std::get<long long>(constant.value)) return i;
+                if (c.type == Constant::Type::DOUBLE && std::get<double>(c.value) == std::get<double>(constant.value)) return i;
+                if (c.type == Constant::Type::STRING && std::get<std::string>(c.value) == std::get<std::string>(constant.value)) return i;
+                if (c.type == Constant::Type::BOOL && std::get<bool>(c.value) == std::get<bool>(constant.value)) return i;
+                if (c.type == Constant::Type::NIL) return i;
+            }
+        }
+    }
     constants.push_back(constant);
     return constants.size() - 1;
 }
@@ -216,7 +233,7 @@ static void printConstant(const Constant& constant) {
     }
 }
 
-void Chunk::disassemble(const std::string& name) const {
+void Chunk::disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames) const {
     std::cout << "=== " << name << " ===" << std::endl;
     std::cout << "Constants: " << constants.size() << std::endl;
     
@@ -231,11 +248,11 @@ void Chunk::disassemble(const std::string& name) const {
     
     size_t offset = 0;
     while (offset < code.size()) {
-        offset = disassembleInstruction(offset);
+        offset = disassembleInstruction(offset, globalSlotNames);
     }
 }
 
-size_t Chunk::disassembleInstruction(size_t offset) const {
+size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames) const {
     std::cout << std::setw(4) << offset << " ";
     
     // Print line number
@@ -268,10 +285,19 @@ size_t Chunk::disassembleInstruction(size_t offset) const {
         }
         
         case OpCode::LOAD_CONST:
+        case OpCode::LOAD_GLOBAL_SLOT:
+        case OpCode::STORE_GLOBAL_SLOT: {
+            uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            std::cout << std::setw(4) << (int)idx;
+            if (globalSlotNames && idx < globalSlotNames->size() && !(*globalSlotNames)[idx].empty()) {
+                std::cout << " (\"" << (*globalSlotNames)[idx] << "\")";
+            }
+            std::cout << std::endl;
+            return offset + 3;
+        }
+
         case OpCode::LOAD_GLOBAL:
         case OpCode::STORE_GLOBAL:
-        case OpCode::LOAD_GLOBAL_SLOT:
-        case OpCode::STORE_GLOBAL_SLOT:
         case OpCode::LOAD_PROPERTY:
         case OpCode::STORE_PROPERTY:
         case OpCode::HAS_GLOBAL:

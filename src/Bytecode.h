@@ -237,9 +237,9 @@ struct Chunk {
     const Constant& getConstant(size_t idx) const;
     void resolveConstants();
     
-    // Disassembly
-    void disassemble(const std::string& name) const;
-    size_t disassembleInstruction(size_t offset) const;
+    // Disassembly and debugging
+    void disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames = nullptr) const;
+    size_t disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames = nullptr) const;
 };
 
 // ============================================================================

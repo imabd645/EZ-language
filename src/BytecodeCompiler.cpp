@@ -782,19 +782,19 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
     size_t loopStart = currentChunk().code.size();
     loopStack.back().start = loopStart;
 
-    // Condition: loopVar <= endVar (forward) or loopVar >= endVar (reverse)
-    emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-              static_cast<uint8_t>(loopVar));
-    emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-              static_cast<uint8_t>(endVar));
-    
+    // ── Issue D: Fused loop-condition superinstruction ─────────────────────────
+    // Replaces 4 dispatches (LOAD_LOCAL, LOAD_LOCAL, LESS/GREATER_EQ, JUMP_IF_FALSE)
+    // with a single 7-byte instruction that reads locals directly off the frame.
     if (isReverse) {
-        emitOp(OpCode::GREATER_EQ);
+        emitOp(OpCode::LOOP_GREATER_EQ_LOCAL);
     } else {
-        emitOp(OpCode::LESS_EQ);
+        emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
     }
-
-    size_t exitJump = emitJump(OpCode::JUMP_IF_FALSE);
+    emitByte(static_cast<uint8_t>(loopVar));  // loop variable slot
+    emitByte(static_cast<uint8_t>(endVar));   // end-value slot
+    // 4-byte exit-jump placeholder (patched by patchJump below)
+    emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
+    size_t exitJump = currentChunk().code.size() - 4;
 
     compileStmt(stmt.body);
 

@@ -126,6 +126,14 @@ enum class OpCode : uint8_t {
     // Fast global slot access (Issue C optimization)
     LOAD_GLOBAL_SLOT,    // slot_idx (uint16): globalSlots[slot] -> push
     STORE_GLOBAL_SLOT,   // slot_idx (uint16): peek -> globalSlots[slot]
+
+    // Superinstructions (Issue D optimization)
+    // Fuse the 4-opcode repeat-loop header into a single dispatch:
+    //   LOAD_LOCAL loopSlot | LOAD_LOCAL endSlot | LESS_EQ | JUMP_IF_FALSE exit
+    //   =>  LOOP_LESS_EQ_LOCAL loopSlot(1) endSlot(1) exitOffset(4)
+    LOOP_LESS_EQ_LOCAL,    // forward loop:  if local[loopSlot] <= local[endSlot] fall-through; else jump exit
+    LOOP_GREATER_EQ_LOCAL, // reverse loop:  if local[loopSlot] >= local[endSlot] fall-through; else jump exit
+
     
     END = 255            // End of chunk marker
 };

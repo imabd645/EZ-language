@@ -180,6 +180,8 @@ static const char* opcodeName(OpCode op) {
         case OpCode::HAS_GLOBAL: return "HAS_GLOBAL";
         case OpCode::LOAD_GLOBAL_SLOT: return "LOAD_GLOBAL_SLOT";
         case OpCode::STORE_GLOBAL_SLOT: return "STORE_GLOBAL_SLOT";
+        case OpCode::LOOP_LESS_EQ_LOCAL: return "LOOP_LESS_EQ_LOCAL";
+        case OpCode::LOOP_GREATER_EQ_LOCAL: return "LOOP_GREATER_EQ_LOCAL";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -300,6 +302,19 @@ size_t Chunk::disassembleInstruction(size_t offset) const {
             uint32_t jump = (code[offset + 1] << 24) | (code[offset + 2] << 16) | (code[offset + 3] << 8) | code[offset + 4];
             std::cout << std::setw(4) << (int)jump << " -> " << (offset + 5 - jump) << std::endl;
             return offset + 5;
+        }
+
+        case OpCode::LOOP_LESS_EQ_LOCAL:
+        case OpCode::LOOP_GREATER_EQ_LOCAL: {
+            uint8_t  loopSlot = code[offset + 1];
+            uint8_t  endSlot  = code[offset + 2];
+            uint32_t exitOff  = (code[offset + 3] << 24) | (code[offset + 4] << 16)
+                               | (code[offset + 5] << 8)  |  code[offset + 6];
+            std::cout << " loop=" << (int)loopSlot
+                      << " end=" << (int)endSlot
+                      << " exit->" << (offset + 7 + exitOff)
+                      << std::endl;
+            return offset + 7;  // opcode(1) + loopSlot(1) + endSlot(1) + offset(4)
         }
 
         case OpCode::ITER_NEXT: {

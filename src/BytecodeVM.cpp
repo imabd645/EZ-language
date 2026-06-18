@@ -226,7 +226,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_OP_AWAIT, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
         &&handle_HAS_GLOBAL,
         &&handle_LOAD_GLOBAL_SLOT,
-        &&handle_STORE_GLOBAL_SLOT
+        &&handle_STORE_GLOBAL_SLOT,
+        &&handle_LOOP_LESS_EQ_LOCAL,
+        &&handle_LOOP_GREATER_EQ_LOCAL
     };
     #define DISPATCH() { \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
@@ -338,6 +340,42 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     // O(1) direct array write — no mutex, no hash
                     if (__builtin_expect(slot < globalSlots.size(), 1)) {
                         globalSlots[slot] = *(stackTop - 1);
+                    }
+                    DISPATCH();
+                }
+
+                // ── Issue D: Fused loop-condition superinstructions ──────────────────────
+                // Replaces: LOAD_LOCAL i | LOAD_LOCAL end | LESS_EQ | JUMP_IF_FALSE exit
+                // With one dispatch that reads locals directly — no stack push/pop.
+                CASE_CODE(LOOP_LESS_EQ_LOCAL) {
+                    uint8_t  loopSlot  = READ_BYTE();
+                    uint8_t  endSlot   = READ_BYTE();
+                    uint32_t exitOff   = READ_INT();
+                    const Value& lv = frame->slots[loopSlot];
+                    const Value& ev = frame->slots[endSlot];
+                    // Integer fast path — covers 100% of repeat i=0 to N loops
+                    if (__builtin_expect(lv.isInteger() && ev.isInteger(), 1)) {
+                        if (lv.asInteger() > ev.asInteger()) ip += exitOff;
+                    } else if (lv.isNumber() && ev.isNumber()) {
+                        if (lv.asNumber() > ev.asNumber())  ip += exitOff;
+                    } else {
+                        ip += exitOff; // non-numeric: treat as loop-done
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(LOOP_GREATER_EQ_LOCAL) {
+                    uint8_t  loopSlot  = READ_BYTE();
+                    uint8_t  endSlot   = READ_BYTE();
+                    uint32_t exitOff   = READ_INT();
+                    const Value& lv = frame->slots[loopSlot];
+                    const Value& ev = frame->slots[endSlot];
+                    if (__builtin_expect(lv.isInteger() && ev.isInteger(), 1)) {
+                        if (lv.asInteger() < ev.asInteger()) ip += exitOff;
+                    } else if (lv.isNumber() && ev.isNumber()) {
+                        if (lv.asNumber() < ev.asNumber())  ip += exitOff;
+                    } else {
+                        ip += exitOff;
                     }
                     DISPATCH();
                 }

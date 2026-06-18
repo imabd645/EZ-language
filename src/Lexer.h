@@ -21,6 +21,9 @@ private:
     int line = 1;
     int column = 1;
     bool hadError = false;
+    
+    int openParens = 0;
+    int openBrackets = 0;
 
     static std::unordered_map<std::string, TokenType> keywords;
 

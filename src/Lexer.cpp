@@ -94,10 +94,10 @@ void Lexer::scanToken() {
     char c = advance();
     
     switch (c) {
-        case '(': addToken(TokenType::LPAREN); break;
-        case ')': addToken(TokenType::RPAREN); break;
-        case '[': addToken(TokenType::LBRACKET); break;
-        case ']': addToken(TokenType::RBRACKET); break;
+        case '(': openParens++; addToken(TokenType::LPAREN); break;
+        case ')': if (openParens > 0) openParens--; addToken(TokenType::RPAREN); break;
+        case '[': openBrackets++; addToken(TokenType::LBRACKET); break;
+        case ']': if (openBrackets > 0) openBrackets--; addToken(TokenType::RBRACKET); break;
         case '{': addToken(TokenType::LBRACE); break;
         case '}': addToken(TokenType::RBRACE); break;
         case ',': addToken(TokenType::COMMA); break;
@@ -198,9 +198,44 @@ void Lexer::scanToken() {
         case '#':
             skipLineComment();
             break;
-        case '\n':
+        case '\n': {
+            if (openParens > 0 || openBrackets > 0) {
+                break; // Ignore newline inside parens/brackets
+            }
+            if (!tokens.empty()) {
+                TokenType lastType = tokens.back().type;
+                if (lastType == TokenType::PLUS ||
+                    lastType == TokenType::MINUS ||
+                    lastType == TokenType::STAR ||
+                    lastType == TokenType::SLASH ||
+                    lastType == TokenType::PERCENT ||
+                    lastType == TokenType::EQUAL_EQUAL ||
+                    lastType == TokenType::BANG_EQUAL ||
+                    lastType == TokenType::LESS ||
+                    lastType == TokenType::LESS_EQUAL ||
+                    lastType == TokenType::GREATER ||
+                    lastType == TokenType::GREATER_EQUAL ||
+                    lastType == TokenType::AND ||
+                    lastType == TokenType::OR ||
+                    lastType == TokenType::COMMA ||
+                    lastType == TokenType::DOT ||
+                    lastType == TokenType::EQUAL ||
+                    lastType == TokenType::PLUS_EQUAL ||
+                    lastType == TokenType::MINUS_EQUAL ||
+                    lastType == TokenType::STAR_EQUAL ||
+                    lastType == TokenType::SLASH_EQUAL ||
+                    lastType == TokenType::AMPERSAND ||
+                    lastType == TokenType::PIPE ||
+                    lastType == TokenType::CARET ||
+                    lastType == TokenType::LSHIFT ||
+                    lastType == TokenType::RSHIFT ||
+                    lastType == TokenType::ARROW) {
+                    break; // Implicit continuation after operator
+                }
+            }
             addToken(TokenType::NEWLINE);
             break;
+        }
         case ' ':
         case '\r':
         case '\t':

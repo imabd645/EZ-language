@@ -233,7 +233,7 @@ static void printConstant(const Constant& constant) {
     }
 }
 
-void Chunk::disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames) const {
+void Chunk::disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames, const std::vector<std::shared_ptr<struct BytecodeFunction>>* nestedFunctions) const {
     std::cout << "=== " << name << " ===" << std::endl;
     std::cout << "Constants: " << constants.size() << std::endl;
     
@@ -248,11 +248,11 @@ void Chunk::disassemble(const std::string& name, const std::vector<std::string>*
     
     size_t offset = 0;
     while (offset < code.size()) {
-        offset = disassembleInstruction(offset, globalSlotNames);
+        offset = disassembleInstruction(offset, globalSlotNames, nestedFunctions);
     }
 }
 
-size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames) const {
+size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames, const std::vector<std::shared_ptr<struct BytecodeFunction>>* nestedFunctions) const {
     std::cout << std::setw(4) << offset << " ";
     
     // Print line number
@@ -272,7 +272,6 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
         case OpCode::STORE_LOCAL:
         case OpCode::LOAD_UPVALUE:
         case OpCode::STORE_UPVALUE:
-        case OpCode::CLOSURE:
         case OpCode::NEW_INSTANCE:
         case OpCode::MAKE_ARRAY:
         case OpCode::MAKE_DICT:
@@ -282,6 +281,25 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             std::cout << std::setw(4) << (int)idx << " ";
             std::cout << std::endl;
             return offset + 2;
+        }
+        
+        case OpCode::CLOSURE: {
+            uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            std::cout << std::setw(4) << (int)idx << std::endl;
+            size_t newOffset = offset + 3;
+            // The compiler emits 2 bytes for every upvalue captured by the closure.
+            // We need to look up the function to know how many upvalues to skip.
+            if (nestedFunctions && idx < nestedFunctions->size()) {
+                size_t upvalueCount = (*nestedFunctions)[idx]->upvalues.size();
+                for (size_t i = 0; i < upvalueCount; ++i) {
+                    uint8_t isLocal = code[newOffset++];
+                    uint8_t uvIndex = code[newOffset++];
+                    std::cout << std::setw(4) << offset << "   |             " 
+                              << (isLocal ? "upval local " : "upval upval ") 
+                              << (int)uvIndex << std::endl;
+                }
+            }
+            return newOffset;
         }
         
         case OpCode::LOAD_GLOBAL_SLOT:

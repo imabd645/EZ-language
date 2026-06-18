@@ -247,7 +247,7 @@ void dumpFileToEzasm(const std::string& path) {
     
     std::function<void(const std::shared_ptr<BytecodeFunction>&)> dis;
     dis = [&](const std::shared_ptr<BytecodeFunction>& f) {
-        f->chunk.disassemble(f->name.empty() ? "main" : f->name, &result.globalSlotNames);
+        f->chunk.disassemble(f->name.empty() ? "main" : f->name, &result.globalSlotNames, &f->nestedFunctions);
         for (const auto& nf : f->nestedFunctions) {
             std::cout << "\n";
             dis(nf);

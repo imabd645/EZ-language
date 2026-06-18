@@ -238,8 +238,8 @@ struct Chunk {
     void resolveConstants();
     
     // Disassembly and debugging
-    void disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames = nullptr) const;
-    size_t disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames = nullptr) const;
+    void disassemble(const std::string& name, const std::vector<std::string>* globalSlotNames = nullptr, const std::vector<std::shared_ptr<struct BytecodeFunction>>* nestedFunctions = nullptr) const;
+    size_t disassembleInstruction(size_t offset, const std::vector<std::string>* globalSlotNames = nullptr, const std::vector<std::shared_ptr<struct BytecodeFunction>>* nestedFunctions = nullptr) const;
 };
 
 // ============================================================================

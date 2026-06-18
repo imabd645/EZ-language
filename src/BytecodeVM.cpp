@@ -200,6 +200,28 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #define LOAD_FRAME() { frame = &frames.back(); ip = frame->ip; stackTop = this->stackTop; }
 #define REFRESH_FRAME() { frame = &frames.back(); }
 
+#define CHECK_VISIBILITY(klass, propName) { \
+    auto it = (klass)->visibility.find(propName); \
+    if (it != (klass)->visibility.end() && !it->second) { \
+        bool allowed = false; \
+        if (!frame->function->className.empty()) { \
+            auto currentClass = (klass); \
+            while (currentClass) { \
+                if (currentClass->name == frame->function->className) { \
+                    allowed = true; \
+                    break; \
+                } \
+                currentClass = currentClass->parent; \
+            } \
+        } \
+        if (!allowed) { \
+            SYNC_IP(); \
+            runtimeError("Cannot access hidden member '" + (propName) + "' of model '" + (klass)->name + "'."); \
+            return; \
+        } \
+    } \
+}
+
 #define READ_BYTE()   (*ip++)
 #define READ_SHORT()  (ip += 2, (uint16_t)((ip[-2] << 8) | ip[-1]))
 #define READ_INT()    (ip += 4, (uint32_t)((ip[-4] << 24) | (ip[-3] << 16) | (ip[-2] << 8) | ip[-1]))
@@ -386,6 +408,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value obj = *(--stackTop);
                         if (obj.isInstance()) {
+                            CHECK_VISIBILITY(obj.asInstance()->klass, propName);
                             Value val = obj.asInstance()->getProperty(propName);
                             if (val.isFunction() || val.isClosure() || val.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
                             else *stackTop++ = val;
@@ -396,6 +419,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = (it != dictPtr->map.end() ? it->second : Value());
                         } else if (obj.isClass()) {
                             auto klass = obj.asClass();
+                            CHECK_VISIBILITY(klass, propName);
                             if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
                             else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
                             else *stackTop++ = Value();
@@ -432,8 +456,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value value = *(--stackTop);
                         Value obj   = *(--stackTop);
-                        if (obj.isInstance()) obj.asInstance()->setProperty(propName, value);
-                        else if (obj.isClass()) obj.asClass()->staticMembers[propName] = value;
+                        if (obj.isInstance()) {
+                            CHECK_VISIBILITY(obj.asInstance()->klass, propName);
+                            obj.asInstance()->setProperty(propName, value);
+                        }
+                        else if (obj.isClass()) {
+                            CHECK_VISIBILITY(obj.asClass(), propName);
+                            obj.asClass()->staticMembers[propName] = value;
+                        }
                         else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
                             std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
@@ -1359,11 +1389,21 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
 
                         for (int i = 0; i < memberCount; i++) {
+                            Value isPublicVal = *(--stackTop);
                             Value isStaticVal = *(--stackTop);
                             Value val = *(--stackTop);
                             Value key = *(--stackTop);
+                            bool isPublic = isPublicVal.asBool();
                             bool isStatic = isStaticVal.asBool();
                             std::string memberName = key.toString();
+                            
+                            // Track visibility
+                            klass->visibility[memberName] = isPublic;
+                            
+                            if (val.isClosure()) {
+                                // Bind the method to this class for runtime access control
+                                val.asClosure()->function->className = className;
+                            }
                             
                             if (isStatic) {
                                 klass->staticMembers[memberName] = val;
@@ -1380,6 +1420,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             for (auto& [name, method] : klass->parent->methods) {
                                 if (klass->methods.find(name) == klass->methods.end()) {
                                     klass->methods[name] = method;
+                                }
+                            }
+                            // Inherit visibility from parent
+                            for (auto& [name, isPublic] : klass->parent->visibility) {
+                                if (klass->visibility.find(name) == klass->visibility.end()) {
+                                    klass->visibility[name] = isPublic;
                                 }
                             }
                         }
@@ -1412,6 +1458,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value instVal = *(stackTop - 1);
                         if (instVal.isInstance()) {
                             auto inst = instVal.asInstance();
+                            CHECK_VISIBILITY(inst->klass, method);
                             Value m = inst->klass->methods.count(method) ? inst->klass->methods.at(method) : Value();
                             --stackTop;
                             if (m.isNil()) *stackTop++ = Value();

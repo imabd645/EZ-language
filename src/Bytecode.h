@@ -283,6 +283,7 @@ struct LocalVarInfo {
 struct BytecodeFunction {
     std::string name;
     std::string filename;  // Source file this function was defined in
+    std::string className; // Class this function belongs to (if it is a method)
     size_t arity;
     bool isVariadic;
     bool isAsync;

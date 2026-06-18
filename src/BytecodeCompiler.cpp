@@ -112,6 +112,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     current->function->defaultParamCount = defaultCount;
     current->function->isVariadic = task.isVariadic;
     current->function->isAsync = task.isAsync;
+    current->function->className = current->currentClass;
 
     // Add parameters as the first locals (slot 0, 1, 2, …)
     for (const auto& param : task.params) {
@@ -1379,6 +1380,9 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         // Push isStatic flag (false for constructor)
         emitOp(OpCode::LOAD_FALSE);
         
+        // Push isPublic flag (true for constructor)
+        emitOp(OpCode::LOAD_TRUE);
+        
         memberCount++;
     }
     
@@ -1417,6 +1421,9 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         // Push isStatic flag
         emitOp(member.isStatic ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
         
+        // Push isPublic flag
+        emitOp(member.visibility == MemberVisibility::PUBLIC ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
+        
         memberCount++;
     }
     
@@ -1444,6 +1451,10 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         
         // isStatic = true
         emitOp(OpCode::LOAD_TRUE);
+        
+        // isPublic = true
+        emitOp(OpCode::LOAD_TRUE);
+        
         memberCount++;
     }
 
@@ -1458,8 +1469,8 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         emitOp(OpCode::LOAD_CONST);
         emitBytes(static_cast<uint8_t>((valIdx >> 8) & 0xFF),
                   static_cast<uint8_t>(valIdx & 0xFF));
-                  
-        emitOp(OpCode::LOAD_TRUE);
+        emitOp(OpCode::LOAD_TRUE); // isStatic
+        emitOp(OpCode::LOAD_TRUE); // isPublic
         memberCount++;
     }
 

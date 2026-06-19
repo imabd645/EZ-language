@@ -142,13 +142,81 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         }
     }
 
+    // ---- Design-by-Contract: requires (preconditions) ----
+    // Emitted AFTER default params are set, so they can reference params by name.
+    if (!task.requiresClauses.empty()) {
+        compileContractChecks(task.requiresClauses, true);
+    }
+    
+    // ---- Design-by-Contract: old() capture for ensures ----
+    // Scan ensures clauses for old(expr) calls and capture values into hidden locals.
+    oldCaptures.clear();
+    if (!task.ensuresClauses.empty()) {
+        // We do a simple text scan of the ensures expressions looking for CallExpr
+        // with callee name "old". We capture each unique old(expr) into a hidden local.
+        std::function<void(const ExprPtr&)> captureOldExprs = [&](const ExprPtr& e) {
+            if (!e) return;
+            if (auto* call = std::get_if<std::shared_ptr<CallExpr>>(&e->variant)) {
+                auto& c = **call;
+                // Check if callee is identifier "old"
+                if (auto* id = std::get_if<std::shared_ptr<IdentifierExpr>>(&c.callee->variant)) {
+                    if ((*id)->name == "old" && c.arguments.size() == 1) {
+                        // Build a stable key from source position of the argument
+                        std::string key = "old_" + std::to_string(c.arguments[0]->line) + "_" +
+                                                   std::to_string(c.arguments[0]->column);
+                        if (oldCaptures.find(key) == oldCaptures.end()) {
+                            // Evaluate the inner expression NOW and store to a hidden local
+                            compileExpr(c.arguments[0]);
+                            size_t slot = addLocal("__old_" + key + "__");
+                            markInitialized();
+                            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                                      static_cast<uint8_t>(slot));
+                            emitOp(OpCode::POP);
+                            oldCaptures[key] = slot;
+                        }
+                        return; // Don't recurse into old's argument again
+                    }
+                }
+                // Recurse into call arguments
+                captureOldExprs(c.callee);
+                for (auto& arg : c.arguments) captureOldExprs(arg);
+            } else {
+                // Generic recursive visit through other expr types
+                std::visit([&](auto&& node) {
+                    using T = std::decay_t<decltype(node)>;
+                    if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) {
+                        captureOldExprs(node->left); captureOldExprs(node->right);
+                    } else if constexpr (std::is_same_v<T, std::shared_ptr<UnaryExpr>>) {
+                        captureOldExprs(node->operand);
+                    } else if constexpr (std::is_same_v<T, std::shared_ptr<LogicalExpr>>) {
+                        captureOldExprs(node->left); captureOldExprs(node->right);
+                    } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
+                        captureOldExprs(node->condition); captureOldExprs(node->thenBranch); captureOldExprs(node->elseBranch);
+                    }
+                }, e->variant);
+            }
+        };
+        for (auto& [cond, _msg] : task.ensuresClauses) {
+            captureOldExprs(cond);
+        }
+    }
+
+    // Thread ensures clauses so compileGive can insert postconditions.
+    auto* savedEnsures = currentEnsuresClauses;
+    auto savedOldCaptures = oldCaptures;
+    currentEnsuresClauses = task.ensuresClauses.empty() ? nullptr : &task.ensuresClauses;
+
     beginScope();
     for (const auto& stmt : task.body) {
         compileStmt(stmt);
     }
     endScope();
 
-    // Implicit nil return
+    // Restore ensures context for enclosing function
+    currentEnsuresClauses = savedEnsures;
+    oldCaptures = savedOldCaptures;
+
+    // Implicit nil return (no ensures checks — bare fall-through is nil result)
     emitOp(OpCode::LOAD_NIL);
     emitReturn();
 
@@ -374,6 +442,24 @@ void BytecodeCompiler::compileAwait(const AwaitExpr& expr) {
 }
 
 void BytecodeCompiler::compileCall(const CallExpr& expr) {
+    // ---- Intercept old(expr) in ensures clauses ----
+    // old(expr) is not a real function — it refers to the value captured at function entry.
+    if (!oldCaptures.empty()) {
+        if (auto* id = std::get_if<std::shared_ptr<IdentifierExpr>>(&expr.callee->variant)) {
+            if ((*id)->name == "old" && expr.arguments.size() == 1) {
+                // Build the same key used during capture
+                std::string key = "old_" + std::to_string(expr.arguments[0]->line) + "_" +
+                                           std::to_string(expr.arguments[0]->column);
+                auto it = oldCaptures.find(key);
+                if (it != oldCaptures.end()) {
+                    emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                              static_cast<uint8_t>(it->second));
+                    return;
+                }
+            }
+        }
+    }
+    
     bool hasSpread = false;
     for (const auto& arg : expr.arguments) {
         if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(arg->variant)) {
@@ -988,24 +1074,76 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
 
 void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
     if (stmt.value) {
-        /* 
-        // Optimization: if the value is a function call, we can emit OpCode::TAIL_CALL
-        if (std::holds_alternative<std::shared_ptr<CallExpr>>(stmt.value->variant)) {
-            auto call = std::get<std::shared_ptr<CallExpr>>(stmt.value->variant);
-            compileExpr(call->callee);
-            for (const auto& arg : call->arguments) {
-                compileExpr(arg);
-            }
-            emitBytes(static_cast<uint8_t>(OpCode::TAIL_CALL),
-                      static_cast<uint8_t>(call->arguments.size()));
-            return;
-        }
-        */
         compileExpr(stmt.value);
     } else {
         emitOp(OpCode::LOAD_NIL);
     }
+    
+    // ---- Design-by-Contract: ensures (postconditions) ----
+    // If there are ensures clauses, store the result in a hidden local, run checks, then return.
+    if (currentEnsuresClauses && !currentEnsuresClauses->empty()) {
+        // Store return value into a hidden local named __result__
+        size_t resultSlot = addLocal("__result__");
+        markInitialized();
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                  static_cast<uint8_t>(resultSlot));
+        emitOp(OpCode::POP);
+        
+        // Compile ensures checks, with `result` referring to __result__ local
+        // We temporarily add "result" as an alias for that slot
+        // by injecting a local named "result" pointing to same slot.
+        // The ensures expressions use `result` as the identifier.
+        // We re-load it via LOAD_LOCAL so `result` identifier resolves.
+        // Trick: we just compile the checks directly, allowing `result`
+        // to be resolved by name via the local scope (it IS a local named __result__).
+        // But `result` won't resolve to __result__. We handle it by emitting
+        // ensures checks with a special "result" = __result__ local.
+        size_t resultAliasSlot = addLocal("result");
+        markInitialized();
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                  static_cast<uint8_t>(resultSlot));
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                  static_cast<uint8_t>(resultAliasSlot));
+        emitOp(OpCode::POP);
+        
+        compileContractChecks(*currentEnsuresClauses, false);
+        
+        // Load the return value back and return it
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                  static_cast<uint8_t>(resultSlot));
+    }
+    
     emitReturn();
+}
+
+// Compile precondition (requires) or postcondition (ensures) checks.
+// For each clause: evaluate condition, if false throw a contract error.
+void BytecodeCompiler::compileContractChecks(const std::vector<std::pair<ExprPtr, std::string>>& clauses, bool isPrecondition) {
+    const std::string prefix = isPrecondition ? "Precondition failed" : "Postcondition failed";
+    
+    for (const auto& [condition, message] : clauses) {
+        // We need to compile the condition but intercept any `old(expr)` calls.
+        // We do this by walking the expression and substituting old(expr) nodes
+        // with LOAD_LOCAL for the pre-captured slot.
+        // For now, we compile the expression directly — old() calls will try to
+        // call a function named "old" which we intercept in compileCall via oldCaptures.
+        compileExpr(condition);
+        
+        // If condition is truthy, skip the throw
+        size_t skipThrow = emitJump(OpCode::JUMP_IF_TRUE);
+        
+        // Build error message
+        std::string errorMsg = prefix;
+        if (!message.empty()) {
+            errorMsg += ": " + message;
+        }
+        
+        // Emit throw with error message string
+        emitConstant(Value(errorMsg));
+        emitOp(OpCode::THROW);
+        
+        patchJump(skipThrow);
+    }
 }
 
 void BytecodeCompiler::compileEscape(const EscapeStmt& /*stmt*/) {

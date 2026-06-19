@@ -397,6 +397,9 @@ struct TaskStmt {
     std::vector<StmtPtr> body;
     bool isVariadic = false;
     bool isAsync = false;
+    // Design-by-Contract clauses
+    std::vector<std::pair<ExprPtr, std::string>> requiresClauses; // {condition, message}
+    std::vector<std::pair<ExprPtr, std::string>> ensuresClauses;  // {condition, message}
     
     TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
              std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)

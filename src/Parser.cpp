@@ -493,6 +493,47 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     }
     skipNewlines();
     
+    // Parse Design-by-Contract clauses (requires / ensures)
+    std::vector<std::pair<ExprPtr, std::string>> requiresClauses;
+    std::vector<std::pair<ExprPtr, std::string>> ensuresClauses;
+    
+    while (check(TokenType::REQUIRES) || check(TokenType::ENSURES)) {
+        bool isRequires = match(TokenType::REQUIRES);
+        if (!isRequires) match(TokenType::ENSURES);
+        
+        // Parse one or more comma-separated condition/message pairs
+        do {
+            skipNewlines();
+            ExprPtr condition = expression();
+            std::string message;
+            if (match(TokenType::COMMA)) {
+                // Check if the next thing is a string literal (the message)
+                // vs. another condition (for the next clause)
+                // If it's a string literal, consume as the message
+                if (check(TokenType::STRING)) {
+                    advance();
+                    message = std::get<std::string>(previous().literal);
+                } else {
+                    // Not a string — this comma starts another clause
+                    // We'll push what we have and let the outer loop handle it
+                    if (isRequires) requiresClauses.push_back({condition, message});
+                    else ensuresClauses.push_back({condition, message});
+                    skipNewlines();
+                    // Re-check for another requires/ensures on same line
+                    if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES)) {
+                        // Another condition on the same keyword line
+                        continue;
+                    }
+                    break;
+                }
+            }
+            if (isRequires) requiresClauses.push_back({condition, message});
+            else ensuresClauses.push_back({condition, message});
+        } while (false); // single pair per line; multiple lines handled by outer while
+        
+        skipNewlines();
+    }
+    
     std::vector<StmtPtr> body;
     if (match(TokenType::LBRACE)) {
         skipNewlines();
@@ -508,7 +549,12 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (stmt) body.push_back(stmt);
     }
     
-    return makeTaskStmt(line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
+    auto taskStmt = makeTaskStmt(line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
+    // Attach contract clauses
+    auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskStmt->variant);
+    task.requiresClauses = std::move(requiresClauses);
+    task.ensuresClauses  = std::move(ensuresClauses);
+    return taskStmt;
 }
 
 StmtPtr Parser::giveStatement() {

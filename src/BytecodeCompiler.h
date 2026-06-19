@@ -70,6 +70,11 @@ private:
     // Global slot table: name -> slot index (Issue C optimization)
     std::unordered_map<std::string, uint16_t> globalSlots;
     uint16_t nextGlobalSlot = 0;
+    
+    // Current function's contract clauses (threaded from compileFunction → compileGive)
+    const std::vector<std::pair<ExprPtr, std::string>>* currentEnsuresClauses = nullptr;
+    // Map from old()-expr string key → local slot holding the captured entry value
+    std::unordered_map<std::string, size_t> oldCaptures;
 
     // Allocate or look up a global slot index for a given name.
     // Idempotent: repeated calls for the same name return the same slot.
@@ -110,6 +115,7 @@ private:
     void compileMatch(const MatchStmt& stmt);
     void compileTask(const TaskStmt& stmt);
     void compileGive(const GiveStmt& stmt);
+    void compileContractChecks(const std::vector<std::pair<ExprPtr, std::string>>& clauses, bool isPrecondition);
     void compileUse(const UseStmt& stmt);
     void compileEscape(const EscapeStmt& stmt);
     void compileSkip(const SkipStmt& stmt);

@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <variant>
+#include <optional>
 #include "Token.h"
 
 // Forward declarations
@@ -390,6 +391,13 @@ struct MatchStmt {
 
 
 // Function definition (task)
+// Rate-limit configuration for @ratelimit decorator
+struct RateLimitConfig {
+    int         count;    // max calls per window
+    std::string per;      // "second","minute","hour","day"
+    ExprPtr     keyExpr;  // nullptr = "global"
+};
+
 struct TaskStmt {
     std::string name;
     std::vector<std::string> params;
@@ -402,6 +410,11 @@ struct TaskStmt {
     // Design-by-Contract clauses
     std::vector<std::pair<ExprPtr, std::string>> requiresClauses; // {condition, message}
     std::vector<std::pair<ExprPtr, std::string>> ensuresClauses;  // {condition, message}
+    // old() captures: {hidden_var_name, expr_to_capture}
+    std::vector<std::pair<std::string, ExprPtr>> oldCaptures;
+    // Decorator flags
+    bool isCached = false;
+    std::optional<RateLimitConfig> rateLimit;
     
     TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
              std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)
@@ -428,12 +441,20 @@ enum class MemberVisibility {
     PRIVATE   // hidden
 };
 
+// Validate rule for @validate decorator on model fields
+struct ValidateRule {
+    std::string ruleName;  // "minlen","maxlen","min","max","email","pattern","notnull"
+    ExprPtr     param;     // nullptr for rules without params
+    std::string message;   // custom message or auto-generated
+};
+
 // Model member (property or method)
 struct ModelMember {
     MemberVisibility visibility;
     bool isStatic = false;
     bool isMethod;
     bool isAsync = false;
+    bool isCached = false;   // @cached decorator on methods
     std::string name;
     TypeASTPtr typeHint; // For properties and methods (return type)
     ExprPtr initializer;  // For properties
@@ -441,6 +462,7 @@ struct ModelMember {
     std::vector<TypeASTPtr> paramTypes; // For methods
     std::vector<ExprPtr> defaultValues; // For methods
     std::vector<StmtPtr> body;  // For methods
+    std::vector<ValidateRule> validators; // @validate rules (for properties)
 };
 
 // Static variable declaration (persistent across task calls)
@@ -480,6 +502,10 @@ struct ModelStmt {
     std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
     std::vector<ModelMember> members;
+    // Decorator fields
+    bool audited  = false;     // @audited
+    bool snapshot = false;     // @snapshot
+    std::string persistPath;   // @persist("file") — empty = not persistent
     
     ModelStmt(int line, const std::string& name, const std::string& parent,
               std::vector<std::string> interfaces,

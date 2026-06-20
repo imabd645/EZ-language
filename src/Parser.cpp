@@ -195,22 +195,80 @@ StmtPtr Parser::statement() {
     if (match(TokenType::MATCH)) return matchStatement();
     if (match(TokenType::STATIC)) return staticStatement();
     
+    // ── Collect decorator tokens ──────────────────────────────────────────────
+    // Decorators like @audited, @cached, @persist etc. precede model/task
+    std::vector<TokenType> decorators;
+    std::string persistPath;
+    std::optional<RateLimitConfig> rateLimitCfg;
+    while (check(TokenType::DECORATOR_AUDITED)  || check(TokenType::DECORATOR_SNAPSHOT) ||
+           check(TokenType::DECORATOR_CACHED)   || check(TokenType::DECORATOR_PERSIST)  ||
+           check(TokenType::DECORATOR_VALIDATE) || check(TokenType::DECORATOR_RATELIMIT)) {
+        TokenType kind = peek().type;
+        advance(); // consume decorator token
+        if (kind == TokenType::DECORATOR_PERSIST) {
+            consume(TokenType::LPAREN, "Expected '(' after @persist");
+            Token pathTok = consume(TokenType::STRING, "Expected file path string in @persist");
+            persistPath = std::get<std::string>(pathTok.literal);
+            consume(TokenType::RPAREN, "Expected ')' after @persist path");
+        } else if (kind == TokenType::DECORATOR_RATELIMIT) {
+            consume(TokenType::LPAREN, "Expected '(' after @ratelimit");
+            // count
+            Token countTok = consume(TokenType::NUMBER, "Expected count in @ratelimit");
+            int count = (int)std::get<double>(countTok.literal);
+            consume(TokenType::COMMA, "Expected ',' in @ratelimit");
+            // per: "unit"
+            std::string perStr = "minute";
+            if (check(TokenType::IDENTIFIER) && peek().lexeme == "per") {
+                advance(); advance(); // consume 'per' and ':'
+                Token perTok = consume(TokenType::STRING, "Expected time unit string");
+                perStr = std::get<std::string>(perTok.literal);
+            }
+            rateLimitCfg = RateLimitConfig{count, perStr, nullptr};
+            consume(TokenType::RPAREN, "Expected ')' after @ratelimit arguments");
+        }
+        decorators.push_back(kind);
+        skipNewlines();
+    }
+
     bool isAsync = false;
     if (match(TokenType::ASYNC)) {
         isAsync = true;
     }
     
-    if (match(TokenType::TASK)) return taskStatement(isAsync);
+    if (match(TokenType::TASK)) {
+        auto taskNode = taskStatement(isAsync);
+        // Apply task-level decorators
+        auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskNode->variant);
+        for (auto kind : decorators) {
+            if (kind == TokenType::DECORATOR_CACHED)   task.isCached = true;
+            if (kind == TokenType::DECORATOR_RATELIMIT && rateLimitCfg) task.rateLimit = rateLimitCfg;
+        }
+        return taskNode;
+    }
     if (isAsync) {
         error(previous(), "Expected 'task' after 'async' modifier");
         return nullptr;
     }
     
+    if (match(TokenType::MODEL)) {
+        auto modelNode = modelStatement();
+        // Apply model-level decorators
+        auto& model = *std::get<std::shared_ptr<ModelStmt>>(modelNode->variant);
+        for (auto kind : decorators) {
+            if (kind == TokenType::DECORATOR_AUDITED)  model.audited  = true;
+            if (kind == TokenType::DECORATOR_SNAPSHOT) model.snapshot = true;
+            if (kind == TokenType::DECORATOR_PERSIST)  model.persistPath = persistPath;
+        }
+        return modelNode;
+    }
+    if (!decorators.empty()) {
+        error(previous(), "Decorators can only be applied to 'model' or 'task' declarations");
+    }
+
     if (match(TokenType::GIVE)) return giveStatement();
     if (match(TokenType::ESCAPE)) return escapeStatement();
     if (match(TokenType::SKIP)) return skipStatement();
     if (match(TokenType::LBRACE)) return blockStatement();
-    if (match(TokenType::MODEL)) return modelStatement();
     if (match(TokenType::STRUCT)) return structStatement();
     if (match(TokenType::USE)) return useStatement();
     if (match(TokenType::TRY)) return tryStatement();
@@ -1332,6 +1390,14 @@ StmtPtr Parser::modelStatement() {
                 isAsync = true;
             }
 
+            // Check for @cached on a method
+            bool methodCached = false;
+            if (check(TokenType::DECORATOR_CACHED)) {
+                advance();
+                methodCached = true;
+                skipNewlines();
+            }
+
         // Check for task (method)
         if (match(TokenType::TASK)) {
             // Allow keywords as method names
@@ -1394,6 +1460,7 @@ StmtPtr Parser::modelStatement() {
             member.isStatic = isStatic;
             member.isMethod = true;
             member.isAsync = isAsync;
+            member.isCached = methodCached;
             member.name = methodName.lexeme;
             member.params = params;
             member.paramTypes = paramTypes;
@@ -1427,6 +1494,47 @@ StmtPtr Parser::modelStatement() {
             member.name = propName.lexeme;
             member.typeHint = typeHint;
             member.initializer = initializer;
+            // Parse @validate decorators following the property
+            while (check(TokenType::DECORATOR_VALIDATE)) {
+                advance(); // consume @validate
+                consume(TokenType::LPAREN, "Expected '(' after @validate");
+                std::string rule;
+                ExprPtr param = nullptr;
+                std::string msg;
+                // rule name
+                Token ruleTok = consume(TokenType::STRING, "Expected rule name string in @validate");
+                rule = std::get<std::string>(ruleTok.literal);
+                if (match(TokenType::COMMA)) {
+                    // could be param (number/string) or message string
+                    if (check(TokenType::STRING)) {
+                        Token maybeMsg = peek();
+                        advance();
+                        // if another comma follows, this was the param, next will be message
+                        if (match(TokenType::COMMA)) {
+                            // param is string literal
+                            auto strLit = std::make_shared<LiteralExpr>(std::get<std::string>(maybeMsg.literal));
+                            param = std::make_shared<Expr>(maybeMsg.line, maybeMsg.column, 1, maybeMsg.filename, strLit);
+                            Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
+                            msg = std::get<std::string>(msgTok.literal);
+                        } else {
+                            msg = std::get<std::string>(maybeMsg.literal);
+                        }
+                    } else {
+                        // numeric param
+                        param = expression();
+                        if (match(TokenType::COMMA)) {
+                            Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
+                            msg = std::get<std::string>(msgTok.literal);
+                        }
+                    }
+                }
+                consume(TokenType::RPAREN, "Expected ')' after @validate arguments");
+                ValidateRule vr;
+                vr.ruleName = rule;
+                vr.param    = param;
+                vr.message  = msg.empty() ? ("Validation failed: " + rule) : msg;
+                member.validators.push_back(std::move(vr));
+            }
             members.push_back(member);
         } else {
             error(peek(), "Unexpected token in model body");

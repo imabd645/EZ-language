@@ -5,6 +5,8 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <deque>
+#include <regex>
 #include "Bytecode.h"
 #include "BytecodeCompiler.h"
 #include "Value.h"
@@ -131,6 +133,9 @@ private:
     // ── Global Slot Array (Issue C: O(1) global access) ──────────────────────
     std::vector<Value>       globalSlots;     // indexed global storage
     std::vector<std::string> globalSlotNames; // slot index -> name (for write-through)
+
+    // ── Rate limiter sliding windows (key = taskName:keyExpr) ──────────────────
+    std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);

@@ -479,6 +479,176 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
 
+                CASE_CODE(INTERCEPTED_STORE_PROPERTY) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value value = *(--stackTop);
+                        Value obj   = *(--stackTop);
+
+                        if (!obj.isInstance()) {
+                            // Non-instance: dict or class static — plain store
+                            if (obj.isClass()) {
+                                CHECK_VISIBILITY(obj.asClass(), propName);
+                                obj.asClass()->staticMembers[propName] = value;
+                            } else if (obj.isDictionary()) {
+                                auto dictPtr = obj.asDictionaryPtr();
+                                std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                                dictPtr->map[propName] = value;
+                            } else {
+                                SYNC_IP();
+                                runtimeError("Cannot set property '" + propName + "' on " + obj.typeName());
+                                return;
+                            }
+                            *stackTop++ = value;
+                            DISPATCH();
+                        }
+
+                        auto inst  = obj.asInstance();
+                        auto klass = inst->klass;
+
+                        if (!klass->behaviors.any()) {
+                            // Fast path: no decorator behaviors active
+                            CHECK_VISIBILITY(klass, propName);
+                            inst->setProperty(propName, value);
+                            *stackTop++ = value;
+                            DISPATCH();
+                        }
+
+                        // ── Slow path: behaviors active ──
+                        // 1. VALIDATION — before write
+                        if (klass->behaviors.validated) {
+                            for (const auto& v : klass->validators) {
+                                if (v.field != propName) continue;
+                                bool ok = false;
+                                if (v.rule == "notnull") {
+                                    ok = !value.isNil();
+                                } else if (v.rule == "minlen") {
+                                    ok = value.isString() && (long long)value.asString().size() >= v.param.asInteger();
+                                } else if (v.rule == "maxlen") {
+                                    ok = value.isString() && (long long)value.asString().size() <= v.param.asInteger();
+                                } else if (v.rule == "min") {
+                                    ok = value.asFloat() >= v.param.asFloat();
+                                } else if (v.rule == "max") {
+                                    ok = value.asFloat() <= v.param.asFloat();
+                                } else if (v.rule == "email") {
+                                    const auto& s = value.isString() ? value.asString() : std::string();
+                                    auto at = s.find('@');
+                                    ok = (at != std::string::npos && at > 0 && at < s.size()-1 && s.find('.', at) != std::string::npos);
+                                } else if (v.rule == "pattern") {
+                                    try { ok = std::regex_match(value.asString(), std::regex(v.param.asString())); } catch (...) { ok = false; }
+                                } else { ok = true; }
+                                if (!ok) {
+                                    SYNC_IP();
+                                    runtimeError("ValidationError: " + v.message + " (field '" + propName + "')");
+                                    return;
+                                }
+                            }
+                        }
+
+                        // 2. Capture old value for audit / cache
+                        Value oldValue;
+                        if (klass->behaviors.audited || klass->behaviors.hasCached) {
+                            oldValue = inst->getProperty(propName);
+                        }
+
+                        // 3. Perform write
+                        CHECK_VISIBILITY(klass, propName);
+                        inst->setProperty(propName, value);
+
+                        // 4. Audit record
+                        if (klass->behaviors.audited) {
+                            if (!inst->auditLog) inst->auditLog = new std::vector<AuditEntry>();
+                            AuditEntry e;
+                            e.field     = propName;
+                            e.oldValue  = oldValue;
+                            e.newValue  = value;
+                            e.via       = frame->function->name;
+                            e.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                              std::chrono::system_clock::now().time_since_epoch()).count();
+                            inst->auditLog->push_back(std::move(e));
+                        }
+
+                        // 5. Cache invalidation
+                        if (klass->behaviors.hasCached && inst->cacheStore) {
+                            for (auto& [methodName, cr] : *inst->cacheStore) {
+                                if (cr.deps.count(propName)) cr.dirty = true;
+                            }
+                        }
+
+                        *stackTop++ = value;
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(RATELIMIT_CHECK) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& taskName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        // Stack: [key_string, count, per_string]
+                        Value perVal   = *(--stackTop);
+                        Value countVal = *(--stackTop);
+                        Value keyVal   = *(--stackTop);
+                        std::string key   = taskName + ":" + keyVal.toString();
+                        long long maxCnt  = countVal.isInteger() ? countVal.asInteger() : (long long)countVal.asFloat();
+                        std::string per   = perVal.toString();
+                        long long windowMs = 60000LL;
+                        if (per == "second") windowMs = 1000LL;
+                        else if (per == "minute") windowMs = 60000LL;
+                        else if (per == "hour") windowMs = 3600000LL;
+                        else if (per == "day") windowMs = 86400000LL;
+                        long long now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch()).count();
+                        auto& win = rateLimiterRegistry[key];
+                        while (!win.empty() && now - win.front() > windowMs) win.pop_front();
+                        if ((long long)win.size() >= maxCnt) {
+                            long long waitMs = windowMs - (now - win.front());
+                            SYNC_IP();
+                            runtimeError("RateLimitError: rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
+                            return;
+                        }
+                        win.push_back(now);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(GET_CACHED_RESULT) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value self = frame->slots[0]; // self is first slot
+                        if (self.isInstance()) {
+                            auto inst = self.asInstance();
+                            if (inst->cacheStore) {
+                                auto it = inst->cacheStore->find(methodName);
+                                if (it != inst->cacheStore->end() && !it->second.dirty) {
+                                    *stackTop++ = it->second.result;
+                                    DISPATCH();
+                                }
+                            }
+                        }
+                        *stackTop++ = Value(); // nil = cache miss
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(STORE_CACHED_RESULT) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        Value result = *(stackTop - 1); // peek, don't pop
+                        Value self = frame->slots[0];
+                        if (self.isInstance()) {
+                            auto inst = self.asInstance();
+                            if (!inst->cacheStore) inst->cacheStore = new std::unordered_map<std::string, CachedResult>();
+                            auto& cr = (*inst->cacheStore)[methodName];
+                            cr.result = result;
+                            cr.dirty  = false;
+                        }
+                    }
+                    DISPATCH();
+                }
+
                 CASE_CODE(POP)  --stackTop; DISPATCH();
                 CASE_CODE(DUP)  *stackTop = *(stackTop - 1); stackTop++; DISPATCH();
                 CASE_CODE(DUP2) {
@@ -1392,6 +1562,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         uint8_t memberCount = READ_BYTE();
                         uint8_t interfaceCount = READ_BYTE();
+                        uint8_t validatorCount = READ_BYTE();  // NEW
                         const std::string& className = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         auto klass = std::make_shared<EZClass>(className);
                         
@@ -1430,6 +1601,27 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         // Check for parent class
                         Value parentVal = *(--stackTop);
+
+                        // Pop behavior metadata (pushed deepest, so pop last)
+                        // Stack order (top = last pushed): validators..., persist_path, snapshot_flag, audited_flag
+                        // Pop validators: each is [field, rule, param, message]
+                        for (int i = 0; i < validatorCount; i++) {
+                            FieldValidator fv;
+                            fv.message = (*(--stackTop)).toString();
+                            fv.param   = *(--stackTop);
+                            fv.rule    = (*(--stackTop)).toString();
+                            fv.field   = (*(--stackTop)).toString();
+                            klass->validators.push_back(std::move(fv));
+                        }
+                        if (validatorCount > 0) klass->behaviors.validated = true;
+                        // Pop persist path
+                        klass->persistPath = (*(--stackTop)).toString();
+                        klass->behaviors.persistent = !klass->persistPath.empty();
+                        // Pop snapshot flag
+                        klass->behaviors.snapshot = (*(--stackTop)).asBool();
+                        // Pop audited flag
+                        klass->behaviors.audited = (*(--stackTop)).asBool();
+
                         if (parentVal.isClass()) {
                             klass->parent = parentVal.asClass();
                             // Inherit methods from parent
@@ -2285,6 +2477,101 @@ std::string BytecodeVM::stringify(const Value& val, int line, const std::string&
 void BytecodeVM::initBuiltins() {
     registerBuiltins(*this);
     registerGUIBuiltins(*this);
+
+    // ─ Decorator builtins ──────────────────────────────────────────────────
+
+    // audit(obj) → list of dicts with field/old/new/via/timestamp
+    defineGlobal("audit", Value::makeNativeFunction("audit", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (!args[0].isInstance()) { ctx.runtimeError("audit() expects a model instance"); return Value(); }
+        auto inst = args[0].asInstance();
+        if (!inst->klass->behaviors.audited) { ctx.runtimeError("audit() called on non-@audited model '" + inst->klass->name + "'"); return Value(); }
+        auto result = std::make_shared<EZArray>();
+        if (inst->auditLog) {
+            for (const auto& e : *inst->auditLog) {
+                auto d = std::make_shared<EZDictionary>();
+                d->map["field"]     = Value(e.field);
+                d->map["old"]       = e.oldValue;
+                d->map["new"]       = e.newValue;
+                d->map["via"]       = Value(e.via);
+                d->map["timestamp"] = Value(e.timestamp);
+                result->elements.push_back(Value(d));
+            }
+        }
+        return Value(result);
+    }));
+
+    // audit_clear(obj) → clears audit log
+    defineGlobal("audit_clear", Value::makeNativeFunction("audit_clear", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (args[0].isInstance() && args[0].asInstance()->auditLog)
+            args[0].asInstance()->auditLog->clear();
+        return Value();
+    }));
+
+    // audit_since(obj, timestamp) → list of entries since timestamp
+    defineGlobal("audit_since", Value::makeNativeFunction("audit_since", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (!args[0].isInstance()) { ctx.runtimeError("audit_since() expects a model instance"); return Value(); }
+        auto inst = args[0].asInstance();
+        long long since = args[1].isInteger() ? args[1].asInteger() : (long long)args[1].asFloat();
+        auto result = std::make_shared<EZArray>();
+        if (inst->auditLog) {
+            for (const auto& e : *inst->auditLog) {
+                if (e.timestamp < since) continue;
+                auto d = std::make_shared<EZDictionary>();
+                d->map["field"]     = Value(e.field);
+                d->map["old"]       = e.oldValue;
+                d->map["new"]       = e.newValue;
+                d->map["via"]       = Value(e.via);
+                d->map["timestamp"] = Value(e.timestamp);
+                result->elements.push_back(Value(d));
+            }
+        }
+        return Value(result);
+    }));
+
+    // snapshot(obj) → dict copy of current properties
+    defineGlobal("snapshot", Value::makeNativeFunction("snapshot", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (!args[0].isInstance()) { ctx.runtimeError("snapshot() expects a model instance"); return Value(); }
+        auto inst = args[0].asInstance();
+        if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("snapshot() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
+        auto snap = std::make_shared<EZDictionary>();
+        {
+            std::shared_lock<std::shared_mutex> lk(inst->prop_mutex);
+            for (const auto& [k, v] : inst->properties) snap->map[k] = v;
+        }
+        return Value(snap);
+    }));
+
+    // rollback(obj, snap) → restore properties from snapshot dict
+    defineGlobal("rollback", Value::makeNativeFunction("rollback", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (!args[0].isInstance()) { ctx.runtimeError("rollback() expects a model instance"); return Value(); }
+        auto inst = args[0].asInstance();
+        if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("rollback() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
+        if (!args[1].isDictionary()) { ctx.runtimeError("rollback() second argument must be a snapshot dict"); return Value(); }
+        auto snap = args[1].asDictionaryPtr();
+        for (const auto& [k, v] : snap->map) inst->setProperty(k, v);
+        return Value();
+    }));
+
+    // snapshot_diff(a, b) → dict of changed fields {was, now}
+    defineGlobal("snapshot_diff", Value::makeNativeFunction("snapshot_diff", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
+        if (!args[0].isDictionary() || !args[1].isDictionary()) {
+            ctx.runtimeError("snapshot_diff() expects two snapshot dicts"); return Value();
+        }
+        auto a = args[0].asDictionaryPtr();
+        auto b = args[1].asDictionaryPtr();
+        auto result = std::make_shared<EZDictionary>();
+        for (const auto& [k, vb] : b->map) {
+            auto it = a->map.find(k);
+            Value va = (it != a->map.end()) ? it->second : Value();
+            if (va.toString() != vb.toString()) {
+                auto entry = std::make_shared<EZDictionary>();
+                entry->map["was"] = va;
+                entry->map["now"] = vb;
+                result->map[k] = Value(entry);
+            }
+        }
+        return Value(result);
+    }));
 }
 
 // ============================================================================

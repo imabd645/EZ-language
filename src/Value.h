@@ -8,6 +8,8 @@
 #include <variant>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
+#include <chrono>
 #include <future>
 #include <mutex>
 #include <shared_mutex>
@@ -322,31 +324,88 @@ struct NativeFunction {
         : name(name), arity(arity), function(fn) {}
 };
 
+// ── Behavior flags — one bit per active decorator ──────────────────────────────
+struct BehaviorFlags {
+    bool audited    : 1;
+    bool snapshot   : 1;
+    bool persistent : 1;
+    bool validated  : 1;
+    bool hasCached  : 1;
+    bool any() const { return audited || snapshot || persistent || validated || hasCached; }
+};
+
+// Per-field validator (lives on EZClass)
+struct FieldValidator {
+    std::string field;
+    std::string rule;    // "minlen","maxlen","min","max","email","pattern","notnull"
+    Value       param;   // Value::NIL for rules without params
+    std::string message;
+};
+
+// Audit entry (lives in EZInstance's auditLog)
+struct AuditEntry {
+    std::string field;
+    Value       oldValue;
+    Value       newValue;
+    std::string via;       // calling task name
+    long long   timestamp; // ms since epoch
+};
+
+// Cached method result (lives in EZInstance's cacheStore)
+struct CachedResult {
+    Value                            result;
+    std::unordered_set<std::string>  deps;    // self fields read during computation
+    bool                             dirty = true;
+};
+
 struct EZClass : public GCObject {
     std::string name;
     std::shared_ptr<EZClass> parent;
     std::unordered_map<std::string, Value> methods;
     std::unordered_map<std::string, Value> staticMembers;
-    std::unordered_map<std::string, bool> visibility;
+    std::unordered_map<std::string, bool>  visibility;
     
     // Legacy support for AST Interpreter
     std::vector<std::string> initParams;
     std::vector<StmtPtr> initBody;
 
+    // ── Decorator metadata ────────────────────────────────────────────────
+    BehaviorFlags behaviors = {false,false,false,false,false};
+    std::string persistPath;
+    std::vector<FieldValidator> validators;
+    std::unordered_set<std::string> cachedMethods;
+
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
     void gc_mark() override;
-    void gc_clear() override { parent = nullptr; methods.clear(); staticMembers.clear(); }
+    void gc_clear() override {
+        parent = nullptr;
+        methods.clear();
+        staticMembers.clear();
+        for (auto& v : validators) v.param = Value();
+    }
 };
 
 struct EZInstance : public GCObject {
     std::shared_ptr<EZClass> klass;
     std::unordered_map<std::string, Value> properties;
     mutable std::shared_mutex prop_mutex; // protects properties for concurrent access
+
+    // ── Decorator runtime state (lazily allocated) ───────────────────────────
+    std::vector<AuditEntry>*                       auditLog   = nullptr;
+    std::unordered_map<std::string, CachedResult>* cacheStore = nullptr;
+
     EZInstance(std::shared_ptr<EZClass> klass) : klass(klass) {}
+    ~EZInstance() {
+        delete auditLog;
+        delete cacheStore;
+    }
     void gc_mark() override;
     void gc_clear() override {
         std::unique_lock<std::shared_mutex> lk(prop_mutex);
-        properties.clear(); klass = nullptr;
+        properties.clear();
+        klass = nullptr;
+        if (auditLog)   auditLog->clear();
+        if (cacheStore) cacheStore->clear();
     }
     
     Value getProperty(const std::string& name) {

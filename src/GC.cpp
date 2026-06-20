@@ -36,8 +36,23 @@ void EZInstance::gc_mark() {
     if (gc_marked) return;
     gc_marked = true;
     if (klass) klass->gc_mark();
-    std::shared_lock<std::shared_mutex> lk(prop_mutex);
-    for (auto& pair : properties) GarbageCollector::markValue(pair.second);
+    {
+        std::shared_lock<std::shared_mutex> lk(prop_mutex);
+        for (auto& pair : properties) GarbageCollector::markValue(pair.second);
+    }
+    // Mark audit log values
+    if (auditLog) {
+        for (auto& e : *auditLog) {
+            GarbageCollector::markValue(e.oldValue);
+            GarbageCollector::markValue(e.newValue);
+        }
+    }
+    // Mark cached results
+    if (cacheStore) {
+        for (auto& [name, cr] : *cacheStore) {
+            GarbageCollector::markValue(cr.result);
+        }
+    }
 }
 
 void EZFunction::gc_mark() {
@@ -78,6 +93,8 @@ void EZClass::gc_mark() {
     if (parent) parent->gc_mark();
     for (auto& pair : methods) GarbageCollector::markValue(pair.second);
     for (auto& pair : staticMembers) GarbageCollector::markValue(pair.second);
+    // Mark validator param values
+    for (auto& v : validators) GarbageCollector::markValue(v.param);
 }
 
 void Environment::gc_mark() {

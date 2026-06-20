@@ -136,7 +136,15 @@ enum class OpCode : uint8_t {
     LOOP_LESS_EQ_LOCAL,    // forward loop:  if local[loopSlot] <= local[endSlot] fall-through; else jump exit
     LOOP_GREATER_EQ_LOCAL, // reverse loop:  if local[loopSlot] >= local[endSlot] fall-through; else jump exit
 
-    
+    // \u2500\u2500 Decorator opcodes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Property store with behavior dispatch (replaces STORE_PROPERTY for instances)
+    INTERCEPTED_STORE_PROPERTY, // name_idx(2): validation \u2192 capture old \u2192 write \u2192 audit \u2192 cache-invalidate
+    // Rate-limit check at task entry
+    RATELIMIT_CHECK,            // name_idx(2): key/count/per on stack; throws RateLimitError on excess
+    // Cache helpers for @cached methods
+    GET_CACHED_RESULT,          // name_idx(2): push cached value (or nil if dirty)
+    STORE_CACHED_RESULT,        // name_idx(2): store TOS into method cache, mark clean
+
     END = 255            // End of chunk marker
 };
 

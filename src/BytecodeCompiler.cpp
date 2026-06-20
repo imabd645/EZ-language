@@ -142,6 +142,28 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         }
     }
 
+    // ---- @ratelimit check ----
+    if (task.rateLimit.has_value()) {
+        const auto& rl = task.rateLimit.value();
+        // Push: key (string "global"), count, per
+        size_t globalKey = identifierConstant("global");
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((globalKey >> 8) & 0xFF), static_cast<uint8_t>(globalKey & 0xFF));
+        // Push count as number
+        double countVal = static_cast<double>(rl.count);
+        int constIdx = (int)makeConstant(Constant(countVal));
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
+        // Push per-string
+        size_t perIdx = identifierConstant(rl.per);
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((perIdx >> 8) & 0xFF), static_cast<uint8_t>(perIdx & 0xFF));
+        // Emit RATELIMIT_CHECK with task name as key
+        size_t nameIdx = identifierConstant(task.name);
+        emitOp(OpCode::RATELIMIT_CHECK);
+        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF), static_cast<uint8_t>(nameIdx & 0xFF));
+    }
+
     // ---- Design-by-Contract: requires (preconditions) ----
     // Emitted AFTER default params are set, so they can reference params by name.
     if (!disableContracts && !task.requiresClauses.empty()) {
@@ -700,7 +722,7 @@ void BytecodeCompiler::compileSet(const SetExpr& expr) {
     compileExpr(expr.object);
     compileExpr(expr.value);
     size_t nameIdx = identifierConstant(expr.name);
-    emitOp(OpCode::STORE_PROPERTY);
+    emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
     emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(nameIdx & 0xFF));
 }
@@ -1456,7 +1478,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 emitOp(OpCode::LOAD_LOCAL);
                 emitByte(static_cast<uint8_t>(slot));
                 
-                emitOp(OpCode::STORE_PROPERTY);
+                emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
                 size_t propIdx = identifierConstant(local.name);
                 emitBytes(static_cast<uint8_t>((propIdx >> 8) & 0xFF),
                           static_cast<uint8_t>(propIdx & 0xFF));
@@ -1683,13 +1705,44 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         }
     }
 
-    // 6. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount
+    // 6. Push behavior metadata onto stack (popped by MAKE_CLASS handler)
+    // Push audited flag
+    emitOp(stmt.audited ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
+    // Push snapshot flag
+    emitOp(stmt.snapshot ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
+    // Push persist path (empty = not persistent)
+    size_t persistIdx = identifierConstant(stmt.persistPath);
+    emitOp(OpCode::LOAD_CONST);
+    emitBytes(static_cast<uint8_t>((persistIdx >> 8) & 0xFF),
+              static_cast<uint8_t>(persistIdx & 0xFF));
+    // Push validator metadata (field, rule, param, message) for each @validate rule
+    int validatorCount = 0;
+    for (const auto& member : stmt.members) {
+        if (!member.isMethod) {
+            for (const auto& vr : member.validators) {
+                size_t fnIdx = identifierConstant(member.name);
+                emitOp(OpCode::LOAD_CONST);
+                emitBytes(static_cast<uint8_t>((fnIdx >> 8) & 0xFF), static_cast<uint8_t>(fnIdx & 0xFF));
+                size_t rIdx = identifierConstant(vr.ruleName);
+                emitOp(OpCode::LOAD_CONST);
+                emitBytes(static_cast<uint8_t>((rIdx >> 8) & 0xFF), static_cast<uint8_t>(rIdx & 0xFF));
+                if (vr.param) { compileExpr(vr.param); } else { emitOp(OpCode::LOAD_NIL); }
+                size_t mIdx = identifierConstant(vr.message);
+                emitOp(OpCode::LOAD_CONST);
+                emitBytes(static_cast<uint8_t>((mIdx >> 8) & 0xFF), static_cast<uint8_t>(mIdx & 0xFF));
+                validatorCount++;
+            }
+        }
+    }
+
+    // 7. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount, validatorCount
     size_t classNameIdx = identifierConstant(stmt.name);
     emitOp(OpCode::MAKE_CLASS);
     emitBytes(static_cast<uint8_t>((classNameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(classNameIdx & 0xFF));
     emitByte(static_cast<uint8_t>(memberCount));
     emitByte(static_cast<uint8_t>(stmt.interfaces.size()));
+    emitByte(static_cast<uint8_t>(validatorCount));   // NEW: validator count
     
     // 6. Store class in variable (global by default, local if in a module)
     if (current->scopeDepth > 0) {

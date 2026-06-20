@@ -1566,7 +1566,29 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& className = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         auto klass = std::make_shared<EZClass>(className);
                         
-                        // Interfaces are on top
+                        // 1. Pop behavior metadata (pushed last, so pop first)
+                        // Pop validators: each is [field, rule, param, message]
+                        for (int i = 0; i < validatorCount; i++) {
+                            FieldValidator fv;
+                            fv.message = (*(--stackTop)).toString();
+                            fv.param   = *(--stackTop);
+                            fv.rule    = (*(--stackTop)).toString();
+                            fv.field   = (*(--stackTop)).toString();
+                            klass->validators.push_back(std::move(fv));
+                        }
+                        if (validatorCount > 0) klass->behaviors.validated = true;
+                        
+                        // Pop persist path
+                        klass->persistPath = (*(--stackTop)).toString();
+                        klass->behaviors.persistent = !klass->persistPath.empty();
+                        
+                        // Pop snapshot flag
+                        klass->behaviors.snapshot = (*(--stackTop)).asBool();
+                        
+                        // Pop audited flag
+                        klass->behaviors.audited = (*(--stackTop)).asBool();
+
+                        // 2. Pop Interfaces
                         std::vector<std::shared_ptr<EZInterface>> interfaces;
                         for (int i = 0; i < interfaceCount; i++) {
                             Value v = *(--stackTop);
@@ -1575,6 +1597,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
 
+                        // 3. Pop Members
                         for (int i = 0; i < memberCount; i++) {
                             Value isPublicVal = *(--stackTop);
                             Value isStaticVal = *(--stackTop);
@@ -1599,28 +1622,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
 
-                        // Check for parent class
+                        // 4. Pop Parent class (pushed first, so pop last)
                         Value parentVal = *(--stackTop);
-
-                        // Pop behavior metadata (pushed deepest, so pop last)
-                        // Stack order (top = last pushed): validators..., persist_path, snapshot_flag, audited_flag
-                        // Pop validators: each is [field, rule, param, message]
-                        for (int i = 0; i < validatorCount; i++) {
-                            FieldValidator fv;
-                            fv.message = (*(--stackTop)).toString();
-                            fv.param   = *(--stackTop);
-                            fv.rule    = (*(--stackTop)).toString();
-                            fv.field   = (*(--stackTop)).toString();
-                            klass->validators.push_back(std::move(fv));
-                        }
-                        if (validatorCount > 0) klass->behaviors.validated = true;
-                        // Pop persist path
-                        klass->persistPath = (*(--stackTop)).toString();
-                        klass->behaviors.persistent = !klass->persistPath.empty();
-                        // Pop snapshot flag
-                        klass->behaviors.snapshot = (*(--stackTop)).asBool();
-                        // Pop audited flag
-                        klass->behaviors.audited = (*(--stackTop)).asBool();
 
                         if (parentVal.isClass()) {
                             klass->parent = parentVal.asClass();

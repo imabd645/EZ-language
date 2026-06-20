@@ -1469,86 +1469,83 @@ StmtPtr Parser::modelStatement() {
             member.body = body;
             members.push_back(member);
         } else {
-            // Check for @validate decorators before a property
-            std::vector<ValidateRule> propValidators;
-            while (check(TokenType::DECORATOR_VALIDATE)) {
-                advance(); // consume @validate
-                consume(TokenType::LPAREN, "Expected '(' after @validate");
-                std::string rule;
-                ExprPtr param = nullptr;
-                std::string msg;
-                // rule name
-                Token ruleTok = consume(TokenType::STRING, "Expected rule name string in @validate");
-                rule = std::get<std::string>(ruleTok.literal);
-                if (match(TokenType::COMMA)) {
-                // could be param (number/string) or message string
-                if (check(TokenType::STRING)) {
-                    Token maybeMsg = peek();
-                    advance();
-                    // if another comma follows, this was the param, next will be message
-                    if (match(TokenType::COMMA)) {
-                        // param is string literal
-                        auto strLit = std::make_shared<LiteralExpr>(std::get<std::string>(maybeMsg.literal));
-                        param = std::make_shared<Expr>(maybeMsg.line, maybeMsg.column, 1, maybeMsg.filename, strLit);
-                        Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
-                        msg = std::get<std::string>(msgTok.literal);
-                    } else {
-                        msg = std::get<std::string>(maybeMsg.literal);
-                    }
-                } else {
-                    // numeric param
-                    param = expression();
-                    if (match(TokenType::COMMA)) {
-                        Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
-                        msg = std::get<std::string>(msgTok.literal);
-                    }
+            // Property declaration
+            if (isAsync) {
+                error(peek(), "Expected 'task' after 'async' modifier");
+                advance(); // Avoid infinite loop
+            }
+            else if (check(TokenType::IDENTIFIER)) {
+                Token propName = advance();
+                
+                TypeASTPtr typeHint = nullptr;
+                if (match(TokenType::COLON)) {
+                    typeHint = parseType();
                 }
-            }
-            consume(TokenType::RPAREN, "Expected ')' after @validate arguments");
-            ValidateRule vr;
-            vr.ruleName = rule;
-            vr.param    = param;
-            vr.message  = msg.empty() ? ("Validation failed: " + rule) : msg;
-            propValidators.push_back(std::move(vr));
-            skipNewlines();
-        }
-        skipNewlines();
-
-        // Property declaration
-        if (isAsync) {
-            error(peek(), "Expected 'task' after 'async' modifier");
-            advance(); // Avoid infinite loop
-        }
-        else if (check(TokenType::IDENTIFIER)) {
-            Token propName = advance();
-            
-            TypeASTPtr typeHint = nullptr;
-            if (match(TokenType::COLON)) {
-                typeHint = parseType();
-            }
-            
-            ExprPtr initializer = nullptr;
-            if (match(TokenType::EQUAL)) {
-                initializer = expression();
-            }
-            
-            ModelMember member;
-            member.visibility = visibility;
-            member.isStatic = isStatic;
-            member.isMethod = false;
-            member.name = propName.lexeme;
-            member.typeHint = typeHint;
-            member.initializer = initializer;
-            member.validators = std::move(propValidators);
-            members.push_back(member);
-        } else {
-            if (!propValidators.empty()) {
-                error(peek(), "Expected property declaration after @validate");
+                
+                ExprPtr initializer = nullptr;
+                if (match(TokenType::EQUAL)) {
+                    initializer = expression();
+                }
+                
+                skipNewlines();
+                
+                // Parse @validate decorators following the property
+                std::vector<ValidateRule> propValidators;
+                while (check(TokenType::DECORATOR_VALIDATE)) {
+                    advance(); // consume @validate
+                    consume(TokenType::LPAREN, "Expected '(' after @validate");
+                    std::string rule;
+                    ExprPtr param = nullptr;
+                    std::string msg;
+                    // rule name
+                    Token ruleTok = consume(TokenType::STRING, "Expected rule name string in @validate");
+                    rule = std::get<std::string>(ruleTok.literal);
+                    if (match(TokenType::COMMA)) {
+                        // could be param (number/string) or message string
+                        if (check(TokenType::STRING)) {
+                            Token maybeMsg = peek();
+                            advance();
+                            // if another comma follows, this was the param, next will be message
+                            if (match(TokenType::COMMA)) {
+                                // param is string literal
+                                auto strLit = std::make_shared<LiteralExpr>(std::get<std::string>(maybeMsg.literal));
+                                param = std::make_shared<Expr>(maybeMsg.line, maybeMsg.column, 1, maybeMsg.filename, strLit);
+                                Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
+                                msg = std::get<std::string>(msgTok.literal);
+                            } else {
+                                msg = std::get<std::string>(maybeMsg.literal);
+                            }
+                        } else {
+                            // numeric param
+                            param = expression();
+                            if (match(TokenType::COMMA)) {
+                                Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
+                                msg = std::get<std::string>(msgTok.literal);
+                            }
+                        }
+                    }
+                    consume(TokenType::RPAREN, "Expected ')' after @validate arguments");
+                    ValidateRule vr;
+                    vr.ruleName = rule;
+                    vr.param    = param;
+                    vr.message  = msg.empty() ? ("Validation failed: " + rule) : msg;
+                    propValidators.push_back(std::move(vr));
+                    skipNewlines();
+                }
+                
+                ModelMember member;
+                member.visibility = visibility;
+                member.isStatic = isStatic;
+                member.isMethod = false;
+                member.name = propName.lexeme;
+                member.typeHint = typeHint;
+                member.initializer = initializer;
+                member.validators = std::move(propValidators);
+                members.push_back(member);
             } else {
                 error(peek(), "Unexpected token in model body");
+                advance(); // Avoid infinite loop
             }
-            advance(); // Avoid infinite loop
-        }
         }
         }
         

@@ -879,9 +879,9 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
     auto startLit = std::get_if<std::shared_ptr<LiteralExpr>>(&stmt.start->variant);
     auto endLit = std::get_if<std::shared_ptr<LiteralExpr>>(&stmt.end->variant);
     if (startLit && endLit) {
-        if ((*startLit)->value.index() == 1 && (*endLit)->value.index() == 1) { // DOUBLE
+        if (std::holds_alternative<double>((*startLit)->value) && std::holds_alternative<double>((*endLit)->value)) {
             if (std::get<double>((*startLit)->value) > std::get<double>((*endLit)->value)) isReverse = true;
-        } else if ((*startLit)->value.index() == 2 && (*endLit)->value.index() == 2) { // INT (long long)
+        } else if (std::holds_alternative<long long>((*startLit)->value) && std::holds_alternative<long long>((*endLit)->value)) {
             if (std::get<long long>((*startLit)->value) > std::get<long long>((*endLit)->value)) isReverse = true;
         }
     }

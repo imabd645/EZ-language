@@ -214,15 +214,15 @@ StmtPtr Parser::statement() {
             consume(TokenType::LPAREN, "Expected '(' after @ratelimit");
             // count
             Token countTok = consume(TokenType::NUMBER, "Expected count in @ratelimit");
-            int count = (int)std::get<double>(countTok.literal);
-            consume(TokenType::COMMA, "Expected ',' in @ratelimit");
-            // per: "unit"
-            std::string perStr = "minute";
-            if (check(TokenType::IDENTIFIER) && peek().lexeme == "per") {
-                advance(); advance(); // consume 'per' and ':'
-                Token perTok = consume(TokenType::STRING, "Expected time unit string");
-                perStr = std::get<std::string>(perTok.literal);
+            int count = 0;
+            if (std::holds_alternative<long long>(countTok.literal)) {
+                count = (int)std::get<long long>(countTok.literal);
+            } else {
+                count = (int)std::get<double>(countTok.literal);
             }
+            consume(TokenType::COMMA, "Expected ',' in @ratelimit");
+            Token perTok = consume(TokenType::STRING, "Expected time unit string");
+            std::string perStr = std::get<std::string>(perTok.literal);
             rateLimitCfg = RateLimitConfig{count, perStr, nullptr};
             consume(TokenType::RPAREN, "Expected ')' after @ratelimit arguments");
         }
@@ -1468,19 +1468,19 @@ StmtPtr Parser::modelStatement() {
             member.defaultValues = defaultValues;
             member.body = body;
             members.push_back(member);
-        }
-        // Check for @validate decorators before a property
-        std::vector<ValidateRule> propValidators;
-        while (check(TokenType::DECORATOR_VALIDATE)) {
-            advance(); // consume @validate
-            consume(TokenType::LPAREN, "Expected '(' after @validate");
-            std::string rule;
-            ExprPtr param = nullptr;
-            std::string msg;
-            // rule name
-            Token ruleTok = consume(TokenType::STRING, "Expected rule name string in @validate");
-            rule = std::get<std::string>(ruleTok.literal);
-            if (match(TokenType::COMMA)) {
+        } else {
+            // Check for @validate decorators before a property
+            std::vector<ValidateRule> propValidators;
+            while (check(TokenType::DECORATOR_VALIDATE)) {
+                advance(); // consume @validate
+                consume(TokenType::LPAREN, "Expected '(' after @validate");
+                std::string rule;
+                ExprPtr param = nullptr;
+                std::string msg;
+                // rule name
+                Token ruleTok = consume(TokenType::STRING, "Expected rule name string in @validate");
+                rule = std::get<std::string>(ruleTok.literal);
+                if (match(TokenType::COMMA)) {
                 // could be param (number/string) or message string
                 if (check(TokenType::STRING)) {
                     Token maybeMsg = peek();
@@ -1546,6 +1546,7 @@ StmtPtr Parser::modelStatement() {
                 error(peek(), "Unexpected token in model body");
             }
             advance(); // Avoid infinite loop
+        }
         }
         }
         

@@ -1510,7 +1510,9 @@ StmtPtr Parser::modelStatement() {
             vr.param    = param;
             vr.message  = msg.empty() ? ("Validation failed: " + rule) : msg;
             propValidators.push_back(std::move(vr));
+            skipNewlines();
         }
+        skipNewlines();
 
         // Property declaration
         if (isAsync) {

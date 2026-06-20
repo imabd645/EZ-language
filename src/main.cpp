@@ -18,6 +18,8 @@
 #include <windows.h>
 #include <cstdint>
 
+bool g_disableContracts = false;
+
 void signalHandler(int sig) {
     std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
     _exit(139);
@@ -77,6 +79,7 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     }
     
     BytecodeCompiler compiler;
+    compiler.disableContracts = g_disableContracts;
     
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
@@ -176,6 +179,7 @@ void compileFileToEzc(const std::string& path) {
     if (!typeChecker.check(statements, builtins)) exit(65);
     
     BytecodeCompiler compiler;
+    compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
         std::cerr << " Error: " << result.error << std::endl;
@@ -226,6 +230,7 @@ void dumpFileToEzasm(const std::string& path) {
     if (!typeChecker.check(statements, builtins)) exit(65);
     
     BytecodeCompiler compiler;
+    compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
         std::cerr << " Error: " << result.error << std::endl;
@@ -569,6 +574,7 @@ void runRepl(bool traceExecution = false) {
     BytecodeVM vm(globalEnv);
     vm.traceExecution = traceExecution;
     BytecodeCompiler compiler;
+    compiler.disableContracts = g_disableContracts;
     std::string line;
     std::string multiline;
     int openBraces = 0;
@@ -785,8 +791,11 @@ int main(int argc, char* argv[]) {
                     compileToEzc = true;
                 } else if (arg == "--dump" || arg == "-d" || arg == "--ezasm") {
                     dumpToEzasm = true;
+                } else if (arg == "--no-contracts") {
+                    g_disableContracts = true;
                 }
             }
+
             if (compileToEzc) {
                 compileFileToEzc(cmd);
             } else if (dumpToEzasm) {
@@ -803,6 +812,8 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--trace") {
             traceExecution = true;
+        } else if (arg == "--no-contracts") {
+            g_disableContracts = true;
         }
     }
     runRepl(traceExecution);

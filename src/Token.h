@@ -42,6 +42,7 @@ enum class TokenKind {
     OTHER,
     REPEAT,
     TO,
+    STEP,
     WHILE,
     USE,
     TASK,
@@ -113,6 +114,8 @@ enum class TokenKind {
     DOT,
     COLON,
     QUESTION_MARK,
+    QUESTION_QUESTION,
+    QUESTION_DOT,
     PIPE,
     ARROW,
     NEWLINE,
@@ -161,7 +164,9 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::OTHER: return "OTHER";
         case TokenType::REPEAT: return "REPEAT";
         case TokenType::TO: return "TO";
+        case TokenType::STEP: return "STEP";
         case TokenType::WHILE: return "WHILE";
+        case TokenType::USE: return "USE";
         case TokenType::TASK: return "TASK";
         case TokenType::GIVE: return "GIVE";
         case TokenType::ESCAPE: return "ESCAPE";
@@ -217,6 +222,8 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::DOT: return "DOT";
         case TokenType::COLON: return "COLON";
         case TokenType::QUESTION_MARK: return "QUESTION_MARK";
+        case TokenType::QUESTION_QUESTION: return "QUESTION_QUESTION";
+        case TokenType::QUESTION_DOT: return "QUESTION_DOT";
         case TokenType::PIPE: return "PIPE";
         case TokenType::ARROW: return "ARROW";
         case TokenType::NEWLINE: return "NEWLINE";

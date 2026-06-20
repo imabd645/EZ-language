@@ -144,14 +144,14 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
 
     // ---- Design-by-Contract: requires (preconditions) ----
     // Emitted AFTER default params are set, so they can reference params by name.
-    if (!task.requiresClauses.empty()) {
+    if (!disableContracts && !task.requiresClauses.empty()) {
         compileContractChecks(task.requiresClauses, true);
     }
     
     // ---- Design-by-Contract: old() capture for ensures ----
     // Scan ensures clauses for old(expr) calls and capture values into hidden locals.
     oldCaptures.clear();
-    if (!task.ensuresClauses.empty()) {
+    if (!disableContracts && !task.ensuresClauses.empty()) {
         // We do a simple text scan of the ensures expressions looking for CallExpr
         // with callee name "old". We capture each unique old(expr) into a hidden local.
         std::function<void(const ExprPtr&)> captureOldExprs = [&](const ExprPtr& e) {
@@ -1080,8 +1080,8 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
     }
     
     // ---- Design-by-Contract: ensures (postconditions) ----
-    // If there are ensures clauses, store the result in a hidden local, run checks, then return.
-    if (currentEnsuresClauses && !currentEnsuresClauses->empty()) {
+    // Check postconditions (ensures) before returning
+    if (!disableContracts && currentEnsuresClauses && !currentEnsuresClauses->empty()) {
         // Store return value into a hidden local named __result__
         size_t resultSlot = addLocal("__result__");
         markInitialized();
@@ -1119,6 +1119,7 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
 // Compile precondition (requires) or postcondition (ensures) checks.
 // For each clause: evaluate condition, if false throw a contract error.
 void BytecodeCompiler::compileContractChecks(const std::vector<std::pair<ExprPtr, std::string>>& clauses, bool isPrecondition) {
+    if (disableContracts) return;
     const std::string prefix = isPrecondition ? "Precondition failed" : "Postcondition failed";
     
     for (const auto& [condition, message] : clauses) {

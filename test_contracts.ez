@@ -1,0 +1,112 @@
+// ====================================================
+// Design by Contract Test — requires / ensures / old()
+// ====================================================
+
+// ---- Test 1: Basic requires (should PASS) ----
+task divide(a, b)
+    requires b != 0, "Cannot divide by zero"
+    requires a >= 0, "Numerator must be non-negative"
+    ensures result >= 0, "Result must be non-negative"
+{
+    give a / b
+}
+
+out "Test 1: divide(10, 2) ="
+out divide(10, 2)
+
+out "Test 2: divide(9, 3) ="
+out divide(9, 3)
+
+
+// ---- Test 2: requires violation (should THROW) ----
+out "Test 3: divide(10, 0) — expect precondition error:"
+try {
+    out divide(10, 0)
+} catch e {
+    out e
+}
+
+
+// ---- Test 3: negative numerator (should THROW) ----
+out "Test 4: divide(-5, 2) — expect precondition error:"
+try {
+    out divide(-5, 2)
+} catch e {
+    out e
+}
+
+
+// ---- Test 4: ensures violation (should THROW) ----
+task bad_abs(x)
+    ensures result >= 0, "Result must be non-negative"
+{
+    give x - 100   // Deliberately wrong — will be negative for small x
+}
+
+out "Test 5: bad_abs(5) — expect postcondition error:"
+try {
+    out bad_abs(5)
+} catch e {
+    out e
+}
+
+out "Test 6: bad_abs(200) — should pass ensures:"
+out bad_abs(200)
+
+
+// ---- Test 5: Multiple requires clauses ----
+task clamp(value, lo, hi)
+    requires lo <= hi, "lo must be <= hi"
+    requires value >= lo, "value below minimum"
+    requires value <= hi, "value above maximum"
+{
+    give value
+}
+
+out "Test 7: clamp(5, 1, 10) ="
+out clamp(5, 1, 10)
+
+out "Test 8: clamp(0, 1, 10) — expect precondition error:"
+try {
+    out clamp(0, 1, 10)
+} catch e {
+    out e
+}
+
+
+// ---- Test 6: old() — capture value at function entry ----
+task withdraw(balance, amount)
+    requires amount > 0, "Amount must be positive"
+    requires amount <= balance, "Insufficient funds"
+    ensures result == old(balance) - amount, "Balance must decrease by exact amount"
+{
+    give balance - amount
+}
+
+out "Test 9: withdraw(100, 30) ="
+out withdraw(100, 30)
+
+out "Test 10: withdraw(100, 0) — expect precondition error:"
+try {
+    out withdraw(100, 0)
+} catch e {
+    out e
+}
+
+out "Test 11: withdraw(50, 200) — expect precondition error:"
+try {
+    out withdraw(50, 200)
+} catch e {
+    out e
+}
+
+
+// ---- Test 7: No contracts — normal function (regression check) ----
+task add(a, b) {
+    give a + b
+}
+
+out "Test 12: add(3, 4) ="
+out add(3, 4)
+
+out "=== All contract tests complete ==="

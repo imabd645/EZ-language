@@ -9,6 +9,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"other", TokenType::OTHER},
     {"repeat", TokenType::REPEAT},
     {"to", TokenType::TO},
+    {"step", TokenType::STEP},
     {"while", TokenType::WHILE},
     {"use", TokenType::USE},
     {"task", TokenType::TASK},
@@ -115,7 +116,15 @@ void Lexer::scanToken() {
             }
             break;
         case ':': addToken(TokenType::COLON); break;
-        case '?': addToken(TokenType::QUESTION_MARK); break;
+        case '?':
+            if (match('?')) {
+                addToken(TokenType::QUESTION_QUESTION);
+            } else if (match('.')) {
+                addToken(TokenType::QUESTION_DOT);
+            } else {
+                addToken(TokenType::QUESTION_MARK);
+            }
+            break;
         case '+':
             if (match('=')) {
                 addToken(TokenType::PLUS_EQUAL);
@@ -296,11 +305,30 @@ void Lexer::scanString() {
     char quote = source[start];
     std::string value;
     
-    while (!isAtEnd() && peek() != quote) {
-        if (peek() == '\n') {
-            error("Unterminated string");
-            return;
+    bool isMultiline = false;
+    if (quote == '"' && peek() == '"' && peekNext() == '"') {
+        isMultiline = true;
+        advance(); // consume 2nd quote
+        advance(); // consume 3rd quote
+    }
+    
+    while (!isAtEnd()) {
+        if (isMultiline) {
+            if (peek() == '"' && peekNext() == '"' && current + 2 < source.length() && source[current + 2] == '"') {
+                break;
+            }
+            if (peek() == '\n') {
+                line++;
+                column = 1;
+            }
+        } else {
+            if (peek() == quote) break;
+            if (peek() == '\n') {
+                error("Unterminated string");
+                return;
+            }
         }
+        
         if (peek() == '\\' && !isAtEnd()) {
             advance();
             char escaped = advance();
@@ -339,7 +367,12 @@ void Lexer::scanString() {
         return;
     }
     
-    advance(); // Closing quote
+    if (isMultiline) {
+        advance(); advance(); advance(); // consume closing """
+    } else {
+        advance(); // consume closing quote
+    }
+    
     addToken(TokenType::STRING, value);
 }
 

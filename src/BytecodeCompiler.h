@@ -18,6 +18,9 @@ class BytecodeCompiler {
 public:
     BytecodeCompiler();
     
+    // Configuration
+    bool disableContracts = false;
+    
     // Compile AST statements to bytecode
     CompileResult compile(const std::vector<StmtPtr>& statements);
     

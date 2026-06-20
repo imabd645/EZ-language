@@ -589,6 +589,8 @@ void BytecodeCompiler::compileLogical(const LogicalExpr& expr) {
     size_t jumpOffset;
     if (expr.op == TokenType::AND) {
         jumpOffset = emitJump(OpCode::JUMP_IF_FALSE);
+    } else if (expr.op == TokenType::QUESTION_QUESTION) {
+        jumpOffset = emitJump(OpCode::JUMP_IF_NOT_NIL);
     } else {
         jumpOffset = emitJump(OpCode::JUMP_IF_TRUE);
     }
@@ -647,9 +649,20 @@ void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
 void BytecodeCompiler::compilePropertyAccess(const PropertyAccessExpr& expr) {
     compileExpr(expr.object);
     size_t nameIdx = identifierConstant(expr.property);
+    
+    size_t skipJump = 0;
+    if (expr.isOptional) {
+        emitOp(OpCode::DUP);
+        skipJump = emitJump(OpCode::JUMP_IF_NIL);
+    }
+    
     emitOp(OpCode::LOAD_PROPERTY);
     emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(nameIdx & 0xFF));
+              
+    if (expr.isOptional) {
+        patchJump(skipJump);
+    }
 }
 
 void BytecodeCompiler::compileSelf(const SelfExpr& /*expr*/) {
@@ -865,41 +878,82 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
     emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
               static_cast<uint8_t>(endVar));
 
-    startLoop();
-    size_t loopStart = currentChunk().code.size();
-    loopStack.back().start = loopStart;
+    if (!stmt.step) {
+        startLoop();
+        size_t loopStart = currentChunk().code.size();
+        loopStack.back().start = loopStart;
 
-    // ── Issue D: Fused loop-condition superinstruction ─────────────────────────
-    // Replaces 4 dispatches (LOAD_LOCAL, LOAD_LOCAL, LESS/GREATER_EQ, JUMP_IF_FALSE)
-    // with a single 7-byte instruction that reads locals directly off the frame.
-    if (isReverse) {
-        emitOp(OpCode::LOOP_GREATER_EQ_LOCAL);
+        if (isReverse) {
+            emitOp(OpCode::LOOP_GREATER_EQ_LOCAL);
+        } else {
+            emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
+        }
+        emitByte(static_cast<uint8_t>(loopVar));
+        emitByte(static_cast<uint8_t>(endVar));
+        emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
+        size_t exitJump = currentChunk().code.size() - 4;
+
+        compileStmt(stmt.body);
+
+        if (isReverse) {
+            emitBytes(static_cast<uint8_t>(OpCode::DEC_LOCAL), static_cast<uint8_t>(loopVar));
+        } else {
+            emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
+        }
+
+        emitLoop(loopStart);
+        patchJump(exitJump);
+        for (size_t breakOffset : loopStack.back().breaks) patchJump(breakOffset);
+        endLoop();
     } else {
-        emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
+        // Step value cached in a hidden local (slot N+2)
+        size_t stepVar = addLocal("<repeat-step>");
+        compileExpr(stmt.step);
+        markInitialized();
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(stepVar));
+
+        startLoop();
+        size_t loopStart = currentChunk().code.size();
+        loopStack.back().start = loopStart;
+
+        // Condition: (step > 0) ? (loopVar <= endVar) : (loopVar >= endVar)
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitOp(OpCode::LOAD_ZERO);
+        emitOp(OpCode::GREATER);
+        size_t stepJump = emitJump(OpCode::JUMP_IF_FALSE);
+
+        // Positive step: endVar >= loopVar
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(endVar));
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
+        emitOp(OpCode::GREATER_EQ); 
+        size_t endStepJump = emitJump(OpCode::JUMP);
+
+        patchJump(stepJump);
+
+        // Negative step: loopVar >= endVar
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(endVar));
+        emitOp(OpCode::GREATER_EQ); 
+
+        patchJump(endStepJump);
+        
+        size_t exitJump = emitJump(OpCode::JUMP_IF_FALSE);
+
+        compileStmt(stmt.body);
+
+        // loopVar += stepVar
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitOp(OpCode::ADD);
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
+        emitOp(OpCode::POP);
+
+        emitLoop(loopStart);
+        patchJump(exitJump);
+
+        for (size_t breakOffset : loopStack.back().breaks) patchJump(breakOffset);
+        endLoop();
     }
-    emitByte(static_cast<uint8_t>(loopVar));  // loop variable slot
-    emitByte(static_cast<uint8_t>(endVar));   // end-value slot
-    // 4-byte exit-jump placeholder (patched by patchJump below)
-    emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
-    size_t exitJump = currentChunk().code.size() - 4;
-
-    compileStmt(stmt.body);
-
-    // Increment/Decrement loopVar
-    if (isReverse) {
-        emitBytes(static_cast<uint8_t>(OpCode::DEC_LOCAL),
-                  static_cast<uint8_t>(loopVar));
-    } else {
-        emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL),
-                  static_cast<uint8_t>(loopVar));
-    }
-
-    emitLoop(loopStart);
-    patchJump(exitJump);
-
-    // Retrieve loop context again as the stack may have reallocated
-    for (size_t breakOffset : loopStack.back().breaks) patchJump(breakOffset);
-    endLoop();
     endScope();
 }
 

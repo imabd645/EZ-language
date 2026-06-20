@@ -322,6 +322,11 @@ StmtPtr Parser::repeatStatement() {
     
     ExprPtr endValue = expression();
     
+    ExprPtr stepValue = nullptr;
+    if (match(TokenType::STEP)) {
+        stepValue = expression();
+    }
+    
     skipNewlines();
     
     StmtPtr body;
@@ -331,7 +336,7 @@ StmtPtr Parser::repeatStatement() {
         body = statement();
     }
     
-    return makeRepeatStmt(line, column, length, varToken.filename, varName, startValue, endValue, body);
+    return makeRepeatStmt(line, column, length, varToken.filename, varName, startValue, endValue, stepValue, body);
 }
 
 StmtPtr Parser::getStatement() {
@@ -806,7 +811,7 @@ ExprPtr Parser::assignment() {
 }
 
 ExprPtr Parser::ternary() {
-    ExprPtr expr = logicalOr();
+    ExprPtr expr = nullCoalescing();
     
     if (match(TokenType::QUESTION_MARK)) {
         Token op = previous();
@@ -814,6 +819,19 @@ ExprPtr Parser::ternary() {
         consume(TokenType::COLON, "Expected ':' after then branch of ternary operator");
         ExprPtr elseBranch = ternary(); // Right-associative
         expr = makeTernaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, thenBranch, elseBranch);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::nullCoalescing() {
+    ExprPtr expr = logicalOr();
+    
+    while (match(TokenType::QUESTION_QUESTION)) {
+        Token op = previous();
+        ExprPtr right = logicalOr();
+        // Null coalescing acts like logical OR but strictly checks for nil
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::QUESTION_QUESTION, right);
     }
     
     return expr;
@@ -964,26 +982,28 @@ ExprPtr Parser::call() {
             ExprPtr index = expression();
             consume(TokenType::RBRACKET, "Expected ']' after index");
             expr = makeIndexExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, index);
-        } else if (match(TokenType::DOT)) {
+        } else if (match(TokenType::DOT) || match(TokenType::QUESTION_DOT)) {
+            bool isOptional = previous().type == TokenType::QUESTION_DOT;
             // Allow keywords as property names
             advance();
             Token name = previous();
-            expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme);
+            expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);
         } else {
             // Check if next non-newline token is a DOT (Multi-line chaining support)
             size_t temp = current;
             while (temp < tokens.size() && tokens[temp].type == TokenType::NEWLINE) {
                 temp++;
             }
-            if (temp < tokens.size() && tokens[temp].type == TokenType::DOT) {
+            if (temp < tokens.size() && (tokens[temp].type == TokenType::DOT || tokens[temp].type == TokenType::QUESTION_DOT)) {
                 current = temp; // Skip newlines
-                advance(); // Consume DOT
+                bool isOptional = tokens[current].type == TokenType::QUESTION_DOT;
+                advance(); // Consume DOT or QUESTION_DOT
                 
                 // Now must have an identifier (or keyword)
-                if (isAtEnd()) throw ParseError("Expected property name after '.'", peek().line);
+                if (isAtEnd()) throw ParseError("Expected property name after property access operator", peek().line);
                 advance(); 
                 Token name = previous();
-                expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme);
+                expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);
             } else {
                 break;
             }

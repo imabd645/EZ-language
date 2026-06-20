@@ -75,6 +75,7 @@ private:
     ExprPtr expression();
     ExprPtr assignment();
     ExprPtr ternary();
+    ExprPtr nullCoalescing();
     ExprPtr logicalOr();
     ExprPtr logicalAnd();
     ExprPtr bitwiseOr();

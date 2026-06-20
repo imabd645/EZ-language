@@ -239,7 +239,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_BIT_NOT, &&handle_SHIFT_LEFT, &&handle_SHIFT_RIGHT, &&handle_EQUAL,
         &&handle_NOT_EQUAL, &&handle_LESS, &&handle_LESS_EQ, &&handle_GREATER,
         &&handle_GREATER_EQ, &&handle_NOT, &&handle_JUMP, &&handle_JUMP_IF_FALSE,
-        &&handle_JUMP_IF_TRUE, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL,
+        &&handle_JUMP_IF_TRUE, &&handle_JUMP_IF_NIL, &&handle_JUMP_IF_NOT_NIL, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL,
         &&handle_RETURN, &&handle_CLOSURE, &&handle_CLOSE_UPVALUE, &&handle_MAKE_ARRAY,
         &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
@@ -920,6 +920,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         else if (v.isNil()) truthy = false;
                         else truthy = v.isTruthy();
                         if (truthy) ip += o;
+                    }
+                    DISPATCH(); 
+                }
+                CASE_CODE(JUMP_IF_NIL) {
+                    {
+                        uint32_t o = READ_INT(); 
+                        const Value& v = *(--stackTop);
+                        if (v.isNil()) ip += o;
+                    }
+                    DISPATCH(); 
+                }
+                CASE_CODE(JUMP_IF_NOT_NIL) {
+                    {
+                        uint32_t o = READ_INT(); 
+                        const Value& v = *(--stackTop);
+                        if (!v.isNil()) ip += o;
                     }
                     DISPATCH(); 
                 }

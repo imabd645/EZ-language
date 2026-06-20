@@ -182,9 +182,10 @@ struct LambdaExpr {
 struct PropertyAccessExpr {
     ExprPtr object;
     std::string property;
+    bool isOptional = false;
     
-    PropertyAccessExpr(ExprPtr obj, const std::string& prop)
-        : object(std::move(obj)), property(prop) {}
+    PropertyAccessExpr(ExprPtr obj, const std::string& prop, bool optional = false)
+        : object(std::move(obj)), property(prop), isOptional(optional) {}
 };
 
 // Self reference expression
@@ -355,10 +356,11 @@ struct RepeatStmt {
     std::string variable;
     ExprPtr start;
     ExprPtr end;
+    ExprPtr step;
     StmtPtr body;
     
-    RepeatStmt(const std::string& var, ExprPtr start, ExprPtr end, StmtPtr body)
-        : variable(var), start(std::move(start)), end(std::move(end)), body(std::move(body)) {}
+    RepeatStmt(const std::string& var, ExprPtr s, ExprPtr e, ExprPtr st, StmtPtr b)
+        : variable(var), start(std::move(s)), end(std::move(e)), step(std::move(st)), body(std::move(b)) {}
 };
 
 // Foreach loop (get x in array or get [k,v] in dict)
@@ -625,8 +627,8 @@ inline StmtPtr makeWhileStmt(int line, int column, int length, const std::string
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<WhileStmt>(std::move(cond), std::move(body)));
 }
 
-inline StmtPtr makeRepeatStmt(int line, int column, int length, const std::string& file, const std::string& var, ExprPtr start, ExprPtr end, StmtPtr body) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<RepeatStmt>(var, std::move(start), std::move(end), std::move(body)));
+inline StmtPtr makeRepeatStmt(int line, int column, int length, const std::string& file, const std::string& var, ExprPtr start, ExprPtr end, ExprPtr step, StmtPtr body) {
+    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<RepeatStmt>(var, std::move(start), std::move(end), std::move(step), std::move(body)));
 }
 
 inline StmtPtr makeGetStmt(int line, int column, int length, const std::string& file, const std::string& var, ExprPtr iter, StmtPtr body) {
@@ -659,8 +661,8 @@ inline StmtPtr makeSkipStmt(int line, int column, int length, const std::string&
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<SkipStmt>());
 }
 
-inline ExprPtr makePropertyAccessExpr(int line, int column, int length, const std::string& file, ExprPtr object, const std::string& property) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<PropertyAccessExpr>(std::move(object), property));
+inline ExprPtr makePropertyAccessExpr(int line, int column, int length, const std::string& file, ExprPtr obj, const std::string& prop, bool isOptional = false) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<PropertyAccessExpr>(std::move(obj), prop, isOptional));
 }
 
 inline ExprPtr makeSelfExpr(int line, int column, int length, const std::string& file) {

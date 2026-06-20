@@ -71,6 +71,8 @@ enum class OpCode : uint8_t {
     JUMP,                // offset: Unconditional jump
     JUMP_IF_FALSE,       // offset: Jump if false
     JUMP_IF_TRUE,        // offset: Jump if true
+    JUMP_IF_NIL,         // offset: Jump if nil
+    JUMP_IF_NOT_NIL,     // offset: Jump if not nil
     LOOP,                // offset: Jump backward (for loops)
     
     // Functions

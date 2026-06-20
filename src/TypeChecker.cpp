@@ -785,10 +785,11 @@ TypeInfo TypeChecker::checkLambda(const LambdaExpr& expr) {
 TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
     TypeInfo objType = checkExpr(expr.object);
     if (objType.baseType == "nil") {
+        if (expr.isOptional) return TypeInfo("nil");
         error(currentExprContext, "Cannot access property '" + expr.property + "' on nil.");
         return TypeInfo("Any");
     }
-    if (objType.baseType != "Any") {
+    if (objType.baseType != "Any" && objType.baseType != "Dict") {
         std::string propKey = objType.baseType + "." + expr.property;
         Environment* env = currentEnv;
         while (env) {
@@ -800,6 +801,7 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
             }
             env = env->enclosing;
         }
+        if (expr.isOptional) return TypeInfo("Any");
         error(0, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
     }
     return TypeInfo("Any");

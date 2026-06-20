@@ -1,0 +1,35 @@
+// Null coalescing
+out "Testing Null Coalescing:"
+val1 = nil ?? "default"
+val2 = "set" ?? "default"
+out val1
+out val2
+out ""
+
+// Optional chaining
+out "Testing Optional Chaining:"
+dict = {"user": {"address": {"city": "New York"}}}
+city = dict?.user?.address?.city
+missing = dict?.user?.profile?.age
+out city
+out missing
+out ""
+
+// Multi-line strings
+out "Testing Multi-line Strings:"
+html = """
+    <div class="container">
+        <h1>Hello</h1>
+    </div>
+"""
+out html
+
+// Repeat with step
+out "Testing Repeat with Step:"
+repeat i = 0 to 10 step 2 {
+    out i
+}
+out "Reverse:"
+repeat i = 10 to 0 step -2 {
+    out i
+}

@@ -199,6 +199,10 @@ static const char* opcodeName(OpCode op) {
         case OpCode::STORE_GLOBAL_SLOT: return "STORE_GLOBAL_SLOT";
         case OpCode::LOOP_LESS_EQ_LOCAL: return "LOOP_LESS_EQ_LOCAL";
         case OpCode::LOOP_GREATER_EQ_LOCAL: return "LOOP_GREATER_EQ_LOCAL";
+        case OpCode::INTERCEPTED_STORE_PROPERTY: return "INTERCEPTED_STORE_PROPERTY";
+        case OpCode::RATELIMIT_CHECK: return "RATELIMIT_CHECK";
+        case OpCode::GET_CACHED_RESULT: return "GET_CACHED_RESULT";
+        case OpCode::STORE_CACHED_RESULT: return "STORE_CACHED_RESULT";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -319,7 +323,11 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
         case OpCode::LOAD_PROPERTY:
         case OpCode::STORE_PROPERTY:
         case OpCode::HAS_GLOBAL:
-        case OpCode::GET_METHOD: {
+        case OpCode::GET_METHOD:
+        case OpCode::INTERCEPTED_STORE_PROPERTY:
+        case OpCode::RATELIMIT_CHECK:
+        case OpCode::GET_CACHED_RESULT:
+        case OpCode::STORE_CACHED_RESULT: {
             uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
             std::cout << std::setw(4) << (int)idx;
             if (idx < constants.size()) {

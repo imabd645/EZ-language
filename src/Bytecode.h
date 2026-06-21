@@ -145,7 +145,7 @@ enum class OpCode : uint8_t {
     GET_CACHED_RESULT,          // name_idx(2): push cached value (or nil if dirty)
     STORE_CACHED_RESULT,        // name_idx(2): store TOS into method cache, mark clean
 
-    END = 255            // End of chunk marker
+    END            // End of chunk marker
 };
 
 // Instruction encoding helpers

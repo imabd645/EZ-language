@@ -250,7 +250,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_LOAD_GLOBAL_SLOT,
         &&handle_STORE_GLOBAL_SLOT,
         &&handle_LOOP_LESS_EQ_LOCAL,
-        &&handle_LOOP_GREATER_EQ_LOCAL
+        &&handle_LOOP_GREATER_EQ_LOCAL,
+        &&handle_INTERCEPTED_STORE_PROPERTY,
+        &&handle_RATELIMIT_CHECK,
+        &&handle_GET_CACHED_RESULT,
+        &&handle_STORE_CACHED_RESULT,
+        &&handle_END
     };
     #define DISPATCH() { \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
@@ -1170,14 +1175,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         frames.pop_back();
                         
                         if (frames.size() < startingFrameCount) {
-                            this->stackTop = targetSlots - 1;
+                            this->stackTop = targetSlots;
                             *(this->stackTop) = result;
                             this->stackTop++;
                             return;
                         }
                         
                         LOAD_FRAME();
-                        stackTop = targetSlots - 1; // Pop callee and args
+                        stackTop = targetSlots; // Replace callee with result
                         *stackTop++ = result;
                     }
                     DISPATCH();
@@ -1301,7 +1306,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
                         std::vector<Value> args(argc);
                         for (int i = argc - 1; i >= 0; i--) args[i] = *(--stackTop);
-                        --stackTop; // pop class value placeholder
                         
                         SYNC_IP();
                         this->stackTop = stackTop;

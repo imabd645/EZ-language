@@ -1,0 +1,6 @@
+model Test {
+    init() {
+        self.val = 1
+    }
+}
+t = new Test()

@@ -2156,6 +2156,14 @@ void BytecodeVM::doAdd() {
     Value b = pop(), a = pop();
     if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() + b.asInteger())); return; }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   + b.asFloat()));   return; }
+    if (a.isString() && b.isString()) {
+        auto cs = std::make_shared<EZConcatString>();
+        cs->left = a;
+        cs->right = b;
+        cs->length = a.stringLength() + b.stringLength();
+        push(Value(cs));
+        return;
+    }
     if (a.isString()  || b.isString())  { push(Value(a.toString()  + b.toString()));  return; }
     if (a.isArray()   && b.isArray()) {
         auto res = a.asArray();

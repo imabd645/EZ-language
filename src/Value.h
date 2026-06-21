@@ -13,6 +13,7 @@
 #include <future>
 #include <mutex>
 #include <shared_mutex>
+#include <cstring>
 #include "AST.h"
 #include "GCObject.h"
 
@@ -48,6 +49,8 @@ enum class ValueType {
     BOOL,
     NUMBER,
     STRING,
+    SHORT_STRING,
+    CONCAT_STRING,
     ARRAY,
     FUNCTION,
     NATIVE_FUNCTION,
@@ -65,9 +68,33 @@ enum class ValueType {
     ATOMIC
 };
 
+struct ShortString {
+    char data[14];
+    uint8_t length;
+    
+    ShortString() : length(0) { data[0] = '\0'; }
+    ShortString(const char* str, size_t len) {
+        length = static_cast<uint8_t>(len);
+        for(size_t i=0; i<len; i++) data[i] = str[i];
+        if (len < 14) data[len] = '\0';
+    }
+    
+    bool operator==(const ShortString& other) const {
+        if (length != other.length) return false;
+        for (size_t i = 0; i < length; i++) {
+            if (data[i] != other.data[i]) return false;
+        }
+        return true;
+    }
+};
+
+struct Value;
+struct EZConcatString;
+
 struct Value {
     // Pointer types for Variant
     using StringPtr = std::shared_ptr<std::string>;
+    using ConcatStringPtr = std::shared_ptr<EZConcatString>;
     using ArrayPtr = std::shared_ptr<EZArray>;
     using FunctionPtr = std::shared_ptr<EZFunction>;
     using NativeFnPtr = std::shared_ptr<NativeFunction>;
@@ -88,6 +115,8 @@ struct Value {
         bool,               // BOOL
         double,             // NUMBER
         StringPtr,          // STRING
+        ShortString,        // SHORT_STRING
+        ConcatStringPtr,    // CONCAT_STRING
         ArrayPtr,           // ARRAY
         FunctionPtr,        // FUNCTION
         NativeFnPtr,        // NATIVE_FUNCTION
@@ -116,9 +145,11 @@ struct Value {
     Value(unsigned long val) : m_data(static_cast<long long>(val)) {}
     Value(long long val) : m_data(val) {}
     Value(unsigned long long val) : m_data(static_cast<long long>(val)) {}
-    Value(const std::string& val) : m_data(std::make_shared<std::string>(val)) {}
-    Value(const char* val) : m_data(std::make_shared<std::string>(val)) {}
+    Value(const std::string& val); // Defined in cpp or inline below
+    Value(const char* val);        // Defined in cpp or inline below
     Value(StringPtr val) : m_data(val) {}
+    Value(ShortString val) : m_data(val) {}
+    Value(ConcatStringPtr val) : m_data(val) {}
     Value(ArrayPtr val) : m_data(val) {}
     Value(FunctionPtr val) : m_data(val) {}
     Value(NativeFnPtr val) : m_data(val) {}
@@ -142,21 +173,23 @@ struct Value {
             ValueType::BOOL,             // 1:  bool
             ValueType::NUMBER,           // 2:  double
             ValueType::STRING,           // 3:  StringPtr
-            ValueType::ARRAY,            // 4:  ArrayPtr
-            ValueType::FUNCTION,         // 5:  FunctionPtr
-            ValueType::NATIVE_FUNCTION,  // 6:  NativeFnPtr
-            ValueType::CLASS,            // 7:  ClassPtr
-            ValueType::INSTANCE,         // 8:  InstancePtr
-            ValueType::DICTIONARY,       // 9:  DictionaryPtr
-            ValueType::FUTURE,           // 10: FuturePtr
-            ValueType::SUPER,            // 11: SuperPtr
-            ValueType::INTEGER,          // 12: long long
-            ValueType::BUFFER,           // 13: BufferPtr
-            ValueType::MUTEX,            // 14: MutexPtr
-            ValueType::BOUND_METHOD,     // 15: BoundMethodPtr
-            ValueType::CLOSURE_VAL,      // 16: ClosureValPtr
-            ValueType::INTERFACE,        // 17: InterfacePtr
-            ValueType::ATOMIC            // 18: AtomicPtr
+            ValueType::SHORT_STRING,     // 4:  ShortString
+            ValueType::CONCAT_STRING,    // 5:  ConcatStringPtr
+            ValueType::ARRAY,            // 6:  ArrayPtr
+            ValueType::FUNCTION,         // 7:  FunctionPtr
+            ValueType::NATIVE_FUNCTION,  // 8:  NativeFnPtr
+            ValueType::CLASS,            // 9:  ClassPtr
+            ValueType::INSTANCE,         // 10: InstancePtr
+            ValueType::DICTIONARY,       // 11: DictionaryPtr
+            ValueType::FUTURE,           // 12: FuturePtr
+            ValueType::SUPER,            // 13: SuperPtr
+            ValueType::INTEGER,          // 14: long long
+            ValueType::BUFFER,           // 15: BufferPtr
+            ValueType::MUTEX,            // 16: MutexPtr
+            ValueType::BOUND_METHOD,     // 17: BoundMethodPtr
+            ValueType::CLOSURE_VAL,      // 18: ClosureValPtr
+            ValueType::INTERFACE,        // 19: InterfacePtr
+            ValueType::ATOMIC            // 20: AtomicPtr
         };
         return typeTable[m_data.index()];
     }
@@ -166,7 +199,11 @@ struct Value {
     bool isInteger() const { return std::holds_alternative<long long>(m_data); }
     bool isFloat() const { return std::holds_alternative<double>(m_data); }
     bool isNumber() const { return isInteger() || isFloat(); }
-    bool isString() const { return std::holds_alternative<StringPtr>(m_data); }
+    bool isString() const { 
+        return std::holds_alternative<StringPtr>(m_data) || 
+               std::holds_alternative<ShortString>(m_data) || 
+               std::holds_alternative<ConcatStringPtr>(m_data); 
+    }
     bool isArray() const { return std::holds_alternative<ArrayPtr>(m_data); }
     bool isFunction() const { return std::holds_alternative<FunctionPtr>(m_data); }
     bool isNativeFunction() const { return std::holds_alternative<NativeFnPtr>(m_data); }
@@ -191,13 +228,13 @@ struct Value {
         catch(...) { std::cerr << "[Value] asBool failed, index=" << index() << "\n"; throw; }
     }
     double asFloat() const { 
-        if (index() == 12) return static_cast<double>(std::get<long long>(m_data)); 
+        if (index() == 14) return static_cast<double>(std::get<long long>(m_data)); 
         if (index() == 2)  return std::get<double>(m_data);
         std::cerr << "[Value] asFloat() failed: index=" << index() << std::endl;
         try { return std::get<double>(m_data); } catch(...) { throw; }
     }
     long long asInteger() const { 
-        if (index() == 12) return std::get<long long>(m_data); 
+        if (index() == 14) return std::get<long long>(m_data); 
         if (index() == 2)  return static_cast<long long>(std::get<double>(m_data)); 
         std::cerr << "[Value] asInteger() failed: index=" << index() << std::endl;
         try { return std::get<long long>(m_data); } catch(...) { throw; }
@@ -208,8 +245,10 @@ struct Value {
     double asFloatUnsafe() const { return std::get<double>(m_data); }
 
     double asNumber() const { return asFloat(); }
-    StringPtr asStringPtr() const { try{return std::get<StringPtr>(m_data);}catch(...){std::cerr<<"[Value] asStringPtr fail, index="<<index()<<"\n";throw;} }
-    const std::string& asString() const { try{return *std::get<StringPtr>(m_data);}catch(...){std::cerr<<"[Value] asString fail, index="<<index()<<"\n";throw;} }
+    size_t stringLength() const;
+    StringPtr asStringPtr() const;
+    std::string asString() const;
+    ConcatStringPtr asConcatStringPtr() const { try{return std::get<ConcatStringPtr>(m_data);}catch(...){std::cerr<<"[Value] asConcatStringPtr fail, index="<<index()<<"\n";throw;} }
     ArrayPtr asArrayPtr() const { try{return std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] asArrayPtr fail, index="<<index()<<"\n";throw;} }
     FunctionPtr asFunction() const { try{return std::get<FunctionPtr>(m_data);}catch(...){std::cerr<<"[Value] asFunction fail, index="<<index()<<"\n";throw;} }
     NativeFnPtr asNativeFunction() const { try{return std::get<NativeFnPtr>(m_data);}catch(...){std::cerr<<"[Value] asNativeFunction fail, index="<<index()<<"\n";throw;} }
@@ -257,6 +296,21 @@ struct Value {
     static Value makeSuper(InstancePtr instance, ClassPtr parentKlass);
     static Value makeClosure(ClosureValPtr closure);
     static Value makeAtomic(long long initial);
+};
+
+struct EZConcatString : public GCObject {
+    Value left;
+    Value right;
+    size_t length = 0;
+    bool isFlattened = false;
+    std::shared_ptr<std::string> flattened;
+    
+    void gc_mark() override;
+    void gc_clear() override {
+        left = Value();
+        right = Value();
+        flattened = nullptr;
+    }
 };
 
 // --- GCObject-derived structs that use Value ---
@@ -509,6 +563,82 @@ inline const EZDictionary& Value::asDictionary() const { try{return *std::get<Di
 inline std::vector<uint8_t>& Value::asBuffer() { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer fail, index="<<index()<<"\n";throw;} }
 inline std::vector<uint8_t>& Value::asBuffer() const { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer const fail, index="<<index()<<"\n";throw;} }
 
+// --- Value String Implementations ---
+extern thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
+
+inline Value::Value(const std::string& val) {
+    if (val.length() < 14) {
+        m_data = ShortString(val.c_str(), val.length());
+    } else {
+        auto it = globalStringPool.find(val);
+        if (it != globalStringPool.end() && !it->second.expired()) {
+            m_data = it->second.lock();
+        } else {
+            auto ptr = std::make_shared<std::string>(val);
+            globalStringPool[val] = ptr;
+            m_data = ptr;
+        }
+    }
+}
+
+inline Value::Value(const char* val) {
+    size_t len = std::strlen(val);
+    if (len < 14) {
+        m_data = ShortString(val, len);
+    } else {
+        std::string sval(val, len);
+        auto it = globalStringPool.find(sval);
+        if (it != globalStringPool.end() && !it->second.expired()) {
+            m_data = it->second.lock();
+        } else {
+            auto ptr = std::make_shared<std::string>(std::move(sval));
+            globalStringPool[*ptr] = ptr;
+            m_data = ptr;
+        }
+    }
+}
+
+inline Value::StringPtr Value::asStringPtr() const {
+    if (index() == 3) return std::get<StringPtr>(m_data);
+    if (index() == 4) {
+        const auto& ss = std::get<ShortString>(m_data);
+        return std::make_shared<std::string>(ss.data, ss.length);
+    }
+    if (index() == 5) {
+        const auto& cs = std::get<ConcatStringPtr>(m_data);
+        if (!cs->isFlattened) {
+            cs->flattened = std::make_shared<std::string>(cs->left.asString() + cs->right.asString());
+            cs->isFlattened = true;
+        }
+        return cs->flattened;
+    }
+    std::cerr << "[Value] asStringPtr fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
+}
+
+inline size_t Value::stringLength() const {
+    if (index() == 3) return std::get<StringPtr>(m_data)->length();
+    if (index() == 4) return std::get<ShortString>(m_data).length;
+    if (index() == 5) return std::get<ConcatStringPtr>(m_data)->length;
+    std::cerr << "[Value] stringLength fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
+}
+
+inline std::string Value::asString() const {
+    if (index() == 3) return *std::get<StringPtr>(m_data);
+    if (index() == 4) {
+        const auto& ss = std::get<ShortString>(m_data);
+        return std::string(ss.data, ss.length);
+    }
+    if (index() == 5) {
+        const auto& cs = std::get<ConcatStringPtr>(m_data);
+        if (!cs->isFlattened) {
+            cs->flattened = std::make_shared<std::string>(cs->left.asString() + cs->right.asString());
+            cs->isFlattened = true;
+        }
+        return *cs->flattened;
+    }
+    std::cerr << "[Value] asString fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
+}
+
 inline std::string Value::toString() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
@@ -522,6 +652,8 @@ inline std::string Value::toString() const {
             return std::to_string(num);
         }
         case ValueType::STRING: return asString();
+        case ValueType::SHORT_STRING: return asString();
+        case ValueType::CONCAT_STRING: return asString();
         case ValueType::ARRAY: {
             std::string result = "[";
             const auto& arr = asArray();
@@ -578,11 +710,14 @@ inline bool Value::equals(const Value& other) const {
     if (isNumber() && other.isNumber()) {
         return asNumber() == other.asNumber();
     }
+    if (isString() && other.isString()) {
+        if (stringLength() != other.stringLength()) return false;
+        return asString() == other.asString();
+    }
     if (type() != other.type()) return false;
     switch (type()) {
         case ValueType::NIL: return true;
         case ValueType::BOOL: return asBool() == other.asBool();
-        case ValueType::STRING: return asString() == other.asString();
         default: return m_data == other.m_data;
     }
 }

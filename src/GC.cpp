@@ -4,9 +4,12 @@
 #include <vector>
 #include <shared_mutex>
 
+thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
+
 // Helper to mark a Value's underlying GCObject
 void GarbageCollector::markValue(const Value& val) {
     switch (val.type()) {
+        case ValueType::CONCAT_STRING: val.asConcatStringPtr()->gc_mark(); break;
         case ValueType::ARRAY: val.asArrayPtr()->gc_mark(); break;
         case ValueType::INSTANCE: val.asInstance()->gc_mark(); break;
         case ValueType::DICTIONARY: val.asDictionaryPtr()->gc_mark(); break;
@@ -17,6 +20,13 @@ void GarbageCollector::markValue(const Value& val) {
         case ValueType::BOUND_METHOD: val.asBoundMethod()->gc_mark(); break;
         default: break;
     }
+}
+
+void EZConcatString::gc_mark() {
+    if (gc_marked) return;
+    gc_marked = true;
+    GarbageCollector::markValue(left);
+    GarbageCollector::markValue(right);
 }
 
 void EZArray::gc_mark() {

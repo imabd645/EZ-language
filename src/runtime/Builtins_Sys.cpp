@@ -627,12 +627,17 @@ void registerSysBuiltins(RuntimeContext& interp) {
                 return Value();
             }
             
+            std::string tempStrings[12];
             intptr_t cArgs[12] = {0};
             for (size_t i = 2; i < args.size() && i - 2 < 12; i++) {
-                if (args[i].isNumber()) cArgs[i - 2] = static_cast<intptr_t>(args[i].asNumber());
-                else if (args[i].isString()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asString().c_str());
-                else if (args[i].isBuffer()) cArgs[i - 2] = reinterpret_cast<intptr_t>(args[i].asBuffer().data());
-                else if (args[i].isBool()) cArgs[i - 2] = args[i].asBool() ? 1 : 0;
+                size_t idx = i - 2;
+                if (args[i].isNumber()) cArgs[idx] = static_cast<intptr_t>(args[i].asNumber());
+                else if (args[i].isString()) {
+                    tempStrings[idx] = args[i].asString();
+                    cArgs[idx] = reinterpret_cast<intptr_t>(tempStrings[idx].c_str());
+                }
+                else if (args[i].isBuffer()) cArgs[idx] = reinterpret_cast<intptr_t>(args[i].asBuffer().data());
+                else if (args[i].isBool()) cArgs[idx] = args[i].asBool() ? 1 : 0;
             }
             
             size_t argc = args.size() - 2;

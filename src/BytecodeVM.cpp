@@ -1175,14 +1175,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         frames.pop_back();
                         
                         if (frames.size() < startingFrameCount) {
-                            this->stackTop = targetSlots;
+                            this->stackTop = targetSlots - 1;
                             *(this->stackTop) = result;
                             this->stackTop++;
                             return;
                         }
                         
                         LOAD_FRAME();
-                        stackTop = targetSlots; // Replace callee with result
+                        stackTop = targetSlots - 1; // Replace callee with result
                         *stackTop++ = result;
                     }
                     DISPATCH();

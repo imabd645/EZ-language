@@ -598,6 +598,49 @@ inline Value::Value(const char* val) {
     }
 }
 
+inline std::shared_ptr<std::string> flattenConcatString(const Value::ConcatStringPtr& rootCs) {
+    if (rootCs->isFlattened) {
+        return rootCs->flattened;
+    }
+    
+    auto result = std::make_shared<std::string>();
+    result->resize(rootCs->length);
+    char* dest = &(*result)[0];
+    size_t offset = 0;
+    
+    std::vector<Value> stack;
+    stack.reserve(128);
+    stack.push_back(Value(rootCs));
+    
+    while (!stack.empty()) {
+        Value val = stack.back();
+        stack.pop_back();
+        
+        if (val.index() == 5) { // CONCAT_STRING
+            auto cs = std::get<Value::ConcatStringPtr>(val.m_data);
+            if (cs->isFlattened) {
+                std::memcpy(dest + offset, cs->flattened->data(), cs->flattened->length());
+                offset += cs->flattened->length();
+            } else {
+                stack.push_back(cs->right);
+                stack.push_back(cs->left);
+            }
+        } else if (val.index() == 3) { // STRING
+            const auto& s = *std::get<Value::StringPtr>(val.m_data);
+            std::memcpy(dest + offset, s.data(), s.length());
+            offset += s.length();
+        } else if (val.index() == 4) { // SHORT_STRING
+            const auto& ss = std::get<ShortString>(val.m_data);
+            std::memcpy(dest + offset, ss.data, ss.length);
+            offset += ss.length;
+        }
+    }
+    
+    rootCs->flattened = result;
+    rootCs->isFlattened = true;
+    return result;
+}
+
 inline Value::StringPtr Value::asStringPtr() const {
     if (index() == 3) return std::get<StringPtr>(m_data);
     if (index() == 4) {
@@ -606,11 +649,7 @@ inline Value::StringPtr Value::asStringPtr() const {
     }
     if (index() == 5) {
         const auto& cs = std::get<ConcatStringPtr>(m_data);
-        if (!cs->isFlattened) {
-            cs->flattened = std::make_shared<std::string>(cs->left.asString() + cs->right.asString());
-            cs->isFlattened = true;
-        }
-        return cs->flattened;
+        return flattenConcatString(cs);
     }
     std::cerr << "[Value] asStringPtr fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
 }
@@ -630,11 +669,7 @@ inline std::string Value::asString() const {
     }
     if (index() == 5) {
         const auto& cs = std::get<ConcatStringPtr>(m_data);
-        if (!cs->isFlattened) {
-            cs->flattened = std::make_shared<std::string>(cs->left.asString() + cs->right.asString());
-            cs->isFlattened = true;
-        }
-        return *cs->flattened;
+        return *flattenConcatString(cs);
     }
     std::cerr << "[Value] asString fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
 }

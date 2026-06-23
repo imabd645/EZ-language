@@ -77,6 +77,13 @@ public:
         allUpvalues.push_back(std::move(uv));
     }
 
+    const std::vector<std::string>& getGlobalSlotNames() const { return globalSlotNames; }
+    const std::vector<Value>& getGlobalSlots() const { return globalSlots; }
+    void setGlobalSlots(const std::vector<std::string>& names, const std::vector<Value>& slots) {
+        globalSlotNames = names;
+        globalSlots = slots;
+    }
+
 private:
     // ── Call Frame ────────────────────────────────────────────────────────────
     struct CallFrame {

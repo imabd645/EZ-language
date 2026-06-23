@@ -288,9 +288,17 @@ void registerSysBuiltins(RuntimeContext& interp) {
 
             auto ezFut = std::make_shared<EZFuture>();
 
-            std::thread([ezFut, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
+            std::vector<std::string> slotNames;
+            std::vector<Value> slotValues;
+            if (parentVM) {
+                slotNames = parentVM->getGlobalSlotNames();
+                slotValues = parentVM->getGlobalSlots();
+            }
+
+            std::thread([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, tState, threadUpvalues]() {
                 try {
                     BytecodeVM threadVM(globalEnv);
+                    threadVM.setGlobalSlots(slotNames, slotValues);
                     threadVM.traceExecution = false;
                     threadVM.importThreadState(tState);
                     for (auto& uv : *threadUpvalues) threadVM.adoptUpvalue(std::move(uv));

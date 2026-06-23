@@ -13,7 +13,6 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/Bytecode.cpp ^
     src/BytecodeCompiler.cpp ^
     src/BytecodeVM.cpp ^
-    src/BytecodeInterpreter.cpp ^
     src/Builtins.cpp ^
     src/GUIBuiltins.cpp ^
     src/GC.cpp ^

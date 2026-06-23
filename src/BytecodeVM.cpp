@@ -1970,12 +1970,15 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             
             // Snapshot VM state needed
             auto globalEnv = this->globalEnv;
+            auto slotNames = this->globalSlotNames;
+            auto slotValues = this->globalSlots;
             Value closedFunc = callee;
             bool shouldTrace = this->traceExecution;
             
-            EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs, shouldTrace]() {
+            EventLoop::instance().pushTask([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, shouldTrace]() {
                 try {
                     auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
+                    taskVM->setGlobalSlots(slotNames, slotValues);
                     taskVM->taskFuture = ezFut;
                     taskVM->traceExecution = shouldTrace;
                     taskVM->isAsyncTask = true;

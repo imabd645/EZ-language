@@ -24,9 +24,7 @@
 
 ---
 
-## ⚠️ A note on this README
 
-This document is written directly from the C++ source (`src/`) of this repository — the lexer, parser, type checker, bytecode compiler, VM, and the runtime builtins that are actually registered in C++. Anything implemented purely as an EZ-language standard-library package (in the separate [`ezlib`](https://github.com/imabd645/ezlib) registry — `math`, `crypto`, `db`, `pdf`, `fs`, `os`, `gui`, `collections`, etc.) is **not** part of this repository and is called out explicitly where relevant, since those packages aren't present here and their exact API can't be verified from this codebase.
 
 ---
 

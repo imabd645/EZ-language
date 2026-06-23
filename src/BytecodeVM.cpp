@@ -2380,9 +2380,6 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     if (pendingException.isNil()) {
         pendingException = Value(message);
     }
-    if (running && tryStack.empty() && !isAsyncTask) {
-        std::cerr << "\nError: " << message << std::endl;
-    }
 
     // Resolve the actual fault location: prefer the caller-supplied line/file,
     // fall back to the top CallFrame's current line and filename.
@@ -2395,45 +2392,47 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
         faultFile = frames.back().filename;
     }
 
-    // ── Print the error header ─────────────────────────────────────────────
-    // Use ANSI escapes if the terminal supports them (Windows 10+)
-    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
-    DWORD  consoleMode = 0;
-    bool   ansi = GetConsoleMode(hErr, &consoleMode) != 0;
-    if (ansi) SetConsoleMode(hErr, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    if (tryStack.empty() && !isAsyncTask) {
+        // ── Print the error header ─────────────────────────────────────────────
+        // Use ANSI escapes if the terminal supports them (Windows 10+)
+        HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+        DWORD  consoleMode = 0;
+        bool   ansi = GetConsoleMode(hErr, &consoleMode) != 0;
+        if (ansi) SetConsoleMode(hErr, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
-    auto RED    = ansi ? "\033[1;31m" : "";
-    auto YELLOW = ansi ? "\033[1;33m" : "";
-    auto CYAN   = ansi ? "\033[0;36m" : "";
-    auto BOLD   = ansi ? "\033[1m"    : "";
-    auto RESET  = ansi ? "\033[0m"    : "";
+        auto RED    = ansi ? "\033[1;31m" : "";
+        auto YELLOW = ansi ? "\033[1;33m" : "";
+        auto CYAN   = ansi ? "\033[0;36m" : "";
+        auto BOLD   = ansi ? "\033[1m"    : "";
+        auto RESET  = ansi ? "\033[0m"    : "";
 
-    std::cerr << "\n" << RED << "Error" << RESET << ": " << BOLD << message << RESET << "\n";
+        std::cerr << "\n" << RED << "Error" << RESET << ": " << BOLD << message << RESET << "\n";
 
-    // ── Location line ──────────────────────────────────────────────────────
-    if (!faultFile.empty() || faultLine > 0) {
-        std::cerr << "  " << CYAN;
-        if (!faultFile.empty()) std::cerr << faultFile;
-        if (!faultFile.empty() && faultLine > 0) std::cerr << ":";
-        if (faultLine > 0) std::cerr << faultLine;
-        std::cerr << RESET << "\n";
-    }
-
-    // ── Source snippet ─────────────────────────────────────────────────────
-    if (faultLine > 0) {
-        const std::string* srcLine = EZ_GetSourceLine(faultFile, faultLine);
-        if (srcLine) {
-            // Trim leading whitespace for display, but keep a counter for caret
-            size_t indent = srcLine->find_first_not_of(" \t");
-            if (indent == std::string::npos) indent = 0;
-            std::cerr << "  " << YELLOW << std::to_string(faultLine) << " |" << RESET << "  "
-                      << srcLine->substr(indent) << "\n";
-            std::cerr << "      " << RED << "^^^" << RESET << "\n";
+        // ── Location line ──────────────────────────────────────────────────────
+        if (!faultFile.empty() || faultLine > 0) {
+            std::cerr << "  " << CYAN;
+            if (!faultFile.empty()) std::cerr << faultFile;
+            if (!faultFile.empty() && faultLine > 0) std::cerr << ":";
+            if (faultLine > 0) std::cerr << faultLine;
+            std::cerr << RESET << "\n";
         }
-    }
 
-    // ── Stack trace ────────────────────────────────────────────────────────
-    printStackTrace();
+        // ── Source snippet ─────────────────────────────────────────────────────
+        if (faultLine > 0) {
+            const std::string* srcLine = EZ_GetSourceLine(faultFile, faultLine);
+            if (srcLine) {
+                // Trim leading whitespace for display, but keep a counter for caret
+                size_t indent = srcLine->find_first_not_of(" \t");
+                if (indent == std::string::npos) indent = 0;
+                std::cerr << "  " << YELLOW << std::to_string(faultLine) << " |" << RESET << "  "
+                          << srcLine->substr(indent) << "\n";
+                std::cerr << "      " << RED << "^^^" << RESET << "\n";
+            }
+        }
+
+        // ── Stack trace ────────────────────────────────────────────────────────
+        printStackTrace();
+    }
 
     running = false;
     throw RuntimeError(message, faultLine);

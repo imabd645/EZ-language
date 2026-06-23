@@ -664,6 +664,7 @@ StmtPtr Parser::tryStatement() {
     int length = previous().lexeme.length();
     std::string filename = previous().filename;
     
+    skipNewlines();
     consume(TokenType::LBRACE, "Expected '{' after 'try'");
     StmtPtr tryBlock = blockStatement();
     
@@ -747,6 +748,7 @@ StmtPtr Parser::structStatement() {
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected struct name");
     std::string name = nameToken.lexeme;
     
+    skipNewlines();
     consume(TokenType::LBRACE, "Expected '{' before struct body");
     
     std::vector<std::string> fields;

@@ -255,12 +255,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             dispatchCount = 0; \
             GarbageCollector::instance().checkGC(); \
         } \
-        if (__builtin_expect(traceExecution, 0)) { \
-            SYNC_IP(); \
-            size_t offset = (size_t)(ip - frame->function->chunk.code.data()); \
-            std::cout << "  "; \
-            frame->function->chunk.disassembleInstruction(offset, &globalSlotNames, &frame->function->nestedFunctions); \
-        } \
+        if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
     #define INTERPRET_LOOP DISPATCH();
@@ -268,12 +263,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #else
     #define DISPATCH() break
     #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
-        if (traceExecution) { \
-            SYNC_IP(); \
-            size_t offset = (size_t)(ip - frame->function->chunk.code.data()); \
-            std::cout << "  "; \
-            frame->function->chunk.disassembleInstruction(offset, &globalSlotNames, &frame->function->nestedFunctions); \
-        } \
+        if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction)) \
     #define CASE_CODE(name) case OpCode::name:

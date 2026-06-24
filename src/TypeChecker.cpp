@@ -621,17 +621,13 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
 }
 
 TypeInfo TypeChecker::checkDestructureAssign(const DestructureAssignExpr& expr) {
-    std::cout << "[DEBUG] TypeChecker: enters checkDestructureAssign" << std::endl;
     TypeInfo valType = checkExpr(expr.value);
     for (const auto& target : expr.targets) {
         if (!target) {
-            std::cout << "[DEBUG] TypeChecker: warning: null target found!" << std::endl;
             continue;
         }
-        std::cout << "[DEBUG] TypeChecker: checking target" << std::endl;
         if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
             std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
-            std::cout << "[DEBUG] TypeChecker: target name = " << name << std::endl;
             Environment* env = currentEnv;
             bool found = false;
             while (env) {
@@ -648,7 +644,6 @@ TypeInfo TypeChecker::checkDestructureAssign(const DestructureAssignExpr& expr) 
             checkExpr(target);
         }
     }
-    std::cout << "[DEBUG] TypeChecker: exits checkDestructureAssign successfully" << std::endl;
     return valType;
 }
 

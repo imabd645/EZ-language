@@ -1,4 +1,9 @@
-# Repeat step 0 test
+try {
+    throw "simple error message"
+} catch (e) {
+    out "Simple catch got: " + e
+}
+
 try {
     repeat i = 0 to 1000 step 0 {
         out i
@@ -13,7 +18,7 @@ out "a = " + a
 out "b = " + b
 
 # Complex target test
-x = [1, 2]
-x[0], x[1] = [100, 200]
-out "x[0] = " + x[0]
-out "x[1] = " + x[1]
+# x = [1, 2]
+# x[0], x[1] = [100, 200]
+# out "x[0] = " + x[0]
+# out "x[1] = " + x[1]

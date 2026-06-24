@@ -184,6 +184,7 @@ struct Constant {
     explicit Constant(long long i) : type(Type::INT), value(i) {}
     explicit Constant(double d) : type(Type::DOUBLE), value(d) {}
     explicit Constant(const std::string& s) : type(Type::STRING), value(s) {}
+    explicit Constant(const char* s) : type(Type::STRING), value(std::string(s)) {}
     explicit Constant(FunctionConstant* f);
     explicit Constant(ModelConstant* m);
 };

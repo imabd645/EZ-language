@@ -637,6 +637,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
 }
 
 void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& expr) {
+    std::cout << "[DEBUG] Compiler: enters compileDestructureAssign" << std::endl;
     // 1. Evaluate RHS: Stack: [..., RHS_val]
     compileExpr(expr.value);
     
@@ -649,8 +650,14 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
     // 3. For each target target_i at index i:
     for (size_t i = 0; i < expr.targets.size(); ++i) {
         const auto& target = expr.targets[i];
+        if (!target) {
+            std::cout << "[DEBUG] Compiler: warning: null target found!" << std::endl;
+            continue;
+        }
+        std::cout << "[DEBUG] Compiler: compiling target index " << i << std::endl;
         
         if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
+            std::cout << "[DEBUG] Compiler: compiling Identifier target" << std::endl;
             // Target is an identifier: var
             // Load tempVar
             emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
@@ -663,6 +670,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             
             // Store to target variable
             std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
+            std::cout << "[DEBUG] Compiler: target name = " << name << std::endl;
             std::string mangled = resolveStatic(name);
             if (!mangled.empty()) {
                 uint16_t slot = globalSlotFor(mangled);
@@ -702,6 +710,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::POP);
             
         } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(target->variant)) {
+            std::cout << "[DEBUG] Compiler: compiling Index target" << std::endl;
             // Target is an index expression: obj[index]
             auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(target->variant);
             compileExpr(indexExpr->object);
@@ -719,6 +728,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::POP);
             
         } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(target->variant)) {
+            std::cout << "[DEBUG] Compiler: compiling PropertyAccess target" << std::endl;
             // Target is a property: obj.prop
             auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(target->variant);
             compileExpr(propExpr->object);
@@ -735,8 +745,11 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::STORE_PROPERTY);
             emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF), static_cast<uint8_t>(nameIdx & 0xFF));
             emitOp(OpCode::POP);
+        } else {
+            std::cout << "[DEBUG] Compiler: warning: unknown target type variant index = " << target->variant.index() << std::endl;
         }
     }
+    std::cout << "[DEBUG] Compiler: exits compileDestructureAssign successfully" << std::endl;
 }
 
 void BytecodeCompiler::compileLogical(const LogicalExpr& expr) {

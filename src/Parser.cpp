@@ -876,7 +876,11 @@ ExprPtr Parser::assignment() {
         }
         consume(TokenType::EQUAL, "Expected '=' after destructuring targets");
         ExprPtr value = assignment();
-        return makeDestructureAssignExpr(targets[0]->line, targets[0]->column, targets[0]->length, targets[0]->filename, std::move(targets), std::move(value));
+        int line = targets[0]->line;
+        int col = targets[0]->column;
+        int len = targets[0]->length;
+        std::string file = targets[0]->filename;
+        return makeDestructureAssignExpr(line, col, len, file, std::move(targets), std::move(value));
     }
 
     ExprPtr expr = ternary();

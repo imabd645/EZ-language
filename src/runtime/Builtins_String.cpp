@@ -58,6 +58,24 @@ void registerStringBuiltins(RuntimeContext& interp) {
             }
             return Value(result);
         }));
+
+    // bytesToString(arr) — O(n) conversion of a byte array to a string.
+    // Each element must be an integer in range [0, 255].
+    // This is the fast path for Base64.decode(), _toHex(), HMAC._compute(), etc.
+    interp.defineGlobal("bytesToString", Value::makeNativeFunction("bytesToString", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) { interp.runtimeError("bytesToString() expects an array", 0, ""); return Value(); }
+            const auto& arr = args[0].asArray();
+            std::string result;
+            result.reserve(arr.size());
+            for (const Value& v : arr) {
+                if (!v.isNumber()) { interp.runtimeError("bytesToString() expects array of integers (0-255)", 0, ""); return Value(); }
+                long long b = v.isInteger() ? v.asInteger() : (long long)v.asFloat();
+                result += static_cast<char>(b & 0xFF);
+            }
+            return Value(result);
+        }));
+
     
     interp.defineGlobal("upper", Value::makeNativeFunction("upper", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {

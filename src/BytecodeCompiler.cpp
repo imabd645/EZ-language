@@ -1194,54 +1194,71 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
 }
 
 void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
-    if (stmt.value) {
-        compileExpr(stmt.value);
-    } else {
-        emitOp(OpCode::LOAD_NIL);
+    // ---- Tail Call Optimization ----
+    // If the return value is a direct call to the current function, and there are
+    // no postconditions or caching side-effects, emit TAIL_CALL instead of CALL+RETURN.
+    bool isTailCall = false;
+    if (stmt.value && current && !current->isCached
+        && (!currentEnsuresClauses || currentEnsuresClauses->empty())) {
+        if (auto* callPtr = std::get_if<std::shared_ptr<CallExpr>>(&stmt.value->variant)) {
+            const CallExpr& call = **callPtr;
+            // Check if callee is an identifier matching the current function name
+            if (auto* idPtr = std::get_if<std::shared_ptr<IdentifierExpr>>(&call.callee->variant)) {
+                if ((*idPtr)->name == current->function->name) {
+                    // Compile callee (the function itself)
+                    compileExpr(call.callee);
+                    // Compile arguments
+                    for (const auto& arg : call.arguments) {
+                        compileExpr(arg);
+                    }
+                    // Emit TAIL_CALL with argument count
+                    emitOp(OpCode::TAIL_CALL);
+                    emitByte(static_cast<uint8_t>(call.arguments.size()));
+                    // TAIL_CALL handles its own return — we're done
+                    isTailCall = true;
+                }
+            }
+        }
     }
-    
-    if (current && current->function->isMethod && current->isCached) {
-        size_t nameIdx = identifierConstant(current->function->name);
-        emitOp(OpCode::STORE_CACHED_RESULT);
-        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                  static_cast<uint8_t>(nameIdx & 0xFF));
+
+    if (!isTailCall) {
+        if (stmt.value) {
+            compileExpr(stmt.value);
+        } else {
+            emitOp(OpCode::LOAD_NIL);
+        }
+
+        if (current && current->function->isMethod && current->isCached) {
+            size_t nameIdx = identifierConstant(current->function->name);
+            emitOp(OpCode::STORE_CACHED_RESULT);
+            emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(nameIdx & 0xFF));
+        }
+
+        // ---- Design-by-Contract: ensures (postconditions) ----
+        if (!disableContracts && currentEnsuresClauses && !currentEnsuresClauses->empty()) {
+            size_t resultSlot = addLocal("__result__");
+            markInitialized();
+            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                      static_cast<uint8_t>(resultSlot));
+            emitOp(OpCode::POP);
+
+            size_t resultAliasSlot = addLocal("result");
+            markInitialized();
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                      static_cast<uint8_t>(resultSlot));
+            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                      static_cast<uint8_t>(resultAliasSlot));
+            emitOp(OpCode::POP);
+
+            compileContractChecks(*currentEnsuresClauses, false);
+
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                      static_cast<uint8_t>(resultSlot));
+        }
+
+        emitReturn();
     }
-    
-    // ---- Design-by-Contract: ensures (postconditions) ----
-    // Check postconditions (ensures) before returning
-    if (!disableContracts && currentEnsuresClauses && !currentEnsuresClauses->empty()) {
-        // Store return value into a hidden local named __result__
-        size_t resultSlot = addLocal("__result__");
-        markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(resultSlot));
-        emitOp(OpCode::POP);
-        
-        // Compile ensures checks, with `result` referring to __result__ local
-        // We temporarily add "result" as an alias for that slot
-        // by injecting a local named "result" pointing to same slot.
-        // The ensures expressions use `result` as the identifier.
-        // We re-load it via LOAD_LOCAL so `result` identifier resolves.
-        // Trick: we just compile the checks directly, allowing `result`
-        // to be resolved by name via the local scope (it IS a local named __result__).
-        // But `result` won't resolve to __result__. We handle it by emitting
-        // ensures checks with a special "result" = __result__ local.
-        size_t resultAliasSlot = addLocal("result");
-        markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                  static_cast<uint8_t>(resultSlot));
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(resultAliasSlot));
-        emitOp(OpCode::POP);
-        
-        compileContractChecks(*currentEnsuresClauses, false);
-        
-        // Load the return value back and return it
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                  static_cast<uint8_t>(resultSlot));
-    }
-    
-    emitReturn();
 }
 
 // Compile precondition (requires) or postcondition (ensures) checks.

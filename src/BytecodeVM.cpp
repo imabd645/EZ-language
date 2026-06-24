@@ -187,6 +187,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
     CallFrame* frame = &frames.back();
     const uint8_t* ip = frame->ip;
     Value* stackTop = this->stackTop;
+    uint32_t dispatchCount = 0;  // GC safepoint counter
     
 #define SYNC_IP() { if (!frames.empty()) frame->ip = ip; this->stackTop = stackTop; }
 #define LOAD_FRAME() { frame = &frames.back(); ip = frame->ip; stackTop = this->stackTop; }
@@ -250,7 +251,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_END
     };
     #define DISPATCH() { \
-        if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
+        if (__builtin_expect(++dispatchCount >= 4096, 0)) { \
+            dispatchCount = 0; \
+            GarbageCollector::instance().checkGC(); \
+        } \
         goto *dispatchTable[READ_BYTE()]; \
     }
     #define INTERPRET_LOOP DISPATCH();
@@ -2069,6 +2073,12 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
 }
 
 void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
+    // Enforce maximum call depth to catch unbounded recursion cleanly
+    if (frames.size() >= FRAMES_MAX) {
+        runtimeError("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
+        return;
+    }
+
     // Push nil for any missing optional parameters
     while (argCount < bcFunc->arity) {
         *stackTop++ = Value();

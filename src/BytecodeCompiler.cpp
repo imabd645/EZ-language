@@ -331,6 +331,8 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
             compilePropertyAccess(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SelfExpr>>) {
             compileSelf(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<SuperExpr>>) {
+            compileSuper(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<NewExpr>>) {
             compileNew(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SetExpr>>) {
@@ -827,6 +829,32 @@ void BytecodeCompiler::compilePropertyAccess(const PropertyAccessExpr& expr) {
 
 void BytecodeCompiler::compileSelf(const SelfExpr& /*expr*/) {
     emitLoadSelf();
+}
+
+void BytecodeCompiler::compileSuper(const SuperExpr& /*expr*/) {
+    if (current->currentParentClass.empty()) {
+        std::cerr << "Compile Error: Cannot use 'super' in a class with no parent." << std::endl;
+        return;
+    }
+    
+    // Push `self` (inst)
+    emitLoadSelf();
+    
+    // Push parent class
+    auto parentIt = globalSlots.find(current->currentParentClass);
+    if (parentIt != globalSlots.end()) {
+        uint16_t slot = parentIt->second;
+        emitOp(OpCode::LOAD_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                  static_cast<uint8_t>(slot & 0xFF));
+    } else {
+        size_t parentIdx = identifierConstant(current->currentParentClass);
+        emitOp(OpCode::LOAD_GLOBAL);
+        emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(parentIdx & 0xFF));
+    }
+    
+    emitOp(OpCode::SUPER);
 }
 
 void BytecodeCompiler::emitLoadSelf() {

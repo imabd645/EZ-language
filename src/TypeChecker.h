@@ -76,6 +76,7 @@ private:
     int loopDepth = 0;
     bool hadError = false;
     bool hasImports = false;
+    std::unordered_map<std::string, std::string> modelHierarchy;
     
     void beginScope();
     void endScope();
@@ -125,6 +126,7 @@ private:
     TypeInfo checkPropertyAccess(const PropertyAccessExpr& expr);
     TypeInfo checkSet(const SetExpr& expr);
     TypeInfo checkSelf(const SelfExpr& expr);
+    TypeInfo checkSuper(const SuperExpr& expr);
     TypeInfo checkNew(const NewExpr& expr);
     TypeInfo checkIndex(const IndexExpr& expr);
     TypeInfo checkDictionary(const DictionaryExpr& expr);

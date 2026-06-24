@@ -1,0 +1,29 @@
+model Person 
+{
+    init(name,age)
+    {
+        self.name=name
+        self.age=age
+    }
+    task show()
+    {
+        out `{self.name}  {self.age}`
+    }
+}
+
+model User extends Person 
+{
+    init(name,age,city)
+    {
+        super.init(name,age)
+        self.city=city
+    }
+    task Show()
+    {
+        out `{self.name}  {self.age}  {self.city}`    
+    }
+}
+
+x=User("Abdullah",19,"Khanewal")
+x.show()
+x.Show()

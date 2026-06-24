@@ -101,6 +101,7 @@ private:
     void compileLambda(const LambdaExpr& expr);
     void compilePropertyAccess(const PropertyAccessExpr& expr);
     void compileSelf(const SelfExpr& expr);
+    void compileSuper(const SuperExpr& expr);
     void compileNew(const NewExpr& expr);
     void compileSet(const SetExpr& expr);
     void compileDictionary(const DictionaryExpr& expr);

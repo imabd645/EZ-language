@@ -161,6 +161,13 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             sig.returnType = TypeInfo(model->name);
             declareFunction(model->name, sig);
             
+            // Register init as a callable method for super.init()
+            FunctionSignature initSig;
+            for (const auto& p : model->initParams) initSig.paramNames.push_back(p);
+            for (const auto& t : model->initParamTypes) initSig.paramTypes.push_back(TypeInfo::fromAST(t));
+            initSig.returnType = TypeInfo("Any");
+            declareFunction(model->name + ".init", initSig);
+            
             // Register explicit member declarations
             for (const auto& member : model->members) {
                 if (member.isMethod) {
@@ -450,6 +457,9 @@ void TypeChecker::checkGet(const GetStmt& stmt) {
 }
 
 void TypeChecker::checkModel(const ModelStmt& stmt) {
+    if (!stmt.parentName.empty()) {
+        modelHierarchy[stmt.name] = stmt.parentName;
+    }
     std::string previousModel = currentModel;
     currentModel = stmt.name;
     beginScope();
@@ -559,6 +569,7 @@ TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
         else if constexpr (std::is_same_v<T, std::shared_ptr<PropertyAccessExpr>>) return checkPropertyAccess(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<SetExpr>>) return checkSet(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<SelfExpr>>) return checkSelf(*arg);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<SuperExpr>>) return checkSuper(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<NewExpr>>) return checkNew(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<IndexExpr>>) return checkIndex(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) return checkDictionary(*arg);
@@ -818,16 +829,24 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
         return TypeInfo("Any");
     }
     if (objType.baseType != "Any" && objType.baseType != "Dict") {
-        std::string propKey = objType.baseType + "." + expr.property;
-        Environment* env = currentEnv;
-        while (env) {
-            if (env->variables.count(propKey)) {
-                return env->variables[propKey];
+        std::string currentType = objType.baseType;
+        while (!currentType.empty()) {
+            std::string propKey = currentType + "." + expr.property;
+            Environment* env = currentEnv;
+            while (env) {
+                if (env->variables.count(propKey)) {
+                    return env->variables[propKey];
+                }
+                if (env->functions.count(propKey)) {
+                    return TypeInfo("Callable"); // Or Function type
+                }
+                env = env->enclosing;
             }
-            if (env->functions.count(propKey)) {
-                return TypeInfo("Callable"); // Or Function type
+            if (modelHierarchy.count(currentType)) {
+                currentType = modelHierarchy[currentType];
+            } else {
+                break;
             }
-            env = env->enclosing;
         }
         if (expr.isOptional) return TypeInfo("Any");
         error(0, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
@@ -846,6 +865,18 @@ TypeInfo TypeChecker::checkSelf(const SelfExpr& expr) {
         return TypeInfo("Any");
     }
     return TypeInfo(currentModel);
+}
+
+TypeInfo TypeChecker::checkSuper(const SuperExpr& expr) {
+    if (currentModel.empty()) {
+        error(0, "'super' cannot be used outside of a model");
+        return TypeInfo("Any");
+    }
+    if (modelHierarchy.count(currentModel) == 0) {
+        error(0, "Cannot use 'super' in a model with no parent");
+        return TypeInfo("Any");
+    }
+    return TypeInfo(modelHierarchy[currentModel]);
 }
 
 TypeInfo TypeChecker::checkNew(const NewExpr& expr) {

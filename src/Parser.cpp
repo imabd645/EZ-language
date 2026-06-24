@@ -1187,7 +1187,7 @@ ExprPtr Parser::primary() {
     
     if (match(TokenType::SUPER)) {
         Token t = previous();
-        return makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, "super");
+        return makeSuperExpr(t.line, t.column, t.lexeme.length(), t.filename);
     }
     
     // Self reference

@@ -40,6 +40,7 @@ struct LogicalExpr;
 struct LambdaExpr;
 struct PropertyAccessExpr;
 struct SelfExpr;
+struct SuperExpr;
 struct NewExpr;
 struct SetExpr;
 struct DictionaryExpr;
@@ -61,6 +62,7 @@ using ExprVariant = std::variant<
     std::shared_ptr<LambdaExpr>,
     std::shared_ptr<PropertyAccessExpr>,
     std::shared_ptr<SelfExpr>,
+    std::shared_ptr<SuperExpr>,
     std::shared_ptr<NewExpr>,
     std::shared_ptr<SetExpr>,
     std::shared_ptr<DictionaryExpr>,
@@ -193,6 +195,9 @@ struct PropertyAccessExpr {
 
 // Self reference expression
 struct SelfExpr {};
+
+// Super reference expression
+struct SuperExpr {};
 
 // New instance creation expression (model instantiation)
 struct NewExpr {
@@ -707,6 +712,10 @@ inline ExprPtr makePropertyAccessExpr(int line, int column, int length, const st
 
 inline ExprPtr makeSelfExpr(int line, int column, int length, const std::string& file) {
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<SelfExpr>());
+}
+
+inline ExprPtr makeSuperExpr(int line, int column, int length, const std::string& file) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SuperExpr>());
 }
 
 inline ExprPtr makeNewExpr(int line, int column, int length, const std::string& file, const std::string& className, std::vector<ExprPtr> args) {

@@ -597,8 +597,23 @@ void Lexer::scanInterpolatedString() {
             std::string exprText;
             int braceDepth = 1;
             while (!isAtEnd() && braceDepth > 0) {
-                if (peek() == '{') braceDepth++;
-                if (peek() == '}') {
+                char p = peek();
+                if (p == '"' || p == '\'') {
+                    char quote = p;
+                    exprText += advance();
+                    while (!isAtEnd()) {
+                        char inStr = advance();
+                        exprText += inStr;
+                        if (inStr == '\\' && !isAtEnd()) {
+                            exprText += advance(); // skip escaped char
+                        } else if (inStr == quote) {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if (p == '{') braceDepth++;
+                if (p == '}') {
                     braceDepth--;
                     if (braceDepth == 0) break;
                 }

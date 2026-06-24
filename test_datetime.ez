@@ -1,0 +1,2 @@
+use "datetime"
+out "timeNow: " + str(timeNow(5))

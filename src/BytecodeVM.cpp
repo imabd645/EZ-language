@@ -26,7 +26,7 @@
 #endif
 
 // ============================================================================
-// Global Source Registry — maps filename -> vector of source lines
+// Global Source Registry Ã¢â‚¬â€ maps filename -> vector of source lines
 // Populated by the Lexer/interpreter when loading each file so that
 // runtimeError() can print the offending source line.
 // ============================================================================
@@ -60,8 +60,7 @@ BytecodeVM::BytecodeVM()
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
     globalEnv = std::make_shared<Environment>();
-    GarbageCollector::instance().registerRoot(this);
-    initBuiltins();
+        initBuiltins();
 }
 
 BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
@@ -71,13 +70,11 @@ BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
     stackTop = stack.data();
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
-    GarbageCollector::instance().registerRoot(this);
-    initBuiltins();
+        initBuiltins();
 }
 
 BytecodeVM::~BytecodeVM() {
-    GarbageCollector::instance().unregisterRoot(this);
-    // allUpvalues unique_ptrs handle cleanup automatically
+        // allUpvalues unique_ptrs handle cleanup automatically
 }
 
 void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
@@ -91,13 +88,9 @@ void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
     }
 }
 
-void BytecodeVM::gcMarkRoots() {
-    for (Value* slot = stack.data(); slot < stackTop; ++slot) {
-        GarbageCollector::markValue(*slot);
-    }
-    // Also mark global slots as roots
+// Also mark global slots as roots
     for (const Value& v : globalSlots) {
-        GarbageCollector::markValue(v);
+        CycleCollector::markValue(v);
     }
 }
 
@@ -115,7 +108,6 @@ void BytecodeVM::importThreadState(const ThreadState& state) {
 
 Value BytecodeVM::execute(BytecodeFunctionPtr function,
                            const std::vector<Value>& args) {
-    VMScope gc_scope;
     // Ensure constants are resolved for this function and all nested ones
     function->chunk.resolveConstants();
     
@@ -352,11 +344,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(LOAD_GLOBAL_SLOT) {
                     uint16_t slot = READ_SHORT();
-                    // Fast O(1) indexed array access — no mutex, no hash lookup
+                    // Fast O(1) indexed array access Ã¢â‚¬â€ no mutex, no hash lookup
                     if (__builtin_expect(slot < globalSlots.size(), 1)) {
                         *stackTop++ = globalSlots[slot];
                     } else {
-                        // Slot not yet initialized — should not happen in well-formed bytecode
+                        // Slot not yet initialized Ã¢â‚¬â€ should not happen in well-formed bytecode
                         *stackTop++ = Value();
                     }
                     DISPATCH();
@@ -364,23 +356,23 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(STORE_GLOBAL_SLOT) {
                     uint16_t slot = READ_SHORT();
-                    // O(1) direct array write — no mutex, no hash
+                    // O(1) direct array write Ã¢â‚¬â€ no mutex, no hash
                     if (__builtin_expect(slot < globalSlots.size(), 1)) {
                         globalSlots[slot] = *(stackTop - 1);
                     }
                     DISPATCH();
                 }
 
-                // ── Issue D: Fused loop-condition superinstructions ──────────────────────
+                // Ã¢â€â‚¬Ã¢â€â‚¬ Issue D: Fused loop-condition superinstructions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
                 // Replaces: LOAD_LOCAL i | LOAD_LOCAL end | LESS_EQ | JUMP_IF_FALSE exit
-                // With one dispatch that reads locals directly — no stack push/pop.
+                // With one dispatch that reads locals directly Ã¢â‚¬â€ no stack push/pop.
                 CASE_CODE(LOOP_LESS_EQ_LOCAL) {
                     uint8_t  loopSlot  = READ_BYTE();
                     uint8_t  endSlot   = READ_BYTE();
                     uint32_t exitOff   = READ_INT();
                     const Value& lv = frame->slots[loopSlot];
                     const Value& ev = frame->slots[endSlot];
-                    // Integer fast path — covers 100% of repeat i=0 to N loops
+                    // Integer fast path Ã¢â‚¬â€ covers 100% of repeat i=0 to N loops
                     if (__builtin_expect(lv.isInteger() && ev.isInteger(), 1)) {
                         if (lv.asInteger() > ev.asInteger()) ip += exitOff;
                     } else if (lv.isNumber() && ev.isNumber()) {
@@ -492,7 +484,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value obj   = *(--stackTop);
 
                         if (!obj.isInstance()) {
-                            // Non-instance: dict or class static — plain store
+                            // Non-instance: dict or class static Ã¢â‚¬â€ plain store
                             if (obj.isClass()) {
                                 CHECK_VISIBILITY(obj.asClass(), propName);
                                 obj.asClass()->staticMembers[propName] = value;
@@ -520,8 +512,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             DISPATCH();
                         }
 
-                        // ── Slow path: behaviors active ──
-                        // 1. VALIDATION — before write
+                        // Ã¢â€â‚¬Ã¢â€â‚¬ Slow path: behaviors active Ã¢â€â‚¬Ã¢â€â‚¬
+                        // 1. VALIDATION Ã¢â‚¬â€ before write
                         if (klass->behaviors.validated) {
                             for (const auto& v : klass->validators) {
                                 if (v.field != propName) continue;
@@ -1114,7 +1106,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     }
                     DISPATCH(); 
                 }
-                CASE_CODE(LOOP)           ip -= READ_INT(); GarbageCollector::instance().checkGC(); DISPATCH();
+                CASE_CODE(LOOP)           ip -= READ_INT();  DISPATCH();
 
                 CASE_CODE(CALL) {
                     {
@@ -1313,7 +1305,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
+                        CycleCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1556,7 +1548,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         auto iface = std::make_shared<EZInterface>(name, methods);
                         *stackTop++ = Value(iface);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
+                        CycleCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1659,7 +1651,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         globalEnv->define(className, Value(klass));
                         *stackTop++ = Value(klass);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
+                        CycleCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1705,7 +1697,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
                         *stackTop++ = Value(closure);
-                        GarbageCollector::instance().collectIfThresholdReached(globalEnv, nullptr, true);
+                        CycleCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1829,7 +1821,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             running = true;
             goto dispatch_start;
         }
-        // Uncaught std exception — format like our runtime errors
+        // Uncaught std exception Ã¢â‚¬â€ format like our runtime errors
         pendingException = Value(e.what());
         if (!isAsyncTask) {
             std::string fname = frames.empty() ? "" : frames.back().filename;
@@ -2393,7 +2385,7 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     }
 
     if (tryStack.empty() && !isAsyncTask) {
-        // ── Print the error header ─────────────────────────────────────────────
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Print the error header Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         // Use ANSI escapes if the terminal supports them (Windows 10+)
         HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
         DWORD  consoleMode = 0;
@@ -2408,7 +2400,7 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
 
         std::cerr << "\n" << RED << "Error" << RESET << ": " << BOLD << message << RESET << "\n";
 
-        // ── Location line ──────────────────────────────────────────────────────
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Location line Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (!faultFile.empty() || faultLine > 0) {
             std::cerr << "  " << CYAN;
             if (!faultFile.empty()) std::cerr << faultFile;
@@ -2417,7 +2409,7 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
             std::cerr << RESET << "\n";
         }
 
-        // ── Source snippet ─────────────────────────────────────────────────────
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Source snippet Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (faultLine > 0) {
             const std::string* srcLine = EZ_GetSourceLine(faultFile, faultLine);
             if (srcLine) {
@@ -2430,7 +2422,7 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
             }
         }
 
-        // ── Stack trace ────────────────────────────────────────────────────────
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Stack trace Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         printStackTrace();
     }
 
@@ -2495,9 +2487,9 @@ void BytecodeVM::initBuiltins() {
     registerBuiltins(*this);
     registerGUIBuiltins(*this);
 
-    // ─ Decorator builtins ──────────────────────────────────────────────────
+    // Ã¢â€â‚¬ Decorator builtins Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-    // audit(obj) → list of dicts with field/old/new/via/timestamp
+    // audit(obj) Ã¢â€ â€™ list of dicts with field/old/new/via/timestamp
     defineGlobal("audit", Value::makeNativeFunction("audit", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isInstance()) { ctx.runtimeError("audit() expects a model instance"); return Value(); }
         auto inst = args[0].asInstance();
@@ -2517,14 +2509,14 @@ void BytecodeVM::initBuiltins() {
         return Value(result);
     }));
 
-    // audit_clear(obj) → clears audit log
+    // audit_clear(obj) Ã¢â€ â€™ clears audit log
     defineGlobal("audit_clear", Value::makeNativeFunction("audit_clear", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (args[0].isInstance() && args[0].asInstance()->auditLog)
             args[0].asInstance()->auditLog->clear();
         return Value();
     }));
 
-    // audit_since(obj, timestamp) → list of entries since timestamp
+    // audit_since(obj, timestamp) Ã¢â€ â€™ list of entries since timestamp
     defineGlobal("audit_since", Value::makeNativeFunction("audit_since", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isInstance()) { ctx.runtimeError("audit_since() expects a model instance"); return Value(); }
         auto inst = args[0].asInstance();
@@ -2545,7 +2537,7 @@ void BytecodeVM::initBuiltins() {
         return Value(result);
     }));
 
-    // snapshot(obj) → dict copy of current properties
+    // snapshot(obj) Ã¢â€ â€™ dict copy of current properties
     defineGlobal("snapshot", Value::makeNativeFunction("snapshot", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isInstance()) { ctx.runtimeError("snapshot() expects a model instance"); return Value(); }
         auto inst = args[0].asInstance();
@@ -2558,7 +2550,7 @@ void BytecodeVM::initBuiltins() {
         return Value(snap);
     }));
 
-    // rollback(obj, snap) → restore properties from snapshot dict
+    // rollback(obj, snap) Ã¢â€ â€™ restore properties from snapshot dict
     defineGlobal("rollback", Value::makeNativeFunction("rollback", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isInstance()) { ctx.runtimeError("rollback() expects a model instance"); return Value(); }
         auto inst = args[0].asInstance();
@@ -2569,7 +2561,7 @@ void BytecodeVM::initBuiltins() {
         return Value();
     }));
 
-    // snapshot_diff(a, b) → dict of changed fields {was, now}
+    // snapshot_diff(a, b) Ã¢â€ â€™ dict of changed fields {was, now}
     defineGlobal("snapshot_diff", Value::makeNativeFunction("snapshot_diff", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isDictionary() || !args[1].isDictionary()) {
             ctx.runtimeError("snapshot_diff() expects two snapshot dicts"); return Value();

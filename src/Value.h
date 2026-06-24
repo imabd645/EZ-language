@@ -165,7 +165,7 @@ struct Value {
     Value(InterfacePtr val) : m_data(val) {}
     Value(AtomicPtr val) : m_data(val) {}
     
-    // Type checking — O(1) via index lookup table
+    // Type checking â€” O(1) via index lookup table
     // Table order must match the std::variant alternative order in m_data exactly.
     ValueType type() const {
         static constexpr ValueType typeTable[] = {
@@ -305,7 +305,7 @@ struct EZConcatString : public GCObject {
     bool isFlattened = false;
     std::shared_ptr<std::string> flattened;
     
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override {
         left = Value();
         right = Value();
@@ -318,7 +318,7 @@ struct EZConcatString : public GCObject {
 struct EZArray : public GCObject {
     std::vector<Value> elements;
     EZArray(const std::vector<Value>& e = {}) : elements(e) {}
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override { elements.clear(); }
     
     size_t size() const { return elements.size(); }
@@ -340,7 +340,7 @@ struct EZArray : public GCObject {
 struct EZDictionary : public GCObject {
     std::unordered_map<std::string, Value> map;
     mutable std::shared_mutex map_mutex;
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override {
         std::unique_lock<std::shared_mutex> lk(map_mutex);
         map.clear();
@@ -366,7 +366,7 @@ struct EZFunction : public GCObject {
         : name(name), params(params), defaultValues(defaultValues), body(body), 
           closure(closure), isVariadic(variadic) {}
 
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override { closure = nullptr; staticEnv = nullptr; bytecode = nullptr; }
 };
 
@@ -378,7 +378,7 @@ struct NativeFunction {
         : name(name), arity(arity), function(fn) {}
 };
 
-// ── Behavior flags — one bit per active decorator ──────────────────────────────
+// â”€â”€ Behavior flags â€” one bit per active decorator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 struct BehaviorFlags {
     bool audited    : 1;
     bool snapshot   : 1;
@@ -423,14 +423,14 @@ struct EZClass : public GCObject {
     std::vector<std::string> initParams;
     std::vector<StmtPtr> initBody;
 
-    // ── Decorator metadata ────────────────────────────────────────────────
+    // â”€â”€ Decorator metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     BehaviorFlags behaviors = {false,false,false,false,false};
     std::string persistPath;
     std::vector<FieldValidator> validators;
     std::unordered_set<std::string> cachedMethods;
 
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override {
         parent = nullptr;
         methods.clear();
@@ -444,7 +444,7 @@ struct EZInstance : public GCObject {
     std::unordered_map<std::string, Value> properties;
     mutable std::shared_mutex prop_mutex; // protects properties for concurrent access
 
-    // ── Decorator runtime state (lazily allocated) ───────────────────────────
+    // â”€â”€ Decorator runtime state (lazily allocated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     std::vector<AuditEntry>*                       auditLog   = nullptr;
     std::unordered_map<std::string, CachedResult>* cacheStore = nullptr;
 
@@ -453,7 +453,7 @@ struct EZInstance : public GCObject {
         delete auditLog;
         delete cacheStore;
     }
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override {
         std::unique_lock<std::shared_mutex> lk(prop_mutex);
         properties.clear();
@@ -469,7 +469,7 @@ struct EZInstance : public GCObject {
             auto it = properties.find(name);
             if (it != properties.end()) return it->second;
         }
-        // Then search class hierarchy (read-only, no lock needed — class methods are set once)
+        // Then search class hierarchy (read-only, no lock needed â€” class methods are set once)
         std::shared_ptr<EZClass> currentClass = klass;
         while (currentClass) {
             if (currentClass->methods.count(name)) return currentClass->methods[name];
@@ -501,7 +501,7 @@ struct EZInterface : public GCObject {
     EZInterface(const std::string& name, const std::vector<std::string>& methods)
         : name(name), requiredMethods(methods) {}
         
-    void gc_mark() override {}
+    void traverse(GCObjectVisitor& visitor) override {}
     void gc_clear() override { requiredMethods.clear(); }
 };
 
@@ -510,7 +510,7 @@ struct EZBoundMethod : public GCObject {
     Value method;
     EZBoundMethod(const Value& receiver, const Value& method)
         : receiver(receiver), method(method) {}
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override;
 };
 
@@ -526,7 +526,7 @@ struct EZClosure : public GCObject {
     std::shared_ptr<struct BytecodeFunction> function;
     std::vector<UpvalueObj*> upvalues;
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
-    void gc_mark() override;
+    void traverse(GCObjectVisitor& visitor) override;
     void gc_clear() override;
 };
 
@@ -534,14 +534,14 @@ struct EZBuffer : public GCObject {
     std::vector<uint8_t> data;
     EZBuffer(size_t size = 0) : data(size) {}
     EZBuffer(const std::vector<uint8_t>& d) : data(d) {}
-    void gc_mark() override { gc_marked = true; }
+    void traverse(GCObjectVisitor& visitor) override {}
     void gc_clear() override { data.clear(); }
     size_t size() const { return data.size(); }
 };
 
 struct EZMutex : public GCObject {
     std::recursive_mutex mtx;
-    void gc_mark() override { gc_marked = true; }
+    void traverse(GCObjectVisitor& visitor) override {}
     void gc_clear() override {}
     void lock() { mtx.lock(); }
     void unlock() { mtx.unlock(); }
@@ -550,7 +550,7 @@ struct EZMutex : public GCObject {
 struct EZAtomic : public GCObject {
     std::atomic<long long> val;
     EZAtomic(long long initial = 0) : val(initial) {}
-    void gc_mark() override { gc_marked = true; }
+    void traverse(GCObjectVisitor& visitor) override {}
     void gc_clear() override {}
 };
 

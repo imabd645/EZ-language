@@ -29,7 +29,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             
             auto mtx = args[0].asMutexPtr();
             
-            // RAII lock — automatically unlocks on scope exit, even if an exception is thrown
+            // RAII lock â€” automatically unlocks on scope exit, even if an exception is thrown
             std::lock_guard<std::recursive_mutex> guard(mtx->mtx);
             return interp.callFunction(args[1], {}, 0, "");
         }));
@@ -43,9 +43,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             }
             int ms = static_cast<int>(args[0].asInteger());
             if (ms > 0) {
-                GarbageCollector::instance().leaveVMExecution();
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-                GarbageCollector::instance().enterVMExecution();
             }
             return Value();
         }));

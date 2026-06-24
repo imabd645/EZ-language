@@ -11,6 +11,7 @@
 #include "runtime/EventLoop.h"
 #include "EZFuture.h"
 #include <thread>
+#include <sqlite3.h>
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -570,6 +571,26 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (klass->behaviors.hasCached && inst->cacheStore) {
                             for (auto& [methodName, cr] : *inst->cacheStore) {
                                 if (cr.deps.count(propName)) cr.dirty = true;
+                            }
+                        }
+
+                        // 6. Persistence
+                        if (klass->behaviors.persistent && !klass->persistPath.empty()) {
+                            sqlite3* db;
+                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                
+                                std::string valStr = value.toString();
+                                std::string sql = "INSERT OR REPLACE INTO EZ_Persist (prop, val) VALUES (?, ?);";
+                                sqlite3_stmt* stmt;
+                                if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+                                    sqlite3_bind_text(stmt, 1, propName.c_str(), -1, SQLITE_TRANSIENT);
+                                    sqlite3_bind_text(stmt, 2, valStr.c_str(), -1, SQLITE_TRANSIENT);
+                                    sqlite3_step(stmt);
+                                    sqlite3_finalize(stmt);
+                                }
+                                sqlite3_close(db);
                             }
                         }
 

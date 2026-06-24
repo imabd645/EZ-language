@@ -113,6 +113,30 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     current->function->isVariadic = task.isVariadic;
     current->function->isAsync = task.isAsync;
     current->function->className = current->currentClass;
+    current->isCached = task.isCached;
+
+    if (current->isCached) {
+        size_t nameIdx = identifierConstant(name);
+        emitOp(OpCode::GET_CACHED_RESULT);
+        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(nameIdx & 0xFF));
+        
+        emitOp(OpCode::DUP);
+        emitOp(OpCode::LOAD_NIL);
+        emitOp(OpCode::EQUAL_EQUAL);
+        size_t hitJump = emitJump(OpCode::JUMP_IF_FALSE);
+        
+        emitOp(OpCode::POP); // pop boolean
+        emitOp(OpCode::POP); // pop nil
+        
+        size_t skipHit = emitJump(OpCode::JUMP);
+        
+        patchJump(hitJump);
+        emitOp(OpCode::POP); // pop boolean
+        emitReturn();
+        
+        patchJump(skipHit);
+    }
 
     // Add parameters as the first locals (slot 0, 1, 2, …)
     for (const auto& param : task.params) {
@@ -240,6 +264,12 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
 
     // Implicit nil return (no ensures checks — bare fall-through is nil result)
     emitOp(OpCode::LOAD_NIL);
+    if (current->isCached) {
+        size_t nameIdx = identifierConstant(name);
+        emitOp(OpCode::STORE_CACHED_RESULT);
+        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(nameIdx & 0xFF));
+    }
     emitReturn();
 
     BytecodeFunctionPtr result = current->function;
@@ -933,6 +963,21 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         compileExpr(stmt.step);
         markInitialized();
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(stepVar));
+        
+        // --- Runtime check: step != 0 ---
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitOp(OpCode::LOAD_ZERO);
+        emitOp(OpCode::EQUAL_EQUAL);
+        size_t stepZeroJump = emitJump(OpCode::JUMP_IF_FALSE);
+        
+        emitOp(OpCode::POP); // pop boolean
+        int errStrIdx = (int)makeConstant(Constant("Step cannot be 0 in repeat loop"));
+        emitOp(OpCode::LOAD_CONST);
+        emitBytes(static_cast<uint8_t>((errStrIdx >> 8) & 0xFF), static_cast<uint8_t>(errStrIdx & 0xFF));
+        emitOp(OpCode::THROW);
+
+        patchJump(stepZeroJump);
+        emitOp(OpCode::POP); // pop boolean
 
         startLoop();
         size_t loopStart = currentChunk().code.size();
@@ -1153,6 +1198,13 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         compileExpr(stmt.value);
     } else {
         emitOp(OpCode::LOAD_NIL);
+    }
+    
+    if (current && current->function->isMethod && current->isCached) {
+        size_t nameIdx = identifierConstant(current->function->name);
+        emitOp(OpCode::STORE_CACHED_RESULT);
+        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(nameIdx & 0xFF));
     }
     
     // ---- Design-by-Contract: ensures (postconditions) ----
@@ -1624,6 +1676,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
             TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
+            methodTask.isCached = member.isCached;
             emitClosure(methodTask, true); // Pushes closure
         } else {
             if (member.initializer) {

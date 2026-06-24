@@ -57,6 +57,7 @@ private:
         int compilerId;
         
         bool isHarvesting;  // Force top-level assignments to be locals (for modules)
+        bool isCached = false;
 
         Compiler(const std::string& name, size_t arity, Compiler* parent = nullptr);
     };

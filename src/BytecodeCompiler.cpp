@@ -319,6 +319,8 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
             compileArray(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) {
             compileAssign(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<DestructureAssignExpr>>) {
+            compileDestructureAssign(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<LogicalExpr>>) {
             compileLogical(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
@@ -631,6 +633,109 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
             }
         }
         // The popped value caused STORE to consume the dup; original stays
+    }
+}
+
+void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& expr) {
+    // 1. Evaluate RHS: Stack: [..., RHS_val]
+    compileExpr(expr.value);
+    
+    // 2. Store in a temporary local variable: Stack: [..., RHS_val]
+    size_t tempVar = addLocal("<destructure-val>");
+    current->locals.back().isStackResident = false;
+    markInitialized();
+    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(tempVar));
+    
+    // 3. For each target target_i at index i:
+    for (size_t i = 0; i < expr.targets.size(); ++i) {
+        const auto& target = expr.targets[i];
+        
+        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
+            // Target is an identifier: var
+            // Load tempVar
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            // Load index constant i
+            int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
+            emitOp(OpCode::LOAD_CONST);
+            emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
+            // INDEX_GET -> leaves element on stack
+            emitOp(OpCode::INDEX_GET);
+            
+            // Store to target variable
+            std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
+            std::string mangled = resolveStatic(name);
+            if (!mangled.empty()) {
+                uint16_t slot = globalSlotFor(mangled);
+                emitOp(OpCode::STORE_GLOBAL_SLOT);
+                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                          static_cast<uint8_t>(slot & 0xFF));
+            } else {
+                int local = resolveLocal(name);
+                if (local != -1) {
+                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                              static_cast<uint8_t>(local));
+                } else {
+                    int upvalue = resolveUpvalue(name);
+                    if (upvalue != -1) {
+                        emitBytes(static_cast<uint8_t>(OpCode::STORE_UPVALUE),
+                                  static_cast<uint8_t>(upvalue));
+                    } else if (globalSlots.count(name) > 0 && !current->isHarvesting) {
+                        uint16_t slot = globalSlots[name];
+                        emitOp(OpCode::STORE_GLOBAL_SLOT);
+                        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                                  static_cast<uint8_t>(slot & 0xFF));
+                    } else if (current->scopeDepth > 0) {
+                        local = addLocal(name);
+                        current->locals.back().isStackResident = false;
+                        markInitialized();
+                        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                                  static_cast<uint8_t>(local));
+                    } else {
+                        uint16_t slot = globalSlotFor(name);
+                        emitOp(OpCode::STORE_GLOBAL_SLOT);
+                        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                                  static_cast<uint8_t>(slot & 0xFF));
+                    }
+                }
+            }
+            // Pop the stored value
+            emitOp(OpCode::POP);
+            
+        } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(target->variant)) {
+            // Target is an index expression: obj[index]
+            auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(target->variant);
+            compileExpr(indexExpr->object);
+            compileExpr(indexExpr->index);
+            
+            // Load element from tempVar
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
+            emitOp(OpCode::LOAD_CONST);
+            emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
+            emitOp(OpCode::INDEX_GET);
+            
+            // INDEX_SET -> leaves value on stack
+            emitOp(OpCode::INDEX_SET);
+            emitOp(OpCode::POP);
+            
+        } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(target->variant)) {
+            // Target is a property: obj.prop
+            auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(target->variant);
+            compileExpr(propExpr->object);
+            
+            // Load element from tempVar
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
+            emitOp(OpCode::LOAD_CONST);
+            emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
+            emitOp(OpCode::INDEX_GET);
+            
+            // STORE_PROPERTY -> leaves value on stack
+            int nameIdx = (int)identifierConstant(propExpr->property);
+            emitOp(OpCode::STORE_PROPERTY);
+            emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF), static_cast<uint8_t>(nameIdx & 0xFF));
+            emitOp(OpCode::POP);
+        }
     }
 }
 
@@ -970,14 +1075,12 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         emitOp(OpCode::EQUAL);
         size_t stepZeroJump = emitJump(OpCode::JUMP_IF_FALSE);
         
-        emitOp(OpCode::POP); // pop boolean
         int errStrIdx = (int)makeConstant(Constant("Step cannot be 0 in repeat loop"));
         emitOp(OpCode::LOAD_CONST);
         emitBytes(static_cast<uint8_t>((errStrIdx >> 8) & 0xFF), static_cast<uint8_t>(errStrIdx & 0xFF));
         emitOp(OpCode::THROW);
 
         patchJump(stepZeroJump);
-        emitOp(OpCode::POP); // pop boolean
 
         startLoop();
         size_t loopStart = currentChunk().code.size();

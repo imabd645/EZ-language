@@ -94,6 +94,7 @@ private:
     void compileIndex(const IndexExpr& expr);
     void compileArray(const ArrayExpr& expr);
     void compileAssign(const AssignExpr& expr);
+    void compileDestructureAssign(const DestructureAssignExpr& expr);
     void compileLogical(const LogicalExpr& expr);
     void compileLogicalShortCircuit(const BinaryExpr& expr);
     void compileTernary(const TernaryExpr& expr);

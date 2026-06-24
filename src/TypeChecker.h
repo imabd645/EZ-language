@@ -115,6 +115,7 @@ private:
     // Expressions
     TypeInfo checkExpr(const ExprPtr& expr);
     TypeInfo checkAssign(const AssignExpr& expr);
+    TypeInfo checkDestructureAssign(const DestructureAssignExpr& expr);
     TypeInfo checkBinary(const BinaryExpr& expr);
     TypeInfo checkUnary(const UnaryExpr& expr);
     TypeInfo checkCall(const CallExpr& expr);

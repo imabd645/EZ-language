@@ -549,6 +549,7 @@ TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
     TypeInfo result = std::visit([this](auto&& arg) -> TypeInfo {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) return checkAssign(*arg);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<DestructureAssignExpr>>) return checkDestructureAssign(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) return checkBinary(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<UnaryExpr>>) return checkUnary(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<CallExpr>>) return checkCall(*arg);
@@ -616,6 +617,30 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
         }
     }
     
+    return valType;
+}
+
+TypeInfo TypeChecker::checkDestructureAssign(const DestructureAssignExpr& expr) {
+    TypeInfo valType = checkExpr(expr.value);
+    for (const auto& target : expr.targets) {
+        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
+            std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
+            Environment* env = currentEnv;
+            bool found = false;
+            while (env) {
+                if (env->variables.count(name)) {
+                    found = true;
+                    break;
+                }
+                env = env->enclosing;
+            }
+            if (!found) {
+                declareVariable(name, TypeInfo("Any"));
+            }
+        } else {
+            checkExpr(target);
+        }
+    }
     return valType;
 }
 

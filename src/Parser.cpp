@@ -29,6 +29,30 @@ bool Parser::isAtEnd() const {
     return peek().type == TokenType::END_OF_FILE;
 }
 
+bool Parser::isDestructuring() const {
+    int nesting = 0;
+    size_t idx = current;
+    bool hasComma = false;
+    while (idx < tokens.size()) {
+        TokenType type = tokens[idx].type;
+        if (type == TokenType::END_OF_FILE) break;
+        if (nesting == 0) {
+            if (type == TokenType::NEWLINE || type == TokenType::RBRACE || type == TokenType::RBRACKET) break;
+            if (type == TokenType::COMMA) hasComma = true;
+            if (type == TokenType::EQUAL) return hasComma;
+        }
+        
+        if (type == TokenType::LPAREN || type == TokenType::LBRACKET || type == TokenType::LBRACE) {
+            nesting++;
+        } else if (type == TokenType::RPAREN || type == TokenType::RBRACKET || type == TokenType::RBRACE) {
+            nesting--;
+            if (nesting < 0) break;
+        }
+        idx++;
+    }
+    return false;
+}
+
 const Token& Parser::peek() const {
     return tokens[current];
 }
@@ -844,6 +868,17 @@ ExprPtr Parser::expression() {
 }
 
 ExprPtr Parser::assignment() {
+    if (isDestructuring()) {
+        std::vector<ExprPtr> targets;
+        targets.push_back(ternary());
+        while (match(TokenType::COMMA)) {
+            targets.push_back(ternary());
+        }
+        consume(TokenType::EQUAL, "Expected '=' after destructuring targets");
+        ExprPtr value = assignment();
+        return makeDestructureAssignExpr(targets[0]->line, targets[0]->column, targets[0]->length, targets[0]->filename, std::move(targets), std::move(value));
+    }
+
     ExprPtr expr = ternary();
     
     if (match({TokenType::EQUAL, TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, 

@@ -24,6 +24,7 @@ private:
     std::vector<Token> tokens;
     size_t current = 0;
     bool hadError = false;
+    bool isDestructuring() const;
 
     // Token navigation
     bool isAtEnd() const;

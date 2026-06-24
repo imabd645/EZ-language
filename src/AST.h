@@ -46,6 +46,7 @@ struct DictionaryExpr;
 struct SpreadExpr;
 struct TernaryExpr;
 struct AwaitExpr;
+struct DestructureAssignExpr;
 
 using ExprVariant = std::variant<
     std::shared_ptr<LiteralExpr>,
@@ -65,7 +66,8 @@ using ExprVariant = std::variant<
     std::shared_ptr<DictionaryExpr>,
     std::shared_ptr<SpreadExpr>,
     std::shared_ptr<TernaryExpr>,
-    std::shared_ptr<AwaitExpr>
+    std::shared_ptr<AwaitExpr>,
+    std::shared_ptr<DestructureAssignExpr>
 >;
 
 struct Expr {
@@ -241,6 +243,14 @@ struct AwaitExpr {
     ExprPtr expression;
     
     explicit AwaitExpr(ExprPtr expr) : expression(std::move(expr)) {}
+};
+
+struct DestructureAssignExpr {
+    std::vector<ExprPtr> targets;
+    ExprPtr value;
+    
+    DestructureAssignExpr(std::vector<ExprPtr> targets, ExprPtr value)
+        : targets(std::move(targets)), value(std::move(value)) {}
 };
 
 // ============ STATEMENTS ============
@@ -614,6 +624,10 @@ inline ExprPtr makeArrayExpr(int line, int column, int length, const std::string
 
 inline ExprPtr makeAssignExpr(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr) {
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object)));
+}
+
+inline ExprPtr makeDestructureAssignExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> targets, ExprPtr value) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<DestructureAssignExpr>(std::move(targets), std::move(value)));
 }
 
 inline ExprPtr makeLogicalExpr(int line, int column, int length, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {

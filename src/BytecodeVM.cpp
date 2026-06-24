@@ -89,12 +89,11 @@ void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
     }
 }
 
-// Also mark global slots as roots
+void BytecodeVM::gcMarkRoots() {
     for (const Value& v : globalSlots) {
-        CycleCollector::markValue(v);
+        GarbageCollector::markValue(v);
     }
 }
-
 Value BytecodeVM::execute(BytecodeFunctionPtr function) {
     return execute(function, {});
 }
@@ -485,7 +484,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value obj   = *(--stackTop);
 
                         if (!obj.isInstance()) {
-                            // Non-instance: dict or class static Ã¢â‚¬â€ plain store
                             if (obj.isClass()) {
                                 CHECK_VISIBILITY(obj.asClass(), propName);
                                 obj.asClass()->staticMembers[propName] = value;
@@ -499,102 +497,92 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 return;
                             }
                             *stackTop++ = value;
-                            DISPATCH();
-                        }
+                        } else {
+                            auto inst  = obj.asInstance();
+                            auto klass = inst->klass;
 
-                        auto inst  = obj.asInstance();
-                        auto klass = inst->klass;
-
-                        if (!klass->behaviors.any()) {
-                            // Fast path: no decorator behaviors active
-                            CHECK_VISIBILITY(klass, propName);
-                            inst->setProperty(propName, value);
-                            *stackTop++ = value;
-                            DISPATCH();
-                        }
-
-                        // Ã¢â€â‚¬Ã¢â€â‚¬ Slow path: behaviors active Ã¢â€â‚¬Ã¢â€â‚¬
-                        // 1. VALIDATION Ã¢â‚¬â€ before write
-                        if (klass->behaviors.validated) {
-                            for (const auto& v : klass->validators) {
-                                if (v.field != propName) continue;
-                                bool ok = false;
-                                if (v.rule == "notnull") {
-                                    ok = !value.isNil();
-                                } else if (v.rule == "minlen") {
-                                    ok = value.isString() && (long long)value.asString().size() >= v.param.asInteger();
-                                } else if (v.rule == "maxlen") {
-                                    ok = value.isString() && (long long)value.asString().size() <= v.param.asInteger();
-                                } else if (v.rule == "min") {
-                                    ok = value.asFloat() >= v.param.asFloat();
-                                } else if (v.rule == "max") {
-                                    ok = value.asFloat() <= v.param.asFloat();
-                                } else if (v.rule == "email") {
-                                    const auto& s = value.isString() ? value.asString() : std::string();
-                                    auto at = s.find('@');
-                                    ok = (at != std::string::npos && at > 0 && at < s.size()-1 && s.find('.', at) != std::string::npos);
-                                } else if (v.rule == "pattern") {
-                                    try { ok = std::regex_match(value.asString(), std::regex(v.param.asString())); } catch (...) { ok = false; }
-                                } else { ok = true; }
-                                if (!ok) {
-                                    SYNC_IP();
-                                    runtimeError("ValidationError: " + v.message + " (field '" + propName + "')");
-                                    return;
+                            if (!klass->behaviors.any()) {
+                                CHECK_VISIBILITY(klass, propName);
+                                inst->setProperty(propName, value);
+                                *stackTop++ = value;
+                            } else {
+                                if (klass->behaviors.validated) {
+                                    for (const auto& v : klass->validators) {
+                                        if (v.field != propName) continue;
+                                        bool ok = false;
+                                        if (v.rule == "notnull") {
+                                            ok = !value.isNil();
+                                        } else if (v.rule == "minlen") {
+                                            ok = value.isString() && (long long)value.asString().size() >= v.param.asInteger();
+                                        } else if (v.rule == "maxlen") {
+                                            ok = value.isString() && (long long)value.asString().size() <= v.param.asInteger();
+                                        } else if (v.rule == "min") {
+                                            ok = value.asFloat() >= v.param.asFloat();
+                                        } else if (v.rule == "max") {
+                                            ok = value.asFloat() <= v.param.asFloat();
+                                        } else if (v.rule == "email") {
+                                            const auto& s = value.isString() ? value.asString() : std::string();
+                                            auto at = s.find('@');
+                                            ok = (at != std::string::npos && at > 0 && at < s.size()-1 && s.find('.', at) != std::string::npos);
+                                        } else if (v.rule == "pattern") {
+                                            try { ok = std::regex_match(value.asString(), std::regex(v.param.asString())); } catch (...) { ok = false; }
+                                        } else { ok = true; }
+                                        if (!ok) {
+                                            SYNC_IP();
+                                            runtimeError("ValidationError: " + v.message + " (field '" + propName + "')");
+                                            return;
+                                        }
+                                    }
                                 }
-                            }
-                        }
 
-                        // 2. Capture old value for audit / cache
-                        Value oldValue;
-                        if (klass->behaviors.audited || klass->behaviors.hasCached) {
-                            oldValue = inst->getProperty(propName);
-                        }
-
-                        // 3. Perform write
-                        CHECK_VISIBILITY(klass, propName);
-                        inst->setProperty(propName, value);
-
-                        // 4. Audit record
-                        if (klass->behaviors.audited) {
-                            if (!inst->auditLog) inst->auditLog = new std::vector<AuditEntry>();
-                            AuditEntry e;
-                            e.field     = propName;
-                            e.oldValue  = oldValue;
-                            e.newValue  = value;
-                            e.via       = frame->function->name;
-                            e.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                              std::chrono::system_clock::now().time_since_epoch()).count();
-                            inst->auditLog->push_back(std::move(e));
-                        }
-
-                        // 5. Cache invalidation
-                        if (klass->behaviors.hasCached && inst->cacheStore) {
-                            for (auto& [methodName, cr] : *inst->cacheStore) {
-                                if (cr.deps.count(propName)) cr.dirty = true;
-                            }
-                        }
-
-                        // 6. Persistence
-                        if (klass->behaviors.persistent && !klass->persistPath.empty()) {
-                            sqlite3* db;
-                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                
-                                std::string valStr = value.toString();
-                                std::string sql = "INSERT OR REPLACE INTO EZ_Persist (prop, val) VALUES (?, ?);";
-                                sqlite3_stmt* stmt;
-                                if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
-                                    sqlite3_bind_text(stmt, 1, propName.c_str(), -1, SQLITE_TRANSIENT);
-                                    sqlite3_bind_text(stmt, 2, valStr.c_str(), -1, SQLITE_TRANSIENT);
-                                    sqlite3_step(stmt);
-                                    sqlite3_finalize(stmt);
+                                Value oldValue;
+                                if (klass->behaviors.audited || klass->behaviors.hasCached) {
+                                    oldValue = inst->getProperty(propName);
                                 }
-                                sqlite3_close(db);
+
+                                CHECK_VISIBILITY(klass, propName);
+                                inst->setProperty(propName, value);
+
+                                if (klass->behaviors.audited) {
+                                    if (!inst->auditLog) inst->auditLog = new std::vector<AuditEntry>();
+                                    AuditEntry e;
+                                    e.field     = propName;
+                                    e.oldValue  = oldValue;
+                                    e.newValue  = value;
+                                    e.via       = frame->function->name;
+                                    e.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                      std::chrono::system_clock::now().time_since_epoch()).count();
+                                    inst->auditLog->push_back(std::move(e));
+                                }
+
+                                if (klass->behaviors.hasCached && inst->cacheStore) {
+                                    for (auto& [methodName, cr] : *inst->cacheStore) {
+                                        if (cr.deps.count(propName)) cr.dirty = true;
+                                    }
+                                }
+
+                                if (klass->behaviors.persistent && !klass->persistPath.empty()) {
+                                    sqlite3* db;
+                                    if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                        const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                        sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                        
+                                        std::string valStr = value.toString();
+                                        std::string sql = "INSERT OR REPLACE INTO EZ_Persist (prop, val) VALUES (?, ?);";
+                                        sqlite3_stmt* stmt;
+                                        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+                                            sqlite3_bind_text(stmt, 1, propName.c_str(), -1, SQLITE_TRANSIENT);
+                                            sqlite3_bind_text(stmt, 2, valStr.c_str(), -1, SQLITE_TRANSIENT);
+                                            sqlite3_step(stmt);
+                                            sqlite3_finalize(stmt);
+                                        }
+                                        sqlite3_close(db);
+                                    }
+                                }
+
+                                *stackTop++ = value;
                             }
                         }
-
-                        *stackTop++ = value;
                     }
                     DISPATCH();
                 }
@@ -641,11 +629,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 auto it = inst->cacheStore->find(methodName);
                                 if (it != inst->cacheStore->end() && !it->second.dirty) {
                                     *stackTop++ = it->second.result;
-                                    DISPATCH();
+                                } else {
+                                    *stackTop++ = Value(); // nil = cache miss
                                 }
+                            } else {
+                                *stackTop++ = Value(); // nil = cache miss
                             }
+                        } else {
+                            *stackTop++ = Value(); // nil = cache miss
                         }
-                        *stackTop++ = Value(); // nil = cache miss
                     }
                     DISPATCH();
                 }
@@ -1326,7 +1318,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
-                        CycleCollector::instance().collectIfThresholdReached();
+                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1569,7 +1561,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         auto iface = std::make_shared<EZInterface>(name, methods);
                         *stackTop++ = Value(iface);
-                        CycleCollector::instance().collectIfThresholdReached();
+                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1672,7 +1664,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         globalEnv->define(className, Value(klass));
                         *stackTop++ = Value(klass);
-                        CycleCollector::instance().collectIfThresholdReached();
+                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1718,7 +1710,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
                         *stackTop++ = Value(closure);
-                        CycleCollector::instance().collectIfThresholdReached();
+                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }

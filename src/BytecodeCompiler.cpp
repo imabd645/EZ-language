@@ -123,7 +123,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         
         emitOp(OpCode::DUP);
         emitOp(OpCode::LOAD_NIL);
-        emitOp(OpCode::EQUAL_EQUAL);
+        emitOp(OpCode::EQUAL);
         size_t hitJump = emitJump(OpCode::JUMP_IF_FALSE);
         
         emitOp(OpCode::POP); // pop boolean
@@ -967,7 +967,7 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         // --- Runtime check: step != 0 ---
         emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
         emitOp(OpCode::LOAD_ZERO);
-        emitOp(OpCode::EQUAL_EQUAL);
+        emitOp(OpCode::EQUAL);
         size_t stepZeroJump = emitJump(OpCode::JUMP_IF_FALSE);
         
         emitOp(OpCode::POP); // pop boolean

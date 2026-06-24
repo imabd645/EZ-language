@@ -305,7 +305,7 @@ struct EZConcatString : public GCObject {
     bool isFlattened = false;
     std::shared_ptr<std::string> flattened;
     
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override {
         left = Value();
         right = Value();
@@ -318,7 +318,7 @@ struct EZConcatString : public GCObject {
 struct EZArray : public GCObject {
     std::vector<Value> elements;
     EZArray(const std::vector<Value>& e = {}) : elements(e) {}
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override { elements.clear(); }
     
     size_t size() const { return elements.size(); }
@@ -340,7 +340,7 @@ struct EZArray : public GCObject {
 struct EZDictionary : public GCObject {
     std::unordered_map<std::string, Value> map;
     mutable std::shared_mutex map_mutex;
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override {
         std::unique_lock<std::shared_mutex> lk(map_mutex);
         map.clear();
@@ -366,7 +366,7 @@ struct EZFunction : public GCObject {
         : name(name), params(params), defaultValues(defaultValues), body(body), 
           closure(closure), isVariadic(variadic) {}
 
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override { closure = nullptr; staticEnv = nullptr; bytecode = nullptr; }
 };
 
@@ -430,7 +430,7 @@ struct EZClass : public GCObject {
     std::unordered_set<std::string> cachedMethods;
 
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override {
         parent = nullptr;
         methods.clear();
@@ -453,7 +453,7 @@ struct EZInstance : public GCObject {
         delete auditLog;
         delete cacheStore;
     }
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override {
         std::unique_lock<std::shared_mutex> lk(prop_mutex);
         properties.clear();
@@ -501,7 +501,7 @@ struct EZInterface : public GCObject {
     EZInterface(const std::string& name, const std::vector<std::string>& methods)
         : name(name), requiredMethods(methods) {}
         
-    void traverse(GCObjectVisitor& visitor) override {}
+    void gc_mark() override {}
     void gc_clear() override { requiredMethods.clear(); }
 };
 
@@ -510,7 +510,7 @@ struct EZBoundMethod : public GCObject {
     Value method;
     EZBoundMethod(const Value& receiver, const Value& method)
         : receiver(receiver), method(method) {}
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override;
 };
 
@@ -526,7 +526,7 @@ struct EZClosure : public GCObject {
     std::shared_ptr<struct BytecodeFunction> function;
     std::vector<UpvalueObj*> upvalues;
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
-    void traverse(GCObjectVisitor& visitor) override;
+    void gc_mark() override;
     void gc_clear() override;
 };
 
@@ -534,14 +534,14 @@ struct EZBuffer : public GCObject {
     std::vector<uint8_t> data;
     EZBuffer(size_t size = 0) : data(size) {}
     EZBuffer(const std::vector<uint8_t>& d) : data(d) {}
-    void traverse(GCObjectVisitor& visitor) override {}
+    void gc_mark() override {}
     void gc_clear() override { data.clear(); }
     size_t size() const { return data.size(); }
 };
 
 struct EZMutex : public GCObject {
     std::recursive_mutex mtx;
-    void traverse(GCObjectVisitor& visitor) override {}
+    void gc_mark() override {}
     void gc_clear() override {}
     void lock() { mtx.lock(); }
     void unlock() { mtx.unlock(); }
@@ -550,7 +550,7 @@ struct EZMutex : public GCObject {
 struct EZAtomic : public GCObject {
     std::atomic<long long> val;
     EZAtomic(long long initial = 0) : val(initial) {}
-    void traverse(GCObjectVisitor& visitor) override {}
+    void gc_mark() override {}
     void gc_clear() override {}
 };
 

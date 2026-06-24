@@ -968,7 +968,7 @@ ExprPtr Parser::comparison() {
     
     while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, 
                   TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
-       
+        Token op = previous();
         ExprPtr right = bitwiseShift();
         expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }

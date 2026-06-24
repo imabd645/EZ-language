@@ -1111,24 +1111,62 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
 
     std::vector<size_t> endJumps;
 
+    // Built-in primitive type names for type-match arms
+    static const std::unordered_set<std::string> primitiveTypes = {
+        "Integer", "Float", "Number", "String", "Boolean", "Array", "Dictionary", "Nil"
+    };
+
     for (const auto& arm : stmt.arms) {
         if (!arm.pattern) {
             // Default arm ('other')
-            // Pop the subject since we matched it
             emitOp(OpCode::POP);
             compileStmt(arm.body);
             endJumps.push_back(emitJump(OpCode::JUMP));
         } else {
-            // DUP the subject
-            emitOp(OpCode::DUP);
-            compileExpr(arm.pattern);
-            emitOp(OpCode::EQUAL);
+            // Detect type-match pattern: a bare uppercase identifier like String, Integer, User
+            bool isTypePattern = false;
+            std::string typeName;
+            if (auto* idPtr = std::get_if<std::shared_ptr<IdentifierExpr>>(&arm.pattern->variant)) {
+                const std::string& name = (*idPtr)->name;
+                if (!name.empty() && std::isupper((unsigned char)name[0])) {
+                    isTypePattern = true;
+                    typeName = name;
+                }
+            }
 
-            size_t nextArmJump = emitJump(OpCode::JUMP_IF_FALSE); // This pops the boolean result
-            
-            // Match! Pop the subject
+            emitOp(OpCode::DUP);
+
+            if (isTypePattern) {
+                // Emit: dup value instanceof TypeName
+                // IS_INSTANCE_OF pops: [className_string, value] → bool
+                if (primitiveTypes.count(typeName)) {
+                    // For primitive types, compare typeName() string against the type name
+                    emitOp(OpCode::TYPE_OF);            // [..., typeStr]
+                    size_t nameIdx = identifierConstant(typeName);
+                    emitOp(OpCode::LOAD_CONST);
+                    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                              static_cast<uint8_t>(nameIdx & 0xFF));
+                    emitOp(OpCode::EQUAL);              // [..., bool]
+                } else {
+                    // For model types: use IS_INSTANCE_OF
+                    // IS_INSTANCE_OF pops className string then value, pushes bool
+                    size_t nameIdx = identifierConstant(typeName);
+                    emitOp(OpCode::LOAD_CONST);
+                    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                              static_cast<uint8_t>(nameIdx & 0xFF));
+                    emitOp(OpCode::IS_INSTANCE_OF);    // [..., bool]
+                }
+            } else {
+                // Regular value equality match
+                compileExpr(arm.pattern);
+                emitOp(OpCode::EQUAL);
+            }
+
+            size_t nextArmJump = emitJump(OpCode::JUMP_IF_FALSE);
+
+            // Match: pop the subject duplicate
             emitOp(OpCode::POP);
-            
+
             compileStmt(arm.body);
             endJumps.push_back(emitJump(OpCode::JUMP));
 

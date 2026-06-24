@@ -624,20 +624,32 @@ StmtPtr Parser::giveStatement() {
     int line = previous().line;
     int column = previous().column;
     int length = previous().lexeme.length();
+    std::string filename = previous().filename;
     
     ExprPtr value = nullptr;
     if (!check(TokenType::NEWLINE) && !check(TokenType::END_OF_FILE) && !check(TokenType::RBRACE)) {
         value = expression();
-        
-        // TCO: Mark tail calls if the expression is a direct call
-        if (value) {
-            if (std::holds_alternative<std::shared_ptr<CallExpr>>(value->variant)) {
-                std::get<std::shared_ptr<CallExpr>>(value->variant)->isTailCall = true;
+
+        // Multi-value give: give expr1, expr2, ...
+        // Wrap all values in a single array expression so the caller can destructure.
+        if (check(TokenType::COMMA)) {
+            std::vector<ExprPtr> elems;
+            elems.push_back(value);
+            while (match(TokenType::COMMA)) {
+                elems.push_back(expression());
+            }
+            value = makeArrayExpr(line, column, length, filename, std::move(elems));
+        } else {
+            // TCO: Mark tail calls if the expression is a direct call
+            if (value) {
+                if (std::holds_alternative<std::shared_ptr<CallExpr>>(value->variant)) {
+                    std::get<std::shared_ptr<CallExpr>>(value->variant)->isTailCall = true;
+                }
             }
         }
     }
     
-    return makeGiveStmt(line, column, length, peek().filename, value);
+    return makeGiveStmt(line, column, length, filename, value);
 }
 
 StmtPtr Parser::escapeStatement() {

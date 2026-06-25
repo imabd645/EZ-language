@@ -722,8 +722,14 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
     } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant)) {
         auto propAccess = std::get<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant);
         TypeInfo objType = checkExpr(propAccess->object);
-        if (objType.baseType != "Any") {
-            name = objType.baseType + "." + propAccess->property;
+        
+        std::string currentType = objType.baseType;
+        if (currentType == "Callable" && std::holds_alternative<std::shared_ptr<IdentifierExpr>>(propAccess->object->variant)) {
+            currentType = std::get<std::shared_ptr<IdentifierExpr>>(propAccess->object->variant)->name;
+        }
+
+        if (currentType != "Any") {
+            name = currentType + "." + propAccess->property;
             sig = resolveFunction(name);
         }
     }
@@ -837,6 +843,12 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
     }
     if (objType.baseType != "Any" && objType.baseType != "Dict") {
         std::string currentType = objType.baseType;
+        
+        // Handle static methods on classes (e.g. ModelName.load())
+        if (currentType == "Callable" && std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr.object->variant)) {
+            currentType = std::get<std::shared_ptr<IdentifierExpr>>(expr.object->variant)->name;
+        }
+
         while (!currentType.empty()) {
             std::string propKey = currentType + "." + expr.property;
             Environment* env = currentEnv;
@@ -856,6 +868,8 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
             }
         }
         if (expr.isOptional) return TypeInfo("Any");
+        
+        // Report error with original objType.baseType
         error(0, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
     }
     return TypeInfo("Any");

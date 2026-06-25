@@ -558,7 +558,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
             
             // Check for default value: param = expr
             if (match(TokenType::EQUAL)) {
-                ExprPtr defaultVal = expression();
+                ExprPtr defaultVal = ternary();
                 defaultValues.push_back(defaultVal);
                 hadDefault = true;
             } else {
@@ -1412,7 +1412,7 @@ StmtPtr Parser::modelStatement() {
                     }
                     
                     if (match(TokenType::EQUAL)) {
-                        initDefaultValues.push_back(expression());
+                        initDefaultValues.push_back(ternary());
                         hadDefault = true;
                     } else {
                         if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");
@@ -1474,7 +1474,7 @@ StmtPtr Parser::modelStatement() {
                     }
                     
                     if (match(TokenType::EQUAL)) {
-                        defaultValues.push_back(expression());
+                        defaultValues.push_back(ternary());
                         hadDefault = true;
                     } else {
                         if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");

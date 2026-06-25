@@ -1,0 +1,280 @@
+#include "CycleCollector.h"
+#include "Value.h"          // Full definition of Value, EZArray, EZInstance, etc.
+#include <algorithm>
+#include <unordered_map>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractRawPtr — extract the raw heap pointer from a Value for identity lookup
+// ─────────────────────────────────────────────────────────────────────────────
+void* CycleCollector::extractRawPtr(const Value& v) {
+    switch (v.type()) {
+        case ValueType::ARRAY:        return v.asArrayPtr().get();
+        case ValueType::INSTANCE:     return v.asInstance().get();
+        case ValueType::DICTIONARY:   return v.asDictionaryPtr().get();
+        case ValueType::CLASS:        return v.asClass().get();
+        case ValueType::CLOSURE_VAL:  return v.asClosure().get();
+        case ValueType::BOUND_METHOD: return v.asBoundMethod().get();
+        case ValueType::CONCAT_STRING:return v.asConcatStringPtr().get();
+        case ValueType::FUNCTION:     return v.asFunction().get();
+        default:                      return nullptr;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// traverseObject — call traverse() on a typed void-ptr
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::traverseObject(
+    const std::shared_ptr<void>& obj,
+    ValueType                    type,
+    ValueVisitor&                visitor) const
+{
+    switch (type) {
+        case ValueType::ARRAY:
+            std::static_pointer_cast<EZArray>(obj)->traverse(visitor);
+            break;
+        case ValueType::DICTIONARY:
+            std::static_pointer_cast<EZDictionary>(obj)->traverse(visitor);
+            break;
+        case ValueType::INSTANCE:
+            std::static_pointer_cast<EZInstance>(obj)->traverse(visitor);
+            break;
+        case ValueType::CLASS:
+            std::static_pointer_cast<EZClass>(obj)->traverse(visitor);
+            break;
+        case ValueType::FUNCTION:
+            std::static_pointer_cast<EZFunction>(obj)->traverse(visitor);
+            break;
+        case ValueType::CLOSURE_VAL:
+            std::static_pointer_cast<EZClosure>(obj)->traverse(visitor);
+            break;
+        case ValueType::BOUND_METHOD:
+            std::static_pointer_cast<EZBoundMethod>(obj)->traverse(visitor);
+            break;
+        case ValueType::CONCAT_STRING:
+            std::static_pointer_cast<EZConcatString>(obj)->traverse(visitor);
+            break;
+        default:
+            break;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// clearObject — break all outgoing Value references to allow shared_ptr
+//               refcounts to drop to zero and destructors to fire.
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::clearObject(
+    const std::shared_ptr<void>& obj,
+    ValueType                    type)
+{
+    switch (type) {
+        case ValueType::ARRAY: {
+            auto arr = std::static_pointer_cast<EZArray>(obj);
+            arr->elements.clear();
+            break;
+        }
+        case ValueType::DICTIONARY: {
+            auto dict = std::static_pointer_cast<EZDictionary>(obj);
+            std::unique_lock<std::shared_mutex> lk(dict->map_mutex);
+            dict->map.clear();
+            break;
+        }
+        case ValueType::INSTANCE: {
+            auto inst = std::static_pointer_cast<EZInstance>(obj);
+            std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
+            inst->properties.clear();
+            inst->klass = nullptr;
+            if (inst->auditLog)   inst->auditLog->clear();
+            if (inst->cacheStore) inst->cacheStore->clear();
+            break;
+        }
+        case ValueType::CLASS: {
+            auto klass = std::static_pointer_cast<EZClass>(obj);
+            klass->methods.clear();
+            klass->staticMembers.clear();
+            klass->parent = nullptr;
+            for (auto& v : klass->validators) v.param = Value();
+            break;
+        }
+        case ValueType::FUNCTION: {
+            auto func = std::static_pointer_cast<EZFunction>(obj);
+            func->closure   = nullptr;
+            func->staticEnv = nullptr;
+            func->bytecode  = nullptr;
+            break;
+        }
+        case ValueType::CLOSURE_VAL: {
+            auto clos = std::static_pointer_cast<EZClosure>(obj);
+            clos->upvalues.clear();
+            clos->function = nullptr;
+            break;
+        }
+        case ValueType::BOUND_METHOD: {
+            auto bm = std::static_pointer_cast<EZBoundMethod>(obj);
+            bm->receiver = Value();
+            bm->method   = Value();
+            break;
+        }
+        case ValueType::CONCAT_STRING: {
+            auto cs = std::static_pointer_cast<EZConcatString>(obj);
+            cs->left      = Value();
+            cs->right     = Value();
+            cs->flattened = nullptr;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1: Remove expired weak_ptrs (already freed by refcount — not cycles)
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::phase1_purgeExpired() {
+    tracked_.erase(
+        std::remove_if(tracked_.begin(), tracked_.end(),
+            [](const TrackedObject& to) { return to.weakRef.expired(); }),
+        tracked_.end());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2: Build candidate snapshot and compute adjusted reference counts.
+//
+// For each candidate A: adjustedRC[A] = use_count(A) - (refs to A from other candidates).
+// If adjustedRC[A] == 0 after subtracting internal refs, A is only kept alive
+// by the cycle itself — potential garbage.
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::phase2_buildCandidates(
+    std::vector<std::shared_ptr<void>>& live,
+    std::vector<ValueType>&             types,
+    std::vector<int>&                   adjustedRC)
+{
+    live.reserve(tracked_.size());
+    types.reserve(tracked_.size());
+    adjustedRC.reserve(tracked_.size());
+
+    for (auto& to : tracked_) {
+        auto sp = to.weakRef.lock();
+        if (!sp) continue;
+        live.push_back(sp);
+        types.push_back(to.type);
+        // Subtract 1 for the local 'sp' we just created.
+        adjustedRC.push_back(static_cast<int>(sp.use_count()) - 1);
+    }
+
+    // Build pointer → index map for O(1) lookup during traversal.
+    std::unordered_map<void*, size_t> ptrToIdx;
+    ptrToIdx.reserve(live.size());
+    for (size_t i = 0; i < live.size(); i++) {
+        ptrToIdx[live[i].get()] = i;
+    }
+
+    // For each candidate, traverse its outgoing refs.
+    // For every ref that points to another candidate, decrement that
+    // candidate's adjustedRC (because that ref is internal to the set).
+    for (size_t i = 0; i < live.size(); i++) {
+        ValueVisitor visitor = [&](const Value& v) {
+            void* raw = extractRawPtr(v);
+            if (raw) {
+                auto it = ptrToIdx.find(raw);
+                if (it != ptrToIdx.end()) {
+                    adjustedRC[it->second]--;
+                }
+            }
+        };
+        traverseObject(live[i], types[i], visitor);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3: Flood-fill from externally-reachable candidates (adjustedRC > 0)
+//          to find the full live set. Unmarked candidates = cyclic garbage.
+// ─────────────────────────────────────────────────────────────────────────────
+std::vector<size_t> CycleCollector::phase3_findGarbage(
+    const std::vector<std::shared_ptr<void>>& live,
+    const std::vector<ValueType>&             types,
+    std::vector<int>&                         adjustedRC)
+{
+    std::vector<bool> liveFlag(live.size(), false);
+
+    // Seed: any candidate with adjustedRC > 0 is reachable from outside.
+    for (size_t i = 0; i < live.size(); i++) {
+        if (adjustedRC[i] > 0) liveFlag[i] = true;
+    }
+
+    // Build ptr → index map.
+    std::unordered_map<void*, size_t> ptrToIdx;
+    ptrToIdx.reserve(live.size());
+    for (size_t i = 0; i < live.size(); i++) {
+        ptrToIdx[live[i].get()] = i;
+    }
+
+    // Flood-fill: everything reachable from a live candidate is also live.
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i < live.size(); i++) {
+            if (!liveFlag[i]) continue;
+            ValueVisitor visitor = [&](const Value& v) {
+                void* raw = extractRawPtr(v);
+                if (raw) {
+                    auto it = ptrToIdx.find(raw);
+                    if (it != ptrToIdx.end() && !liveFlag[it->second]) {
+                        liveFlag[it->second] = true;
+                        changed = true;
+                    }
+                }
+            };
+            traverseObject(live[i], types[i], visitor);
+        }
+    }
+
+    // Collect garbage indices.
+    std::vector<size_t> garbage;
+    for (size_t i = 0; i < live.size(); i++) {
+        if (!liveFlag[i]) garbage.push_back(i);
+    }
+    return garbage;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4: Break outgoing refs on garbage objects. shared_ptr destructors
+//          will fire as our local 'live' copies drop at end of collect_locked().
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::phase4_breakCycles(
+    const std::vector<std::shared_ptr<void>>& live,
+    const std::vector<ValueType>&             types,
+    const std::vector<size_t>&                garbageIndices)
+{
+    for (size_t idx : garbageIndices) {
+        clearObject(live[idx], types[idx]);
+        cyclesCollected_++;
+    }
+    // live[] drops here → destructors fire where refcount reaches zero.
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// collect_locked — run full collection. Caller must hold mutex_.
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::collect_locked() {
+    phase1_purgeExpired();
+    if (tracked_.empty()) return;
+
+    std::vector<std::shared_ptr<void>> live;
+    std::vector<ValueType>             types;
+    std::vector<int>                   adjustedRC;
+
+    phase2_buildCandidates(live, types, adjustedRC);
+    auto garbage = phase3_findGarbage(live, types, adjustedRC);
+    phase4_breakCycles(live, types, garbage);
+
+    // Compact tracked_: expired entries were cleared in phase4.
+    phase1_purgeExpired();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
+void CycleCollector::collect() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    collect_locked();
+}

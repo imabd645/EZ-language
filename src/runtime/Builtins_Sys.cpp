@@ -244,7 +244,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
             // Arrays, Dicts, and Instances are shared_ptr based — we keep them as-is so
             // worker threads share the same queue/mutex objects.
             auto threadUpvalues = std::make_shared<std::vector<std::unique_ptr<UpvalueObj>>>();
-            std::unordered_map<GCObject*, Value> seen;
+            std::unordered_map<void*, Value> seen;
 
             std::function<Value(const Value&)> closeUpvals = [&](const Value& v) -> Value {
                 if (v.isClosure()) {
@@ -824,7 +824,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
             }
             auto layoutArray = args[0].asArray().elements;
             StructLayout layout = computeStructLayout(layoutArray);
-            return Value(makeGCBuffer(layout.totalSize));
+            return Value(std::make_shared<EZBuffer>(layout.totalSize));
         }));
 
     interp.defineGlobal("os_struct_pack", Value::makeNativeFunction("os_struct_pack", -1,
@@ -845,7 +845,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
                     return Value();
                 }
             } else {
-                bufVal = Value(makeGCBuffer(layout.totalSize));
+                bufVal = Value(std::make_shared<EZBuffer>(layout.totalSize));
             }
             
             uint8_t* base = bufVal.asBuffer().data();
@@ -895,7 +895,7 @@ void registerSysBuiltins(RuntimeContext& interp) {
                 return Value();
             }
             
-            if (!base) return Value(makeGCArray());
+            if (!base) return Value::makeArray({});
 
             std::vector<Value> results;
             for (size_t i = 0; i < layout.fields.size(); i++) {
@@ -925,6 +925,6 @@ void registerSysBuiltins(RuntimeContext& interp) {
                 }
             }
             
-            return Value(makeGCArray(results));
+            return Value::makeArray(results);
         }));
 }

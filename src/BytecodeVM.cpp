@@ -94,30 +94,6 @@ void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
     }
 }
 
-void BytecodeVM::gcMarkRoots() {
-    // 1. Mark Global Slots
-    for (const Value& v : globalSlots) {
-        GarbageCollector::markValue(v);
-    }
-    
-    // 2. Mark Active Operand Stack
-    for (Value* slot = stack.data(); slot < stackTop; slot++) {
-        GarbageCollector::markValue(*slot);
-    }
-    
-    // 3. Mark Pending Exceptions
-    GarbageCollector::markValue(pendingException);
-    
-    // 4. Mark Closed Upvalues
-    for (auto& uv : allUpvalues) {
-        if (uv) GarbageCollector::markValue(uv->closed);
-    }
-    
-    // 5. Mark Task Future
-    if (taskFuture) {
-        GarbageCollector::markValue(Value::makeFuture(taskFuture));
-    }
-}
 Value BytecodeVM::execute(BytecodeFunctionPtr function) {
     return execute(function, {});
 }
@@ -211,7 +187,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
     CallFrame* frame = &frames.back();
     const uint8_t* ip = frame->ip;
     Value* stackTop = this->stackTop;
-    uint32_t dispatchCount = 0;  // GC safepoint counter
     
 #define SYNC_IP() { if (!frames.empty()) frame->ip = ip; this->stackTop = stackTop; }
 #define LOAD_FRAME() { frame = &frames.back(); ip = frame->ip; stackTop = this->stackTop; }
@@ -275,10 +250,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_END
     };
     #define DISPATCH() { \
-        if (__builtin_expect(++dispatchCount >= 4096, 0)) { \
-            dispatchCount = 0; \
-            GarbageCollector::instance().checkGC(); \
-        } \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
@@ -1404,7 +1375,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
-                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1666,7 +1636,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         auto iface = std::make_shared<EZInterface>(name, methods);
                         *stackTop++ = Value(iface);
-                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1769,7 +1738,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         globalEnv->define(className, Value(klass));
                         *stackTop++ = Value(klass);
-                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }
@@ -1815,7 +1783,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         }
                         *stackTop++ = Value(closure);
-                        GarbageCollector::instance().collectIfThresholdReached();
                     }
                     DISPATCH();
                 }

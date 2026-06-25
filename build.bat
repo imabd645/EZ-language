@@ -15,8 +15,8 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/BytecodeVM.cpp ^
     src/Builtins.cpp ^
     src/GUIBuiltins.cpp ^
-    src/GC.cpp ^
-    src/GCObject.cpp ^
+    src/Runtime.cpp ^
+    src/CycleCollector.cpp ^
     src/runtime/Builtins_IO.cpp ^
     src/runtime/Builtins_Math.cpp ^
     src/runtime/Builtins_Net.cpp ^

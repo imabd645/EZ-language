@@ -12,7 +12,7 @@
 #include "Value.h"
 #include "Environment.h"
 #include "RuntimeContext.h"
-#include "GC.h"
+#include "CycleCollector.h"
 
 // ============================================================================
 // Bytecode Virtual Machine - Stack-based execution
@@ -24,7 +24,7 @@
 void EZ_RegisterSource(const std::string& filename, const std::string& source);
 const std::string* EZ_GetSourceLine(const std::string& filename, int line);
 
-class BytecodeVM : public RuntimeContext, public IGCRoot, public std::enable_shared_from_this<BytecodeVM> {
+class BytecodeVM : public RuntimeContext, public std::enable_shared_from_this<BytecodeVM> {
 public:
     bool traceExecution = false;
     BytecodeVM();
@@ -51,9 +51,6 @@ public:
     // Seeds globalSlots[] from CompileResult and pre-populates any
     // built-ins already stored in globalEnv.
     void initGlobalSlots(const std::vector<std::string>& slotNames);
-
-    // GC Roots
-    void gcMarkRoots() override;
 
     // Stack depth query
     size_t getStackSize() const {

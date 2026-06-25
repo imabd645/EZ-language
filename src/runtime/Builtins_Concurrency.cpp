@@ -1,6 +1,6 @@
 #include "../Builtins.h"
 #include "../RuntimeContext.h"
-#include "../GC.h"
+#include "../Value.h"
 #include "../Environment.h"
 #include <thread>
 #include <chrono>
@@ -12,7 +12,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // mutex()
     interp.defineGlobal("mutex", Value::makeNativeFunction("mutex", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            return Value(makeGCMutex());
+            return Value(std::make_shared<EZMutex>());
         }));
 
     // lock(mutex, lambda)

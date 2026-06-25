@@ -1,6 +1,6 @@
 #include "../Builtins.h"
 #include "../RuntimeContext.h"
-#include "../GC.h"
+#include "../Value.h"
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -12,11 +12,11 @@ void registerBufferBuiltins(RuntimeContext& interp) {
             if (args[0].isNumber()) {
                 int size = static_cast<int>(args[0].asNumber());
                 if (size < 0) { interp.runtimeError("buffer() size cannot be negative", 0, ""); return Value(); }
-                return Value(makeGCBuffer(size));
+                return Value(std::make_shared<EZBuffer>(size));
             } else if (args[0].isString()) {
                 const std::string& str = args[0].asString();
                 std::vector<uint8_t> data(str.begin(), str.end());
-                return Value(makeGCBuffer(data));
+                return Value(std::make_shared<EZBuffer>(data));
             } else {
                 interp.runtimeError("buffer() expects size (number) or string", 0, "");
                 return Value();
@@ -91,7 +91,7 @@ void registerBufferBuiltins(RuntimeContext& interp) {
             if (ptr && size > 0) {
                 memcpy(data.data(), reinterpret_cast<void*>(ptr), size);
             }
-            return Value(makeGCBuffer(data));
+            return Value(std::make_shared<EZBuffer>(data));
         }));
 
     // os_buffer_addr(buffer) -> returns address as long long

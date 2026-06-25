@@ -15,7 +15,7 @@
 #include <shared_mutex>
 #include <cstring>
 #include "AST.h"
-#include "GCObject.h"
+#include "CycleCollector.h"
 
 // Forward-declare EZFuture (defined in EZFuture.h / EZFuture.cpp)
 // Only files that actually construct or await futures need to include EZFuture.h.
@@ -298,29 +298,29 @@ struct Value {
     static Value makeAtomic(long long initial);
 };
 
-struct EZConcatString : public GCObject {
+struct EZConcatString {
     Value left;
     Value right;
     size_t length = 0;
     bool isFlattened = false;
     std::shared_ptr<std::string> flattened;
-    
-    void gc_mark() override;
-    void gc_clear() override {
-        left = Value();
-        right = Value();
-        flattened = nullptr;
+
+    void traverse(const ValueVisitor& visit) const {
+        visit(left);
+        visit(right);
     }
 };
 
-// --- GCObject-derived structs that use Value ---
+// --- Container structs (owned by shared_ptr, tracked by CycleCollector) ---
 
-struct EZArray : public GCObject {
+struct EZArray {
     std::vector<Value> elements;
     EZArray(const std::vector<Value>& e = {}) : elements(e) {}
-    void gc_mark() override;
-    void gc_clear() override { elements.clear(); }
-    
+
+    void traverse(const ValueVisitor& visit) const {
+        for (const Value& v : elements) visit(v);
+    }
+
     size_t size() const { return elements.size(); }
     bool empty() const { return elements.empty(); }
     void push_back(const Value& v) { elements.push_back(v); }
@@ -337,17 +337,17 @@ struct EZArray : public GCObject {
     void insert(std::vector<Value>::iterator it, const Value& v) { elements.insert(it, v); }
 };
 
-struct EZDictionary : public GCObject {
+struct EZDictionary {
     std::unordered_map<std::string, Value> map;
     mutable std::shared_mutex map_mutex;
-    void gc_mark() override;
-    void gc_clear() override {
-        std::unique_lock<std::shared_mutex> lk(map_mutex);
-        map.clear();
+
+    void traverse(const ValueVisitor& visit) const {
+        std::shared_lock<std::shared_mutex> lk(map_mutex);
+        for (const auto& [k, v] : map) visit(v);
     }
 };
 
-struct EZFunction : public GCObject {
+struct EZFunction {
     std::string name;
     std::vector<std::string> params;
     std::vector<ExprPtr> defaultValues;
@@ -356,18 +356,17 @@ struct EZFunction : public GCObject {
     std::shared_ptr<Environment> staticEnv;
     bool isVariadic;
     std::shared_ptr<struct BytecodeFunction> bytecode;
-    
-    EZFunction(const std::string& name, 
+
+    EZFunction(const std::string& name,
                const std::vector<std::string>& params,
                const std::vector<ExprPtr>& defaultValues,
                const std::vector<StmtPtr>& body,
                std::shared_ptr<Environment> closure,
                bool variadic = false)
-        : name(name), params(params), defaultValues(defaultValues), body(body), 
+        : name(name), params(params), defaultValues(defaultValues), body(body),
           closure(closure), isVariadic(variadic) {}
 
-    void gc_mark() override;
-    void gc_clear() override { closure = nullptr; staticEnv = nullptr; bytecode = nullptr; }
+    void traverse(const ValueVisitor& visit) const;
 };
 
 struct NativeFunction {
@@ -412,39 +411,39 @@ struct CachedResult {
     bool                             dirty = true;
 };
 
-struct EZClass : public GCObject {
+struct EZClass {
     std::string name;
     std::shared_ptr<EZClass> parent;
     std::unordered_map<std::string, Value> methods;
     std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool>  visibility;
-    
+
     // Legacy support for AST Interpreter
     std::vector<std::string> initParams;
     std::vector<StmtPtr> initBody;
 
-    // â”€â”€ Decorator metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Decorator metadata ────────────────────────────────────────────────────
     BehaviorFlags behaviors = {false,false,false,false,false};
     std::string persistPath;
     std::vector<FieldValidator> validators;
     std::unordered_set<std::string> cachedMethods;
 
     EZClass(const std::string& name) : name(name), parent(nullptr) {}
-    void gc_mark() override;
-    void gc_clear() override {
-        parent = nullptr;
-        methods.clear();
-        staticMembers.clear();
-        for (auto& v : validators) v.param = Value();
+
+    void traverse(const ValueVisitor& visit) const {
+        if (parent) visit(Value(parent));
+        for (const auto& [k, v] : methods)       visit(v);
+        for (const auto& [k, v] : staticMembers) visit(v);
+        for (const auto& fv : validators)        visit(fv.param);
     }
 };
 
-struct EZInstance : public GCObject {
+struct EZInstance {
     std::shared_ptr<EZClass> klass;
     std::unordered_map<std::string, Value> properties;
-    mutable std::shared_mutex prop_mutex; // protects properties for concurrent access
+    mutable std::shared_mutex prop_mutex;
 
-    // â”€â”€ Decorator runtime state (lazily allocated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Decorator runtime state (lazily allocated) ─────────────────────────────
     std::vector<AuditEntry>*                       auditLog   = nullptr;
     std::unordered_map<std::string, CachedResult>* cacheStore = nullptr;
 
@@ -453,23 +452,31 @@ struct EZInstance : public GCObject {
         delete auditLog;
         delete cacheStore;
     }
-    void gc_mark() override;
-    void gc_clear() override {
-        std::unique_lock<std::shared_mutex> lk(prop_mutex);
-        properties.clear();
-        klass = nullptr;
-        if (auditLog)   auditLog->clear();
-        if (cacheStore) cacheStore->clear();
+
+    void traverse(const ValueVisitor& visit) const {
+        if (klass) visit(Value(klass));
+        {
+            std::shared_lock<std::shared_mutex> lk(prop_mutex);
+            for (const auto& [k, v] : properties) visit(v);
+        }
+        if (auditLog) {
+            for (const auto& e : *auditLog) {
+                visit(e.oldValue);
+                visit(e.newValue);
+            }
+        }
+        if (cacheStore) {
+            for (const auto& [nm, cr] : *cacheStore) visit(cr.result);
+        }
     }
-    
+
     Value getProperty(const std::string& name) {
-        // First check instance properties (shared read)
         {
             std::shared_lock<std::shared_mutex> lk(prop_mutex);
             auto it = properties.find(name);
             if (it != properties.end()) return it->second;
         }
-        // Then search class hierarchy (read-only, no lock needed â€” class methods are set once)
+        // Search class hierarchy (class methods are set once, no lock needed)
         std::shared_ptr<EZClass> currentClass = klass;
         while (currentClass) {
             if (currentClass->methods.count(name)) return currentClass->methods[name];
@@ -494,24 +501,25 @@ struct EZSuper {
         : instance(instance), parentKlass(parentKlass) {}
 };
 
-struct EZInterface : public GCObject {
+struct EZInterface {
     std::string name;
     std::vector<std::string> requiredMethods;
-    
+
     EZInterface(const std::string& name, const std::vector<std::string>& methods)
         : name(name), requiredMethods(methods) {}
-        
-    void gc_mark() override {}
-    void gc_clear() override { requiredMethods.clear(); }
+    // No traverse() — holds no Value references
 };
 
-struct EZBoundMethod : public GCObject {
+struct EZBoundMethod {
     Value receiver;
     Value method;
     EZBoundMethod(const Value& receiver, const Value& method)
         : receiver(receiver), method(method) {}
-    void gc_mark() override;
-    void gc_clear() override;
+
+    void traverse(const ValueVisitor& visit) const {
+        visit(receiver);
+        visit(method);
+    }
 };
 
 #include <atomic>
@@ -522,36 +530,37 @@ struct UpvalueObj {
     UpvalueObj* next;
 };
 
-struct EZClosure : public GCObject {
+struct EZClosure {
     std::shared_ptr<struct BytecodeFunction> function;
     std::vector<UpvalueObj*> upvalues;
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
-    void gc_mark() override;
-    void gc_clear() override;
+
+    void traverse(const ValueVisitor& visit) const {
+        for (UpvalueObj* uv : upvalues) {
+            if (uv) visit(uv->closed);
+        }
+    }
 };
 
-struct EZBuffer : public GCObject {
+struct EZBuffer {
     std::vector<uint8_t> data;
     EZBuffer(size_t size = 0) : data(size) {}
     EZBuffer(const std::vector<uint8_t>& d) : data(d) {}
-    void gc_mark() override {}
-    void gc_clear() override { data.clear(); }
     size_t size() const { return data.size(); }
+    // No traverse() — holds no Value references
 };
 
-struct EZMutex : public GCObject {
+struct EZMutex {
     std::recursive_mutex mtx;
-    void gc_mark() override {}
-    void gc_clear() override {}
-    void lock() { mtx.lock(); }
+    void lock()   { mtx.lock(); }
     void unlock() { mtx.unlock(); }
+    // No traverse() — holds no Value references
 };
 
-struct EZAtomic : public GCObject {
+struct EZAtomic {
     std::atomic<long long> val;
     EZAtomic(long long initial = 0) : val(initial) {}
-    void gc_mark() override {}
-    void gc_clear() override {}
+    // No traverse() — holds no Value references
 };
 
 // --- Value Method Implementations (at the end for type completion) ---
@@ -758,11 +767,15 @@ inline bool Value::equals(const Value& other) const {
 }
 
 inline Value Value::makeArray(const std::vector<Value>& elements) {
-    return Value(std::make_shared<EZArray>(elements));
+    auto ptr = std::make_shared<EZArray>(elements);
+    CycleCollector::instance().track(ptr, ValueType::ARRAY);
+    return Value(ptr);
 }
 
 inline Value Value::makeArrayCopy(const EZArray& other) {
-    return Value(std::make_shared<EZArray>(other.elements));
+    auto ptr = std::make_shared<EZArray>(other.elements);
+    CycleCollector::instance().track(ptr, ValueType::ARRAY);
+    return Value(ptr);
 }
 
 inline Value Value::makeFunction(const std::string& name,
@@ -771,17 +784,26 @@ inline Value Value::makeFunction(const std::string& name,
                           const std::vector<StmtPtr>& body,
                           std::shared_ptr<Environment> closure,
                           bool variadic) {
-    return Value(std::make_shared<EZFunction>(name, params, defaultValues, body, closure, variadic));
+    auto ptr = std::make_shared<EZFunction>(name, params, defaultValues, body, closure, variadic);
+    CycleCollector::instance().track(ptr, ValueType::FUNCTION);
+    return Value(ptr);
 }
 
 inline Value Value::makeNativeFunction(const std::string& name, int arity, NativeFn fn) {
     return Value(std::make_shared<NativeFunction>(name, arity, fn));
 }
 
-inline Value Value::makeDictionary() { return Value(std::make_shared<EZDictionary>()); }
+inline Value Value::makeDictionary() {
+    auto ptr = std::make_shared<EZDictionary>();
+    CycleCollector::instance().track(ptr, ValueType::DICTIONARY);
+    return Value(ptr);
+}
 inline Value Value::makeSuper(InstancePtr instance, ClassPtr parentKlass) { return Value(std::make_shared<EZSuper>(instance, parentKlass)); }
 inline Value Value::makeFuture(std::shared_ptr<EZFuture> fut) { return Value(fut); }
-inline Value Value::makeClosure(ClosureValPtr closure) { return Value(closure); }
+inline Value Value::makeClosure(ClosureValPtr closure) {
+    CycleCollector::instance().track(closure, ValueType::CLOSURE_VAL);
+    return Value(closure);
+}
 inline Value Value::makeAtomic(long long initial) { return Value(std::make_shared<EZAtomic>(initial)); }
 
 #endif // VALUE_H

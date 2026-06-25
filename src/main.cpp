@@ -6,7 +6,7 @@
 #include <csignal>
 #include <algorithm>
 #include "Value.h"
-#include "GC.h"
+#include "CycleCollector.h"
 #include "runtime/EventLoop.h"
 #include "Lexer.h"
 #include "Parser.h"

@@ -95,8 +95,27 @@ void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
 }
 
 void BytecodeVM::gcMarkRoots() {
+    // 1. Mark Global Slots
     for (const Value& v : globalSlots) {
         GarbageCollector::markValue(v);
+    }
+    
+    // 2. Mark Active Operand Stack
+    for (Value* slot = stack.data(); slot < stackTop; slot++) {
+        GarbageCollector::markValue(*slot);
+    }
+    
+    // 3. Mark Pending Exceptions
+    GarbageCollector::markValue(pendingException);
+    
+    // 4. Mark Closed Upvalues
+    for (auto& uv : allUpvalues) {
+        if (uv) GarbageCollector::markValue(uv->closed);
+    }
+    
+    // 5. Mark Task Future
+    if (taskFuture) {
+        GarbageCollector::markValue(Value::makeFuture(taskFuture));
     }
 }
 Value BytecodeVM::execute(BytecodeFunctionPtr function) {

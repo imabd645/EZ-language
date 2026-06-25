@@ -450,7 +450,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                             while (sqlite3_step(stmt) == SQLITE_ROW) {
                                                 const char* p = (const char*)sqlite3_column_text(stmt, 0);
                                                 const char* v = (const char*)sqlite3_column_text(stmt, 1);
-                                                inst->setProperty(p, Value(std::string(v)));
+                                                std::string valStr(v);
+                                                Value parsedVal;
+                                                if (valStr == "true") parsedVal = Value(true);
+                                                else if (valStr == "false") parsedVal = Value(false);
+                                                else if (valStr == "nil") parsedVal = Value();
+                                                else {
+                                                    char* end;
+                                                    double d = std::strtod(valStr.c_str(), &end);
+                                                    // If the entire string was parsed as a number and it's not empty
+                                                    if (!valStr.empty() && end == valStr.c_str() + valStr.length()) {
+                                                        parsedVal = Value(d);
+                                                    } else {
+                                                        parsedVal = Value(valStr);
+                                                    }
+                                                }
+                                                inst->setProperty(p, parsedVal);
                                             }
                                             sqlite3_finalize(stmt);
                                         }

@@ -152,6 +152,11 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo::fromAST(task->returnType);
             sig.isVariadic = task->isVariadic;
+            size_t minArgs = 0;
+            for (const auto& dv : task->defaultValues) {
+                if (!dv) minArgs++;
+            }
+            sig.minArgs = minArgs;
             declareFunction(task->name, sig);
         } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(stmt->variant)) {
             auto model = std::get<std::shared_ptr<ModelStmt>>(stmt->variant);
@@ -159,6 +164,11 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             for (const auto& p : model->initParams) sig.paramNames.push_back(p);
             for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo(model->name);
+            size_t initMinArgs = 0;
+            for (const auto& dv : model->initDefaultValues) {
+                if (!dv) initMinArgs++;
+            }
+            sig.minArgs = initMinArgs;
             declareFunction(model->name, sig);
             
             // Register init as a callable method for super.init()
@@ -166,6 +176,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             for (const auto& p : model->initParams) initSig.paramNames.push_back(p);
             for (const auto& t : model->initParamTypes) initSig.paramTypes.push_back(TypeInfo::fromAST(t));
             initSig.returnType = TypeInfo("Any");
+            initSig.minArgs = initMinArgs;
             declareFunction(model->name + ".init", initSig);
             
             // Register .load() for persistent models
@@ -182,6 +193,11 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                     for (const auto& p : member.params) methodSig.paramNames.push_back(p);
                     for (const auto& t : member.paramTypes) methodSig.paramTypes.push_back(TypeInfo::fromAST(t));
                     methodSig.returnType = TypeInfo::fromAST(member.typeHint);
+                    size_t methodMinArgs = 0;
+                    for (const auto& dv : member.defaultValues) {
+                        if (!dv) methodMinArgs++;
+                    }
+                    methodSig.minArgs = methodMinArgs;
                     declareFunction(model->name + "." + member.name, methodSig);
                 } else {
                     TypeInfo propType = TypeInfo::fromAST(member.typeHint);
@@ -738,7 +754,8 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
         // Only verify arity if not variadic, but for simplicity we skip variadic check here or just check basic args
             // In EZ, builtins aren't in this environment. So `sig` might be null for builtins!
             // If sig exists, we verify it.
-            if (!sig->isVariadic && argTypes.size() != sig->paramTypes.size()) {
+            size_t minRequired = sig->isVariadic ? (sig->minArgs > 0 ? sig->minArgs - 1 : 0) : sig->minArgs;
+            if (!sig->isVariadic && (argTypes.size() < minRequired || argTypes.size() > sig->paramTypes.size())) {
                 std::string signatureStr = "Function signature: " + name + "(";
                 for (size_t j = 0; j < sig->paramTypes.size(); ++j) {
                     if (j < sig->paramNames.size()) signatureStr += sig->paramNames[j] + ":";
@@ -746,11 +763,15 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                     if (j + 1 < sig->paramTypes.size()) signatureStr += ", ";
                 }
                 signatureStr += ")";
-                std::string msg = "'" + name + "' expected " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                std::string msg;
+                if (minRequired == sig->paramTypes.size()) {
+                    msg = "'" + name + "' expected " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                } else {
+                    msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                }
                 error(expr.callee, msg, signatureStr);
-            } else if (sig->isVariadic && argTypes.size() < (sig->paramTypes.size() > 0 ? sig->paramTypes.size() - 1 : 0)) {
-                size_t minArgs = sig->paramTypes.size() > 0 ? sig->paramTypes.size() - 1 : 0;
-                std::string msg = "'" + name + "' expected at least " + std::to_string(minArgs) + " args but got " + std::to_string(argTypes.size());
+            } else if (sig->isVariadic && argTypes.size() < minRequired) {
+                std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
                 error(expr.callee, msg);
             } else {
                 for (size_t i = 0; i < argTypes.size(); i++) {

@@ -53,6 +53,7 @@ struct FunctionSignature {
     std::vector<TypeInfo> paramTypes;
     TypeInfo returnType;
     bool isVariadic = false;
+    size_t minArgs = 0;
 };
 
 class TypeChecker {

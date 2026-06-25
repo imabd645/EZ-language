@@ -666,6 +666,156 @@ void registerSysBuiltins(RuntimeContext& interp) {
 #endif
         }));
 
+#ifdef _WIN32
+#define FFI_DISPATCH_4(retT) \
+    switch(floatMask) { \
+        case 0: { using F = retT(*)(intptr_t, intptr_t, intptr_t, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]); break; } \
+        case 1: { using F = retT(*)(double, intptr_t, intptr_t, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], iArgs[3]); break; } \
+        case 2: { using F = retT(*)(intptr_t, double, intptr_t, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], iArgs[3]); break; } \
+        case 3: { using F = retT(*)(double, double, intptr_t, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], iArgs[3]); break; } \
+        case 4: { using F = retT(*)(intptr_t, intptr_t, double, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], iArgs[3]); break; } \
+        case 5: { using F = retT(*)(double, intptr_t, double, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], iArgs[3]); break; } \
+        case 6: { using F = retT(*)(intptr_t, double, double, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], iArgs[3]); break; } \
+        case 7: { using F = retT(*)(double, double, double, intptr_t); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], iArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], iArgs[3]); break; } \
+        case 8: { using F = retT(*)(intptr_t, intptr_t, intptr_t, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]); break; } \
+        case 9: { using F = retT(*)(double, intptr_t, intptr_t, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], fArgs[3]); break; } \
+        case 10: { using F = retT(*)(intptr_t, double, intptr_t, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], fArgs[3]); break; } \
+        case 11: { using F = retT(*)(double, double, intptr_t, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], fArgs[3]); break; } \
+        case 12: { using F = retT(*)(intptr_t, intptr_t, double, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], fArgs[3]); break; } \
+        case 13: { using F = retT(*)(double, intptr_t, double, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], fArgs[3]); break; } \
+        case 14: { using F = retT(*)(intptr_t, double, double, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], fArgs[3]); break; } \
+        case 15: { using F = retT(*)(double, double, double, double); \
+            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], fArgs[3]); \
+            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], fArgs[3]); break; } \
+    }
+#endif
+
+    interp.defineGlobal("os_call_sig", Value::makeNativeFunction("os_call_sig", -1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (args.size() < 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isArray()) return Value();
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            if (!funcPtr) {
+                interp.runtimeError("os_call_sig: Null function pointer.", 0, "");
+                return Value();
+            }
+            
+            std::string retType = args[1].asString();
+            auto sigArray = args[2].asArray().elements;
+            size_t argc = sigArray.size();
+            if (argc > 4) {
+                interp.runtimeError("os_call_sig: Currently supports up to 4 arguments.", 0, "");
+                return Value();
+            }
+            
+            int floatMask = 0;
+            for (size_t i = 0; i < argc; i++) {
+                if (sigArray[i].isString() && (sigArray[i].asString() == "float" || sigArray[i].asString() == "double")) {
+                    floatMask |= (1 << i);
+                }
+            }
+            
+            intptr_t iArgs[4] = {0};
+            double fArgs[4] = {0.0};
+            std::string tempStrings[4];
+            
+            for (size_t i = 0; i < argc; i++) {
+                size_t valIdx = i + 3;
+                if (valIdx >= args.size()) break;
+                
+                if (floatMask & (1 << i)) {
+                    if (args[valIdx].isNumber()) fArgs[i] = args[valIdx].asNumber();
+                } else {
+                    if (args[valIdx].isNumber()) iArgs[i] = (intptr_t)args[valIdx].asNumber();
+                    else if (args[valIdx].isString()) {
+                        tempStrings[i] = args[valIdx].asString();
+                        iArgs[i] = reinterpret_cast<intptr_t>(tempStrings[i].c_str());
+                    } else if (args[valIdx].isBuffer()) {
+                        iArgs[i] = reinterpret_cast<intptr_t>(args[valIdx].asBuffer().data());
+                    } else if (args[valIdx].isBool()) {
+                        iArgs[i] = args[valIdx].asBool() ? 1 : 0;
+                    }
+                }
+            }
+
+            bool crashed = false;
+            double f_ret = 0.0;
+            intptr_t i_ret = 0;
+            
+            PVOID vehHandler = nullptr;
+#ifndef _MSC_VER
+            vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
+#endif
+
+#ifdef _MSC_VER
+            __try {
+#else
+            if (setjmp(os_call_jmp_env) == 0) {
+#endif
+                if (retType == "float" || retType == "double") {
+                    FFI_DISPATCH_4(double)
+                } else {
+                    FFI_DISPATCH_4(intptr_t)
+                }
+#ifdef _MSC_VER
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                crashed = true;
+            }
+#else
+            } else {
+                crashed = true;
+            }
+            RemoveVectoredExceptionHandler(vehHandler);
+#endif
+
+            if (crashed) {
+                interp.runtimeError("os_call_sig: Access violation or fatal memory fault.", 0, "");
+                return Value();
+            }
+            
+            if (retType == "float" || retType == "double") return Value(f_ret);
+            if (retType == "int" || retType == "ptr") return Value((long long)i_ret);
+            if (retType == "string") {
+                const char* str = reinterpret_cast<const char*>(i_ret);
+                if (str) return Value(std::string(str));
+                return Value("");
+            }
+            return Value();
+#else
+            return Value();
+#endif
+        }));
+
     interp.defineGlobal("os_struct_alloc", Value::makeNativeFunction("os_struct_alloc", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) {

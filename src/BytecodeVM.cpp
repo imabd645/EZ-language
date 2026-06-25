@@ -1547,7 +1547,26 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         std::string className = (*(--stackTop)).toString();
                         Value v = *(--stackTop);
                         bool result = false;
-                        if (v.isInstance()) {
+                        
+                        if (className == "Number") {
+                            result = v.isInteger() || v.isFloat();
+                        } else if (className == "Boolean") {
+                            result = v.isBool();
+                        } else if (className == "Integer") {
+                            result = v.isInteger();
+                        } else if (className == "Float") {
+                            result = v.isFloat();
+                        } else if (className == "String") {
+                            result = v.isString();
+                        } else if (className == "Array") {
+                            result = v.isArray();
+                        } else if (className == "Dictionary") {
+                            result = v.isDictionary();
+                        } else if (className == "Function") {
+                            result = v.isFunction() || v.isNativeFunction() || v.isBoundMethod() || v.isClosure();
+                        } else if (className == "Nil") {
+                            result = v.isNil();
+                        } else if (v.isInstance()) {
                             auto inst = v.asInstance();
                             auto currentClass = inst->klass;
                             while (currentClass) {

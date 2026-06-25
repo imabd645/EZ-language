@@ -1273,23 +1273,12 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
             if (isTypePattern) {
                 // Emit: dup value instanceof TypeName
                 // IS_INSTANCE_OF pops: [className_string, value] → bool
-                if (primitiveTypes.count(typeName)) {
-                    // For primitive types, compare typeName() string against the type name
-                    emitOp(OpCode::TYPE_OF);            // [..., typeStr]
-                    size_t nameIdx = identifierConstant(typeName);
-                    emitOp(OpCode::LOAD_CONST);
-                    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                              static_cast<uint8_t>(nameIdx & 0xFF));
-                    emitOp(OpCode::EQUAL);              // [..., bool]
-                } else {
-                    // For model types: use IS_INSTANCE_OF
-                    // IS_INSTANCE_OF pops className string then value, pushes bool
-                    size_t nameIdx = identifierConstant(typeName);
-                    emitOp(OpCode::LOAD_CONST);
-                    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
-                              static_cast<uint8_t>(nameIdx & 0xFF));
-                    emitOp(OpCode::IS_INSTANCE_OF);    // [..., bool]
-                }
+                // (It now handles primitive type strings like "Number", "Boolean" via VM changes)
+                size_t nameIdx = identifierConstant(typeName);
+                emitOp(OpCode::LOAD_CONST);
+                emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(nameIdx & 0xFF));
+                emitOp(OpCode::IS_INSTANCE_OF);    // [..., bool]
             } else {
                 // Regular value equality match
                 compileExpr(arm.pattern);

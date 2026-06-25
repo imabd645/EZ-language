@@ -13,11 +13,12 @@ user1 = User("Alice", 25)
 // The old implementation would open/close the DB 100 times here!
 // With caching, it opens once and writes 100 times.
 i = 0
+start=clock()
 while i < 100 {
     user1.age = 25 + i
     i = i + 1
 }
-
+out "Time taken: " + (clock()-start)
 out "Finished write loop."
 
 // Load test

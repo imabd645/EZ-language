@@ -168,6 +168,13 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             initSig.returnType = TypeInfo("Any");
             declareFunction(model->name + ".init", initSig);
             
+            // Register .load() for persistent models
+            if (!model->persistPath.empty()) {
+                FunctionSignature loadSig;
+                loadSig.returnType = TypeInfo(model->name);
+                declareFunction(model->name + ".load", loadSig);
+            }
+            
             // Register explicit member declarations
             for (const auto& member : model->members) {
                 if (member.isMethod) {

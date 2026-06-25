@@ -75,7 +75,12 @@ BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
 }
 
 BytecodeVM::~BytecodeVM() {
-        // allUpvalues unique_ptrs handle cleanup automatically
+    for (auto& pair : persistDBConnections) {
+        if (pair.second) {
+            sqlite3_close(static_cast<sqlite3*>(pair.second));
+        }
+    }
+    // allUpvalues unique_ptrs handle cleanup automatically
 }
 
 void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
@@ -423,9 +428,41 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else if (obj.isClass()) {
                             auto klass = obj.asClass();
                             CHECK_VISIBILITY(klass, propName);
-                            if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
-                            else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
-                            else *stackTop++ = Value();
+                            if (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty()) {
+                                auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
+                                    auto inst = std::make_shared<EZInstance>(klass);
+                                    sqlite3* db = nullptr;
+                                    auto it = this->persistDBConnections.find(klass->persistPath);
+                                    if (it != this->persistDBConnections.end()) {
+                                        db = static_cast<sqlite3*>(it->second);
+                                    } else {
+                                        if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                            const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                            sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                            this->persistDBConnections[klass->persistPath] = db;
+                                        } else {
+                                            db = nullptr;
+                                        }
+                                    }
+                                    if (db) {
+                                        sqlite3_stmt* stmt;
+                                        if (sqlite3_prepare_v2(db, "SELECT prop, val FROM EZ_Persist;", -1, &stmt, nullptr) == SQLITE_OK) {
+                                            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                                                const char* p = (const char*)sqlite3_column_text(stmt, 0);
+                                                const char* v = (const char*)sqlite3_column_text(stmt, 1);
+                                                inst->setProperty(p, Value(std::string(v)));
+                                            }
+                                            sqlite3_finalize(stmt);
+                                        }
+                                    }
+                                    return Value(inst);
+                                };
+                                *stackTop++ = Value(std::make_shared<NativeFunction>("load", 0, loadFn));
+                            } else {
+                                if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
+                                else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
+                                else *stackTop++ = Value();
+                            }
                         } else if (obj.isSuper()) {
                             auto super = obj.asSuper();
                             Value method = Value();
@@ -568,11 +605,21 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
 
                                 if (klass->behaviors.persistent && !klass->persistPath.empty()) {
-                                    sqlite3* db;
-                                    if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                        const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                        sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                        
+                                    sqlite3* db = nullptr;
+                                    auto it = persistDBConnections.find(klass->persistPath);
+                                    if (it != persistDBConnections.end()) {
+                                        db = static_cast<sqlite3*>(it->second);
+                                    } else {
+                                        if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                            const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                            sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                            persistDBConnections[klass->persistPath] = db;
+                                        } else {
+                                            db = nullptr;
+                                        }
+                                    }
+                                    
+                                    if (db) {
                                         std::string valStr = value.toString();
                                         std::string sql = "INSERT OR REPLACE INTO EZ_Persist (prop, val) VALUES (?, ?);";
                                         sqlite3_stmt* stmt;
@@ -582,7 +629,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                             sqlite3_step(stmt);
                                             sqlite3_finalize(stmt);
                                         }
-                                        sqlite3_close(db);
                                     }
                                 }
 

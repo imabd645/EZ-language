@@ -521,7 +521,7 @@ struct ModelStmt {
     bool audited  = false;     // @audited
     bool snapshot = false;     // @snapshot
     std::string persistPath;   // @persist("file") — empty = not persistent
-    
+        
     ModelStmt(int line, const std::string& name, const std::string& parent,
               std::vector<std::string> interfaces,
               std::vector<std::string> initParams, 

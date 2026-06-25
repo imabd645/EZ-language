@@ -144,6 +144,9 @@ private:
     // ── Rate limiter sliding windows (key = taskName:keyExpr) ──────────────────
     std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;
 
+    // ── SQLite DB Connections (cached for @persist) ─────────────────────────
+    std::unordered_map<std::string, void*> persistDBConnections;
+
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);
     bool dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck = false);

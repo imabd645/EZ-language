@@ -267,11 +267,13 @@ public:
                 std::ifstream file(indexPath);
                 MiniJson::Value root;
                 MiniJson::Reader reader;
-                if (reader.parse(file, root) && root.has("packages")) {
+                if (reader.parse(file, root) && root.properties.count("packages") > 0) {
+                    bool pkgFound = false;
                     MiniJson::Value packages = root["packages"];
                     for (int i = 0; i < packages.items.size(); i++) {
                         MiniJson::Value pkg = packages.items[i];
                         if (pkg.get("name", "").asString() == packageName) {
+                            pkgFound = true;
                             targetFolder = pkg.get("folder", targetFolder).asString();
                             VersionConstraint constraint(versionConstraint);
                             SemVer bestVer;
@@ -286,9 +288,18 @@ public:
                                     targetVersion = sv.raw;
                                 }
                             }
-                            if (!bestUrl.empty()) downloadUrl = bestUrl;
+                            if (!bestUrl.empty()) {
+                                downloadUrl = bestUrl;
+                            } else {
+                                std::cerr << "Error: No version of '" << packageName << "' satisfies constraint '" << versionConstraint << "'." << std::endl;
+                                return false;
+                            }
                             break;
                         }
+                    }
+                    if (!pkgFound) {
+                        std::cerr << "Error: Package '" << packageName << "' not found in the EZ registry." << std::endl;
+                        return false;
                     }
                 }
             }
@@ -345,7 +356,7 @@ public:
              std::cout << "No package.ez found, creating default." << std::endl;
              Package def;
              def.name = packageName;
-             def.version = version;
+             def.version = targetVersion;
              def.localPath = extractDir;
              installedPackages[packageName] = def;
              saveConfig();

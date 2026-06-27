@@ -6,6 +6,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     -funroll-loops ^
     -fomit-frame-pointer ^
     -o ez.exe ^
+    -I C:\msys64\mingw64\include ^
     src/main.cpp ^
     src/Lexer.cpp ^
     src/Parser.cpp ^

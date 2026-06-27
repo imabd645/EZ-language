@@ -1,5 +1,0 @@
-task check_params(a, b=2, c=3) {
-    out a+b+c
- }
-
-check_params(1)

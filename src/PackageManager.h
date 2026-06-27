@@ -18,6 +18,67 @@ namespace fs = std::filesystem;
 // Minimal JSON implementation to replace jsoncpp dependency
 #include "MiniJson.h"
 
+struct SemVer {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+    std::string raw;
+
+    SemVer() {}
+    SemVer(const std::string& v) : raw(v) {
+        std::string s = v;
+        if (!s.empty() && s[0] == 'v') s = s.substr(1);
+        int parsed = sscanf(s.c_str(), "%d.%d.%d", &major, &minor, &patch);
+        if (parsed < 1) major = 0;
+        if (parsed < 2) minor = 0;
+        if (parsed < 3) patch = 0;
+    }
+
+    bool operator<(const SemVer& o) const {
+        if (major != o.major) return major < o.major;
+        if (minor != o.minor) return minor < o.minor;
+        return patch < o.patch;
+    }
+    bool operator==(const SemVer& o) const {
+        return major == o.major && minor == o.minor && patch == o.patch;
+    }
+    bool operator>=(const SemVer& o) const {
+        return !(*this < o);
+    }
+};
+
+struct VersionConstraint {
+    enum Type { EXACT, CARET, GTE, ANY } type;
+    SemVer target;
+
+    VersionConstraint(const std::string& c) {
+        if (c == "*" || c == "main" || c == "latest") {
+            type = ANY;
+        } else if (c[0] == '^') {
+            type = CARET;
+            target = SemVer(c.substr(1));
+        } else if (c.size() > 1 && c[0] == '>' && c[1] == '=') {
+            type = GTE;
+            target = SemVer(c.substr(2));
+        } else {
+            type = EXACT;
+            target = SemVer(c);
+        }
+    }
+
+    bool satisfies(const SemVer& v) const {
+        if (type == ANY) return true;
+        if (type == EXACT) return v == target;
+        if (type == GTE) return v >= target;
+        if (type == CARET) {
+            if (target.major > 0) return v.major == target.major && v >= target;
+            if (target.minor > 0) return v.minor == target.minor && v >= target;
+            return v.patch == target.patch;
+        }
+        return false;
+    }
+};
+
 struct Package {
     std::string name;
     std::string version;
@@ -181,24 +242,64 @@ public:
         fs::remove_all(cacheDir);
     }
     
-    bool installPackage(const std::string& packageName, const std::string& version = "main", const std::string& repoUrl = "") {
-        std::cout << "Installing " << packageName << "@" << version << "..." << std::endl;
+    bool installPackage(const std::string& packageName, const std::string& versionConstraint = "latest", const std::string& repoUrl = "") {
+        std::cout << "Installing " << packageName << "@" << versionConstraint << "..." << std::endl;
         
         if (installedPackages.count(packageName)) {
             Package& existing = installedPackages[packageName];
-            std::cout << "Already installed v" << existing.version << std::endl;
-            if (existing.version == version) return true;
+            VersionConstraint constraint(versionConstraint);
+            if (constraint.satisfies(SemVer(existing.version))) {
+                std::cout << "Already installed v" << existing.version << " which satisfies " << versionConstraint << std::endl;
+                return true;
+            }
         }
         
         std::string repositoryUrl = repoUrl;
+        std::string downloadUrl = "";
+        std::string targetVersion = "";
+        std::string targetFolder = "ez" + packageName;
+        
         if (repositoryUrl.empty()) {
-            repositoryUrl = "https://github.com/imabd645/ezlib";
+            std::cout << "Fetching registry..." << std::endl;
+            std::string indexUrl = "https://raw.githubusercontent.com/imabd645/ezlib/main/index.json";
+            std::string indexPath = cacheDir + "/index.json";
+            if (downloadFile(indexUrl, indexPath)) {
+                std::ifstream file(indexPath);
+                MiniJson::Value root;
+                MiniJson::Reader reader;
+                if (reader.parse(file, root) && root.has("packages")) {
+                    MiniJson::Value packages = root["packages"];
+                    for (int i = 0; i < packages.items.size(); i++) {
+                        MiniJson::Value pkg = packages.items[i];
+                        if (pkg.get("name", "").asString() == packageName) {
+                            targetFolder = pkg.get("folder", targetFolder).asString();
+                            VersionConstraint constraint(versionConstraint);
+                            SemVer bestVer;
+                            std::string bestUrl;
+                            MiniJson::Value versions = pkg["versions"];
+                            for (int j = 0; j < versions.items.size(); j++) {
+                                MiniJson::Value vobj = versions.items[j];
+                                SemVer sv(vobj.get("version", "").asString());
+                                if (constraint.satisfies(sv) && sv >= bestVer) {
+                                    bestVer = sv;
+                                    bestUrl = vobj.get("url", "").asString();
+                                    targetVersion = sv.raw;
+                                }
+                            }
+                            if (!bestUrl.empty()) downloadUrl = bestUrl;
+                            break;
+                        }
+                    }
+                }
+            }
         }
         
-        std::string downloadUrl = getGitHubDownloadUrl(repositoryUrl, version);
-        std::string cachePath = cacheDir + "/ezlib-" + version + ".zip";
+        if (targetVersion.empty()) targetVersion = (versionConstraint == "latest" || versionConstraint == "main") ? "main" : versionConstraint;
+        if (downloadUrl.empty()) downloadUrl = getGitHubDownloadUrl(repositoryUrl.empty() ? "https://github.com/imabd645/ezlib" : repositoryUrl, targetVersion);
         
-        std::cout << "Downloading central repository from " << downloadUrl << "..." << std::endl;
+        std::string cachePath = cacheDir + "/ezlib-" + packageName + "-" + targetVersion + ".zip";
+        
+        std::cout << "Downloading from " << downloadUrl << "..." << std::endl;
         if (!downloadFile(downloadUrl, cachePath)) {
             std::cerr << "Download failed." << std::endl;
             return false;
@@ -214,13 +315,16 @@ public:
             return false;
         }
         
-        std::string sourceLibDir = tempExtractDir + "/ez" + packageName;
+        std::string sourceLibDir = tempExtractDir + "/" + targetFolder;
         if (!fs::exists(sourceLibDir)) {
-             sourceLibDir = tempExtractDir + "/" + packageName;
+             sourceLibDir = tempExtractDir + "/ez" + packageName;
              if (!fs::exists(sourceLibDir)) {
-                  std::cerr << "Package '" << packageName << "' not found in the repository." << std::endl;
-                  fs::remove_all(tempExtractDir);
-                  return false;
+                  sourceLibDir = tempExtractDir + "/" + packageName;
+                  if (!fs::exists(sourceLibDir)) {
+                      std::cerr << "Package '" << packageName << "' not found in the repository." << std::endl;
+                      fs::remove_all(tempExtractDir);
+                      return false;
+                  }
              }
         }
         

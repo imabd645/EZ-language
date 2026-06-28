@@ -58,13 +58,17 @@ public:
         if (!ptr) return;
         std::lock_guard<std::mutex> lock(mutex_);
         tracked_.push_back({ std::static_pointer_cast<void>(ptr), type });
-        if (tracked_.size() >= threshold_) {
+        if (!disabled_ && tracked_.size() >= threshold_) {
             collect_locked();
         }
     }
 
     // Manual trigger (e.g. from tests or shutdown).
     void collect();
+    
+    // GC Control Flags (Python-like)
+    void disable() { std::lock_guard<std::mutex> lock(mutex_); disabled_ = true; }
+    void enable()  { std::lock_guard<std::mutex> lock(mutex_); disabled_ = false; }
 
     // Statistics
     size_t trackedCount()     const { return tracked_.size(); }
@@ -119,10 +123,11 @@ private:
         ValueType                    type);
 
     // ── State ─────────────────────────────────────────────────────────────────
-    std::mutex                  mutex_;
-    std::vector<TrackedObject>  tracked_;
-    size_t                      threshold_      = 700;
-    size_t                      cyclesCollected_ = 0;
+    std::mutex                 mutex_;
+    std::vector<TrackedObject> tracked_;
+    size_t                     threshold_       = 1000;
+    size_t                     cyclesCollected_ = 0;
+    bool                       disabled_        = false;
 };
 
 #endif // CYCLE_COLLECTOR_H

@@ -2489,7 +2489,12 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
         auto BOLD   = ansi ? "\033[1m"    : "";
         auto RESET  = ansi ? "\033[0m"    : "";
 
-        std::cerr << "\n" << RED << "Error" << RESET << ": " << BOLD << message << RESET << "\n";
+        std::string errorType = "Error";
+        if (pendingException.isInstance()) {
+            errorType = pendingException.asInstance()->klass->name;
+        }
+
+        std::cerr << "\n" << RED << errorType << RESET << ": " << BOLD << message << RESET << "\n";
 
         // Ã¢â€â‚¬Ã¢â€â‚¬ Location line Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (!faultFile.empty() || faultLine > 0) {

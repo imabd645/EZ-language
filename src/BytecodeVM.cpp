@@ -1881,7 +1881,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             this->stackTop = tb.stackTop;
             LOAD_FRAME();
             ip = tb.catchIp;
-            *stackTop++ = Value(e.what());
+            *stackTop++ = e.value.isNil() ? Value(e.what()) : e.value;
             pendingException = Value(); // Clear pending exception after catch
             running = true;
             // Invariant: LOAD_FRAME() refreshes local stackTop and ip pointers from the restored CallFrame.
@@ -1889,7 +1889,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             goto dispatch_start;
         }
         // Uncaught RuntimeError: already printed in runtimeError() (if not async task)
-        pendingException = Value(e.what());
+        pendingException = e.value.isNil() ? Value(e.what()) : e.value;
         SYNC_IP();
     } catch (const std::exception& e) {
         if (!tryStack.empty()) {
@@ -2521,6 +2521,36 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     throw RuntimeError(message, faultLine);
 }
 
+void BytecodeVM::throwException(const std::string& className, const std::string& message, int line, const std::string& filename) {
+    Value classVal = globalEnv->get(className);
+    if (classVal.isClass()) {
+        auto inst = std::make_shared<EZInstance>(classVal.asClass());
+        inst->properties["message"] = Value(message);
+        
+        int faultLine = line > 0 ? line : (frames.empty() ? 0 : frames.back().line);
+        if (pendingException.isNil()) {
+            pendingException = Value(inst);
+        }
+        
+        // Let runtimeError handle printing if uncaught, passing the instance inside the C++ exception
+        // Note: We bypass runtimeError here so it doesn't print immediately, but instead we just throw!
+        // Wait, if it's uncaught, we want runtimeError's exact formatting logic. 
+        // Actually, if we just throw, the catch block at top level will leave pendingException set 
+        // and the VM will print it? 
+        // Let's print using runtimeError logic if tryStack is empty!
+        
+        if (tryStack.empty() && !isAsyncTask) {
+            runtimeError(message, faultLine, filename); // This will print and throw a standard RuntimeError (which is fine, script dies)
+        } else {
+            throw RuntimeError(message, faultLine, Value(inst));
+        }
+        return;
+    }
+    // Fallback if the class isn't defined
+    runtimeError(message, line, filename);
+}
+
+
 void BytecodeVM::defineGlobal(const std::string& name, const Value& value) {
     globalEnv->define(name, value);
 }
@@ -2759,8 +2789,17 @@ Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
     auto inst = std::make_shared<EZInstance>(klass);
     Value instVal(inst);
 
-    if (klass->methods.count("init")) {
-        Value init = klass->methods.at("init");
+    Value init = Value();
+    auto currentClass = klass;
+    while (currentClass) {
+        if (currentClass->methods.count("init")) {
+            init = currentClass->methods.at("init");
+            break;
+        }
+        currentClass = currentClass->parent;
+    }
+
+    if (!init.isNil()) {
         std::vector<Value> initArgs = { instVal };
         initArgs.insert(initArgs.end(), args.begin(), args.end());
         

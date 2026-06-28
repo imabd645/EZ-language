@@ -16,6 +16,7 @@ public:
 
     // Error reporting
     virtual void runtimeError(const std::string& message, int line = 0, const std::string& filename = "") = 0;
+    virtual void throwException(const std::string& className, const std::string& message, int line = 0, const std::string& filename = "") = 0;
     virtual void printStackTrace() const = 0;
 
     // Environment access

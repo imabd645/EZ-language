@@ -41,6 +41,7 @@ public:
 
     // RuntimeContext interface
     void runtimeError(const std::string& message, int line = 0, const std::string& filename = "") override;
+    void throwException(const std::string& className, const std::string& message, int line = 0, const std::string& filename = "") override;
     std::shared_ptr<Environment> getGlobalEnv() override { return globalEnv; }
     void defineGlobal(const std::string& name, const Value& value) override;
     Value eval(const std::string& code, const std::string& filename = "<eval>") override;

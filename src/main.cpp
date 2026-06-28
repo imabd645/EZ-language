@@ -146,6 +146,16 @@ void runFile(const std::string& path, bool traceExecution = false) {
     buffer << file.rdbuf();
     std::string source = buffer.str();
     
+    if (source.size() >= 3 && (unsigned char)source[0] == 0xEF && (unsigned char)source[1] == 0xBB && (unsigned char)source[2] == 0xBF) {
+        source = source.substr(3); // Skip UTF-8 BOM
+    } else if (source.size() >= 2 && (unsigned char)source[0] == 0xFF && (unsigned char)source[1] == 0xFE) {
+        std::cerr << "Error: File '" << path << "' is encoded in UTF-16LE. EZ currently only supports UTF-8. Please save the file as UTF-8 (Without BOM) in your editor." << std::endl;
+        exit(65);
+    } else if (source.size() >= 2 && (unsigned char)source[0] == 0xFE && (unsigned char)source[1] == 0xFF) {
+        std::cerr << "Error: File '" << path << "' is encoded in UTF-16BE. EZ currently only supports UTF-8. Please save the file as UTF-8 (Without BOM) in your editor." << std::endl;
+        exit(65);
+    }
+    
     runFromSource(source, path, traceExecution);
 }
 
@@ -159,6 +169,16 @@ void compileFileToEzc(const std::string& path) {
     std::stringstream buffer;
     buffer << file.rdbuf();
     std::string source = buffer.str();
+    
+    if (source.size() >= 3 && (unsigned char)source[0] == 0xEF && (unsigned char)source[1] == 0xBB && (unsigned char)source[2] == 0xBF) {
+        source = source.substr(3);
+    } else if (source.size() >= 2 && (unsigned char)source[0] == 0xFF && (unsigned char)source[1] == 0xFE) {
+        std::cerr << "Error: File '" << path << "' is encoded in UTF-16LE. EZ currently only supports UTF-8. Please save the file as UTF-8 (Without BOM) in your editor." << std::endl;
+        exit(65);
+    } else if (source.size() >= 2 && (unsigned char)source[0] == 0xFE && (unsigned char)source[1] == 0xFF) {
+        std::cerr << "Error: File '" << path << "' is encoded in UTF-16BE. EZ currently only supports UTF-8. Please save the file as UTF-8 (Without BOM) in your editor." << std::endl;
+        exit(65);
+    }
     
     EZ_RegisterSource(path, source);
     Lexer lexer(source, path);

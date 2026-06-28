@@ -219,18 +219,32 @@ void registerSysBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
-    interp.defineGlobal("Exception", Value::makeNativeFunction("Exception", -1,
+    auto exceptionClass = std::make_shared<EZClass>("Exception");
+    exceptionClass->methods["init"] = Value::makeNativeFunction("init", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            std::string message = args.size() > 0 ? args[0].toString() : "Unknown Error";
-            double code = args.size() > 1 && args[1].isNumber() ? args[1].asNumber() : 0.0;
-            
-            auto dict = std::make_shared<EZDictionary>();
-            dict->map["message"] = Value(message);
-            dict->map["code"] = Value(code);
-            dict->map["stackTrace"] = Value("");
-            
-            return Value(dict);
-        }));
+            if (args.size() > 0 && args[0].isInstance()) {
+                auto inst = args[0].asInstance();
+                std::string message = args.size() > 1 ? args[1].toString() : "Unknown Error";
+                inst->properties["message"] = Value(message);
+            }
+            return Value();
+        });
+    interp.defineGlobal("Exception", Value(exceptionClass));
+
+    auto makeErrorClass = [&](const std::string& name, std::shared_ptr<EZClass> parent) {
+        auto cls = std::make_shared<EZClass>(name);
+        cls->parent = parent;
+        interp.defineGlobal(name, Value(cls));
+        return cls;
+    };
+
+    makeErrorClass("FileNotFoundError", exceptionClass);
+    makeErrorClass("NetworkError", exceptionClass);
+    makeErrorClass("TypeError", exceptionClass);
+    makeErrorClass("ValueError", exceptionClass);
+    makeErrorClass("IndexError", exceptionClass);
+    makeErrorClass("KeyError", exceptionClass);
+    makeErrorClass("PermissionError", exceptionClass);
 
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {

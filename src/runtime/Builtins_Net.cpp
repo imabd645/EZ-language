@@ -58,10 +58,10 @@ void registerNetBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("http_get", Value::makeNativeFunction("http_get", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (args.empty()) { interp.runtimeError("http_get() expects URL", 0, ""); return Value(); }
+            if (args.empty()) { interp.throwException("TypeError", "http_get() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
             CURL* curl = curl_easy_init();
-            if (!curl) { interp.runtimeError("CURL init failed", 0, ""); return Value(); }
+            if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
             std::string res;
             long ssl_verify = 1L;
             long ssl_verifyhost = 2L;
@@ -92,17 +92,17 @@ void registerNetBuiltins(RuntimeContext& interp) {
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-            if (code != CURLE_OK) { interp.runtimeError("http_get failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
+            if (code != CURLE_OK) { interp.throwException("NetworkError", "http_get failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
             return Value(res);
         }));
 
     interp.defineGlobal("http_post", Value::makeNativeFunction("http_post", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2) { interp.runtimeError("http_post() expects URL and body", 0, ""); return Value(); }
+            if (args.size() < 2) { interp.throwException("TypeError", "http_post() expects URL and body", 0, ""); return Value(); }
             std::string url = args[0].toString();
             std::string body = args[1].toString();
             CURL* curl = curl_easy_init();
-            if (!curl) { interp.runtimeError("CURL init failed", 0, ""); return Value(); }
+            if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
             std::string res;
             long ssl_verify = 1L;
             long ssl_verifyhost = 2L;
@@ -142,13 +142,13 @@ void registerNetBuiltins(RuntimeContext& interp) {
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-            if (code != CURLE_OK) { interp.runtimeError("http_post failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
+            if (code != CURLE_OK) { interp.throwException("NetworkError", "http_post failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
             return Value(res);
         }));
 
     interp.defineGlobal("fetch", Value::makeNativeFunction("fetch", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (args.empty()) { interp.runtimeError("fetch() expects URL", 0, ""); return Value(); }
+            if (args.empty()) { interp.throwException("TypeError", "fetch() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
             Value options;
             if (args.size() > 1) options = args[1];

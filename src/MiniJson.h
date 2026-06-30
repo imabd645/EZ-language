@@ -149,7 +149,19 @@ namespace MiniJson {
     private:
         std::string stringify(const Value& v, int indent) {
             std::string pad(indent, ' ');
-            if (v.type == STRING) return "\"" + v.stringVal + "\"";
+            if (v.type == STRING) {
+                std::string escaped = "\"";
+                for (char c : v.stringVal) {
+                    if (c == '"') escaped += "\\\"";
+                    else if (c == '\\') escaped += "\\\\";
+                    else if (c == '\n') escaped += "\\n";
+                    else if (c == '\r') escaped += "\\r";
+                    else if (c == '\t') escaped += "\\t";
+                    else escaped += c;
+                }
+                escaped += "\"";
+                return escaped;
+            }
             if (v.type == OBJECT) {
                 std::string s = "{\n";
                 size_t i = 0;

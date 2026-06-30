@@ -26,6 +26,7 @@ set(SOURCES
     src/runtime/Builtins_String.cpp
     src/runtime/Builtins_Data.cpp
     src/runtime/Builtins_Sys.cpp
+    src/runtime/Builtins_Http.cpp
 )
 
 # Create the executable named 'ez'

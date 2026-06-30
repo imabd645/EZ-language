@@ -26,6 +26,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/runtime/Builtins_Sys.cpp ^
     src/runtime/Builtins_Buffer.cpp ^
     src/runtime/Builtins_Concurrency.cpp ^
+    src/runtime/Builtins_Http.cpp ^
     src/runtime/EventLoop.cpp ^
     -static -static-libgcc -static-libstdc++ ^
     -DCURL_STATICLIB ^

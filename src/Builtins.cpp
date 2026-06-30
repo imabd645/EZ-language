@@ -9,4 +9,5 @@ void registerBuiltins(RuntimeContext& interp) {
     registerSysBuiltins(interp);
     registerBufferBuiltins(interp);
     registerConcurrencyBuiltins(interp);
+    registerHttpBuiltins(interp);
 }

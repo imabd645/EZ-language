@@ -9,7 +9,7 @@
 #include <iostream>
 
 namespace MiniJson {
-    enum Type { ALL_NULL, OBJECT, ARRAY, STRING };
+    enum Type { ALL_NULL, OBJECT, ARRAY, STRING, NUMBER, BOOLEAN };
     
     struct Value {
         Type type = ALL_NULL;
@@ -182,6 +182,12 @@ namespace MiniJson {
                 }
                 s += pad + "]";
                 return s;
+            }
+            if (v.type == NUMBER || v.type == BOOLEAN) {
+                return v.stringVal;
+            }
+            if (v.type == ALL_NULL) {
+                return "null";
             }
             return "\"" + v.stringVal + "\""; // Fallback
         }

@@ -23,6 +23,29 @@
 
 #include "../EZFuture.h"
 #include "EventLoop.h"
+#include <mutex>
+#include <vector>
+
+static std::mutex g_curl_pool_mutex;
+static std::vector<CURL*> g_curl_pool;
+
+static CURL* get_curl_handle() {
+    std::lock_guard<std::mutex> lock(g_curl_pool_mutex);
+    if (!g_curl_pool.empty()) {
+        CURL* c = g_curl_pool.back();
+        g_curl_pool.pop_back();
+        curl_easy_reset(c);
+        return c;
+    }
+    return curl_easy_init();
+}
+
+static void release_curl_handle(CURL* c) {
+    if (c) {
+        std::lock_guard<std::mutex> lock(g_curl_pool_mutex);
+        g_curl_pool.push_back(c);
+    }
+}
 
 static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -60,7 +83,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty()) { interp.throwException("TypeError", "http_get() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
-            CURL* curl = curl_easy_init();
+            CURL* curl = get_curl_handle();
             if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
             std::string res;
             long ssl_verify = 1L;
@@ -91,7 +114,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
+            release_curl_handle(curl);
             if (code != CURLE_OK) { interp.throwException("NetworkError", "http_get failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
             return Value(res);
         }));
@@ -101,7 +124,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() < 2) { interp.throwException("TypeError", "http_post() expects URL and body", 0, ""); return Value(); }
             std::string url = args[0].toString();
             std::string body = args[1].toString();
-            CURL* curl = curl_easy_init();
+            CURL* curl = get_curl_handle();
             if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
             std::string res;
             long ssl_verify = 1L;
@@ -141,7 +164,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             
             CURLcode code = curl_easy_perform(curl);
             if (headers) curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
+            release_curl_handle(curl);
             if (code != CURLE_OK) { interp.throwException("NetworkError", "http_post failed: " + std::string(curl_easy_strerror(code)), 0, ""); return Value(); }
             return Value(res);
         }));

@@ -386,10 +386,16 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 } else if (v.isString()) return MiniJson::Value(v.asString());
                 else if (v.isNumber()) {
                     double d = v.asNumber();
-                    if (d == (int)d) return MiniJson::Value(std::to_string((int)d));
-                    return MiniJson::Value(std::to_string(d));
+                    MiniJson::Value numVal(MiniJson::NUMBER);
+                    if (d == (int)d) numVal.stringVal = std::to_string((int)d);
+                    else numVal.stringVal = std::to_string(d);
+                    return numVal;
                 }
-                else if (v.isBool()) return MiniJson::Value(v.asBool() ? "true" : "false");
+                else if (v.isBool()) {
+                    MiniJson::Value boolVal(MiniJson::BOOLEAN);
+                    boolVal.stringVal = v.asBool() ? "true" : "false";
+                    return boolVal;
+                }
                 return MiniJson::Value("null");
             };
             MiniJson::Value root = convert(args[0]);

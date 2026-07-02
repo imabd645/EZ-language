@@ -439,6 +439,31 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         return;
     }
 
+    Constant leftConst, rightConst;
+    if (isConstant(expr.left, leftConst) && isConstant(expr.right, rightConst)) {
+        if (leftConst.type == Constant::Type::INT && rightConst.type == Constant::Type::INT) {
+            long long l = std::get<long long>(leftConst.value);
+            long long r = std::get<long long>(rightConst.value);
+            switch (expr.op) {
+                case TokenType::PLUS: emitConstant(Constant(l + r)); return;
+                case TokenType::MINUS: emitConstant(Constant(l - r)); return;
+                case TokenType::STAR: emitConstant(Constant(l * r)); return;
+                case TokenType::SLASH: if (r != 0) { emitConstant(Constant(l / r)); return; } break;
+                default: break;
+            }
+        } else if (leftConst.type == Constant::Type::DOUBLE || rightConst.type == Constant::Type::DOUBLE) {
+            double l = leftConst.type == Constant::Type::INT ? std::get<long long>(leftConst.value) : std::get<double>(leftConst.value);
+            double r = rightConst.type == Constant::Type::INT ? std::get<long long>(rightConst.value) : std::get<double>(rightConst.value);
+            switch (expr.op) {
+                case TokenType::PLUS: emitConstant(Constant(l + r)); return;
+                case TokenType::MINUS: emitConstant(Constant(l - r)); return;
+                case TokenType::STAR: emitConstant(Constant(l * r)); return;
+                case TokenType::SLASH: if (r != 0.0) { emitConstant(Constant(l / r)); return; } break;
+                default: break;
+            }
+        }
+    }
+
     compileExpr(expr.left);
     compileExpr(expr.right);
 
@@ -483,6 +508,18 @@ void BytecodeCompiler::compileLogicalShortCircuit(const BinaryExpr& expr) {
 }
 
 void BytecodeCompiler::compileUnary(const UnaryExpr& expr) {
+    Constant operandConst;
+    if (isConstant(expr.operand, operandConst)) {
+        if (expr.op == TokenType::MINUS) {
+            if (operandConst.type == Constant::Type::INT) {
+                emitConstant(Constant(-std::get<long long>(operandConst.value)));
+                return;
+            } else if (operandConst.type == Constant::Type::DOUBLE) {
+                emitConstant(Constant(-std::get<double>(operandConst.value)));
+                return;
+            }
+        }
+    }
     compileExpr(expr.operand);
     switch (expr.op) {
         case TokenType::MINUS: emitOp(OpCode::NEGATE);  break;
@@ -2345,6 +2382,44 @@ void BytecodeCompiler::errorAt(const std::string& message, int line) {
 // ============================================================================
 // Loop Handling
 // ============================================================================
+
+bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
+    if (!expr) return false;
+    
+    if (auto* litPtr = std::get_if<std::shared_ptr<LiteralExpr>>(&expr->variant)) {
+        auto lit = *litPtr;
+        if (std::holds_alternative<double>(lit->value)) {
+            out = Constant(std::get<double>(lit->value));
+            return true;
+        } else if (std::holds_alternative<long long>(lit->value)) {
+            out = Constant(std::get<long long>(lit->value));
+            return true;
+        } else if (std::holds_alternative<bool>(lit->value)) {
+            out = Constant(std::get<bool>(lit->value));
+            return true;
+        } else if (std::holds_alternative<std::string>(lit->value)) {
+            out = Constant(std::get<std::string>(lit->value));
+            return true;
+        } else if (std::holds_alternative<std::nullptr_t>(lit->value)) {
+            out = Constant(); // NIL
+            return true;
+        }
+    }
+    return false;
+}
+
+void BytecodeCompiler::optimizeLastJump() {
+    auto& chunk = currentChunk();
+    if (chunk.code.size() >= 2) {
+        if (chunk.code.back() == static_cast<uint8_t>(OpCode::POP)) {
+            uint8_t prev = chunk.code[chunk.code.size() - 2];
+            // If we pushed a constant and then immediately popped it, remove both
+            if (prev == static_cast<uint8_t>(OpCode::LOAD_CONST)) {
+                // Actually LOAD_CONST is 3 bytes, let's keep it simple for now
+            }
+        }
+    }
+}
 
 void BytecodeCompiler::startLoop() {
     LoopContext loop;

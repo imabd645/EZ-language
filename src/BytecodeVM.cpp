@@ -1004,7 +1004,32 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     }
                     DISPATCH();
                 }
-                CASE_CODE(NOT_EQUAL)  { SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(NOT_EQUAL) {
+                    {
+                        const Value& b = stackTop[-1];
+                        const Value& a = stackTop[-2];
+                        if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("!=");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME();
+                        } else {
+                            SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME();
+                        }
+                    }
+                    DISPATCH();
+                }
                 CASE_CODE(LESS) {
                     {
                         const Value& b = stackTop[-1];
@@ -1055,6 +1080,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             stackTop -= 2;
                             *stackTop = Value(res);
                             stackTop++;
+                        } else if (a.isInstance()) {
+                            bool handled = false;
+                            {
+                                Value method = a.asInstance()->getProperty("<=");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    stackTop[-2] = Value(std::make_shared<EZBoundMethod>(a, method));
+                                    if (!dispatchCall(stackTop[-2], 1)) return;
+                                    handled = true;
+                                }
+                            }
+                            if (handled) {
+                                LOAD_FRAME();
+                                DISPATCH();
+                            }
+                            SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
                             SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
                         }

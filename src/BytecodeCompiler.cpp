@@ -2404,6 +2404,46 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
             out = Constant(); // NIL
             return true;
         }
+    } else if (auto* binPtr = std::get_if<std::shared_ptr<BinaryExpr>>(&expr->variant)) {
+        auto bin = *binPtr;
+        Constant left, right;
+        if (isConstant(bin->left, left) && isConstant(bin->right, right)) {
+            if (left.type == Constant::Type::INT && right.type == Constant::Type::INT) {
+                long long l = std::get<long long>(left.value);
+                long long r = std::get<long long>(right.value);
+                switch (bin->op) {
+                    case TokenType::PLUS: out = Constant(l + r); return true;
+                    case TokenType::MINUS: out = Constant(l - r); return true;
+                    case TokenType::STAR: out = Constant(l * r); return true;
+                    case TokenType::SLASH: if (r != 0) { out = Constant(l / r); return true; } break;
+                    default: break;
+                }
+            } else if (left.type == Constant::Type::DOUBLE || right.type == Constant::Type::DOUBLE) {
+                double l = left.type == Constant::Type::INT ? std::get<long long>(left.value) : std::get<double>(left.value);
+                double r = right.type == Constant::Type::INT ? std::get<long long>(right.value) : std::get<double>(right.value);
+                switch (bin->op) {
+                    case TokenType::PLUS: out = Constant(l + r); return true;
+                    case TokenType::MINUS: out = Constant(l - r); return true;
+                    case TokenType::STAR: out = Constant(l * r); return true;
+                    case TokenType::SLASH: if (r != 0.0) { out = Constant(l / r); return true; } break;
+                    default: break;
+                }
+            }
+        }
+    } else if (auto* unPtr = std::get_if<std::shared_ptr<UnaryExpr>>(&expr->variant)) {
+        auto un = *unPtr;
+        Constant operand;
+        if (isConstant(un->operand, operand)) {
+            if (un->op == TokenType::MINUS) {
+                if (operand.type == Constant::Type::INT) {
+                    out = Constant(-std::get<long long>(operand.value));
+                    return true;
+                } else if (operand.type == Constant::Type::DOUBLE) {
+                    out = Constant(-std::get<double>(operand.value));
+                    return true;
+                }
+            }
+        }
     }
     return false;
 }

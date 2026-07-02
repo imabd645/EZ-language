@@ -430,6 +430,7 @@ struct TaskStmt {
     // Decorator flags
     bool isCached = false;
     std::optional<RateLimitConfig> rateLimit;
+    std::vector<std::string> typeParams;
     
     TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
              std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false)
@@ -501,6 +502,7 @@ struct InterfaceStmt {
     int line;
     std::string name;
     std::vector<InterfaceMethod> methods;
+    std::vector<std::string> typeParams;
     
     InterfaceStmt(int line, const std::string& name, std::vector<InterfaceMethod> methods)
         : line(line), name(name), methods(std::move(methods)) {}
@@ -521,6 +523,7 @@ struct ModelStmt {
     bool audited  = false;     // @audited
     bool snapshot = false;     // @snapshot
     std::string persistPath;   // @persist("file") — empty = not persistent
+    std::vector<std::string> typeParams;
         
     ModelStmt(int line, const std::string& name, const std::string& parent,
               std::vector<std::string> interfaces,
@@ -540,6 +543,7 @@ struct StructStmt {
     std::vector<std::string> fields;
     std::vector<TypeASTPtr> types;
     std::vector<ExprPtr> defaults;
+    std::vector<std::string> typeParams;
     
     StructStmt(const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults)
         : name(name), fields(std::move(fields)), types(std::move(types)), defaults(std::move(defaults)) {}

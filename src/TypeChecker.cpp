@@ -90,6 +90,21 @@ void TypeChecker::warn(int line, const std::string& message) {
     warn(line, 0, 0, "", message, "");
 }
 
+TypeInfo TypeChecker::substituteType(const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& bindings) {
+    if (bindings.count(type.baseType)) {
+        TypeInfo res = bindings.at(type.baseType);
+        // If the original type also had type args, we might need to preserve them or substitute them.
+        // For standard generics, `T` won't have type args. 
+        return res;
+    }
+    
+    TypeInfo result = type;
+    for (size_t i = 0; i < result.typeArgs.size(); i++) {
+        result.typeArgs[i] = substituteType(result.typeArgs[i], bindings);
+    }
+    return result;
+}
+
 void TypeChecker::beginScope() {
     currentEnv = new Environment(currentEnv);
 }
@@ -480,6 +495,9 @@ void TypeChecker::checkGet(const GetStmt& stmt) {
 }
 
 void TypeChecker::checkModel(const ModelStmt& stmt) {
+    if (!stmt.typeParams.empty()) {
+        genericParameters[stmt.name] = stmt.typeParams;
+    }
     if (!stmt.parentName.empty()) {
         modelHierarchy[stmt.name] = stmt.parentName;
     }
@@ -525,6 +543,9 @@ void TypeChecker::checkModel(const ModelStmt& stmt) {
 }
 
 void TypeChecker::checkStruct(const StructStmt& stmt) {
+    if (!stmt.typeParams.empty()) {
+        genericParameters[stmt.name] = stmt.typeParams;
+    }
     beginScope();
     for (size_t i = 0; i < stmt.fields.size(); ++i) {
         TypeInfo declaredType = TypeInfo::fromAST(stmt.types[i]);
@@ -751,33 +772,63 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
     }
     
     if (sig) {
+        FunctionSignature substitutedSig = *sig;
+        
+        std::unordered_map<std::string, TypeInfo> bindings;
+        if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant)) {
+            auto propAccess = std::get<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant);
+            TypeInfo objType = checkExpr(propAccess->object);
+            if (genericParameters.count(objType.baseType)) {
+                const auto& names = genericParameters[objType.baseType];
+                for (size_t i = 0; i < names.size() && i < objType.typeArgs.size(); i++) {
+                    bindings[names[i]] = objType.typeArgs[i];
+                }
+            }
+        } else if (genericParameters.count(name)) {
+            // Static function call or constructor with generics
+            const auto& names = genericParameters[name];
+            // If the user specified type args on the call, e.g. List[String]()
+            if (objType.typeArgs.size() > 0) {
+                for (size_t i = 0; i < names.size() && i < objType.typeArgs.size(); i++) {
+                    bindings[names[i]] = objType.typeArgs[i];
+                }
+            }
+        }
+        
+        if (!bindings.empty()) {
+            for (auto& paramType : substitutedSig.paramTypes) {
+                paramType = substituteType(paramType, bindings);
+            }
+            substitutedSig.returnType = substituteType(substitutedSig.returnType, bindings);
+        }
+        
         // Only verify arity if not variadic, but for simplicity we skip variadic check here or just check basic args
             // In EZ, builtins aren't in this environment. So `sig` might be null for builtins!
             // If sig exists, we verify it.
-            size_t minRequired = sig->isVariadic ? (sig->minArgs > 0 ? sig->minArgs - 1 : 0) : sig->minArgs;
-            if (!sig->isVariadic && (argTypes.size() < minRequired || argTypes.size() > sig->paramTypes.size())) {
+            size_t minRequired = substitutedSig.isVariadic ? (substitutedSig.minArgs > 0 ? substitutedSig.minArgs - 1 : 0) : substitutedSig.minArgs;
+            if (!substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
                 std::string signatureStr = "Function signature: " + name + "(";
-                for (size_t j = 0; j < sig->paramTypes.size(); ++j) {
-                    if (j < sig->paramNames.size()) signatureStr += sig->paramNames[j] + ":";
-                    signatureStr += sig->paramTypes[j].toString();
-                    if (j + 1 < sig->paramTypes.size()) signatureStr += ", ";
+                for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
+                    if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
+                    signatureStr += substitutedSig.paramTypes[j].toString();
+                    if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
                 }
                 signatureStr += ")";
                 std::string msg;
-                if (minRequired == sig->paramTypes.size()) {
-                    msg = "'" + name + "' expected " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                if (minRequired == substitutedSig.paramTypes.size()) {
+                    msg = "'" + name + "' expected " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
                 } else {
-                    msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(sig->paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                    msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
                 }
                 error(expr.callee, msg, signatureStr);
-            } else if (sig->isVariadic && argTypes.size() < minRequired) {
+            } else if (substitutedSig.isVariadic && argTypes.size() < minRequired) {
                 std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
                 error(expr.callee, msg);
             } else {
                 for (size_t i = 0; i < argTypes.size(); i++) {
-                    if (argTypes[i] != sig->paramTypes[i] && argTypes[i].baseType != "Any" && sig->paramTypes[i].baseType != "Any") {
+                    if (argTypes[i] != substitutedSig.paramTypes[i] && argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any") {
                         std::string hint = "";
-                        if (sig->paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {
+                        if (substitutedSig.paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {
                             if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(expr.arguments[i]->variant)) {
                                 auto lit = std::get<std::shared_ptr<LiteralExpr>>(expr.arguments[i]->variant);
                                 if (std::holds_alternative<std::string>(lit->value)) {
@@ -789,21 +840,21 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                         }
                         
                         std::string signatureStr = "Function signature: " + name + "(";
-                        for (size_t j = 0; j < sig->paramTypes.size(); ++j) {
-                            if (j < sig->paramNames.size()) signatureStr += sig->paramNames[j] + ":";
-                            signatureStr += sig->paramTypes[j].toString();
-                            if (j + 1 < sig->paramTypes.size()) signatureStr += ", ";
+                        for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
+                            if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
+                            signatureStr += substitutedSig.paramTypes[j].toString();
+                            if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
                         }
                         signatureStr += ")";
                         
-                        std::string paramNameStr = (i < sig->paramNames.size()) ? (" '" + sig->paramNames[i] + "'") : "";
-                        std::string msg = "Argument " + std::to_string(i+1) + paramNameStr + " expects " + sig->paramTypes[i].toString() + " but got " + argTypes[i].toString();
+                        std::string paramNameStr = (i < substitutedSig.paramNames.size()) ? (" '" + substitutedSig.paramNames[i] + "'") : "";
+                        std::string msg = "Argument " + std::to_string(i+1) + paramNameStr + " expects " + substitutedSig.paramTypes[i].toString() + " but got " + argTypes[i].toString();
                         
                         error(expr.arguments[i], msg, signatureStr + "\n  Hint: " + hint);
                     }
                 }
             }
-            return sig->returnType;
+            return substitutedSig.returnType;
         }
     return TypeInfo("Any");
 }
@@ -875,7 +926,16 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
             Environment* env = currentEnv;
             while (env) {
                 if (env->variables.count(propKey)) {
-                    return env->variables[propKey];
+                    TypeInfo propType = env->variables[propKey];
+                    if (genericParameters.count(objType.baseType)) {
+                        const auto& names = genericParameters[objType.baseType];
+                        std::unordered_map<std::string, TypeInfo> bindings;
+                        for (size_t i = 0; i < names.size() && i < objType.typeArgs.size(); i++) {
+                            bindings[names[i]] = objType.typeArgs[i];
+                        }
+                        if (!bindings.empty()) propType = substituteType(propType, bindings);
+                    }
+                    return propType;
                 }
                 if (env->functions.count(propKey)) {
                     return TypeInfo("Callable"); // Or Function type

@@ -78,6 +78,7 @@ private:
     bool hadError = false;
     bool hasImports = false;
     std::unordered_map<std::string, std::string> modelHierarchy;
+    std::unordered_map<std::string, std::vector<std::string>> genericParameters;
     
     void beginScope();
     void endScope();
@@ -85,6 +86,8 @@ private:
     TypeInfo resolveVariable(const std::string& name);
     void declareFunction(const std::string& name, const FunctionSignature& sig);
     FunctionSignature* resolveFunction(const std::string& name);
+    
+    TypeInfo substituteType(const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& bindings);
     
     void error(const ExprPtr& expr, const std::string& message, const std::string& hint = "");
     void error(const StmtPtr& stmt, const std::string& message, const std::string& hint = "");

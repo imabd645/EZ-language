@@ -512,6 +512,15 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     Token nameToken = previous();
     std::string name = nameToken.lexeme;
     
+    std::vector<std::string> typeParams;
+    if (match(TokenType::LBRACKET)) {
+        do {
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected generic type parameter name");
+            typeParams.push_back(paramToken.lexeme);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACKET, "Expected ']' after generic type parameters");
+    }
+    
     consume(TokenType::LPAREN, "Expected '(' after function name");
     
     std::vector<std::string> params;
@@ -637,6 +646,8 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     }
     
     auto taskStmt = makeTaskStmt(line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
+    std::get<std::shared_ptr<TaskStmt>>(taskStmt->variant)->typeParams = typeParams;
+    
     // Attach contract clauses
     auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskStmt->variant);
     task.requiresClauses = std::move(requiresClauses);
@@ -797,6 +808,15 @@ StmtPtr Parser::structStatement() {
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected struct name");
     std::string name = nameToken.lexeme;
     
+    std::vector<std::string> typeParams;
+    if (match(TokenType::LBRACKET)) {
+        do {
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected generic type parameter name");
+            typeParams.push_back(paramToken.lexeme);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACKET, "Expected ']' after generic type parameters");
+    }
+    
     skipNewlines();
     consume(TokenType::LBRACE, "Expected '{' before struct body");
     
@@ -832,7 +852,9 @@ StmtPtr Parser::structStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
     
-    return makeStructStmt(line, column, length, nameToken.filename, name, fields, types, defaults);
+    auto stmt = makeStructStmt(line, column, length, nameToken.filename, name, fields, types, defaults);
+    std::get<std::shared_ptr<StructStmt>>(stmt->variant)->typeParams = typeParams;
+    return stmt;
 }
 
 StmtPtr Parser::useStatement() {
@@ -1367,6 +1389,15 @@ StmtPtr Parser::modelStatement() {
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected model name");
     std::string name = nameToken.lexeme;
     
+    std::vector<std::string> typeParams;
+    if (match(TokenType::LBRACKET)) {
+        do {
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected generic type parameter name");
+            typeParams.push_back(paramToken.lexeme);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACKET, "Expected ']' after generic type parameters");
+    }
+    
     // Check for inheritance
     std::string parentName = "";
     if (match(TokenType::EXTENDS)) {
@@ -1618,8 +1649,10 @@ StmtPtr Parser::modelStatement() {
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
     // Use the peek().filename or current filename
-    return makeModelStmt(line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
+    auto stmt = makeModelStmt(line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
                          initDefaultValues, initBody, members);
+    std::get<std::shared_ptr<ModelStmt>>(stmt->variant)->typeParams = typeParams;
+    return stmt;
 }
 
 // Interface definition
@@ -1629,6 +1662,15 @@ StmtPtr Parser::interfaceStatement() {
     int column = previous().column;
     int length = previous().lexeme.length();
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected interface name");
+    
+    std::vector<std::string> typeParams;
+    if (match(TokenType::LBRACKET)) {
+        do {
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected generic type parameter name");
+            typeParams.push_back(paramToken.lexeme);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACKET, "Expected ']' after generic type parameters");
+    }
     
     skipNewlines();
     consume(TokenType::LBRACE, "Expected '{' after interface name");
@@ -1668,5 +1710,7 @@ StmtPtr Parser::interfaceStatement() {
     }
     consume(TokenType::RBRACE, "Expected '}' after interface body");
     
-    return makeInterfaceStmt(line, column, length, nameToken.filename, nameToken.lexeme, methods);
+    auto stmt = makeInterfaceStmt(line, column, length, nameToken.filename, nameToken.lexeme, methods);
+    std::get<std::shared_ptr<InterfaceStmt>>(stmt->variant)->typeParams = typeParams;
+    return stmt;
 }

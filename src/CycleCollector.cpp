@@ -9,6 +9,7 @@
 void* CycleCollector::extractRawPtr(const Value& v) {
     switch (v.type()) {
         case ValueType::ARRAY:        return v.asArrayPtr().get();
+        case ValueType::TUPLE:        return v.asTuplePtr().get();
         case ValueType::INSTANCE:     return v.asInstance().get();
         case ValueType::DICTIONARY:   return v.asDictionaryPtr().get();
         case ValueType::CLASS:        return v.asClass().get();
@@ -31,6 +32,9 @@ void CycleCollector::traverseObject(
     switch (type) {
         case ValueType::ARRAY:
             std::static_pointer_cast<EZArray>(obj)->traverse(visitor);
+            break;
+        case ValueType::TUPLE:
+            std::static_pointer_cast<EZTuple>(obj)->traverse(visitor);
             break;
         case ValueType::DICTIONARY:
             std::static_pointer_cast<EZDictionary>(obj)->traverse(visitor);
@@ -70,6 +74,11 @@ void CycleCollector::clearObject(
         case ValueType::ARRAY: {
             auto arr = std::static_pointer_cast<EZArray>(obj);
             arr->elements.clear();
+            break;
+        }
+        case ValueType::TUPLE: {
+            auto tup = std::static_pointer_cast<EZTuple>(obj);
+            tup->elements.clear();
             break;
         }
         case ValueType::DICTIONARY: {

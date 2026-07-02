@@ -233,7 +233,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_GREATER_EQ, &&handle_NOT, &&handle_JUMP, &&handle_JUMP_IF_FALSE,
         &&handle_JUMP_IF_TRUE, &&handle_JUMP_IF_NIL, &&handle_JUMP_IF_NOT_NIL, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL,
         &&handle_RETURN, &&handle_CLOSURE, &&handle_CLOSE_UPVALUE, &&handle_MAKE_ARRAY,
-        &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
+        &&handle_BUILD_TUPLE, &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
         &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
         &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
@@ -1305,6 +1305,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         std::vector<Value> el(count);
                         for (int i = count - 1; i >= 0; i--) el[i] = *(--stackTop);
                         *stackTop++ = Value::makeArray(el);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(BUILD_TUPLE) {
+                    {
+                        uint8_t count = READ_BYTE();
+                        std::vector<Value> el(count);
+                        for (int i = count - 1; i >= 0; i--) el[i] = *(--stackTop);
+                        *stackTop++ = Value::makeTuple(el);
                     }
                     DISPATCH();
                 }
@@ -2413,6 +2423,11 @@ void BytecodeVM::doIndexGet() {
         long long i = idx.asInteger();
         if (i < 0 || i >= (long long)arr.size()) { runtimeError("Array index out of bounds"); return; }
         push(arr[i]);
+    } else if (obj.isTuple()) {
+        auto& tup = obj.asTuple();
+        long long i = idx.asInteger();
+        if (i < 0 || i >= (long long)tup.size()) { runtimeError("Tuple index out of bounds"); return; }
+        push(tup[i]);
     } else if (obj.isString()) {
         const std::string& s = obj.asString();
         long long i = idx.asInteger();

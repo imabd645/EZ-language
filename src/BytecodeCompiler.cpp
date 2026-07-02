@@ -317,6 +317,10 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
             compileIndex(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<ArrayExpr>>) {
             compileArray(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<TupleExpr>>) {
+            compileTuple(*arg);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) {
+            compileDictionary(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) {
             compileAssign(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<DestructureAssignExpr>>) {
@@ -619,6 +623,14 @@ void BytecodeCompiler::compileArray(const ArrayExpr& expr) {
             }
         }
     }
+}
+
+void BytecodeCompiler::compileTuple(const TupleExpr& expr) {
+    for (const auto& elem : expr.elements) {
+        compileExpr(elem);
+    }
+    emitOp(OpCode::BUILD_TUPLE);
+    emitByte(static_cast<uint8_t>(expr.elements.size()));
 }
 
 void BytecodeCompiler::compileAssign(const AssignExpr& expr) {

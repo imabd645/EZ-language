@@ -35,6 +35,7 @@ struct UnaryExpr;
 struct CallExpr;
 struct IndexExpr;
 struct ArrayExpr;
+struct TupleExpr;
 struct AssignExpr;
 struct LogicalExpr;
 struct LambdaExpr;
@@ -57,6 +58,7 @@ using ExprVariant = std::variant<
     std::shared_ptr<CallExpr>,
     std::shared_ptr<IndexExpr>,
     std::shared_ptr<ArrayExpr>,
+    std::shared_ptr<TupleExpr>,
     std::shared_ptr<AssignExpr>,
     std::shared_ptr<LogicalExpr>,
     std::shared_ptr<LambdaExpr>,
@@ -144,7 +146,16 @@ struct IndexExpr {
 struct ArrayExpr {
     std::vector<ExprPtr> elements;
     
-    explicit ArrayExpr(std::vector<ExprPtr> elems) : elements(std::move(elems)) {}
+    explicit ArrayExpr(std::vector<ExprPtr> elements) 
+        : elements(std::move(elements)) {}
+};
+
+// Tuple literal expression (expr, expr)
+struct TupleExpr {
+    std::vector<ExprPtr> elements;
+    
+    explicit TupleExpr(std::vector<ExprPtr> elements) 
+        : elements(std::move(elements)) {}
 };
 
 // Assignment expression
@@ -632,6 +643,10 @@ inline ExprPtr makeIndexExpr(int line, int column, int length, const std::string
 
 inline ExprPtr makeArrayExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<ArrayExpr>(std::move(elements)));
+}
+
+inline ExprPtr makeTupleExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<TupleExpr>(std::move(elements)));
 }
 
 inline ExprPtr makeAssignExpr(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr) {

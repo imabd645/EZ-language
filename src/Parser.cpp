@@ -1338,7 +1338,24 @@ ExprPtr Parser::primary() {
     }
     
     if (match(TokenType::LPAREN)) {
+        if (match(TokenType::RPAREN)) {
+            // Empty tuple
+            return makeTupleExpr(line, column, length, filename, {});
+        }
         ExprPtr expr = expression();
+        if (match(TokenType::COMMA)) {
+            // Tuple with multiple elements or a single element like (1,)
+            std::vector<ExprPtr> elements = {expr};
+            if (!check(TokenType::RPAREN)) {
+                do {
+                    skipNewlines();
+                    elements.push_back(expression());
+                    skipNewlines();
+                } while (match(TokenType::COMMA));
+            }
+            consume(TokenType::RPAREN, "Expected ')' after tuple elements");
+            return makeTupleExpr(line, column, length, filename, elements);
+        }
         consume(TokenType::RPAREN, "Expected ')' after expression");
         return expr;
     }

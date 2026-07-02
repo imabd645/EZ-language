@@ -133,6 +133,8 @@ private:
     TypeInfo checkSuper(const SuperExpr& expr);
     TypeInfo checkNew(const NewExpr& expr);
     TypeInfo checkIndex(const IndexExpr& expr);
+    TypeInfo checkArray(const ArrayExpr& expr);
+    TypeInfo checkTuple(const TupleExpr& expr);
     TypeInfo checkDictionary(const DictionaryExpr& expr);
     TypeInfo checkSpread(const SpreadExpr& expr);
     TypeInfo checkTernary(const TernaryExpr& expr);

@@ -103,6 +103,7 @@ private:
     void compileSelf(const SelfExpr& expr);
     void compileSuper(const SuperExpr& expr);
     void compileNew(const NewExpr& expr);
+    void compileTuple(const TupleExpr& expr);
     void compileSet(const SetExpr& expr);
     void compileDictionary(const DictionaryExpr& expr);
     void compileSpread(const SpreadExpr& expr);

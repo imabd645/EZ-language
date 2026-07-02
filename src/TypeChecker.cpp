@@ -625,6 +625,8 @@ TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
         else if constexpr (std::is_same_v<T, std::shared_ptr<SuperExpr>>) return checkSuper(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<NewExpr>>) return checkNew(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<IndexExpr>>) return checkIndex(*arg);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<ArrayExpr>>) return checkArray(*arg);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<TupleExpr>>) return checkTuple(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) return checkDictionary(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) return checkSpread(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) return checkTernary(*arg);
@@ -1089,6 +1091,27 @@ TypeInfo TypeChecker::checkIndex(const IndexExpr& expr) {
         return TypeInfo("string");
     }
     return TypeInfo("Any");
+}
+
+TypeInfo TypeChecker::checkArray(const ArrayExpr& expr) {
+    if (expr.elements.empty()) return TypeInfo("Array", {TypeInfo("Any")});
+    TypeInfo elemType = checkExpr(expr.elements[0]);
+    for (size_t i = 1; i < expr.elements.size(); ++i) {
+        TypeInfo t = checkExpr(expr.elements[i]);
+        if (t.baseType != "Any" && elemType.baseType != "Any" && t != elemType) {
+            elemType = TypeInfo("Any");
+            break;
+        }
+    }
+    return TypeInfo("Array", {elemType});
+}
+
+TypeInfo TypeChecker::checkTuple(const TupleExpr& expr) {
+    std::vector<TypeInfo> elementTypes;
+    for (const auto& elem : expr.elements) {
+        elementTypes.push_back(checkExpr(elem));
+    }
+    return TypeInfo("Tuple", elementTypes);
 }
 
 TypeInfo TypeChecker::checkDictionary(const DictionaryExpr& expr) {

@@ -84,6 +84,7 @@ enum class OpCode : uint8_t {
     
     // Collections
     MAKE_ARRAY,          // count: Create array from stack values
+    BUILD_TUPLE,         // count: Create tuple from stack values
     MAKE_DICT,           // count: Create dict from stack pairs
     INDEX_GET,           // Get arr[idx] or obj[key]
     INDEX_SET,           // Set arr[idx] = val

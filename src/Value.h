@@ -65,7 +65,8 @@ enum class ValueType {
     BOUND_METHOD,
     CLOSURE_VAL,
     INTERFACE,
-    ATOMIC
+    ATOMIC,
+    TUPLE
 };
 
 struct ShortString {
@@ -90,6 +91,7 @@ struct ShortString {
 
 struct Value;
 struct EZConcatString;
+struct EZTuple;
 
 struct Value {
     // Pointer types for Variant
@@ -109,6 +111,7 @@ struct Value {
     using ClosureValPtr = std::shared_ptr<EZClosure>;
     using InterfacePtr = std::shared_ptr<struct EZInterface>;
     using AtomicPtr = std::shared_ptr<EZAtomic>;
+    using TuplePtr = std::shared_ptr<EZTuple>;
 
     std::variant<
         std::nullptr_t,     // NIL
@@ -131,7 +134,8 @@ struct Value {
         BoundMethodPtr,     // BOUND_METHOD
         ClosureValPtr,      // CLOSURE_VAL
         InterfacePtr,       // INTERFACE
-        AtomicPtr           // ATOMIC
+        AtomicPtr,          // ATOMIC
+        TuplePtr            // TUPLE
     > m_data;
     
     // Constructors
@@ -164,6 +168,7 @@ struct Value {
     Value(ClosureValPtr val) : m_data(val) {}
     Value(InterfacePtr val) : m_data(val) {}
     Value(AtomicPtr val) : m_data(val) {}
+    Value(TuplePtr val) : m_data(val) {}
     
     // Type checking â€” O(1) via index lookup table
     // Table order must match the std::variant alternative order in m_data exactly.
@@ -189,7 +194,8 @@ struct Value {
             ValueType::BOUND_METHOD,     // 17: BoundMethodPtr
             ValueType::CLOSURE_VAL,      // 18: ClosureValPtr
             ValueType::INTERFACE,        // 19: InterfacePtr
-            ValueType::ATOMIC            // 20: AtomicPtr
+            ValueType::ATOMIC,           // 20: AtomicPtr
+            ValueType::TUPLE             // 21: TuplePtr
         };
         return typeTable[m_data.index()];
     }
@@ -218,6 +224,7 @@ struct Value {
     bool isClosure() const { return std::holds_alternative<ClosureValPtr>(m_data); }
     bool isInterface() const { return std::holds_alternative<InterfacePtr>(m_data); }
     bool isAtomic() const { return std::holds_alternative<AtomicPtr>(m_data); }
+    bool isTuple() const { return std::holds_alternative<TuplePtr>(m_data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass() || isBoundMethod() || isClosure(); }
     
     // Value extraction
@@ -263,10 +270,13 @@ struct Value {
     BufferPtr asBufferPtr() const { try{return std::get<BufferPtr>(m_data);}catch(...){std::cerr<<"[Value] asBufferPtr fail, index="<<index()<<"\n";throw;} }
     MutexPtr asMutexPtr() const { try{return std::get<MutexPtr>(m_data);}catch(...){std::cerr<<"[Value] asMutexPtr fail, index="<<index()<<"\n";throw;} }
     AtomicPtr asAtomicPtr() const { try{return std::get<AtomicPtr>(m_data);}catch(...){std::cerr<<"[Value] asAtomicPtr fail, index="<<index()<<"\n";throw;} }
+    TuplePtr asTuplePtr() const { try{return std::get<TuplePtr>(m_data);}catch(...){std::cerr<<"[Value] asTuplePtr fail, index="<<index()<<"\n";throw;} }
 
     // Convenience accessors for builtins
     EZArray& asArray();
     const EZArray& asArray() const;
+    EZTuple& asTuple();
+    const EZTuple& asTuple() const;
     EZDictionary& asDictionary();
     const EZDictionary& asDictionary() const;
     std::vector<uint8_t>& asBuffer();
@@ -283,6 +293,7 @@ struct Value {
     std::string typeName() const;
     
     static Value makeArray(const std::vector<Value>& elements = {});
+    static Value makeTuple(const std::vector<Value>& elements = {});
     static Value makeArrayCopy(const EZArray& other);
     static Value makeFunction(const std::string& name,
                               const std::vector<std::string>& params,
@@ -337,6 +348,21 @@ struct EZArray {
     void insert(std::vector<Value>::iterator it, const Value& v) { elements.insert(it, v); }
 };
 
+struct EZTuple {
+    std::vector<Value> elements;
+    EZTuple(const std::vector<Value>& e = {}) : elements(e) {}
+
+    void traverse(const ValueVisitor& visit) const {
+        for (const Value& v : elements) visit(v);
+    }
+
+    size_t size() const { return elements.size(); }
+    bool empty() const { return elements.empty(); }
+    const Value& operator[](size_t i) const { return elements[i]; }
+    auto begin() const { return elements.begin(); }
+    auto end() const { return elements.end(); }
+};
+
 struct EZDictionary {
     std::unordered_map<std::string, Value> map;
     mutable std::shared_mutex map_mutex;
@@ -377,7 +403,7 @@ struct NativeFunction {
         : name(name), arity(arity), function(fn) {}
 };
 
-// â”€â”€ Behavior flags â€” one bit per active decorator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ──────────────── Behavior flags ──────────────────────────────────────────────
 struct BehaviorFlags {
     bool audited    : 1;
     bool snapshot   : 1;
@@ -567,6 +593,8 @@ struct EZAtomic {
 
 inline EZArray& Value::asArray() { try{return *std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asArray fail, index="<<index()<<"\n";throw;} }
 inline const EZArray& Value::asArray() const { try{return *std::get<ArrayPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asArray const fail, index="<<index()<<"\n";throw;} }
+inline EZTuple& Value::asTuple() { try{return *std::get<TuplePtr>(m_data);}catch(...){std::cerr<<"[Value] inline asTuple fail, index="<<index()<<"\n";throw;} }
+inline const EZTuple& Value::asTuple() const { try{return *std::get<TuplePtr>(m_data);}catch(...){std::cerr<<"[Value] inline asTuple const fail, index="<<index()<<"\n";throw;} }
 inline EZDictionary& Value::asDictionary() { try{return *std::get<DictionaryPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asDictionary fail, index="<<index()<<"\n";throw;} }
 inline const EZDictionary& Value::asDictionary() const { try{return *std::get<DictionaryPtr>(m_data);}catch(...){std::cerr<<"[Value] inline asDictionary const fail, index="<<index()<<"\n";throw;} }
 inline std::vector<uint8_t>& Value::asBuffer() { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer fail, index="<<index()<<"\n";throw;} }
@@ -712,6 +740,20 @@ inline std::string Value::toString() const {
             result += "]";
             return result;
         }
+        case ValueType::TUPLE: {
+            std::string result = "(";
+            const auto& tup = asTuple();
+            for (size_t i = 0; i < tup.size(); i++) {
+                if (i > 0) result += ", ";
+                if (tup[i].isString()) {
+                    result += "\"" + tup[i].toString() + "\"";
+                } else {
+                    result += tup[i].toString();
+                }
+            }
+            result += ")";
+            return result;
+        }
         case ValueType::FUNCTION: return "<function>";
         case ValueType::NATIVE_FUNCTION: return "<native fn>";
         case ValueType::CLASS: return "<model>";
@@ -734,6 +776,7 @@ inline std::string Value::typeName() const {
         case ValueType::NUMBER: return "float";
         case ValueType::STRING: return "string";
         case ValueType::ARRAY: return "array";
+        case ValueType::TUPLE: return "tuple";
         case ValueType::FUNCTION: return "function";
         case ValueType::NATIVE_FUNCTION: return "function";
         case ValueType::CLASS: return "model";
@@ -769,6 +812,12 @@ inline bool Value::equals(const Value& other) const {
 inline Value Value::makeArray(const std::vector<Value>& elements) {
     auto ptr = std::make_shared<EZArray>(elements);
     CycleCollector::instance().track(ptr, ValueType::ARRAY);
+    return Value(ptr);
+}
+
+inline Value Value::makeTuple(const std::vector<Value>& elements) {
+    auto ptr = std::make_shared<EZTuple>(elements);
+    CycleCollector::instance().track(ptr, ValueType::TUPLE);
     return Value(ptr);
 }
 

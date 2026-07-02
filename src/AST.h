@@ -203,9 +203,10 @@ struct SuperExpr {};
 struct NewExpr {
     std::string className;
     std::vector<ExprPtr> arguments;
+    std::vector<TypeASTPtr> typeArgs;
     
-    NewExpr(const std::string& name, std::vector<ExprPtr> args)
-        : className(name), arguments(std::move(args)) {}
+    NewExpr(const std::string& name, std::vector<ExprPtr> args, std::vector<TypeASTPtr> tArgs = {})
+        : className(name), arguments(std::move(args)), typeArgs(std::move(tArgs)) {}
 };
 
 // Property assignment expression (object.property = value)
@@ -472,6 +473,7 @@ struct ModelMember {
     bool isAsync = false;
     bool isCached = false;   // @cached decorator on methods
     std::string name;
+    std::vector<std::string> typeParams; // For generic methods
     TypeASTPtr typeHint; // For properties and methods (return type)
     ExprPtr initializer;  // For properties
     std::vector<std::string> params;  // For methods
@@ -722,8 +724,8 @@ inline ExprPtr makeSuperExpr(int line, int column, int length, const std::string
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<SuperExpr>());
 }
 
-inline ExprPtr makeNewExpr(int line, int column, int length, const std::string& file, const std::string& className, std::vector<ExprPtr> args) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<NewExpr>(className, std::move(args)));
+inline ExprPtr makeNewExpr(int line, int column, int length, const std::string& file, const std::string& className, std::vector<ExprPtr> args, std::vector<TypeASTPtr> typeArgs = {}) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<NewExpr>(className, std::move(args), std::move(typeArgs)));
 }
 
 inline ExprPtr makeSetExpr(int line, int column, int length, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value) {

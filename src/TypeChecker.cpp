@@ -983,7 +983,9 @@ TypeInfo TypeChecker::checkSuper(const SuperExpr& expr) {
 
 TypeInfo TypeChecker::checkNew(const NewExpr& expr) {
     for (const auto& arg : expr.arguments) checkExpr(arg);
-    return TypeInfo(expr.className);
+    std::vector<TypeInfo> typeArgs;
+    for (const auto& ta : expr.typeArgs) typeArgs.push_back(TypeInfo::fromAST(ta));
+    return TypeInfo(expr.className, typeArgs);
 }
 
 TypeInfo TypeChecker::checkIndex(const IndexExpr& expr) {

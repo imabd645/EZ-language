@@ -1190,6 +1190,15 @@ ExprPtr Parser::primary() {
     if (match(TokenType::NEW)) {
         Token t = previous();
         Token nameToken = consume(TokenType::IDENTIFIER, "Expected model name after 'new'");
+        
+        std::vector<TypeASTPtr> typeArgs;
+        if (match(TokenType::LBRACKET)) {
+            do {
+                typeArgs.push_back(parseType());
+            } while (match(TokenType::COMMA));
+            consume(TokenType::RBRACKET, "Expected ']' after type arguments");
+        }
+        
         std::vector<ExprPtr> args;
         if (match(TokenType::LPAREN)) {
             if (!check(TokenType::RPAREN)) {
@@ -1199,7 +1208,7 @@ ExprPtr Parser::primary() {
             }
             consume(TokenType::RPAREN, "Expected ')' after arguments");
         }
-        return makeNewExpr(t.line, t.column, t.lexeme.length(), t.filename, nameToken.lexeme, args);
+        return makeNewExpr(t.line, t.column, t.lexeme.length(), t.filename, nameToken.lexeme, args, typeArgs);
     }
     
     if (match(TokenType::NUMBER)) {
@@ -1497,6 +1506,16 @@ StmtPtr Parser::modelStatement() {
             // Allow keywords as method names
             advance();
             Token methodName = previous();
+            
+            std::vector<std::string> typeParams;
+            if (match(TokenType::LBRACKET)) {
+                do {
+                    Token paramToken = consume(TokenType::IDENTIFIER, "Expected generic type parameter name");
+                    typeParams.push_back(paramToken.lexeme);
+                } while (match(TokenType::COMMA));
+                consume(TokenType::RBRACKET, "Expected ']' after generic type parameters");
+            }
+            
             consume(TokenType::LPAREN, "Expected '(' after method name");
             
             std::vector<std::string> params;
@@ -1556,6 +1575,7 @@ StmtPtr Parser::modelStatement() {
             member.isAsync = isAsync;
             member.isCached = methodCached;
             member.name = methodName.lexeme;
+            member.typeParams = typeParams;
             member.params = params;
             member.paramTypes = paramTypes;
             member.typeHint = returnType;

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <functional>
+#include <algorithm>
 
 TypeChecker::TypeChecker() : currentEnv(nullptr), currentReturnType("Any"), hadError(false) {}
 
@@ -172,6 +173,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                 if (!dv) minArgs++;
             }
             sig.minArgs = minArgs;
+            
             declareFunction(task->name, sig);
         } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(stmt->variant)) {
             auto model = std::get<std::shared_ptr<ModelStmt>>(stmt->variant);
@@ -416,8 +418,15 @@ void TypeChecker::checkVarDecl(const VarDeclStmt& stmt) {
 
 void TypeChecker::checkTask(const TaskStmt& stmt) {
     FunctionSignature sig;
+    for (const auto& p : stmt.params) sig.paramNames.push_back(p);
     for (const auto& t : stmt.paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
     sig.returnType = TypeInfo::fromAST(stmt.returnType);
+    sig.isVariadic = stmt.isVariadic;
+    size_t minArgs = 0;
+    for (const auto& dv : stmt.defaultValues) {
+        if (!dv) minArgs++;
+    }
+    sig.minArgs = minArgs;
     
     // We don't declare it again here if global, but inner functions might need it.
     declareFunction(stmt.name, sig);
@@ -806,6 +815,68 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
             // In EZ, builtins aren't in this environment. So `sig` might be null for builtins!
             // If sig exists, we verify it.
             size_t minRequired = substitutedSig.isVariadic ? (substitutedSig.minArgs > 0 ? substitutedSig.minArgs - 1 : 0) : substitutedSig.minArgs;
+            
+            // Resolve Keyword Arguments
+            if (expr.argNames.size() > 0) {
+                bool hasKeywords = false;
+                for (const auto& kw : expr.argNames) {
+                    if (!kw.empty()) { hasKeywords = true; break; }
+                }
+                if (hasKeywords) {
+                    std::vector<ExprPtr> newArgs(substitutedSig.paramTypes.size(), nullptr);
+                    std::vector<TypeInfo> newArgTypes(substitutedSig.paramTypes.size(), TypeInfo("Any"));
+                    std::vector<bool> provided(substitutedSig.paramTypes.size(), false);
+                    
+                    for (size_t i = 0; i < expr.arguments.size(); ++i) {
+                        if (!expr.argNames[i].empty()) {
+                            // Keyword arg
+                            auto it = std::find(substitutedSig.paramNames.begin(), substitutedSig.paramNames.end(), expr.argNames[i]);
+                            if (it == substitutedSig.paramNames.end()) {
+                                error(expr.callee, "Function '" + name + "' has no parameter named '" + expr.argNames[i] + "'.");
+                                continue;
+                            }
+                            size_t idx = std::distance(substitutedSig.paramNames.begin(), it);
+                            if (provided[idx]) {
+                                error(expr.callee, "Duplicate argument for parameter '" + expr.argNames[i] + "'.");
+                            }
+                            newArgs[idx] = expr.arguments[i];
+                            newArgTypes[idx] = argTypes[i];
+                            provided[idx] = true;
+                        } else {
+                            // Positional arg
+                            if (i >= substitutedSig.paramTypes.size()) {
+                                error(expr.callee, "Too many arguments provided.");
+                                continue;
+                            }
+                            if (provided[i]) {
+                                error(expr.callee, "Positional argument follows keyword argument for the same parameter.");
+                            }
+                            newArgs[i] = expr.arguments[i];
+                            newArgTypes[i] = argTypes[i];
+                            provided[i] = true;
+                        }
+                    }
+                    
+                    // Filter out nullptrs (optional arguments not provided)
+                    std::vector<ExprPtr> finalArgs;
+                    std::vector<TypeInfo> finalArgTypes;
+                    for (size_t i = 0; i < newArgs.size(); ++i) {
+                        if (newArgs[i]) {
+                            finalArgs.push_back(newArgs[i]);
+                            finalArgTypes.push_back(newArgTypes[i]);
+                        } else if (i < minRequired) {
+                            error(expr.callee, "Missing required argument '" + substitutedSig.paramNames[i] + "'.");
+                        }
+                    }
+                    
+                    // Mutate the AST to reorder the arguments
+                    CallExpr* mutExpr = const_cast<CallExpr*>(&expr);
+                    mutExpr->arguments = finalArgs;
+                    mutExpr->argNames.clear();
+                    
+                    argTypes = finalArgTypes;
+                }
+            }
             if (!substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
                 std::string signatureStr = "Function signature: " + name + "(";
                 for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
@@ -855,7 +926,17 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                 }
             }
             return substitutedSig.returnType;
+        } else {
+        if (expr.argNames.size() > 0) {
+            bool hasKeywords = false;
+            for (const auto& kw : expr.argNames) {
+                if (!kw.empty()) { hasKeywords = true; break; }
+            }
+            if (hasKeywords) {
+                error(expr.callee, "Cannot use keyword arguments on dynamically typed function.");
+            }
         }
+    }
     return TypeInfo("Any");
 }
 

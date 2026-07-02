@@ -124,10 +124,11 @@ struct UnaryExpr {
 struct CallExpr {
     ExprPtr callee;
     std::vector<ExprPtr> arguments;
+    std::vector<std::string> argNames;
     bool isTailCall = false;
     
-    CallExpr(ExprPtr callee, std::vector<ExprPtr> args)
-        : callee(std::move(callee)), arguments(std::move(args)) {}
+    CallExpr(ExprPtr callee, std::vector<ExprPtr> args, std::vector<std::string> names = {})
+        : callee(std::move(callee)), arguments(std::move(args)), argNames(std::move(names)) {}
 };
 
 // Array/string indexing
@@ -621,8 +622,8 @@ inline ExprPtr makeUnaryExpr(int line, int column, int length, const std::string
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<UnaryExpr>(op, std::move(operand)));
 }
 
-inline ExprPtr makeCallExpr(int line, int column, int length, const std::string& file, ExprPtr callee, std::vector<ExprPtr> args) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<CallExpr>(std::move(callee), std::move(args)));
+inline ExprPtr makeCallExpr(int line, int column, int length, const std::string& file, ExprPtr callee, std::vector<ExprPtr> args, std::vector<std::string> argNames = {}) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<CallExpr>(std::move(callee), std::move(args), std::move(argNames)));
 }
 
 inline ExprPtr makeIndexExpr(int line, int column, int length, const std::string& file, ExprPtr object, ExprPtr index) {

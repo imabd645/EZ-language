@@ -57,6 +57,11 @@ const Token& Parser::peek() const {
     return tokens[current];
 }
 
+const Token& Parser::peekNext() const {
+    if (current + 1 >= tokens.size()) return tokens.back();
+    return tokens[current + 1];
+}
+
 const Token& Parser::previous() const {
     return tokens[current - 1];
 }
@@ -1161,12 +1166,19 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
     int column = previous().column;
     int length = previous().lexeme.length();
     std::vector<ExprPtr> arguments;
+    std::vector<std::string> argNames;
     
     if (!check(TokenType::RPAREN)) {
         do {
-            if (match(TokenType::ELLIPSIS)) {
+            if (check(TokenType::IDENTIFIER) && peekNext().type == TokenType::EQUAL) {
+                argNames.push_back(advance().lexeme);
+                advance(); // Consume '='
+                arguments.push_back(expression());
+            } else if (match(TokenType::ELLIPSIS)) {
+                argNames.push_back("");
                 arguments.push_back(makeSpreadExpr(line, column, length, peek().filename, expression()));
             } else {
+                argNames.push_back("");
                 arguments.push_back(expression());
             }
         } while (match(TokenType::COMMA));
@@ -1174,7 +1186,7 @@ ExprPtr Parser::finishCall(ExprPtr callee) {
     
     consume(TokenType::RPAREN, "Expected ')' after arguments");
     
-    return makeCallExpr(line, column, length, peek().filename, callee, arguments);
+    return makeCallExpr(line, column, length, peek().filename, callee, arguments, argNames);
 }
 
 ExprPtr Parser::primary() {

@@ -1,0 +1,23 @@
+model User 
+{
+  init(name,age,city)
+  {
+    self.name=name
+    self.age=age
+    self.city=city
+    }  
+
+    task show()
+    {
+     out `name: {self.name}  Age: {self.age} City: {self.city}`    
+    }  
+
+    task toString()
+    {
+        give `{self.name}`
+    }
+}
+
+
+u=User("Abdullah",19,"Khanewal")
+out u

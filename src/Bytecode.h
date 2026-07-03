@@ -109,6 +109,7 @@ enum class OpCode : uint8_t {
     THROW,               // Throw exception
     
     // Built-ins
+    TO_STRING,           // Convert top of stack to string (calling toString() if instance)
     PRINT,               // Print top of stack
     CLOCK,               // Push current time
     TYPE_OF,             // Push type name

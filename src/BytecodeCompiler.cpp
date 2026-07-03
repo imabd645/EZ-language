@@ -1019,6 +1019,7 @@ void BytecodeCompiler::compileExprStmt(const ExprStmt& stmt) {
 
 void BytecodeCompiler::compileOutStmt(const OutStmt& stmt) {
     compileExpr(stmt.expression);
+    emitOp(OpCode::TO_STRING);
     emitOp(OpCode::PRINT);
 }
 

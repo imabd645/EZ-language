@@ -236,7 +236,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_BUILD_TUPLE, &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
         &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
-        &&handle_TRY_END, &&handle_THROW, &&handle_PRINT, &&handle_CLOCK,
+        &&handle_TRY_END, &&handle_THROW, &&handle_TO_STRING, &&handle_PRINT, &&handle_CLOCK,
         &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_OP_AWAIT, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
         &&handle_HAS_GLOBAL,
         &&handle_LOAD_GLOBAL_SLOT,
@@ -1220,17 +1220,42 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(LOOP)           ip -= READ_INT();  DISPATCH();
 
                 CASE_CODE(CALL) {
+                    bool handled = false;
                     {
                         uint8_t argCount = READ_BYTE();
                         Value callee = *(stackTop - argCount - 1);
-                        SYNC_IP();
-                        this->stackTop = stackTop;
-                        if (dispatchCall(callee, argCount)) {
-                            LOAD_FRAME();
-                        } else {
-                            REFRESH_FRAME();
+                        
+                        if (callee.isNativeFunction() && callee.asNativeFunction()->name == "str" && argCount == 1) {
+                            Value arg = *(stackTop - 1);
+                            if (arg.isInstance()) {
+                                Value method = arg.asInstance()->getProperty("toString");
+                                if (method.isCallable()) {
+                                    SYNC_IP();
+                                    this->stackTop = stackTop;
+                                    Value bound = Value(std::make_shared<EZBoundMethod>(arg, method));
+                                    *(stackTop - 2) = bound;
+                                    stackTop--; // remove arg to leave 0 args
+                                    if (dispatchCall(bound, 0)) {
+                                        LOAD_FRAME();
+                                    } else {
+                                        REFRESH_FRAME();
+                                    }
+                                    stackTop = this->stackTop;
+                                    handled = true;
+                                }
+                            }
                         }
-                        stackTop = this->stackTop;
+
+                        if (!handled) {
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            if (dispatchCall(callee, argCount)) {
+                                LOAD_FRAME();
+                            } else {
+                                REFRESH_FRAME();
+                            }
+                            stackTop = this->stackTop;
+                        }
                     }
                     DISPATCH();
                 }
@@ -1563,6 +1588,33 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
                 
+                CASE_CODE(TO_STRING) {
+                    bool handled = false;
+                    {
+                        Value v = *(stackTop - 1);
+                        if (v.isInstance()) {
+                            Value method = v.asInstance()->getProperty("toString");
+                            if (method.isCallable()) {
+                                SYNC_IP();
+                                this->stackTop = stackTop;
+                                Value bound = Value(std::make_shared<EZBoundMethod>(v, method));
+                                *(stackTop - 1) = bound;
+                                if (dispatchCall(bound, 0)) {
+                                    LOAD_FRAME();
+                                } else {
+                                    REFRESH_FRAME();
+                                }
+                                stackTop = this->stackTop;
+                                handled = true;
+                            }
+                        }
+                        if (!handled) {
+                            *(stackTop - 1) = Value(v.toString());
+                        }
+                    }
+                    DISPATCH();
+                }
+
                 CASE_CODE(PRINT) {
                     {
                         Value v = *(--stackTop);

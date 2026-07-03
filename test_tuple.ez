@@ -1,5 +1,5 @@
 task main() {
-    let t = (1, "hello", 3.14)
+    t = (1, "hello", 3.14)
     print("Tuple is: ")
     print(t)
     print("t[0]: ")
@@ -9,7 +9,7 @@ task main() {
     print("t[2]: ")
     print(t[2])
 
-    let (a, b, c) = t
+    (a, b, c) = t
     print("Destructured:")
     print("a: ")
     print(a)

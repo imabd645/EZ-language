@@ -29,29 +29,7 @@ bool Parser::isAtEnd() const {
     return peek().type == TokenType::END_OF_FILE;
 }
 
-bool Parser::isDestructuring() const {
-    int nesting = 0;
-    size_t idx = current;
-    bool hasComma = false;
-    while (idx < tokens.size()) {
-        TokenType type = tokens[idx].type;
-        if (type == TokenType::END_OF_FILE) break;
-        if (nesting == 0) {
-            if (type == TokenType::NEWLINE || type == TokenType::RBRACE || type == TokenType::RBRACKET) break;
-            if (type == TokenType::COMMA) hasComma = true;
-            if (type == TokenType::EQUAL) return hasComma;
-        }
-        
-        if (type == TokenType::LPAREN || type == TokenType::LBRACKET || type == TokenType::LBRACE) {
-            nesting++;
-        } else if (type == TokenType::RPAREN || type == TokenType::RBRACKET || type == TokenType::RBRACE) {
-            nesting--;
-            if (nesting < 0) break;
-        }
-        idx++;
-    }
-    return false;
-}
+
 
 const Token& Parser::peek() const {
     return tokens[current];
@@ -908,21 +886,6 @@ ExprPtr Parser::expression() {
 }
 
 ExprPtr Parser::assignment() {
-    if (isDestructuring()) {
-        std::vector<ExprPtr> targets;
-        targets.push_back(ternary());
-        while (match(TokenType::COMMA)) {
-            targets.push_back(ternary());
-        }
-        consume(TokenType::EQUAL, "Expected '=' after destructuring targets");
-        ExprPtr value = assignment();
-        int line = targets[0]->line;
-        int col = targets[0]->column;
-        int len = targets[0]->length;
-        std::string file = targets[0]->filename;
-        return makeDestructureAssignExpr(line, col, len, file, std::move(targets), std::move(value));
-    }
-
     ExprPtr expr = ternary();
     
     if (match({TokenType::EQUAL, TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, 
@@ -953,6 +916,9 @@ ExprPtr Parser::assignment() {
         } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr->variant)) {
             auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(expr->variant);
             return makeSetExpr(op.line, op.column, op.lexeme.length(), op.filename, propExpr->object, propExpr->property, value);
+        } else if (std::holds_alternative<std::shared_ptr<TupleExpr>>(expr->variant)) {
+            auto tupleExpr = std::get<std::shared_ptr<TupleExpr>>(expr->variant);
+            return makeDestructureAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, tupleExpr->elements, std::move(value));
         }
         
         error(op, "Invalid assignment target");

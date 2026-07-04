@@ -1,0 +1,21 @@
+model User {
+    init() {
+        self.id = "int"
+    }
+}
+out "Props: " + str(User.__properties__)
+out "Keys: " + str(keys(User.__properties__))
+
+model Post { id = "Column" }
+out "Post props: " + str(Post.__properties__)
+get [k,v] in Post.__properties__ { out k + " : " + v }
+
+model Dog { static id = "Column" }
+out "Dog props: " + str(Dog.__properties__)
+get [k,v] in Dog.__properties__ { out k + " : " + v }
+
+
+out "Cat properties:"
+
+
+out "User class via __class__? " + str(hasattr(User(), "__class__"))

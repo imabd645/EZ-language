@@ -231,7 +231,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_BIT_NOT, &&handle_SHIFT_LEFT, &&handle_SHIFT_RIGHT, &&handle_EQUAL,
         &&handle_NOT_EQUAL, &&handle_LESS, &&handle_LESS_EQ, &&handle_GREATER,
         &&handle_GREATER_EQ, &&handle_NOT, &&handle_JUMP, &&handle_JUMP_IF_FALSE,
-        &&handle_JUMP_IF_TRUE, &&handle_JUMP_IF_NIL, &&handle_JUMP_IF_NOT_NIL, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL,
+        &&handle_JUMP_IF_TRUE, &&handle_JUMP_IF_NIL, &&handle_JUMP_IF_NOT_NIL, &&handle_LOOP, &&handle_CALL, &&handle_TAIL_CALL, &&handle_CALL_KW,
         &&handle_RETURN, &&handle_CLOSURE, &&handle_CLOSE_UPVALUE, &&handle_MAKE_ARRAY,
         &&handle_BUILD_TUPLE, &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
@@ -1250,6 +1250,101 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             SYNC_IP();
                             this->stackTop = stackTop;
                             if (dispatchCall(callee, argCount)) {
+                                LOAD_FRAME();
+                            } else {
+                                REFRESH_FRAME();
+                            }
+                            stackTop = this->stackTop;
+                        }
+                    }
+                    DISPATCH();
+                }
+                
+                CASE_CODE(CALL_KW) {
+                    bool handled = false;
+                    {
+                        uint8_t posCount = READ_BYTE();
+                        Value kwargs = *(--stackTop); // Pop kwargs dictionary
+                        Value callee = *(stackTop - posCount - 1);
+                        
+                        uint8_t totalArity = posCount;
+                        
+                        if (callee.isNativeFunction()) {
+                            // Can't map, just append kwargs as last positional arg
+                            *stackTop++ = kwargs;
+                            totalArity = posCount + 1;
+                        } else {
+                            size_t paramOffset = 0;
+                            Value target = callee;
+                            if (target.isClass()) {
+                                auto klass = target.asClass();
+                                if (klass->methods.count("init")) target = klass->methods["init"];
+                                else target = Value();
+                                paramOffset = 1;
+                            } else if (target.isBoundMethod()) {
+                                target = target.asBoundMethod()->method;
+                                paramOffset = 1;
+                            } else if (target.isSuper()) {
+                                auto super_val = target.asSuper();
+                                if (super_val->parentKlass->methods.count("init")) target = super_val->parentKlass->methods.at("init");
+                                else target = Value();
+                                paramOffset = 1;
+                            }
+                            
+                            std::vector<std::string> paramNames;
+                            if (target.isFunction()) {
+                                paramNames = target.asFunction()->params;
+                            } else if (target.isClosure()) {
+                                paramNames = target.asClosure()->function->paramNames;
+                            }
+                            
+                            // Check if the target actually has parameters and if paramOffset is valid
+                            if (paramOffset > 0 && (paramNames.empty() || paramNames[0] != "self")) {
+                                paramOffset = 0; // fallback if it doesn't have 'self'
+                            }
+                            
+                            size_t expectedCallerParams = paramNames.size() > paramOffset ? paramNames.size() - paramOffset : 0;
+                            
+                            if (expectedCallerParams > posCount) {
+                                auto dict = kwargs.asDictionaryPtr();
+                                std::unique_lock<std::shared_mutex> lk(dict->map_mutex);
+                                
+                                std::vector<Value> posArgs(stackTop - posCount, stackTop);
+                                stackTop -= posCount;
+                                
+                                for (size_t i = paramOffset; i < paramNames.size(); ++i) {
+                                    size_t callerArgIdx = i - paramOffset;
+                                    if (callerArgIdx < posArgs.size()) {
+                                        *stackTop++ = posArgs[callerArgIdx];
+                                    } else {
+                                        auto it = dict->map.find(paramNames[i]);
+                                        if (it != dict->map.end()) {
+                                            *stackTop++ = it->second;
+                                            dict->map.erase(it);
+                                        } else {
+                                            *stackTop++ = Value(); // Missing arg, will be handled by defaults
+                                        }
+                                    }
+                                }
+                                
+                                if (!dict->map.empty()) {
+                                    std::string unexpected = dict->map.begin()->first;
+                                    SYNC_IP();
+                                    runtimeError("Unexpected keyword argument '" + unexpected + "'");
+                                }
+                                totalArity = expectedCallerParams;
+                            } else {
+                                if (!kwargs.asDictionaryPtr()->map.empty()) {
+                                    SYNC_IP();
+                                    runtimeError("Unexpected keyword argument");
+                                }
+                            }
+                        }
+                        
+                        if (!handled) {
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            if (dispatchCall(callee, totalArity)) {
                                 LOAD_FRAME();
                             } else {
                                 REFRESH_FRAME();

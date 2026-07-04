@@ -37,4 +37,4 @@ C:\msys64\mingw64\bin\g++.exe ^
     -lpthread ^
     -Wl,--subsystem,console
 if %errorlevel% neq 0 exit /b %errorlevel%
-.\ez.exe test_orm.ez
+

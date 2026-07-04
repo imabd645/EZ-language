@@ -140,6 +140,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
 
     // Add parameters as the first locals (slot 0, 1, 2, …)
     for (const auto& param : task.params) {
+        current->function->paramNames.push_back(param);
         addLocal(param);
         markInitialized();
     }
@@ -567,7 +568,43 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
 
     compileExpr(expr.callee);
     
-    if (!hasSpread) {
+    bool hasKwargs = false;
+    for (const auto& kw : expr.argNames) {
+        if (!kw.empty()) { hasKwargs = true; break; }
+    }
+    
+    if (hasKwargs) {
+        size_t posCount = 0;
+        size_t kwCount = 0;
+        
+        // Push positional arguments first
+        for (size_t i = 0; i < expr.arguments.size(); ++i) {
+            if (expr.argNames[i].empty()) {
+                compileExpr(expr.arguments[i]);
+                posCount++;
+            }
+        }
+        
+        // Push keyword arguments (key, value pairs for MAKE_DICT)
+        for (size_t i = 0; i < expr.arguments.size(); ++i) {
+            if (!expr.argNames[i].empty()) {
+                size_t keyIdx = identifierConstant(expr.argNames[i]);
+                emitOp(OpCode::LOAD_CONST);
+                emitBytes(static_cast<uint8_t>((keyIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(keyIdx & 0xFF));
+                compileExpr(expr.arguments[i]);
+                kwCount++;
+            }
+        }
+        
+        // Build the dictionary
+        emitBytes(static_cast<uint8_t>(OpCode::MAKE_DICT),
+                  static_cast<uint8_t>(kwCount));
+                  
+        // Emit CALL_KW with positional argument count
+        emitBytes(static_cast<uint8_t>(OpCode::CALL_KW),
+                  static_cast<uint8_t>(posCount));
+    } else if (!hasSpread) {
         // Fast path for normal calls
         for (const auto& arg : expr.arguments) compileExpr(arg);
         emitBytes(static_cast<uint8_t>(OpCode::CALL),

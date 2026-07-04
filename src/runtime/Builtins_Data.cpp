@@ -79,6 +79,16 @@ void registerDataBuiltins(RuntimeContext& interp) {
             return Value::makeArray(keys);
         }));
 
+    interp.defineGlobal("properties", Value::makeNativeFunction("properties", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isInstance()) { interp.runtimeError("properties() expects an instance object", 0, ""); return Value(); }
+            auto instancePtr = args[0].asInstance();
+            std::shared_lock<std::shared_mutex> lk(instancePtr->prop_mutex);
+            std::vector<Value> keys;
+            for (const auto& kv : instancePtr->properties) keys.push_back(Value(kv.first));
+            return Value::makeArray(keys);
+        }));
+
     interp.defineGlobal("values", Value::makeNativeFunction("values", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) { interp.runtimeError("values() expects dictionary as first argument", 0, ""); return Value(); }

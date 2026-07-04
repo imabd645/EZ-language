@@ -935,7 +935,7 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                 if (!kw.empty()) { hasKeywords = true; break; }
             }
             if (hasKeywords) {
-                error(expr.callee, "Cannot use keyword arguments on dynamically typed function.");
+                // If it is dynamically typed, we leave expr.argNames intact so the VM can handle it!
             }
         }
     }

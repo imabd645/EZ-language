@@ -78,6 +78,7 @@ enum class OpCode : uint8_t {
     // Functions
     CALL,                // arg_count: Call function
     TAIL_CALL,           // arg_count: Tail call optimization
+    CALL_KW,             // arg_count: Call function with kwargs dict at top of stack
     RETURN,              // Return from function
     CLOSURE,             // const_idx: Create closure
     CLOSE_UPVALUE,       // Close upvalues >= idx
@@ -297,6 +298,7 @@ struct BytecodeFunction {
     std::string name;
     std::string filename;  // Source file this function was defined in
     std::string className; // Class this function belongs to (if it is a method)
+    std::vector<std::string> paramNames; // Names of the parameters
     size_t arity;
     bool isVariadic;
     bool isAsync;

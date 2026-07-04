@@ -497,6 +497,9 @@ struct EZInstance {
     }
 
     Value getProperty(const std::string& name) {
+        if (name == "__class__" && klass) {
+            return Value(klass);
+        }
         {
             std::shared_lock<std::shared_mutex> lk(prop_mutex);
             auto it = properties.find(name);

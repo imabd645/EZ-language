@@ -1,0 +1,5 @@
+use "orm"
+out "Engine is: " + typeOf(Engine)
+out "SQLiteDriver is: " + typeOf(SQLiteDriver)
+tmp = User(); out User.__properties__
+model User { init() { self.id = Column("integer") } }

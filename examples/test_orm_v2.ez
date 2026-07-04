@@ -1,0 +1,120 @@
+# test_orm_v2.ez
+# Comprehensive test for the new EZ ORM library
+
+use "orm/main.ez"
+
+out "=== EZ ORM Test ==="
+
+# 1. Define Models
+model User {
+    init() {
+        self.id = Column("integer", primaryKey=true, autoIncrement=true)
+        self.name = Column("string", nullable=false)
+        self.email = Column("string", unique=true, nullable=false)
+        self.age = Column("integer", default=18)
+    }
+}
+
+model Post {
+    init() {
+        self.id = Column("integer", primaryKey=true, autoIncrement=true)
+        self.title = Column("string", nullable=false)
+        self.user_id = Column("integer", foreignKey="User.id")
+    }
+}
+
+# 2. Setup Engine & Schema
+out "\n[*] Initializing Engine and Drivers..."
+engine = Engine(SQLiteDriver("test_orm_db.sqlite3"))
+
+out "[*] Registering Models..."
+engine.register(User, { "table": "users" })
+engine.register(Post, { "table": "posts" })
+
+out "[*] Dropping old tables (if any)..."
+engine.dropAll()
+
+out "[*] Creating tables..."
+engine.createAll()
+
+# 3. Insert Data via Session
+out "\n[*] Starting Session..."
+session = Session(engine)
+
+out "[*] Adding Users..."
+u1 = User()
+u1.name = "Abdullah"
+u1.email = "abdullah@ez.org"
+u1.age = 21
+session.add(u1)
+
+u2 = User()
+u2.name = "Zaid"
+u2.email = "zaid@ez.org"
+u2.age = 25
+session.add(u2)
+
+u3 = User()
+u3.name = "John"
+u3.email = "john@example.com"
+u3.age = 15
+session.add(u3)
+
+out "[*] Committing transactions..."
+session.commit()
+
+out "[*] Inserted Users. Auto-populated IDs:"
+out "  -> " + u1.name + " ID: " + str(u1.id)
+out "  -> " + u2.name + " ID: " + str(u2.id)
+out "  -> " + u3.name + " ID: " + str(u3.id)
+
+# 4. Queries
+out "\n[*] Querying all users..."
+all_users = session.query(User).all()
+out "Found " + str(len(all_users)) + " users."
+
+out "\n[*] Querying adults (age >= 18) ordered by age..."
+adults = session.query(User).filter("age", ">=", 18).orderBy("age", "DESC").all()
+get u in adults {
+    out "  - " + u.name + " (Age: " + str(u.age) + ")"
+}
+
+out "\n[*] Fetching specific user (Zaid)..."
+zaid = session.query(User).filter("name", "=", "Zaid").first()
+out "  Found: " + zaid.name + " with email: " + zaid.email
+
+out "\n[*] Aggregation: Total users count..."
+total = session.query(User).count()
+out "  Total users: " + str(total)
+
+# 5. Updates
+out "\n[*] Updating John's age to 20..."
+john = session.query(User).filter("name", "=", "John").first()
+john.age = 20
+session.add(john)
+session.commit()
+
+john_updated = session.query(User).filter("name", "=", "John").first()
+out "  John's new age: " + str(john_updated.age)
+
+# 6. Deletes
+out "\n[*] Deleting John..."
+session.delete(john_updated)
+session.commit()
+
+total_after_del = session.query(User).count()
+out "  Total users after delete: " + str(total_after_del)
+
+# 7. Bulk Delete
+out "\n[*] Bulk deleting all users aged < 22..."
+deleted_count = session.query(User).filter("age", "<", 22).delete()
+out "  Deleted rows: " + str(deleted_count)
+
+total_final = session.query(User).count()
+out "  Total users remaining: " + str(total_final)
+
+# 8. Cleanup
+session.close()
+engine.close()
+
+out "\n=== ORM Test Completed Successfully ==="

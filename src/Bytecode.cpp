@@ -169,6 +169,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::LOOP: return "LOOP";
         case OpCode::CALL: return "CALL";
         case OpCode::TAIL_CALL: return "TAIL_CALL";
+        case OpCode::CALL_KW: return "CALL_KW";
         case OpCode::RETURN: return "RETURN";
         case OpCode::CLOSURE: return "CLOSURE";
         case OpCode::CLOSE_UPVALUE: return "CLOSE_UPVALUE";
@@ -375,6 +376,7 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
         
         case OpCode::CALL:
         case OpCode::TAIL_CALL:
+        case OpCode::CALL_KW:
         case OpCode::CLOSE_UPVALUE: {
             uint8_t count = code[offset + 1];
             std::cout << std::setw(4) << (int)count << std::endl;

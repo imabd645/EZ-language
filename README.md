@@ -80,68 +80,11 @@ get person in people {
 
 ## 🏗 Architecture
 
-```
-source.ez
-    │
-    ▼  Lexer.cpp        (581 lines, ~50 token types)
-Token stream
-    │
-    ▼  Parser.cpp        (1,411 lines, recursive descent)
-AST  (std::variant — 17 expression + ~20 statement node types, in AST.h)
-    │
-    ▼  TypeChecker.cpp   (673 lines) — OPTIONAL static analysis pass
-       · Validates type annotations on vars, params, returns, structs
-       · Catches: type mismatches, 'self' misuse, break/continue outside loops
-    │
-    ▼  BytecodeCompiler.cpp (1,774 lines)
-       · Upvalue resolution   · Constant folding
-       · TCO detection        · Scope management   · static-local desugaring
-Bytecode chunks  (~85 opcodes, stack-VM ISA — see Bytecode.h)
-    │
-    ▼  BytecodeVM.cpp   (2,286 lines)
-       · Closure capture      · Async/Future dispatch (via EventLoop)
-       · Exception handling   · Interface validation
-       · Operator-overload dispatch on model instances
-Runtime values  (Value.h — std::variant, 19 alternatives, O(1) type lookup)
-    │
-    ▼  GarbageCollector (GC.cpp/.h)
-       · Cycle-detecting mark-sweep over an intrusive doubly-linked list
-       · Threshold-triggered (default 50,000 allocations)
-       · Stop-the-world coordination across spawned OS threads
-```
-
-**Source layout** (`src/`):
-
-| File | Lines | Role |
-|---|---|---|
-| `BytecodeVM.cpp` / `.h` | 2,286 / 160 | The interpreter loop, opcode dispatch, operator overloading, FFI crash guards |
-| `BytecodeCompiler.cpp` / `.h` | 1,774 / 173 | AST → bytecode, scope/upvalue resolution, constant folding |
-| `Parser.cpp` / `.h` | 1,411 / 95 | Recursive-descent parser → AST |
-| `GUIBuiltins.cpp` / `.h` | 1,214 / — | ~70 raw Win32/GDI+ `gui_*` native functions |
-| `runtime/Builtins_Sys.cpp` | 766 | FFI (`os_*`), console I/O, concurrency primitives, exceptions |
-| `AST.h` | 715 | All expression & statement node definitions |
-| `TypeChecker.cpp` / `.h` | 673 / 128 | Optional static type-checking pass |
-| `main.cpp` | 640 | CLI entry point, REPL, `bundle` packer, PE patching |
-| `Lexer.cpp` / `.h` | 581 / — | Tokenizer, string interpolation desugaring |
-| `Value.h` | 558 | The 19-variant runtime `Value` type |
-| `runtime/Builtins_Data.cpp` | 449 | Array/dict/JSON/metaprogramming builtins |
-| `Bytecode.cpp` / `.h` | 333 / 311 | Opcode definitions, constant pool, disassembler |
-| `runtime/Builtins_Net.cpp` | 236 | `http_get`/`http_post`/`fetch`/URL encoding |
-| `Token.h` | 224 | Token type enum and keyword table |
-| `runtime/Builtins_String.cpp` | 216 | String manipulation builtins |
-| `GC.cpp` / `.h` | 187 / 178 | Garbage collector |
-| `PackageManager.h` | 284 | `ez install` / `ez init` / `ez list` |
-| `BytecodeCompiler.h` | 173 | Compiler scope/local/upvalue bookkeeping |
-| `runtime/Builtins_Concurrency.cpp` | 124 | `spawn`, `Mutex`, `Atomic`, `wait`/`waitAsync` |
-| `runtime/Builtins_IO.cpp` | 113 | File read/write/append/lines |
-| `EZFuture.h` | 120 | Future/promise object for `async`/`await` |
-| `runtime/Builtins_Buffer.cpp` | 104 | `buffer()`, `buf_*` raw byte buffers |
-| `runtime/Builtins_Math.cpp` | 104 | `floor/ceil/abs/sqrt/pow/rand/...` |
-| `MiniJson.h` | 179 | JSON parser/serializer used by `parse_json`/`to_json` |
-
-**Total:** ~14,700 lines of C++ across the files actually present in `src/`, targeting Windows x64 with C++17 (the code includes `<windows.h>` directly and uses MinGW/MSVC-specific structures, so it is **Windows-only**).
-
----
+EZ is designed to be extremely lightweight and blazingly fast.
+- **Zero External Dependencies (Almost):** Everything from the Bytecode Virtual Machine, Lexer, Parser, and Memory Manager is custom-built from the ground up in modern C++17.
+- **Generational Memory Management:** It automatically cleans up memory without freezing your application.
+- **Built-in Async:** Networking and I/O tasks run on background threads automatically, keeping your programs highly responsive.
+- **Fully Modular:** The codebase is designed for easy extensibility so you can drop in new features effortlessly.
 
 ## 🚀 Installation & Building
 
@@ -170,22 +113,14 @@ This produces `ez.exe` and links against `sqlite3 curl ws2_32 pthread` (plus `dw
 
 > **Note:** `CMakeLists.txt`'s `SOURCES` list currently does **not** include `runtime/Builtins_Buffer.cpp` or `runtime/Builtins_Concurrency.cpp`, and references a `runtime/Builtins_DB.cpp` that does not exist in the tree. A manual `g++` invocation listing every file under `src/` and `src/runtime/` (as below) is the reliable way to get a complete build with buffer/concurrency/FFI support.
 
-### Build directly with g++ (MinGW)
+### Build directly with batch script (Windows)
+
+We provide an automated build script out of the box.
 
 ```bash
-g++ -std=c++17 -O2 -o ez.exe \
-    src/main.cpp src/Lexer.cpp src/Parser.cpp src/TypeChecker.cpp \
-    src/Bytecode.cpp src/BytecodeCompiler.cpp src/BytecodeVM.cpp \
-    src/Builtins.cpp src/GUIBuiltins.cpp \
-    src/GC.cpp src/GCObject.cpp \
-    src/runtime/Builtins_IO.cpp src/runtime/Builtins_Math.cpp \
-    src/runtime/Builtins_Net.cpp src/runtime/Builtins_String.cpp \
-    src/runtime/Builtins_Data.cpp src/runtime/Builtins_Sys.cpp \
-    src/runtime/Builtins_Buffer.cpp src/runtime/Builtins_Concurrency.cpp \
-    src/runtime/EventLoop.cpp \
-    -lsqlite3 -lcurl -lws2_32 -lpthread -ldwmapi -luxtheme \
-    -I src
+build.bat
 ```
+This will automatically invoke the compiler, statically link all dependencies (like cURL and SQLite), and output a single `ez.exe` executable!
 
 ### Add to PATH
 

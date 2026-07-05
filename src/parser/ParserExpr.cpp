@@ -1,0 +1,506 @@
+#include "Parser.h"
+#include <iostream>
+ExprPtr Parser::expression() {
+    return assignment();
+}
+
+ExprPtr Parser::assignment() {
+    ExprPtr expr = ternary();
+    
+    if (match({TokenType::EQUAL, TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, 
+               TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {
+        Token op = previous();
+        ExprPtr value = assignment();
+        
+        // Handle compound assignment
+        if (op.type != TokenType::EQUAL) {
+            TokenType binOp;
+            switch (op.type) {
+                case TokenType::PLUS_EQUAL: binOp = TokenType::PLUS; break;
+                case TokenType::MINUS_EQUAL: binOp = TokenType::MINUS; break;
+                case TokenType::STAR_EQUAL: binOp = TokenType::STAR; break;
+                case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
+                default: binOp = TokenType::PLUS; break;
+            }
+            value = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, binOp, value);
+        }
+        
+        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr->variant)) {
+            std::string name = std::get<std::shared_ptr<IdentifierExpr>>(expr->variant)->name;
+            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, name, value);
+        } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(expr->variant)) {
+            auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(expr->variant);
+            // Handle obj[idx] = val where obj can be complex
+            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, "", value, indexExpr->index, indexExpr->object);
+        } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr->variant)) {
+            auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(expr->variant);
+            return makeSetExpr(op.line, op.column, op.lexeme.length(), op.filename, propExpr->object, propExpr->property, value);
+        } else if (std::holds_alternative<std::shared_ptr<TupleExpr>>(expr->variant)) {
+            auto tupleExpr = std::get<std::shared_ptr<TupleExpr>>(expr->variant);
+            return makeDestructureAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, tupleExpr->elements, std::move(value));
+        }
+        
+        error(op, "Invalid assignment target");
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::ternary() {
+    ExprPtr expr = nullCoalescing();
+    
+    if (match(TokenType::QUESTION_MARK)) {
+        Token op = previous();
+        ExprPtr thenBranch = expression();
+        consume(TokenType::COLON, "Expected ':' after then branch of ternary operator");
+        ExprPtr elseBranch = ternary(); // Right-associative
+        expr = makeTernaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, thenBranch, elseBranch);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::nullCoalescing() {
+    ExprPtr expr = logicalOr();
+    
+    while (match(TokenType::QUESTION_QUESTION)) {
+        Token op = previous();
+        ExprPtr right = logicalOr();
+        // Null coalescing acts like logical OR but strictly checks for nil
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::QUESTION_QUESTION, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::logicalOr() {
+    ExprPtr expr = logicalAnd();
+    
+    while (match(TokenType::OR)) {
+        Token op = previous();
+        ExprPtr right = logicalAnd();
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::OR, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::logicalAnd() {
+    ExprPtr expr = bitwiseOr();
+    
+    while (match(TokenType::AND)) {
+        Token op = previous();
+        ExprPtr right = bitwiseOr();
+        expr = makeLogicalExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, TokenType::AND, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::bitwiseOr() {
+    ExprPtr expr = bitwiseXor();
+    while (match(TokenType::PIPE)) {
+        Token op = previous();
+        ExprPtr right = bitwiseXor();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    return expr;
+}
+
+ExprPtr Parser::bitwiseXor() {
+    ExprPtr expr = bitwiseAnd();
+    while (match(TokenType::CARET)) {
+        Token op = previous();
+        ExprPtr right = bitwiseAnd();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    return expr;
+}
+
+ExprPtr Parser::bitwiseAnd() {
+    ExprPtr expr = equality();
+    while (match(TokenType::AMPERSAND)) {
+        Token op = previous();
+        ExprPtr right = equality();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    return expr;
+}
+
+ExprPtr Parser::equality() {
+    ExprPtr expr = comparison();
+    
+    while (match({TokenType::EQUAL_EQUAL, TokenType::BANG_EQUAL})) {
+        Token op = previous();
+        ExprPtr right = comparison();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::comparison() {
+    ExprPtr expr = bitwiseShift();
+    
+    while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, 
+                  TokenType::LESS, TokenType::LESS_EQUAL, TokenType::IN})) {
+        Token op = previous();
+        ExprPtr right = bitwiseShift();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::bitwiseShift() {
+    ExprPtr expr = term();
+    
+    while (match({TokenType::LSHIFT, TokenType::RSHIFT})) {
+        Token op = previous();
+        ExprPtr right = term();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::term() {
+    ExprPtr expr = factor();
+    
+    while (match({TokenType::PLUS, TokenType::MINUS})) {
+        Token op = previous();
+        ExprPtr right = factor();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::factor() {
+    ExprPtr expr = unary();
+    
+    while (match({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
+        Token op = previous();
+        ExprPtr right = unary();
+        expr = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::unary() {
+    if (match({TokenType::BANG, TokenType::MINUS, TokenType::NOT, TokenType::TILDE})) {
+        Token op = previous();
+        ExprPtr right = unary();
+        return makeUnaryExpr(op.line, op.column, op.lexeme.length(), op.filename, op.type, right);
+    }
+    
+    if (match(TokenType::AWAIT)) {
+        Token op = previous();
+        ExprPtr right = unary();
+        return std::make_shared<Expr>(op.line, op.column, op.lexeme.length(), op.filename, std::make_shared<AwaitExpr>(right));
+    }
+    
+    return call();
+}
+
+ExprPtr Parser::call() {
+    ExprPtr expr = primary();
+    
+    while (true) {
+        if (match(TokenType::LPAREN)) {
+            expr = finishCall(expr);
+        } else if (match(TokenType::LBRACKET)) {
+            Token op = previous();
+            ExprPtr index = expression();
+            consume(TokenType::RBRACKET, "Expected ']' after index");
+            expr = makeIndexExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, index);
+        } else if (match(TokenType::DOT) || match(TokenType::QUESTION_DOT)) {
+            bool isOptional = previous().type == TokenType::QUESTION_DOT;
+            // Allow keywords as property names
+            advance();
+            Token name = previous();
+            expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);
+        } else {
+            // Check if next non-newline token is a DOT (Multi-line chaining support)
+            size_t temp = current;
+            while (temp < tokens.size() && tokens[temp].type == TokenType::NEWLINE) {
+                temp++;
+            }
+            if (temp < tokens.size() && (tokens[temp].type == TokenType::DOT || tokens[temp].type == TokenType::QUESTION_DOT)) {
+                current = temp; // Skip newlines
+                bool isOptional = tokens[current].type == TokenType::QUESTION_DOT;
+                advance(); // Consume DOT or QUESTION_DOT
+                
+                // Now must have an identifier (or keyword)
+                if (isAtEnd()) throw ParseError("Expected property name after property access operator", peek().line);
+                advance(); 
+                Token name = previous();
+                expr = makePropertyAccessExpr(name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);
+            } else {
+                break;
+            }
+        }
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::finishCall(ExprPtr callee) {
+    int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
+    std::vector<ExprPtr> arguments;
+    std::vector<std::string> argNames;
+    
+    if (!check(TokenType::RPAREN)) {
+        do {
+            if (check(TokenType::IDENTIFIER) && peekNext().type == TokenType::EQUAL) {
+                argNames.push_back(advance().lexeme);
+                advance(); // Consume '='
+                arguments.push_back(expression());
+            } else if (match(TokenType::ELLIPSIS)) {
+                argNames.push_back("");
+                arguments.push_back(makeSpreadExpr(line, column, length, peek().filename, expression()));
+            } else {
+                argNames.push_back("");
+                arguments.push_back(expression());
+            }
+        } while (match(TokenType::COMMA));
+    }
+    
+    consume(TokenType::RPAREN, "Expected ')' after arguments");
+    
+    return makeCallExpr(line, column, length, peek().filename, callee, arguments, argNames);
+}
+
+ExprPtr Parser::primary() {
+    int line = peek().line;
+    int column = peek().column;
+    int length = peek().lexeme.length();
+    std::string filename = peek().filename;
+    
+    if (match(TokenType::FALSE)) return makeLiteralExpr(line, column, length, filename, false);
+    if (match(TokenType::TRUE)) return makeLiteralExpr(line, column, length, filename, true);
+    if (match(TokenType::NIL)) return makeLiteralExpr(line, column, length, filename, nullptr);
+    
+    if (match(TokenType::NEW)) {
+        Token t = previous();
+        Token nameToken = consume(TokenType::IDENTIFIER, "Expected model name after 'new'");
+        
+        std::vector<TypeASTPtr> typeArgs;
+        if (match(TokenType::LBRACKET)) {
+            do {
+                typeArgs.push_back(parseType());
+            } while (match(TokenType::COMMA));
+            consume(TokenType::RBRACKET, "Expected ']' after type arguments");
+        }
+        
+        std::vector<ExprPtr> args;
+        if (match(TokenType::LPAREN)) {
+            if (!check(TokenType::RPAREN)) {
+                do {
+                    args.push_back(expression());
+                } while (match(TokenType::COMMA));
+            }
+            consume(TokenType::RPAREN, "Expected ')' after arguments");
+        }
+        return makeNewExpr(t.line, t.column, t.lexeme.length(), t.filename, nameToken.lexeme, args, typeArgs);
+    }
+    
+    if (match(TokenType::NUMBER)) {
+        Token t = previous();
+        if (std::holds_alternative<long long>(t.literal)) {
+            return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<long long>(t.literal));
+        }
+        return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<double>(t.literal));
+    }
+    
+    if (match(TokenType::STRING)) {
+        Token t = previous();
+        return makeLiteralExpr(t.line, t.column, t.lexeme.length(), t.filename, std::get<std::string>(t.literal));
+    }
+    
+    if (match(TokenType::IDENTIFIER)) {
+        Token t = previous();
+        return makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, t.lexeme);
+    }
+    
+    if (match(TokenType::SUPER)) {
+        Token t = previous();
+        return makeSuperExpr(t.line, t.column, t.lexeme.length(), t.filename);
+    }
+    
+    // Self reference
+    if (match(TokenType::SELF)) {
+        Token t = previous();
+        return makeSelfExpr(t.line, t.column, t.lexeme.length(), t.filename);
+    }
+    
+    if (match(TokenType::IN)) {
+        Token t = previous();
+        // Special case for 'in' keyword used alone (not as operator)
+        // Historically mapped to __input__
+        return makeCallExpr(t.line, t.column, t.lexeme.length(), t.filename, makeIdentifierExpr(t.line, t.column, t.lexeme.length(), t.filename, "__input__"), {});
+    }
+    
+    // Lambda expression: |params| => expr or |params| { body }
+    if (match(TokenType::PIPE)) {
+        return lambdaExpression(false);
+    }
+    
+    // Async Lambda expression: async |params| => expr
+    if (match(TokenType::ASYNC)) {
+        if (match(TokenType::PIPE)) {
+            return lambdaExpression(true);
+        }
+        throw ParseError("Expected '|' for lambda after 'async'", previous().line);
+    }
+    
+    if (match(TokenType::LBRACKET)) {
+        // Array literal
+        std::vector<ExprPtr> elements;
+        
+        if (!check(TokenType::RBRACKET)) {
+            do {
+                skipNewlines();
+                if (match(TokenType::ELLIPSIS)) {
+                    elements.push_back(makeSpreadExpr(line, column, length, filename, expression()));
+                } else {
+                    elements.push_back(expression());
+                }
+                skipNewlines();
+            } while (match(TokenType::COMMA));
+        }
+        
+        consume(TokenType::RBRACKET, "Expected ']' after array elements");
+        return makeArrayExpr(line, column, length, filename, elements);
+    }
+    
+    // Dictionary literal
+    if (match(TokenType::LBRACE)) {
+        int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
+        std::vector<std::pair<ExprPtr, ExprPtr>> pairs;
+        
+        skipNewlines();
+        while (!check(TokenType::RBRACE) && !isAtEnd()) {
+            ExprPtr expr = expression();
+            
+            if (std::holds_alternative<std::shared_ptr<AssignExpr>>(expr->variant)) {
+                 auto assign = std::get<std::shared_ptr<AssignExpr>>(expr->variant);
+                 ExprPtr key = makeLiteralExpr(expr->line, expr->column, expr->length, expr->filename, assign->name);
+                 pairs.push_back({key, assign->value});
+            } else {
+                 ExprPtr key = expr;
+                 
+                 bool isAssign = match(TokenType::EQUAL);
+                 if (!isAssign) {
+                      consume(TokenType::COLON, "Expected ':' or '=' after dictionary key");
+                 }
+                 
+                 // Support keys like {x: 1} or {x=1} -> {"x": 1}
+                 // If the key is an identifier, convert it to a string literal
+                 if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(key->variant)) {
+                      auto ident = std::get<std::shared_ptr<IdentifierExpr>>(key->variant);
+                      key = makeLiteralExpr(key->line, key->column, key->length, key->filename, ident->name);
+                 }
+                 
+                 ExprPtr value = expression();
+                 pairs.push_back({key, value});
+            }
+            
+            if (match(TokenType::COMMA)) {
+                skipNewlines();
+            } else if (check(TokenType::NEWLINE)) {
+                skipNewlines();
+            }
+        }
+        
+        consume(TokenType::RBRACE, "Expected '}' after dictionary");
+        return makeDictionaryExpr(line, column, length, filename, pairs);
+    }
+    
+    if (match(TokenType::LPAREN)) {
+        if (match(TokenType::RPAREN)) {
+            // Empty tuple
+            return makeTupleExpr(line, column, length, filename, {});
+        }
+        ExprPtr expr = expression();
+        if (match(TokenType::COMMA)) {
+            // Tuple with multiple elements or a single element like (1,)
+            std::vector<ExprPtr> elements = {expr};
+            if (!check(TokenType::RPAREN)) {
+                do {
+                    skipNewlines();
+                    elements.push_back(expression());
+                    skipNewlines();
+                } while (match(TokenType::COMMA));
+            }
+            consume(TokenType::RPAREN, "Expected ')' after tuple elements");
+            return makeTupleExpr(line, column, length, filename, elements);
+        }
+        consume(TokenType::RPAREN, "Expected ')' after expression");
+        return expr;
+    }
+    
+    throw ParseError("Expected expression", line);
+}
+
+// Lambda: |x, y| => x + y  OR  |x, y| { statements }
+ExprPtr Parser::lambdaExpression(bool isAsync) {
+    int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
+    
+    // Parse parameters
+    std::vector<std::string> params;
+    bool isVariadic = false;
+    
+    if (!check(TokenType::PIPE)) {
+        do {
+            if (match(TokenType::ELLIPSIS)) {
+                isVariadic = true;
+                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
+                params.push_back(paramToken.lexeme);
+                if (check(TokenType::COMMA)) {
+                    error(peek(), "Rest parameter must be the last parameter");
+                }
+                break;
+            }
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
+            params.push_back(paramToken.lexeme);
+        } while (match(TokenType::COMMA));
+    }
+    
+    consume(TokenType::PIPE, "Expected '|' after lambda parameters");
+    
+    skipNewlines();
+    
+    // Check for block body { ... } or expression body => expr
+    if (match(TokenType::ARROW)) {
+        // Expression body
+        skipNewlines();
+        ExprPtr body = expression();
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
+    } else if (match(TokenType::LBRACE)) {
+        // Statement body
+        skipNewlines();
+        std::vector<StmtPtr> stmtBody;
+        while (!check(TokenType::RBRACE) && !isAtEnd()) {
+            auto stmt = declaration();
+            if (stmt) stmtBody.push_back(stmt);
+            skipNewlines();
+        }
+        consume(TokenType::RBRACE, "Expected '}' after lambda body");
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), stmtBody, nullptr, isVariadic, isAsync);
+    } else {
+        // Default: treat as expression body without arrow
+        ExprPtr body = expression();
+        return makeLambdaExpr(line, column, length, peek().filename, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), body, nullptr, isVariadic, isAsync);
+    }
+}
+
+// Model (class) definition
+// Syntax: model Name extends Parent { init(params) { body } shown/hidden members and methods }

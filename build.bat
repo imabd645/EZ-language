@@ -7,27 +7,47 @@ C:\msys64\mingw64\bin\g++.exe ^
     -fomit-frame-pointer ^
     -o ez.exe ^
     -I C:\msys64\mingw64\include ^
+    -I src ^
     src/main.cpp ^
-    src/Lexer.cpp ^
-    src/Parser.cpp ^
-    src/TypeChecker.cpp ^
-    src/Bytecode.cpp ^
-    src/BytecodeCompiler.cpp ^
-    src/BytecodeVM.cpp ^
-    src/Builtins.cpp ^
-    src/GUIBuiltins.cpp ^
-    src/Runtime.cpp ^
-    src/CycleCollector.cpp ^
-    src/runtime/Builtins_IO.cpp ^
-    src/runtime/Builtins_Math.cpp ^
-    src/runtime/Builtins_Net.cpp ^
-    src/runtime/Builtins_String.cpp ^
-    src/runtime/Builtins_Data.cpp ^
-    src/runtime/Builtins_Sys.cpp ^
-    src/runtime/Builtins_Buffer.cpp ^
-    src/runtime/Builtins_Concurrency.cpp ^
-    src/runtime/Builtins_Http.cpp ^
-    src/runtime/EventLoop.cpp ^
+    src/builtins/Builtins.cpp ^
+    src/builtins/Builtins_Buffer.cpp ^
+    src/builtins/Builtins_Concurrency.cpp ^
+    src/builtins/Builtins_Console.cpp ^
+    src/builtins/Builtins_Core.cpp ^
+    src/builtins/Builtins_Data.cpp ^
+    src/builtins/Builtins_FFI.cpp ^
+    src/builtins/Builtins_GC.cpp ^
+    src/builtins/Builtins_Http.cpp ^
+    src/builtins/Builtins_IO.cpp ^
+    src/builtins/Builtins_Math.cpp ^
+    src/builtins/Builtins_Net.cpp ^
+    src/builtins/Builtins_String.cpp ^
+    src/bytecode/Bytecode.cpp ^
+    src/bytecode/serializer/BytecodeSerializer.cpp ^
+    src/cli/CLI.cpp ^
+    src/cli/Packager.cpp ^
+    src/cli/REPL.cpp ^
+    src/compiler/BytecodeCompiler.cpp ^
+    src/compiler/BytecodeCompilerExpr.cpp ^
+    src/compiler/BytecodeCompilerStmt.cpp ^
+    src/eventloop/EventLoop.cpp ^
+    src/gc/CycleCollector.cpp ^
+    src/gui/GUI_Core.cpp ^
+    src/gui/GUI_Dialogs.cpp ^
+    src/gui/GUI_Drawing.cpp ^
+    src/gui/GUI_Menu.cpp ^
+    src/gui/GUI_Widgets.cpp ^
+    src/lexer/Lexer.cpp ^
+    src/parser/Parser.cpp ^
+    src/parser/ParserExpr.cpp ^
+    src/parser/ParserStmt.cpp ^
+    src/runtime/Runtime.cpp ^
+    src/typechecker/TypeChecker.cpp ^
+    src/typechecker/TypeCheckerExpr.cpp ^
+    src/typechecker/TypeCheckerStmt.cpp ^
+    src/vm/BytecodeVM.cpp ^
+    src/vm/BytecodeVM_Execute.cpp ^
+    src/vm/BytecodeVM_Objects.cpp ^
     -static -static-libgcc -static-libstdc++ ^
     -DCURL_STATICLIB ^
     -lsqlite3 ^

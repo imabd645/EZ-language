@@ -1,3 +1,5 @@
+#include "sqlite3.h"
+#include "eventloop/EventLoop.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/Value.h"
 #include "runtime/EZFuture.h"

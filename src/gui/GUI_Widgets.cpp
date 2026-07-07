@@ -56,4 +56,6 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
                 int btnType = style & 0xF;
                 if (btnType == BS_PUSHBUTTON || btnType == BS_DEFPUSHBUTTON)
                     SetWindowLong(hwnd, GWL_STYLE, (style & ~0xF) | BS_OWNERDRAW);
+            return Value();
+        }));
 }

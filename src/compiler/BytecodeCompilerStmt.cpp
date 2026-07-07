@@ -4,6 +4,9 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
+#include "lexer/Lexer.h"
+#include "parser/Parser.h"
+
 #include <iostream>
 void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     if (!stmt) return;

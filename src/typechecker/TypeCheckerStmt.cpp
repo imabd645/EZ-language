@@ -220,7 +220,7 @@ void TypeChecker::checkTry(const TryStmt& stmt) {
 }
 
 void TypeChecker::checkThrow(const ThrowStmt& stmt) {
-    checkExpr(stmt.expression);
+    checkExpr(stmt.expr);
 }
 
 void TypeChecker::checkMatch(const MatchStmt& stmt) {

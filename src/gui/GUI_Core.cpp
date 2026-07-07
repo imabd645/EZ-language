@@ -323,21 +323,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     RegisterClassEx(&wc);
     g_gui.currentInterpreter = &interp;
-    g_gui.hInstance = GetModuleHandle(NULL);
-    
-    INITCOMMONCONTROLSEX icex;
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES | ICC_TREEVIEW_CLASSES | ICC_UPDOWN_CLASS | ICC_USEREX_CLASSES;
-    InitCommonControlsEx(&icex);
 
-    WNDCLASSEX wc = {0};
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.lpfnWndProc = EZWndProc;
-    wc.hInstance = g_gui.hInstance;
-    wc.lpszClassName = "EZWindowClass";
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    RegisterClassEx(&wc);
 
     // UNIVERSAL EVENT SYSTEM
     interp.defineGlobal("gui_on", Value::makeNativeFunction("gui_on", 3,

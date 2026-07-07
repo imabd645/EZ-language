@@ -50,7 +50,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/vm/BytecodeVM_Objects.cpp ^
     -static -static-libgcc -static-libstdc++ ^
     -DCURL_STATICLIB ^
-    -lsqlite3 ^
+    -lsqlite3 -lffi ^
     -Wl,-Bstatic -lcurl -lssh2 -lnghttp2 -lngtcp2 -lngtcp2_crypto_ossl -lnghttp3 -lbrotlidec -lbrotlicommon -lzstd -lidn2 -lpsl -liconv -lunistring -lssl -lcrypto -lz ^
     -Wl,-Bdynamic -lws2_32 -lwldap32 -lbcrypt -lcrypt32 -lsecur32 -liphlpapi ^
     -ldwmapi -luxtheme -lgdi32 -luser32 -lcomdlg32 -lcomctl32 -lole32 ^

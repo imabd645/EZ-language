@@ -81,6 +81,11 @@ struct GiveStmt;
 struct EscapeStmt;
 struct SkipStmt;
 struct StaticStmt;
+struct WhenStmt;
+struct InterfaceStmt;
+struct ModelStmt;
+struct StructStmt;
+struct UseStmt;
 
 using ExprVariant = std::variant<
     std::shared_ptr<LiteralExpr>,
@@ -118,5 +123,54 @@ struct Expr {
 };
 
 
+
+
+using StmtVariant = std::variant<
+    std::shared_ptr<BlockStmt>,
+    std::shared_ptr<ExpressionStmt>,
+    std::shared_ptr<VarDeclStmt>,
+    std::shared_ptr<OutStmt>,
+    std::shared_ptr<IfStmt>,
+    std::shared_ptr<WhenStmt>,
+    std::shared_ptr<WhileStmt>,
+    std::shared_ptr<RepeatStmt>,
+    std::shared_ptr<BreakStmt>,
+    std::shared_ptr<ContinueStmt>,
+    std::shared_ptr<FunctionDeclStmt>,
+    std::shared_ptr<ReturnStmt>,
+    std::shared_ptr<ClassDeclStmt>,
+    std::shared_ptr<InterfaceDeclStmt>,
+    std::shared_ptr<ArrayAssignStmt>,
+    std::shared_ptr<ImportStmt>,
+    std::shared_ptr<ExportStmt>,
+    std::shared_ptr<PropertyAssignStmt>,
+    std::shared_ptr<TryStmt>,
+    std::shared_ptr<ThrowStmt>,
+    std::shared_ptr<GetStmt>,
+    std::shared_ptr<TupleAssignStmt>,
+    std::shared_ptr<StructDeclStmt>,
+    std::shared_ptr<ModelDeclStmt>,
+    std::shared_ptr<MatchStmt>,
+    std::shared_ptr<TaskStmt>,
+    std::shared_ptr<GiveStmt>,
+    std::shared_ptr<EscapeStmt>,
+    std::shared_ptr<SkipStmt>,
+    std::shared_ptr<StaticStmt>,
+    std::shared_ptr<InterfaceStmt>,
+    std::shared_ptr<ModelStmt>,
+    std::shared_ptr<StructStmt>,
+    std::shared_ptr<UseStmt>
+>;
+
+struct Stmt {
+    int line;
+    int column;
+    int length;
+    std::string filename;
+    StmtVariant variant;
+    
+    Stmt(int line, int column, int length, const std::string& file, StmtVariant var) 
+        : line(line), column(column), length(length), filename(file), variant(std::move(var)) {}
+};
 
 #endif // AST_CORE_H

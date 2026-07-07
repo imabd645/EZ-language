@@ -1,6 +1,6 @@
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
-#include "../MiniJson.h"
+#include "utils/MiniJson.h"
 
 #include <string>
 #include <vector>

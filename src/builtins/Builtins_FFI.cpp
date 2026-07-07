@@ -1,6 +1,6 @@
 #include "runtime/RuntimeContext.h"
 #include "vm/BytecodeVM.h"
-#include "../EZFuture.h"
+#include "runtime/EZFuture.h"
 #include "builtins/Builtins.h"
 #include <iostream>
 #include <chrono>
@@ -22,7 +22,7 @@
 
 // Include EZFuture (Windows-native future, must be after windows.h)
 
-#include "../EZFuture.h"
+#include "runtime/EZFuture.h"
 
 #ifdef _WIN32
 

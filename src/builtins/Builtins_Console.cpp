@@ -4,7 +4,7 @@
 #endif
 #include "runtime/RuntimeContext.h"
 #include "vm/BytecodeVM.h"
-#include "../EZFuture.h"
+#include "runtime/EZFuture.h"
 #include "builtins/Builtins.h"
 #include <iostream>
 #include <chrono>

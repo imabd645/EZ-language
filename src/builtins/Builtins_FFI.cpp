@@ -247,6 +247,34 @@ static StructLayout computeStructLayout(const std::vector<Value>& layoutArray) {
     return layout;
 }
 
+
+#ifdef _WIN32
+#ifdef _MSC_VER
+#define SAFE_MEMORY_OP(interp, op) \
+    do { \
+        bool __crashed = false; \
+        __try { op; } \
+        __except (EXCEPTION_EXECUTE_HANDLER) { __crashed = true; } \
+        if (__crashed) { interp.runtimeError("FFI memory access violation", 0, ""); return Value(); } \
+    } while(0)
+#else
+#define SAFE_MEMORY_OP(interp, op) \
+    do { \
+        bool __crashed = false; \
+        PVOID __vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler); \
+        if (setjmp(os_call_jmp_env) == 0) { \
+            op; \
+        } else { \
+            __crashed = true; \
+        } \
+        RemoveVectoredExceptionHandler(__vehHandler); \
+        if (__crashed) { interp.runtimeError("FFI memory access violation", 0, ""); return Value(); } \
+    } while(0)
+#endif
+#else
+#define SAFE_MEMORY_OP(interp, op) do { op; } while(0)
+#endif
+
 void registerFFIBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("os_alloc", Value::makeNativeFunction("os_alloc", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -278,7 +306,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            uint64_t val = *(uint64_t*)(base + offset);
+            uint64_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -291,7 +320,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -304,7 +333,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            int64_t val = *(int64_t*)(base + offset);
+            int64_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(int64_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -317,7 +347,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(int64_t*)(base + offset) = (int64_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(int64_t*)(base + offset) = (int64_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -330,7 +360,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            uint32_t val = *(uint32_t*)(base + offset);
+            uint32_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(uint32_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -343,7 +374,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            int32_t val = *(int32_t*)(base + offset);
+            int32_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(int32_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -356,7 +388,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -369,7 +401,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(int32_t*)(base + offset) = (int32_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(int32_t*)(base + offset) = (int32_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -393,7 +425,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            uint16_t val = *(uint16_t*)(base + offset);
+            uint16_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(uint16_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -406,7 +439,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            int16_t val = *(int16_t*)(base + offset);
+            int16_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(int16_t*)(base + offset));
             return Value((long long)val);
 #else
             return Value(0LL);
@@ -419,7 +453,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -432,7 +466,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(int16_t*)(base + offset) = (int16_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(int16_t*)(base + offset) = (int16_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -445,7 +479,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber(););
             return Value();
 #else
             return Value();
@@ -458,7 +492,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            float val = *(float*)(base + offset);
+            float val = 0;
+            SAFE_MEMORY_OP(interp, val = *(float*)(base + offset));
             return Value((double)val);
 #else
             return Value(0.0);
@@ -471,7 +506,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(float*)(base + offset) = (float)args[2].asFloat();
+            SAFE_MEMORY_OP(interp, *(float*)(base + offset) = (float)args[2].asFloat(););
             return Value();
 #else
             return Value();
@@ -484,7 +519,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            double val = *(double*)(base + offset);
+            double val = 0;
+            SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
 #else
             return Value(0.0);
@@ -497,7 +533,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(double*)(base + offset) = args[2].asFloat();
+            SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
             return Value();
@@ -510,7 +546,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            double val = *(double*)(base + offset);
+            double val = 0;
+            SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
 #else
             return Value(0.0);
@@ -523,7 +560,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(double*)(base + offset) = args[2].asFloat();
+            SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
             return Value();
@@ -536,7 +573,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            double val = *(double*)(base + offset);
+            double val = 0;
+            SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
 #else
             return Value(0.0);
@@ -549,7 +587,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(double*)(base + offset) = args[2].asFloat();
+            SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
             return Value();
@@ -562,7 +600,9 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            return Value((long long)*(base + offset));
+            uint8_t val = 0;
+            SAFE_MEMORY_OP(interp, val = *(base + offset));
+            return Value((long long)val);
 #else
             return Value(0LL);
 #endif
@@ -574,7 +614,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
-            *(base + offset) = (uint8_t)args[2].asNumber();
+            SAFE_MEMORY_OP(interp, *(base + offset) = (uint8_t)args[2].asNumber());
             return Value();
 #else
             return Value();
@@ -586,8 +626,10 @@ void registerFFIBuiltins(RuntimeContext& interp) {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value("");
             const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
-            if (str) return Value(std::string(str));
-            return Value("");
+            if (!str) return Value("");
+            std::string res;
+            SAFE_MEMORY_OP(interp, res = std::string(str));
+            return Value(res);
 #else
             return Value("");
 #endif
@@ -600,7 +642,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             char* base = reinterpret_cast<char*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
             std::string text = args[2].asString();
-            memcpy(base + offset, text.c_str(), text.length() + 1);
+            SAFE_MEMORY_OP(interp, memcpy(base + offset, text.c_str(), text.length() + 1));
             return Value();
 #else
             return Value();
@@ -911,6 +953,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!base) return Value::makeArray({});
 
             std::vector<Value> results;
+            SAFE_MEMORY_OP(interp, {
             for (size_t i = 0; i < layout.fields.size(); i++) {
                 const auto& field = layout.fields[i];
                 uint8_t* ptr = base + field.offset;
@@ -937,6 +980,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                     results.push_back(Value());
                 }
             }
+            });
             
             return Value::makeArray(results);
         }));

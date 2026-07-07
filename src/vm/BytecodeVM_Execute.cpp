@@ -234,6 +234,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (obj.isInstance()) {
                             CHECK_VISIBILITY(obj.asInstance()->klass, propName);
                             Value val = obj.asInstance()->getProperty(propName);
+                            if (val.isNil() && !obj.asInstance()->hasProperty(propName)) {
+                                SYNC_IP();
+                                runtimeError("Property or method '" + propName + "' does not exist on instance of '" + obj.asInstance()->klass->name + "'");
+                                return;
+                            }
                             if (val.isFunction() || val.isClosure() || val.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
                             else *stackTop++ = val;
                         } else if (obj.isDictionary()) {
@@ -292,7 +297,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             } else {
                                 if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
                                 else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
-                                else *stackTop++ = Value();
+                                else {
+                                    SYNC_IP();
+                                    runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");
+                                    return;
+                                }
                             }
                         } else if (obj.isSuper()) {
                             auto super = obj.asSuper();
@@ -308,6 +317,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     }
                                     currentClass = currentClass->parent;
                                 }
+                            }
+                            if (method.isNil()) {
+                                SYNC_IP();
+                                runtimeError("Method '" + propName + "' does not exist in superclass hierarchy");
+                                return;
                             }
                             if (method.isFunction() || method.isClosure() || method.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
                             else *stackTop++ = method;

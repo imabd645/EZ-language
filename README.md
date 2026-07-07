@@ -95,7 +95,7 @@ EZ is designed to be extremely lightweight and blazingly fast.
 | C++17 compiler (MinGW-w64 / MSVC) | Building the interpreter |
 | CMake 3.10+ | Build system |
 | libcurl | HTTP client (`http_get`, `http_post`, `fetch`) |
-| libsqlite3 | Linked by CMake, though no `db_*` builtins currently exist in C++ (see [Known Gaps](#-known-gaps--caveats)) |
+| libsqlite3 | Linked by CMake,  |
 | Win32 SDK (`dwmapi`, `uxtheme`) | GUI dark-mode/theme APIs |
 
 ### Build with CMake

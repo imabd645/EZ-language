@@ -1,4 +1,6 @@
-#include "GUI_Internal.h"\n\nvoid registerGUIWidgetsBuiltins(RuntimeContext& interp) {
+#include "GUI_Internal.h"
+
+void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
     // NEW WIDGET CREATORS
     interp.defineGlobal("gui_create_textarea", Value::makeNativeFunction("gui_create_textarea", 5,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -54,4 +56,4 @@
                 int btnType = style & 0xF;
                 if (btnType == BS_PUSHBUTTON || btnType == BS_DEFPUSHBUTTON)
                     SetWindowLong(hwnd, GWL_STYLE, (style & ~0xF) | BS_OWNERDRAW);
-}\n
+}

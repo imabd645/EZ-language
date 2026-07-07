@@ -1,4 +1,6 @@
-#include "GUI_Internal.h"\n\nvoid registerGUIMenuBuiltins(RuntimeContext& interp) {
+#include "GUI_Internal.h"
+
+void registerGUIMenuBuiltins(RuntimeContext& interp) {
     // MENU SYSTEM
     interp.defineGlobal("gui_create_menubar", Value::makeNativeFunction("gui_create_menubar", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -93,4 +95,4 @@
         }));
 
     // UTILS
-}\n
+}

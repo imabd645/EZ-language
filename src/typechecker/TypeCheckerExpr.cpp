@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "TypeChecker.h"
 #include <iostream>
 TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {

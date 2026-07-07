@@ -1,3 +1,8 @@
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+#include <filesystem>
+namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
 #include <iostream>
 void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
@@ -54,12 +59,12 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
 }
 
 void BytecodeCompiler::compileExpressionStmt(const ExpressionStmt& stmt) {
-    compileExpr(stmt.expression);
+    compileExpr(stmt.expr);
     emitOp(OpCode::POP);
 }
 
 void BytecodeCompiler::compileOutStmt(const OutStmt& stmt) {
-    compileExpr(stmt.expression);
+    compileExpr(stmt.expr);
     emitOp(OpCode::TO_STRING);
     emitOp(OpCode::PRINT);
 }
@@ -1220,7 +1225,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
 }
 
 void BytecodeCompiler::compileThrow(const ThrowStmt& stmt) {
-    compileExpr(stmt.expression);
+    compileExpr(stmt.expr);
     emitOp(OpCode::THROW);
 }
 

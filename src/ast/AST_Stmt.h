@@ -258,9 +258,9 @@ struct TryStmt {
 
 // Throw statement (error)
 struct ThrowStmt {
-    ExprPtr expression;
+    ExprPtr expr;
     
-    explicit ThrowStmt(ExprPtr expr) : expression(std::move(expr)) {}
+    explicit ThrowStmt(ExprPtr expr) : expr(std::move(expr)) {}
 };
 
 // Export statement  marks a declaration as publicly visible in namespaced module imports

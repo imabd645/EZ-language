@@ -1,2 +1,4 @@
-#include "GUI_Internal.h"\n\nvoid registerGUIDialogsBuiltins(RuntimeContext& interp) {
-}\n
+#include "GUI_Internal.h"
+
+void registerGUIDialogsBuiltins(RuntimeContext& interp) {
+}

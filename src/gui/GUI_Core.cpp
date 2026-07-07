@@ -306,7 +306,23 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 // Helper to register widget handles
-\nvoid registerGUICoreBuiltins(RuntimeContext& interp) {\n    g_gui.currentInterpreter = &interp;\n    g_gui.hInstance = GetModuleHandle(NULL);\n    INITCOMMONCONTROLSEX icex;\n    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);\n    icex.dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES | ICC_TREEVIEW_CLASSES | ICC_UPDOWN_CLASS | ICC_USEREX_CLASSES;\n    InitCommonControlsEx(&icex);\n    WNDCLASSEX wc = {0};\n    wc.cbSize = sizeof(WNDCLASSEX);\n    wc.lpfnWndProc = EZWndProc;\n    wc.hInstance = g_gui.hInstance;\n    wc.lpszClassName = "EZWindowClass";\n    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);\n    wc.hCursor = LoadCursor(NULL, IDC_ARROW);\n    RegisterClassEx(&wc);\n    g_gui.currentInterpreter = &interp;
+
+void registerGUICoreBuiltins(RuntimeContext& interp) {
+    g_gui.currentInterpreter = &interp;
+    g_gui.hInstance = GetModuleHandle(NULL);
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES | ICC_TREEVIEW_CLASSES | ICC_UPDOWN_CLASS | ICC_USEREX_CLASSES;
+    InitCommonControlsEx(&icex);
+    WNDCLASSEX wc = {0};
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.lpfnWndProc = EZWndProc;
+    wc.hInstance = g_gui.hInstance;
+    wc.lpszClassName = "EZWindowClass";
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    RegisterClassEx(&wc);
+    g_gui.currentInterpreter = &interp;
     g_gui.hInstance = GetModuleHandle(NULL);
     
     INITCOMMONCONTROLSEX icex;
@@ -565,7 +581,8 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return Value(text);
         }));
 
-}\n
+}
+
 void registerGUIBuiltins(RuntimeContext& interp) {
     registerGUICoreBuiltins(interp);
     registerGUIWidgetsBuiltins(interp);

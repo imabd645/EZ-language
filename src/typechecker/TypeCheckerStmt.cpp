@@ -12,8 +12,8 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
         else if constexpr (std::is_same_v<T, std::shared_ptr<WhileStmt>>) checkWhile(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<RepeatStmt>>) checkRepeat(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<GetStmt>>) checkGet(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ExpressionStmt>>) checkExpr(arg->expression);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<OutStmt>>) checkExpr(arg->expression);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<ExpressionStmt>>) checkExpr(arg->expr);
+        else if constexpr (std::is_same_v<T, std::shared_ptr<OutStmt>>) checkExpr(arg->expr);
         else if constexpr (std::is_same_v<T, std::shared_ptr<ModelStmt>>) checkModel(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<StructStmt>>) checkStruct(*arg);
         else if constexpr (std::is_same_v<T, std::shared_ptr<InterfaceStmt>>) checkInterface(*arg);

@@ -1,3 +1,5 @@
+#include "cli/CLI.h"
+extern bool g_disableContracts;
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -47,8 +49,8 @@ static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-#include "cli/CLI.h"
-void runRepl(bool traceExecution = false) {
+
+void runRepl(bool traceExecution) {
     std::cout << "EZ Language Interpreter v1.0 (Bytecode Mode)" << std::endl;
     std::cout << "Type 'exit' to quit" << std::endl;
     std::cout << std::endl;

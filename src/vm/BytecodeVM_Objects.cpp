@@ -1,3 +1,5 @@
+#include "lexer/Lexer.h"
+#include "parser/Parser.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/Value.h"
 #include <iostream>

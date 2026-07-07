@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <filesystem>
 namespace fs = std::filesystem;
+static std::string getDirectoryName(const std::string& path) {
+    size_t lastSlash = path.find_last_of("\\/");
+    if (lastSlash == std::string::npos) return ".";
+    return path.substr(0, lastSlash);
+}
 #include "BytecodeCompiler.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"

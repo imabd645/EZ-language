@@ -331,6 +331,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                             if (method.isFunction() || method.isClosure() || method.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
                             else *stackTop++ = method;
+                        } else if (propName == "name" && (obj.isFunction() || obj.isClosure() || obj.isNativeFunction() || obj.isClass())) {
+                            if (obj.isClosure()) {
+                                *stackTop++ = Value(obj.asClosure()->function->name);
+                            } else if (obj.isFunction()) {
+                                *stackTop++ = Value(obj.asFunction()->name);
+                            } else if (obj.isNativeFunction()) {
+                                *stackTop++ = Value(obj.asNativeFunction()->name);
+                            } else if (obj.isClass()) {
+                                *stackTop++ = Value(obj.asClass()->name);
+                            }
                         } else {
                             SYNC_IP();
                             runtimeError("Cannot access property '" + propName + "' on " + obj.typeName());

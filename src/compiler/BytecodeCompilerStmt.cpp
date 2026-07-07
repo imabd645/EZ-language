@@ -430,7 +430,19 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
 }
 
 void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
+    // 1. Load user-defined decorators from innermost to outermost
+    for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
+        IdentifierExpr decExpr(*it);
+        compileIdentifier(decExpr);
+    }
+
     emitClosure(stmt);
+
+    // 2. Apply user-defined decorators by calling them with the closure
+    for (size_t i = 0; i < stmt.userDecorators.size(); ++i) {
+        emitOp(OpCode::CALL);
+        emitByte(1); // 1 argument
+    }
 
     // Store into variable (local or global)
     int local = resolveLocal(stmt.name);
@@ -878,6 +890,12 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
 }
 
 void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
+    // 0. Load user-defined decorators from innermost to outermost
+    for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
+        IdentifierExpr decExpr(*it);
+        compileIdentifier(decExpr);
+    }
+
     // Save previous class context
     std::string savedClass = current->currentClass;
     std::string savedParent = current->currentParentClass;
@@ -1073,6 +1091,12 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     emitByte(static_cast<uint8_t>(memberCount));
     emitByte(static_cast<uint8_t>(stmt.interfaces.size()));
     emitByte(static_cast<uint8_t>(validatorCount));   // NEW: validator count
+
+    // Apply user-defined decorators by calling them with the class object
+    for (size_t i = 0; i < stmt.userDecorators.size(); ++i) {
+        emitOp(OpCode::CALL);
+        emitByte(1); // 1 argument
+    }
     
     // 6. Store class in variable (global by default, local if in a module)
     if (current->scopeDepth > 0) {

@@ -164,8 +164,8 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     }
 
     // ---- @ratelimit check ----
-    if (task.rateLimit.has_value()) {
-        const auto& rl = task.rateLimit.value();
+    if (task.rateLimit != nullptr) {
+        const auto& rl = *task.rateLimit;
         // Push: key (string "global"), count, per
         size_t globalKey = identifierConstant("global");
         emitOp(OpCode::LOAD_CONST);

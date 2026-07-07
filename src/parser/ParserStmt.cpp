@@ -83,14 +83,22 @@ StmtPtr Parser::statement() {
     // ── Collect decorator tokens ──────────────────────────────────────────────
     // Decorators like @audited, @cached, @persist etc. precede model/task
     std::vector<TokenType> decorators;
+    std::vector<std::string> userDecorators;
     std::string persistPath;
-    std::optional<RateLimitConfig> rateLimitCfg;
+    std::shared_ptr<RateLimitConfig> rateLimitCfg = nullptr;
     while (check(TokenType::DECORATOR_AUDITED)  || check(TokenType::DECORATOR_SNAPSHOT) ||
            check(TokenType::DECORATOR_CACHED)   || check(TokenType::DECORATOR_PERSIST)  ||
-           check(TokenType::DECORATOR_VALIDATE) || check(TokenType::DECORATOR_RATELIMIT)) {
+           check(TokenType::DECORATOR_VALIDATE) || check(TokenType::DECORATOR_RATELIMIT) ||
+           check(TokenType::DECORATOR_USER)) {
         TokenType kind = peek().type;
+        std::string lexName = peek().lexeme;
+        if (!lexName.empty() && lexName[0] == '@') {
+            lexName = lexName.substr(1);
+        }
         advance(); // consume decorator token
-        if (kind == TokenType::DECORATOR_PERSIST) {
+        if (kind == TokenType::DECORATOR_USER) {
+            userDecorators.push_back(lexName);
+        } else if (kind == TokenType::DECORATOR_PERSIST) {
             consume(TokenType::LPAREN, "Expected '(' after @persist");
             Token pathTok = consume(TokenType::STRING, "Expected file path string in @persist");
             persistPath = std::get<std::string>(pathTok.literal);
@@ -108,7 +116,7 @@ StmtPtr Parser::statement() {
             consume(TokenType::COMMA, "Expected ',' in @ratelimit");
             Token perTok = consume(TokenType::STRING, "Expected time unit string");
             std::string perStr = std::get<std::string>(perTok.literal);
-            rateLimitCfg = RateLimitConfig{count, perStr, nullptr};
+            rateLimitCfg = std::make_shared<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
             consume(TokenType::RPAREN, "Expected ')' after @ratelimit arguments");
         }
         decorators.push_back(kind);
@@ -120,10 +128,11 @@ StmtPtr Parser::statement() {
         isAsync = true;
     }
     
-    if (match(TokenType::TASK)) {
+    if (match(TokenType::TASK) || match(TokenType::DECORATOR_KW)) {
         auto taskNode = taskStatement(isAsync);
         // Apply task-level decorators
         auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskNode->variant);
+        task.userDecorators = userDecorators;
         for (auto kind : decorators) {
             if (kind == TokenType::DECORATOR_CACHED)   task.isCached = true;
             if (kind == TokenType::DECORATOR_RATELIMIT && rateLimitCfg) task.rateLimit = rateLimitCfg;
@@ -139,6 +148,7 @@ StmtPtr Parser::statement() {
         auto modelNode = modelStatement();
         // Apply model-level decorators
         auto& model = *std::get<std::shared_ptr<ModelStmt>>(modelNode->variant);
+        model.userDecorators = userDecorators;
         for (auto kind : decorators) {
             if (kind == TokenType::DECORATOR_AUDITED)  model.audited  = true;
             if (kind == TokenType::DECORATOR_SNAPSHOT) model.snapshot = true;
@@ -146,7 +156,7 @@ StmtPtr Parser::statement() {
         }
         return modelNode;
     }
-    if (!decorators.empty()) {
+    if (!decorators.empty() || !userDecorators.empty()) {
         error(previous(), "Decorators can only be applied to 'model' or 'task' declarations");
     }
 

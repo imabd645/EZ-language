@@ -13,6 +13,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"while", TokenType::WHILE},
     {"use", TokenType::USE},
     {"task", TokenType::TASK},
+    {"decorator", TokenType::DECORATOR_KW},
     {"give", TokenType::GIVE},
     {"escape", TokenType::ESCAPE},
     {"skip", TokenType::SKIP},
@@ -137,7 +138,7 @@ void Lexer::scanToken() {
             if (it != decoratorMap.end()) {
                 addToken(it->second);
             } else {
-                error("Unknown decorator '@" + name + "'");
+                addToken(TokenType::DECORATOR_USER, name);
             }
             break;
         }

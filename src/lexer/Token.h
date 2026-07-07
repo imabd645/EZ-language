@@ -56,6 +56,7 @@ enum class TokenKind {
     NOT,
     ASYNC,
     AWAIT,
+    DECORATOR_KW,
     
     // OOP Keywords
     MODEL,
@@ -84,6 +85,7 @@ enum class TokenKind {
     DECORATOR_PERSIST,       // @persist("filename")
     DECORATOR_VALIDATE,      // @validate(rule, message?)
     DECORATOR_RATELIMIT,     // @ratelimit(n, per: "unit", key: expr)
+    DECORATOR_USER,          // @mydecorator
 
     // Operators
     PLUS,
@@ -202,6 +204,8 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::DECORATOR_PERSIST: return "DECORATOR_PERSIST";
         case TokenType::DECORATOR_VALIDATE: return "DECORATOR_VALIDATE";
         case TokenType::DECORATOR_RATELIMIT: return "DECORATOR_RATELIMIT";
+        case TokenType::DECORATOR_KW: return "DECORATOR_KW";
+        case TokenType::DECORATOR_USER: return "DECORATOR_USER";
         case TokenType::STRUCT: return "STRUCT";
         case TokenType::NEW: return "NEW";
         case TokenType::PLUS: return "PLUS";

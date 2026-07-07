@@ -10,6 +10,13 @@
 #include "bytecode/Bytecode.h"
 #include "runtime/Value.h"
 
+inline std::string getDirectoryName(const std::string& path) {
+    size_t lastSlash = path.find_last_of("\\/");
+    if (lastSlash == std::string::npos) return ".";
+    return path.substr(0, lastSlash);
+}
+
+
 // ============================================================================
 // Bytecode Compiler: AST -> Bytecode
 // ============================================================================

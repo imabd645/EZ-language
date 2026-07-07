@@ -19,7 +19,6 @@
 #include <windows.h>
 #include <cstdint>
 
-bool g_disableContracts = false;
 
 void signalHandler(int sig) {
     std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;

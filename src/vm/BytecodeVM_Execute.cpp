@@ -245,7 +245,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             auto dictPtr = obj.asDictionaryPtr();
                             std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
                             auto it = dictPtr->map.find(propName);
-                            *stackTop++ = (it != dictPtr->map.end() ? it->second : Value());
+                            if (it != dictPtr->map.end()) {
+                                *stackTop++ = it->second;
+                            } else {
+                                SYNC_IP();
+                                runtimeError("Key or property '" + propName + "' does not exist in dictionary");
+                                return;
+                            }
                         } else if (obj.isClass()) {
                             auto klass = obj.asClass();
                             CHECK_VISIBILITY(klass, propName);

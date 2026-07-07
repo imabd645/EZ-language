@@ -300,8 +300,10 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 if (args.size() == 3) {
                     if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
                     double val = args[2].asNumber();
-                    if (val < 0) return Value(-1.0); // Safe if negative
-                    startPos = static_cast<size_t>(val);
+                    int len = static_cast<int>(args[0].asString().length());
+                    int start = static_cast<int>(val);
+                    if (start < 0) start = std::max(0, len + start);
+                    startPos = static_cast<size_t>(start);
                 }
 
                 size_t pos = args[0].asString().find(args[1].asString(), startPos);
@@ -314,8 +316,10 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 if (args.size() == 3) {
                     if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
                     double val = args[2].asNumber();
-                    if (val < 0) return Value(-1.0);
-                    startPos = static_cast<size_t>(val);
+                    int len = static_cast<int>(arr.size());
+                    int start = static_cast<int>(val);
+                    if (start < 0) start = std::max(0, len + start);
+                    startPos = static_cast<size_t>(start);
                 }
                 for (size_t i = startPos; i < arr.size(); i++) {
                     if (arr[i].equals(args[1])) return Value(static_cast<double>(i));

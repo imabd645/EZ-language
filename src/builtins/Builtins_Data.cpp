@@ -303,8 +303,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
                     if (val < 0) return Value(-1.0); // Safe if negative
                     startPos = static_cast<size_t>(val);
                 }
-                if (startPos >= args[0].asString().length() && args[0].asString().length() > 0) return Value(-1.0);
-                
+
                 size_t pos = args[0].asString().find(args[1].asString(), startPos);
                 if (pos == std::string::npos) return Value(-1.0);
                 return Value(static_cast<double>(pos));

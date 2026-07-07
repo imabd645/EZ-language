@@ -103,7 +103,7 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     }
 }
 
-void runFile(const std::string& path, bool traceExecution = false) {
+void runFile(const std::string& path, bool traceExecution) {
     if (path.length() >= 4 && path.substr(path.length() - 4) == ".ezc") {
         std::ifstream file(path, std::ios::binary);
         if (!file.is_open()) {

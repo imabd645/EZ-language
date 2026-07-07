@@ -3,6 +3,8 @@
 int cli_main(int argc, char* argv[]);
 void runRepl(bool traceExecution = false);
 void runFile(const std::string& path, bool traceExecution = false);
+bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem);
+
 void compileFileToEzc(const std::string& path);
 void dumpFileToEzasm(const std::string& path);
 void showHelp();

@@ -12,11 +12,7 @@ namespace fs = std::filesystem;
 std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem;
 
 // Helper to get directory of a file
-static std::string getDirectoryName(const std::string& path) {
-    size_t lastSlash = path.find_last_of("\\/");
-    if (lastSlash == std::string::npos) return ".";
-    return path.substr(0, lastSlash);
-}
+
 
 // ============================================================================
 // BytecodeCompiler Implementation

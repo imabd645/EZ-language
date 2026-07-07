@@ -303,6 +303,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             } else {
                                 if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
                                 else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
+                                else if (propName == "name") *stackTop++ = Value(klass->name);
                                 else {
                                     SYNC_IP();
                                     runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");

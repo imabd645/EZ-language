@@ -346,6 +346,9 @@ void showHelp() {
 }
 
 int cli_main(int argc, char* argv[]) {
+    // Ensure UTF-8 output for emojis and special characters on Windows consoles
+    SetConsoleOutputCP(CP_UTF8);
+    
     signal(SIGSEGV, signalHandler);
     signal(SIGABRT, signalHandler);
     std::set_terminate(terminateHandler);

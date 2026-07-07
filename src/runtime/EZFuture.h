@@ -29,7 +29,7 @@ struct EZFuture {
     std::function<void()> onReady;
 
     EZFuture()
-        : hEvent(CreateEvent(nullptr, TRUE, FALSE, nullptr))
+        : hEvent(CreateEvent(nullptr, 1, 0, nullptr))
         , result(nullptr)
         , hasError(false)
     {}

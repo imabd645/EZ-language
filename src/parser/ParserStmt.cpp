@@ -659,7 +659,7 @@ StmtPtr Parser::expressionStatement() {
     // Check if this is a variable declaration (assignment to new variable)
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
     // Otherwise, treat as regular assignment statement
-    return makeExprStmt(line, column, length, peek().filename, expr);
+    return makeExpressionStmt(line, column, length, peek().filename, expr);
 }
 
 StmtPtr Parser::structStatement() {

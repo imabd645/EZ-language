@@ -111,7 +111,7 @@ private:
     
     // === Statement Compilation ===
     void compileStmt(const StmtPtr& stmt);
-    void compileExprStmt(const ExprStmt& stmt);
+    void compileExpressionStmt(const ExpressionStmt& stmt);
     void compileOutStmt(const OutStmt& stmt);
     void compileVarDecl(const VarDeclStmt& stmt);
     void compileBlock(const BlockStmt& stmt);

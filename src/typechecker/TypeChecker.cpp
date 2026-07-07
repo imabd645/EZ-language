@@ -228,9 +228,9 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                 [&](const std::vector<StmtPtr>& body) {
                     for (const auto& s : body) {
                         if (!s) continue;
-                        // ExprStmt wrapping a SetExpr (self.xxx = ...)
-                        if (std::holds_alternative<std::shared_ptr<ExprStmt>>(s->variant)) {
-                            auto exprStmt = std::get<std::shared_ptr<ExprStmt>>(s->variant);
+                        // ExpressionStmt wrapping a SetExpr (self.xxx = ...)
+                        if (std::holds_alternative<std::shared_ptr<ExpressionStmt>>(s->variant)) {
+                            auto exprStmt = std::get<std::shared_ptr<ExpressionStmt>>(s->variant);
                             if (exprStmt->expression &&
                                 std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expression->variant)) {
                                 auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expression->variant);
@@ -324,8 +324,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                         [&](const std::vector<StmtPtr>& body) {
                             for (const auto& s : body) {
                                 if (!s) continue;
-                                if (std::holds_alternative<std::shared_ptr<ExprStmt>>(s->variant)) {
-                                    auto exprStmt = std::get<std::shared_ptr<ExprStmt>>(s->variant);
+                                if (std::holds_alternative<std::shared_ptr<ExpressionStmt>>(s->variant)) {
+                                    auto exprStmt = std::get<std::shared_ptr<ExpressionStmt>>(s->variant);
                                     if (exprStmt->expression &&
                                         std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expression->variant)) {
                                         auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expression->variant);

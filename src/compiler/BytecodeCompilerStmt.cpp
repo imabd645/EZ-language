@@ -9,8 +9,8 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     std::visit([this](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
 
-        if constexpr (std::is_same_v<T, std::shared_ptr<ExprStmt>>) {
-            compileExprStmt(*arg);
+        if constexpr (std::is_same_v<T, std::shared_ptr<ExpressionStmt>>) {
+            compileExpressionStmt(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<OutStmt>>) {
             compileOutStmt(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<VarDeclStmt>>) {
@@ -53,7 +53,7 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     }, stmt->variant);
 }
 
-void BytecodeCompiler::compileExprStmt(const ExprStmt& stmt) {
+void BytecodeCompiler::compileExpressionStmt(const ExpressionStmt& stmt) {
     compileExpr(stmt.expression);
     emitOp(OpCode::POP);
 }

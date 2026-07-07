@@ -339,7 +339,7 @@ inline ExprPtr makeLambdaExpr(int line, int column, int length, const std::strin
 }
 
 // Helper functions to create statements
-inline StmtPtr makeExprStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
+inline StmtPtr makeExpressionStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExpressionStmt>(std::move(expr)));
 }
 

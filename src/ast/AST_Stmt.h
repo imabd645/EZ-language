@@ -5,6 +5,25 @@
 #include "AST_Expr.h"
 
 // Block of statements
+
+struct ExpressionStmt {
+    ExprPtr expr;
+    explicit ExpressionStmt(ExprPtr expr) : expr(std::move(expr)) {}
+};
+
+struct OutStmt {
+    ExprPtr expr;
+    explicit OutStmt(ExprPtr expr) : expr(std::move(expr)) {}
+};
+
+struct VarDeclStmt {
+    std::string name;
+    ExprPtr initializer;
+    TypeASTPtr typeHint;
+    VarDeclStmt(std::string name, ExprPtr initializer, TypeASTPtr typeHint = nullptr)
+        : name(std::move(name)), initializer(std::move(initializer)), typeHint(std::move(typeHint)) {}
+};
+
 struct BlockStmt {
     std::vector<StmtPtr> statements;
     
@@ -186,7 +205,7 @@ struct ModelStmt {
     // Decorator fields
     bool audited  = false;     // @audited
     bool snapshot = false;     // @snapshot
-    std::string persistPath;   // @persist("file") — empty = not persistent
+    std::string persistPath;   // @persist("file")  empty = not persistent
     std::vector<std::string> typeParams;
         
     ModelStmt(int line, const std::string& name, const std::string& parent,
@@ -244,7 +263,7 @@ struct ThrowStmt {
     explicit ThrowStmt(ExprPtr expr) : expression(std::move(expr)) {}
 };
 
-// Export statement — marks a declaration as publicly visible in namespaced module imports
+// Export statement  marks a declaration as publicly visible in namespaced module imports
 struct ExportStmt {
     StmtPtr inner;  // The wrapped task/variable/model declaration
     explicit ExportStmt(StmtPtr inner) : inner(std::move(inner)) {}
@@ -321,7 +340,7 @@ inline ExprPtr makeLambdaExpr(int line, int column, int length, const std::strin
 
 // Helper functions to create statements
 inline StmtPtr makeExprStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExprStmt>(std::move(expr)));
+    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExpressionStmt>(std::move(expr)));
 }
 
 inline StmtPtr makeOutStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
@@ -450,6 +469,5 @@ inline StmtPtr makeExportStmt(int line, int column, int length, const std::strin
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExportStmt>(std::move(inner)));
 }
 
-#endif // AST_H
 
 #endif // AST_STMT_H

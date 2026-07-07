@@ -22,24 +22,6 @@ extern bool g_disableContracts;
 
 
 
-        catch (const std::exception& e) { std::cerr << "  Reason: " << e.what() << std::endl; }
-        catch (...) { std::cerr << "  Unknown exception" << std::endl; }
-    }
-    _exit(140);
-}
-
-static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
-    DWORD code = pExInfo->ExceptionRecord->ExceptionCode;
-    if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION) {
-        std::cerr << "\n[FATAL] Windows Exception 0x" << std::hex << code << std::dec << std::endl;
-        if (code == EXCEPTION_ACCESS_VIOLATION) {
-            std::cerr << "  Access violation at address 0x" << std::hex
-                      << (uintptr_t)pExInfo->ExceptionRecord->ExceptionInformation[1] << std::dec << std::endl;
-        }
-        _exit(141);
-    }
-    return EXCEPTION_CONTINUE_SEARCH;
-}
 
 
 void runRepl(bool traceExecution) {

@@ -1,6 +1,6 @@
-#include "../Builtins.h"
-#include "../RuntimeContext.h"
-#include "../Value.h"
+#include "builtins/Builtins.h"
+#include "runtime/RuntimeContext.h"
+#include "runtime/Value.h"
 #include <string>
 #include <vector>
 #include <algorithm>

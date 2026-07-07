@@ -1,5 +1,5 @@
-#include "../Builtins.h"
-#include "../RuntimeContext.h"
+#include "builtins/Builtins.h"
+#include "runtime/RuntimeContext.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>

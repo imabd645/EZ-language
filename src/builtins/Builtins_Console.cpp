@@ -2,10 +2,10 @@
 #include <windows.h>
 #include <conio.h>
 #endif
-#include "../RuntimeContext.h"
-#include "../BytecodeVM.h"
+#include "runtime/RuntimeContext.h"
+#include "vm/BytecodeVM.h"
 #include "../EZFuture.h"
-#include "../Builtins.h"
+#include "builtins/Builtins.h"
 #include <iostream>
 #include <chrono>
 #include <thread>

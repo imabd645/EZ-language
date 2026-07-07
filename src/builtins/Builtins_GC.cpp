@@ -1,7 +1,7 @@
-#include "../RuntimeContext.h"
-#include "../BytecodeVM.h"
+#include "runtime/RuntimeContext.h"
+#include "vm/BytecodeVM.h"
 #include "../EZFuture.h"
-#include "../Builtins.h"
+#include "builtins/Builtins.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -102,7 +102,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
             // Close upvalues in any closure/bound-method so the worker thread doesn't hold
             // dangling pointers into the parent VM's stack.
-            // Arrays, Dicts, and Instances are shared_ptr based — we keep them as-is so
+            // Arrays, Dicts, and Instances are shared_ptr based  we keep them as-is so
             // worker threads share the same queue/mutex objects.
             auto threadUpvalues = std::make_shared<std::vector<std::unique_ptr<UpvalueObj>>>();
             std::unordered_map<void*, Value> seen;
@@ -139,7 +139,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     seen[oldBm.get()] = Value(newBm);
                     return Value(newBm);
                 }
-                // Arrays, Dicts, Instances, primitives — share directly
+                // Arrays, Dicts, Instances, primitives  share directly
                 return v;
             };
 

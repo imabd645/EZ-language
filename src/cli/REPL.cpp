@@ -21,15 +21,7 @@ extern bool g_disableContracts;
 #include <cstdint>
 
 
-void signalHandler(int sig) {
-    std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
-    _exit(139);
-}
 
-void terminateHandler() {
-    std::cerr << "\n[FATAL] std::terminate() called!" << std::endl;
-    if (auto eptr = std::current_exception()) {
-        try { std::rethrow_exception(eptr); }
         catch (const std::exception& e) { std::cerr << "  Reason: " << e.what() << std::endl; }
         catch (...) { std::cerr << "  Unknown exception" << std::endl; }
     }

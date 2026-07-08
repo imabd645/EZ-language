@@ -117,31 +117,9 @@ void Lexer::scanToken() {
             }
             break;
         case ':': addToken(TokenType::COLON); break;
-        case '@': {
-            if (!isAlpha(peek())) {
-                error("Expected decorator name after '@'");
-                break;
-            }
-            while (isAlpha(peek()) || peek() == '_') advance();
-            std::string name = source.substr(start + 1, current - start - 1);
-
-            static const std::unordered_map<std::string, TokenType> decoratorMap = {
-                {"audited",   TokenType::DECORATOR_AUDITED},
-                {"snapshot",  TokenType::DECORATOR_SNAPSHOT},
-                {"cached",    TokenType::DECORATOR_CACHED},
-                {"persist",   TokenType::DECORATOR_PERSIST},
-                {"validate",  TokenType::DECORATOR_VALIDATE},
-                {"ratelimit", TokenType::DECORATOR_RATELIMIT},
-            };
-
-            auto it = decoratorMap.find(name);
-            if (it != decoratorMap.end()) {
-                addToken(it->second);
-            } else {
-                addToken(TokenType::DECORATOR_USER, name);
-            }
+        case '@':
+            addToken(TokenType::AT);
             break;
-        }
         case '?':
             if (match('?')) {
                 addToken(TokenType::QUESTION_QUESTION);

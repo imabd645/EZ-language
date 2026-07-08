@@ -112,7 +112,7 @@ struct TaskStmt {
     // Decorator flags
     bool isCached = false;
     std::shared_ptr<RateLimitConfig> rateLimit = nullptr; // nullptr = not rate limited
-    std::vector<std::string> userDecorators; // Custom user-defined decorators
+    std::vector<ExprPtr> userDecorators; // Custom user-defined decorators
     std::vector<std::string> typeParams;
     
     TaskStmt(const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
@@ -207,7 +207,7 @@ struct ModelStmt {
     bool audited  = false;     // @audited
     bool snapshot = false;     // @snapshot
     std::string persistPath;   // @persist("file")  empty = not persistent
-    std::vector<std::string> userDecorators; // Custom user-defined decorators
+    std::vector<ExprPtr> userDecorators; // Custom user-defined decorators
     std::vector<std::string> typeParams;
         
     ModelStmt(int line, const std::string& name, const std::string& parent,

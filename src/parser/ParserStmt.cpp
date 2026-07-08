@@ -82,44 +82,61 @@ StmtPtr Parser::statement() {
     
     // ── Collect decorator tokens ──────────────────────────────────────────────
     // Decorators like @audited, @cached, @persist etc. precede model/task
-    std::vector<TokenType> decorators;
-    std::vector<std::string> userDecorators;
+    std::vector<ExprPtr> userDecorators;
     std::string persistPath;
     std::shared_ptr<RateLimitConfig> rateLimitCfg = nullptr;
-    while (check(TokenType::DECORATOR_AUDITED)  || check(TokenType::DECORATOR_SNAPSHOT) ||
-           check(TokenType::DECORATOR_CACHED)   || check(TokenType::DECORATOR_PERSIST)  ||
-           check(TokenType::DECORATOR_VALIDATE) || check(TokenType::DECORATOR_RATELIMIT) ||
-           check(TokenType::DECORATOR_USER)) {
-        TokenType kind = peek().type;
-        std::string lexName = peek().lexeme;
-        if (!lexName.empty() && lexName[0] == '@') {
-            lexName = lexName.substr(1);
-        }
-        advance(); // consume decorator token
-        if (kind == TokenType::DECORATOR_USER) {
-            userDecorators.push_back(lexName);
-        } else if (kind == TokenType::DECORATOR_PERSIST) {
-            consume(TokenType::LPAREN, "Expected '(' after @persist");
-            Token pathTok = consume(TokenType::STRING, "Expected file path string in @persist");
-            persistPath = std::get<std::string>(pathTok.literal);
-            consume(TokenType::RPAREN, "Expected ')' after @persist path");
-        } else if (kind == TokenType::DECORATOR_RATELIMIT) {
-            consume(TokenType::LPAREN, "Expected '(' after @ratelimit");
-            // count
-            Token countTok = consume(TokenType::NUMBER, "Expected count in @ratelimit");
-            int count = 0;
-            if (std::holds_alternative<long long>(countTok.literal)) {
-                count = (int)std::get<long long>(countTok.literal);
-            } else {
-                count = (int)std::get<double>(countTok.literal);
+    bool isCached = false;
+    bool isAudited = false;
+    bool isSnapshot = false;
+
+    while (match(TokenType::AT)) {
+        ExprPtr decExpr = expression();
+        bool isBuiltin = false;
+        
+        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(decExpr->variant)) {
+            auto varExpr = std::get<std::shared_ptr<IdentifierExpr>>(decExpr->variant);
+            std::string name = varExpr->name;
+            if (name == "cached") { isCached = true; isBuiltin = true; }
+            else if (name == "audited") { isAudited = true; isBuiltin = true; }
+            else if (name == "snapshot") { isSnapshot = true; isBuiltin = true; }
+        } else if (std::holds_alternative<std::shared_ptr<CallExpr>>(decExpr->variant)) {
+            auto callExpr = std::get<std::shared_ptr<CallExpr>>(decExpr->variant);
+            if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(callExpr->callee->variant)) {
+                auto varExpr = std::get<std::shared_ptr<IdentifierExpr>>(callExpr->callee->variant);
+                std::string name = varExpr->name;
+                if (name == "persist") {
+                    if (callExpr->arguments.size() == 1) {
+                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant)) {
+                            auto strExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant);
+                            if (std::holds_alternative<std::string>(strExpr->value)) {
+                                persistPath = std::get<std::string>(strExpr->value);
+                                isBuiltin = true;
+                            }
+                        }
+                    }
+                } else if (name == "ratelimit") {
+                    if (callExpr->arguments.size() >= 2) {
+                        int count = 0;
+                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant)) {
+                            auto numExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant);
+                            if (std::holds_alternative<long long>(numExpr->value)) count = (int)std::get<long long>(numExpr->value);
+                            else if (std::holds_alternative<double>(numExpr->value)) count = (int)std::get<double>(numExpr->value);
+                        }
+                        std::string perStr;
+                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[1]->variant)) {
+                            auto strExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[1]->variant);
+                            if (std::holds_alternative<std::string>(strExpr->value)) perStr = std::get<std::string>(strExpr->value);
+                        }
+                        rateLimitCfg = std::make_shared<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
+                        isBuiltin = true;
+                    }
+                }
             }
-            consume(TokenType::COMMA, "Expected ',' in @ratelimit");
-            Token perTok = consume(TokenType::STRING, "Expected time unit string");
-            std::string perStr = std::get<std::string>(perTok.literal);
-            rateLimitCfg = std::make_shared<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
-            consume(TokenType::RPAREN, "Expected ')' after @ratelimit arguments");
         }
-        decorators.push_back(kind);
+        
+        if (!isBuiltin) {
+            userDecorators.push_back(decExpr);
+        }
         skipNewlines();
     }
 
@@ -133,10 +150,8 @@ StmtPtr Parser::statement() {
         // Apply task-level decorators
         auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskNode->variant);
         task.userDecorators = userDecorators;
-        for (auto kind : decorators) {
-            if (kind == TokenType::DECORATOR_CACHED)   task.isCached = true;
-            if (kind == TokenType::DECORATOR_RATELIMIT && rateLimitCfg) task.rateLimit = rateLimitCfg;
-        }
+        if (isCached) task.isCached = true;
+        if (rateLimitCfg) task.rateLimit = rateLimitCfg;
         return taskNode;
     }
     if (isAsync) {
@@ -149,14 +164,12 @@ StmtPtr Parser::statement() {
         // Apply model-level decorators
         auto& model = *std::get<std::shared_ptr<ModelStmt>>(modelNode->variant);
         model.userDecorators = userDecorators;
-        for (auto kind : decorators) {
-            if (kind == TokenType::DECORATOR_AUDITED)  model.audited  = true;
-            if (kind == TokenType::DECORATOR_SNAPSHOT) model.snapshot = true;
-            if (kind == TokenType::DECORATOR_PERSIST)  model.persistPath = persistPath;
-        }
+        if (isAudited) model.audited = true;
+        if (isSnapshot) model.snapshot = true;
+        if (!persistPath.empty()) model.persistPath = persistPath;
         return modelNode;
     }
-    if (!decorators.empty() || !userDecorators.empty()) {
+    if (isCached || isAudited || isSnapshot || !userDecorators.empty()) {
         error(previous(), "Decorators can only be applied to 'model' or 'task' declarations");
     }
 
@@ -874,8 +887,9 @@ StmtPtr Parser::modelStatement() {
 
             // Check for @cached on a method
             bool methodCached = false;
-            if (check(TokenType::DECORATOR_CACHED)) {
-                advance();
+            if (check(TokenType::AT) && peekNext().type == TokenType::IDENTIFIER && peekNext().lexeme == "cached") {
+                advance(); // consume @
+                advance(); // consume cached
                 methodCached = true;
                 skipNewlines();
             }
@@ -984,8 +998,9 @@ StmtPtr Parser::modelStatement() {
                 
                 // Parse @validate decorators following the property
                 std::vector<ValidateRule> propValidators;
-                while (check(TokenType::DECORATOR_VALIDATE)) {
-                    advance(); // consume @validate
+                while (check(TokenType::AT) && peekNext().type == TokenType::IDENTIFIER && peekNext().lexeme == "validate") {
+                    advance(); // consume @
+                    advance(); // consume validate
                     consume(TokenType::LPAREN, "Expected '(' after @validate");
                     std::string rule;
                     ExprPtr param = nullptr;

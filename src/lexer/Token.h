@@ -79,13 +79,7 @@ enum class TokenKind {
     ENSURES,
 
     // Decorator tokens
-    DECORATOR_AUDITED,       // @audited
-    DECORATOR_SNAPSHOT,      // @snapshot
-    DECORATOR_CACHED,        // @cached
-    DECORATOR_PERSIST,       // @persist("filename")
-    DECORATOR_VALIDATE,      // @validate(rule, message?)
-    DECORATOR_RATELIMIT,     // @ratelimit(n, per: "unit", key: expr)
-    DECORATOR_USER,          // @mydecorator
+    AT,
 
     // Operators
     PLUS,
@@ -198,14 +192,8 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::EXPORT: return "EXPORT";
         case TokenType::REQUIRES: return "REQUIRES";
         case TokenType::ENSURES: return "ENSURES";
-        case TokenType::DECORATOR_AUDITED: return "DECORATOR_AUDITED";
-        case TokenType::DECORATOR_SNAPSHOT: return "DECORATOR_SNAPSHOT";
-        case TokenType::DECORATOR_CACHED: return "DECORATOR_CACHED";
-        case TokenType::DECORATOR_PERSIST: return "DECORATOR_PERSIST";
-        case TokenType::DECORATOR_VALIDATE: return "DECORATOR_VALIDATE";
-        case TokenType::DECORATOR_RATELIMIT: return "DECORATOR_RATELIMIT";
         case TokenType::DECORATOR_KW: return "DECORATOR_KW";
-        case TokenType::DECORATOR_USER: return "DECORATOR_USER";
+        case TokenType::AT: return "AT";
         case TokenType::STRUCT: return "STRUCT";
         case TokenType::NEW: return "NEW";
         case TokenType::PLUS: return "PLUS";

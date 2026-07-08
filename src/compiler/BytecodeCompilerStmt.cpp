@@ -432,8 +432,7 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
 void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
     // 1. Load user-defined decorators from innermost to outermost
     for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
-        IdentifierExpr decExpr(*it);
-        compileIdentifier(decExpr);
+        compileExpr(*it);
     }
 
     emitClosure(stmt);
@@ -892,8 +891,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
 void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     // 0. Load user-defined decorators from innermost to outermost
     for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
-        IdentifierExpr decExpr(*it);
-        compileIdentifier(decExpr);
+        compileExpr(*it);
     }
 
     // Save previous class context

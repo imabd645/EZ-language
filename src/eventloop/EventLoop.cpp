@@ -21,24 +21,37 @@ void EventLoop::release() {
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         pendingIoCount--;
+        if (pendingIoCount < 0) {
+            std::cerr << "[EventLoop] WARNING: pendingIoCount underflow (double release detected)." << std::endl;
+            pendingIoCount = 0;
+        }
     }
     cv.notify_one();
 }
 
 void EventLoop::run() {
-    while (true) {
+    if (isRunning.exchange(true)) {
+        throw std::runtime_error("EventLoop is already running on another thread or re-entrantly.");
+    }
+
+    struct RunGuard {
+        std::atomic<bool>& flag;
+        ~RunGuard() { flag = false; }
+    } guard{isRunning};
+
+    while (!stopRequested) {
         std::function<void()> task;
         
         {
             std::unique_lock<std::mutex> lock(queueMutex);
             
-            // Wait until there is a task, OR there are no pending IOs (meaning we should exit)
+            // Wait until there is a task, OR there are no pending IOs (meaning we should exit), OR we are requested to stop
             cv.wait(lock, [this]() {
-                return !taskQueue.empty() || pendingIoCount == 0;
+                return !taskQueue.empty() || pendingIoCount == 0 || stopRequested;
             });
             
-            if (taskQueue.empty() && pendingIoCount == 0) {
-                // Nothing left to do, exit the event loop
+            if (stopRequested || (taskQueue.empty() && pendingIoCount == 0)) {
+                // Nothing left to do or stop requested, exit the event loop
                 break;
             }
             
@@ -52,8 +65,11 @@ void EventLoop::run() {
         if (task) {
             try {
                 task();
+            } catch (const RuntimeError& e) {
+                // EZ Runtime errors
+                std::cerr << "[EventLoop] Uncaught RuntimeError: " << e.what() << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "[EventLoop] Uncaught exception: " << e.what() << std::endl;
+                std::cerr << "[EventLoop] Uncaught std::exception: " << e.what() << std::endl;
             } catch (...) {
                 std::cerr << "[EventLoop] Uncaught unknown exception" << std::endl;
             }

@@ -1,0 +1,21 @@
+use "web"
+
+app = WebApp()
+
+@app.get("/hello")
+task helloWorld(req) {
+    give "Hello World from Decorator!"
+}
+
+@app.post("/submit")
+task submitData(req) {
+    give "Data Submitted via Decorator!"
+}
+
+spawn(app.run, 8080)
+stop(100)
+
+resp1 = http_get("http://localhost:8080/hello")
+out resp1
+
+exit(0)

@@ -16,23 +16,32 @@
 #include <mutex>
 #include <memory>
 #include <functional>
+#include <string>
+#include <stdexcept>
+#include <vector>
 
 // Forward-declare Value to avoid circular includes. Full definition is in Value.h.
 struct Value;
 
+// Not copyable or movable — always use via pointer/shared_ptr
 struct EZFuture {
     HANDLE   hEvent;
     std::mutex mtx;
     Value*   result;  // heap-allocated copy of the result
     bool     hasError;
     std::string errorMsg;
-    std::function<void()> onReady;
+    std::vector<std::function<void()>> onReady;
 
     EZFuture()
+        // manual-reset, initially non-signaled
         : hEvent(CreateEvent(nullptr, 1, 0, nullptr))
         , result(nullptr)
         , hasError(false)
-    {}
+    {
+        if (!hEvent) {
+            throw std::runtime_error("CreateEvent failed for EZFuture");
+        }
+    }
 
     ~EZFuture();
 
@@ -60,8 +69,8 @@ struct EZFuture {
         bool executeNow = false;
         {
             std::lock_guard<std::mutex> lock(mtx);
-            if (result) executeNow = true;
-            else onReady = std::move(callback);
+            if (result || hasError) executeNow = true;
+            else onReady.push_back(std::move(callback));
         }
         if (executeNow) callback();
     }
@@ -78,34 +87,30 @@ EZFuture::~EZFuture() {
 }
 
 void EZFuture::set(const Value& val) {
-    std::function<void()> callback;
+    std::vector<std::function<void()>> callbacks;
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (!result) result = new Value(val);
-        if (onReady) {
-            callback = std::move(onReady);
-            onReady = nullptr;
-        }
+        if (!result && !hasError) result = new Value(val);
+        callbacks = std::move(onReady);
+        onReady.clear();
     }
     SetEvent(hEvent);
-    if (callback) callback();
+    for (auto& cb : callbacks) if (cb) cb();
 }
 
 void EZFuture::setError(const std::string& msg) {
-    std::function<void()> callback;
+    std::vector<std::function<void()>> callbacks;
     {
         std::lock_guard<std::mutex> lock(mtx);
         if (!result && !hasError) {
             hasError = true;
             errorMsg = msg;
         }
-        if (onReady) {
-            callback = std::move(onReady);
-            onReady = nullptr;
-        }
+        callbacks = std::move(onReady);
+        onReady.clear();
     }
     SetEvent(hEvent);
-    if (callback) callback();
+    for (auto& cb : callbacks) if (cb) cb();
 }
 
 Value EZFuture::get() {

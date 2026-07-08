@@ -41,6 +41,7 @@ struct EZMutex;
 struct EZClosure;
 struct UpvalueObj;
 struct EZAtomic;
+struct EZChannel;
 
 using NativeFn = std::function<Value(RuntimeContext&, const std::vector<Value>&)>;
 
@@ -66,7 +67,8 @@ enum class ValueType {
     CLOSURE_VAL,
     INTERFACE,
     ATOMIC,
-    TUPLE
+    TUPLE,
+    CHANNEL
 };
 
 struct ShortString {
@@ -112,6 +114,7 @@ struct Value {
     using InterfacePtr = std::shared_ptr<struct EZInterface>;
     using AtomicPtr = std::shared_ptr<EZAtomic>;
     using TuplePtr = std::shared_ptr<EZTuple>;
+    using ChannelPtr = std::shared_ptr<EZChannel>;
 
     std::variant<
         std::nullptr_t,     // NIL
@@ -135,7 +138,8 @@ struct Value {
         ClosureValPtr,      // CLOSURE_VAL
         InterfacePtr,       // INTERFACE
         AtomicPtr,          // ATOMIC
-        TuplePtr            // TUPLE
+        TuplePtr,           // TUPLE
+        ChannelPtr          // CHANNEL
     > m_data;
     
     // Constructors
@@ -169,6 +173,7 @@ struct Value {
     Value(InterfacePtr val) : m_data(val) {}
     Value(AtomicPtr val) : m_data(val) {}
     Value(TuplePtr val) : m_data(val) {}
+    Value(ChannelPtr val) : m_data(val) {}
     
     // Type checking â€” O(1) via index lookup table
     // Table order must match the std::variant alternative order in m_data exactly.
@@ -195,7 +200,8 @@ struct Value {
             ValueType::CLOSURE_VAL,      // 18: ClosureValPtr
             ValueType::INTERFACE,        // 19: InterfacePtr
             ValueType::ATOMIC,           // 20: AtomicPtr
-            ValueType::TUPLE             // 21: TuplePtr
+            ValueType::TUPLE,            // 21: TuplePtr
+            ValueType::CHANNEL           // 22: ChannelPtr
         };
         return typeTable[m_data.index()];
     }
@@ -225,6 +231,7 @@ struct Value {
     bool isInterface() const { return std::holds_alternative<InterfacePtr>(m_data); }
     bool isAtomic() const { return std::holds_alternative<AtomicPtr>(m_data); }
     bool isTuple() const { return std::holds_alternative<TuplePtr>(m_data); }
+    bool isChannel() const { return std::holds_alternative<ChannelPtr>(m_data); }
     bool isCallable() const { return isFunction() || isNativeFunction() || isClass() || isBoundMethod() || isClosure(); }
     
     // Value extraction
@@ -269,9 +276,19 @@ struct Value {
     ClosureValPtr asClosure() const { try{return std::get<ClosureValPtr>(m_data);}catch(...){std::cerr<<"[Value] asClosure fail, index="<<index()<<"\n";throw;} }
     BufferPtr asBufferPtr() const { try{return std::get<BufferPtr>(m_data);}catch(...){std::cerr<<"[Value] asBufferPtr fail, index="<<index()<<"\n";throw;} }
     MutexPtr asMutexPtr() const { try{return std::get<MutexPtr>(m_data);}catch(...){std::cerr<<"[Value] asMutexPtr fail, index="<<index()<<"\n";throw;} }
-    AtomicPtr asAtomicPtr() const { try{return std::get<AtomicPtr>(m_data);}catch(...){std::cerr<<"[Value] asAtomicPtr fail, index="<<index()<<"\n";throw;} }
-    TuplePtr asTuplePtr() const { try{return std::get<TuplePtr>(m_data);}catch(...){std::cerr<<"[Value] asTuplePtr fail, index="<<index()<<"\n";throw;} }
-
+    AtomicPtr asAtomicPtr() const {
+        try { return std::get<AtomicPtr>(m_data); }
+        catch(...) { std::cerr << "[Value] asAtomicPtr() failed: index=" << index() << std::endl; throw; }
+    }
+    TuplePtr asTuplePtr() const {
+        try { return std::get<TuplePtr>(m_data); }
+        catch(...) { std::cerr << "[Value] asTuplePtr() failed: index=" << index() << std::endl; throw; }
+    }
+    ChannelPtr asChannelPtr() const {
+        try { return std::get<ChannelPtr>(m_data); }
+        catch(...) { std::cerr << "[Value] asChannelPtr() failed: index=" << index() << std::endl; throw; }
+    }
+    
     // Convenience accessors for builtins
     EZArray& asArray();
     const EZArray& asArray() const;
@@ -307,6 +324,7 @@ struct Value {
     static Value makeSuper(InstancePtr instance, ClassPtr parentKlass);
     static Value makeClosure(ClosureValPtr closure);
     static Value makeAtomic(long long initial);
+    static Value makeChannel(std::shared_ptr<EZChannel> chan);
 };
 
 #include "objects/EZObjects.h"

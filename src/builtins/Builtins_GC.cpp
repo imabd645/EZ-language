@@ -1,7 +1,9 @@
 #include "runtime/RuntimeContext.h"
+#include "runtime/Value.h"
+#include "runtime/Environment.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/EZFuture.h"
-#include "builtins/Builtins.h"
+#include "eventloop/EventLoop.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -156,6 +158,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 slotValues = parentVM->getGlobalSlots();
             }
 
+            EventLoop::instance().retain();
             std::thread([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, tState, threadUpvalues]() {
                 try {
                     BytecodeVM threadVM(globalEnv);
@@ -169,6 +172,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     std::cerr << "[spawn-thread] uncaught: " << e.what() << std::endl;
                     ezFut->set(Value());
                 }
+                EventLoop::instance().release();
             }).detach();
 
             return Value::makeFuture(ezFut);
@@ -182,6 +186,52 @@ void registerGCBuiltins(RuntimeContext& interp) {
     };
     interp.defineGlobal("await", Value::makeNativeFunction("await", 1, awaitFn));
     interp.defineGlobal("sync", Value::makeNativeFunction("sync", 1, awaitFn));
+
+    interp.defineGlobal("cancel", Value::makeNativeFunction("cancel", 1, 
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isFuture()) { interp.runtimeError("cancel() expects future", 0, ""); return Value(); }
+            args[0].asFuture()->cancel();
+            return Value();
+        }));
+
+    interp.defineGlobal("awaitAll", Value::makeNativeFunction("awaitAll", 1, 
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) { interp.runtimeError("awaitAll() expects array of futures", 0, ""); return Value(); }
+            auto arr = args[0].asArray();
+            std::vector<Value> results;
+            for (auto& v : *arr) {
+                if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
+                auto fut = v.asFuture();
+                fut->wait();
+                results.push_back(fut->get());
+            }
+            return Value::makeArray(results);
+        }));
+
+    interp.defineGlobal("awaitAny", Value::makeNativeFunction("awaitAny", 1, 
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) { interp.runtimeError("awaitAny() expects array of futures", 0, ""); return Value(); }
+            auto arr = args[0].asArray();
+            if (arr->empty()) { interp.runtimeError("awaitAny() cannot accept empty array", 0, ""); return Value(); }
+            
+            // For awaitAny, we check if any are ready.
+            // If none are ready, we could wait on multiple events via WaitForMultipleObjects,
+            // but since futures hold handles, we can collect them.
+            std::vector<HANDLE> handles;
+            for (auto& v : *arr) {
+                if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
+                handles.push_back(v.asFuture()->hEvent);
+            }
+            
+            DWORD result = WaitForMultipleObjects(handles.size(), handles.data(), FALSE, INFINITE);
+            if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
+                size_t index = result - WAIT_OBJECT_0;
+                return (*arr)[index].asFuture()->get();
+            }
+            
+            interp.runtimeError("awaitAny() failed to wait", 0, "");
+            return Value();
+        }));
 
 
 

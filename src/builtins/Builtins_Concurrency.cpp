@@ -7,6 +7,7 @@
 #include <iostream>
 #include "eventloop/EventLoop.h"
 #include "runtime/EZFuture.h"
+#include "runtime/EZChannel.h"
 
 void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // mutex()
@@ -119,4 +120,63 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
         });
         
     interp.defineGlobal("Atomic", Value(atomicClass));
+
+    // class Channel
+    auto channelClass = std::make_shared<EZClass>("Channel");
+    
+    // Channel.init()
+    channelClass->methods["init"] = Value::makeNativeFunction("init", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            instance->setProperty("_channel", Value::makeChannel(std::make_shared<EZChannel>()));
+            return args[0];
+        });
+        
+    channelClass->methods["send"] = Value::makeNativeFunction("send", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            {
+                std::lock_guard<std::mutex> guard(chan->mtx);
+                if (chan->closed) {
+                    interp.runtimeError("Cannot send on closed channel", 0, "");
+                    return Value();
+                }
+                chan->q.push(args[1]);
+            }
+            chan->cv.notify_one();
+            return Value(true);
+        });
+        
+    channelClass->methods["receive"] = Value::makeNativeFunction("receive", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            
+            std::unique_lock<std::mutex> lock(chan->mtx);
+            chan->cv.wait(lock, [&]() {
+                return !chan->q.empty() || chan->closed;
+            });
+            
+            if (!chan->q.empty()) {
+                Value v = chan->q.front();
+                chan->q.pop();
+                return v;
+            }
+            return Value(); // Return nil if closed and empty
+        });
+        
+    channelClass->methods["close"] = Value::makeNativeFunction("close", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            {
+                std::lock_guard<std::mutex> guard(chan->mtx);
+                chan->closed = true;
+                chan->cv.notify_all();
+            }
+            return Value(true);
+        });
+
+    interp.defineGlobal("Channel", Value(channelClass));
 }

@@ -55,6 +55,9 @@ struct EZFuture {
     bool isError() const { return hasError; }
     std::string getError() const { return errorMsg; }
 
+    // Cancel the future, making it throw "Cancelled"
+    void cancel() { setError("Cancelled"); }
+
     // Block until ready, then return the stored result.
     Value get();
 

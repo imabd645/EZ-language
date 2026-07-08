@@ -190,6 +190,7 @@ inline std::string Value::toString() const {
         case ValueType::CLOSURE_VAL: return "<function>";
         case ValueType::INTERFACE: return "<interface " + asInterface()->name + ">";
         case ValueType::MUTEX: return "<mutex>";
+        case ValueType::CHANNEL: return "<channel>";
         default: return "<unknown>";
     }
 }
@@ -215,6 +216,7 @@ inline std::string Value::typeName() const {
         case ValueType::SUPER: return "super";
         case ValueType::CLOSURE_VAL: return "function";
         case ValueType::INTERFACE: return "interface";
+        case ValueType::CHANNEL: return "channel";
         default: return "unknown";
     }
 }
@@ -280,6 +282,7 @@ inline Value Value::makeClosure(ClosureValPtr closure) {
     return Value(closure);
 }
 inline Value Value::makeAtomic(long long initial) { return Value(std::make_shared<EZAtomic>(initial)); }
+inline Value Value::makeChannel(std::shared_ptr<EZChannel> chan) { return Value(chan); }
 
 
 #endif // EZATOMIC_H

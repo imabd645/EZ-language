@@ -197,9 +197,9 @@ void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("awaitAll", Value::makeNativeFunction("awaitAll", 1, 
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("awaitAll() expects array of futures", 0, ""); return Value(); }
-            auto arr = args[0].asArray();
+            auto& arr = args[0].asArray();
             std::vector<Value> results;
-            for (auto& v : *arr) {
+            for (auto& v : arr) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
                 auto fut = v.asFuture();
                 fut->wait();
@@ -211,14 +211,14 @@ void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("awaitAny", Value::makeNativeFunction("awaitAny", 1, 
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("awaitAny() expects array of futures", 0, ""); return Value(); }
-            auto arr = args[0].asArray();
-            if (arr->empty()) { interp.runtimeError("awaitAny() cannot accept empty array", 0, ""); return Value(); }
+            auto& arr = args[0].asArray();
+            if (arr.empty()) { interp.runtimeError("awaitAny() cannot accept empty array", 0, ""); return Value(); }
             
             // For awaitAny, we check if any are ready.
             // If none are ready, we could wait on multiple events via WaitForMultipleObjects,
             // but since futures hold handles, we can collect them.
             std::vector<HANDLE> handles;
-            for (auto& v : *arr) {
+            for (auto& v : arr) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
                 handles.push_back(v.asFuture()->hEvent);
             }
@@ -226,7 +226,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             DWORD result = WaitForMultipleObjects(handles.size(), handles.data(), FALSE, INFINITE);
             if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
                 size_t index = result - WAIT_OBJECT_0;
-                return (*arr)[index].asFuture()->get();
+                return arr[index].asFuture()->get();
             }
             
             interp.runtimeError("awaitAny() failed to wait", 0, "");

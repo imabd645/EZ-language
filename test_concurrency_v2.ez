@@ -1,7 +1,7 @@
 out "--- Testing Advanced Concurrency ---"
 
 out "\n1. Testing Channels"
-chan = Channel.init()
+chan = Channel()
 
 task producer() {
     out "Producer: Sending messages..."
@@ -19,9 +19,9 @@ spawn(producer)
 out "Consumer: Waiting for messages..."
 while true {
     msg = chan.receive()
-    if msg == nil {
+    when msg == nil {
         out "Consumer: Channel closed and empty."
-        break
+        escape
     }
     out "Consumer: Received: " + msg
 }

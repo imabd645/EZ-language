@@ -155,8 +155,7 @@ StmtPtr Parser::statement() {
         return taskNode;
     }
     if (isAsync) {
-        error(previous(), "Expected 'task' after 'async' modifier");
-        return nullptr;
+        throw ParseError("Expected 'task' after 'async' modifier", previous().line);
     }
     
     if (match(TokenType::MODEL)) {
@@ -170,7 +169,7 @@ StmtPtr Parser::statement() {
         return modelNode;
     }
     if (isCached || isAudited || isSnapshot || !userDecorators.empty()) {
-        error(previous(), "Decorators can only be applied to 'model' or 'task' declarations");
+        throw ParseError("Decorators can only be applied to 'model' or 'task' declarations", peek().line);
     }
 
     if (match(TokenType::GIVE)) return giveStatement();
@@ -427,10 +426,9 @@ StmtPtr Parser::taskStatement(bool isAsync) {
                 pType = std::make_shared<TypeAST>("Any");
             }
             paramTypes.push_back(pType);
-                paramTypes.push_back(std::make_shared<TypeAST>("Any"));
-                defaultValues.push_back(nullptr);
+            defaultValues.push_back(nullptr);
                 if (check(TokenType::COMMA)) {
-                    error(peek(), "Rest parameter must be the last parameter");
+                    throw ParseError("Rest parameter must be the last parameter", peek().line);
                 }
                 break;
             }
@@ -456,7 +454,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
                 hadDefault = true;
             } else {
                 if (hadDefault) {
-                    error(paramToken, "Required parameter cannot follow optional parameter");
+                    throw ParseError("Required parameter cannot follow optional parameter", paramToken.line);
                 }
                 defaultValues.push_back(nullptr);
             }
@@ -482,26 +480,19 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (!isRequires) match(TokenType::ENSURES);
         
         // Parse one or more comma-separated condition/message pairs
-        do {
+        while (true) {
             skipNewlines();
             ExprPtr condition = expression();
             std::string message;
             if (match(TokenType::COMMA)) {
-                // Check if the next thing is a string literal (the message)
-                // vs. another condition (for the next clause)
-                // If it's a string literal, consume as the message
                 if (check(TokenType::STRING)) {
                     advance();
                     message = std::get<std::string>(previous().literal);
                 } else {
-                    // Not a string — this comma starts another clause
-                    // We'll push what we have and let the outer loop handle it
                     if (isRequires) requiresClauses.push_back({condition, message});
                     else ensuresClauses.push_back({condition, message});
                     skipNewlines();
-                    // Re-check for another requires/ensures on same line
-                    if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES)) {
-                        // Another condition on the same keyword line
+                    if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES) && !check(TokenType::LBRACE)) {
                         continue;
                     }
                     break;
@@ -509,7 +500,15 @@ StmtPtr Parser::taskStatement(bool isAsync) {
             }
             if (isRequires) requiresClauses.push_back({condition, message});
             else ensuresClauses.push_back({condition, message});
-        } while (false); // single pair per line; multiple lines handled by outer while
+            
+            if (match(TokenType::COMMA)) {
+                skipNewlines();
+                if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES) && !check(TokenType::LBRACE)) {
+                    continue;
+                }
+            }
+            break;
+        }
         
         skipNewlines();
     }
@@ -642,7 +641,7 @@ StmtPtr Parser::tryStatement() {
     }
     
     if (catchBlocks.empty()) {
-        error(peek(), "Expected at least one 'catch' block");
+        throw ParseError("Expected at least one 'catch' block", peek().line);
     }
     
     return makeTryStmt(line, column, length, filename, tryBlock, std::move(catchBlocks));
@@ -772,10 +771,9 @@ StmtPtr Parser::exportStatement() {
     skipNewlines();
     
     // Parse the inner declaration
-    StmtPtr inner = statement();
+    StmtPtr inner = declaration();
     if (!inner) {
-        error(tok, "Expected declaration after 'export'");
-        return nullptr;
+        throw ParseError("Expected declaration after 'export'", tok.line);
     }
     return makeExportStmt(tok.line, tok.column, (int)tok.lexeme.length(), tok.filename, std::move(inner));
 }
@@ -841,7 +839,7 @@ StmtPtr Parser::modelStatement() {
         
         // Check for init (constructor)
         if (match(TokenType::INIT)) {
-            if (isStatic) error(previous(), "Constructor cannot be static");
+            if (isStatic) throw ParseError("Constructor cannot be static", previous().line);
             consume(TokenType::LPAREN, "Expected '(' after 'init'");
             
             if (!check(TokenType::RPAREN)) {
@@ -860,7 +858,7 @@ StmtPtr Parser::modelStatement() {
                         initDefaultValues.push_back(ternary());
                         hadDefault = true;
                     } else {
-                        if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");
+                        if (hadDefault) throw ParseError("Required parameter cannot follow optional parameter", paramToken.line);
                         initDefaultValues.push_back(nullptr);
                     }
                 } while (match(TokenType::COMMA));
@@ -933,7 +931,7 @@ StmtPtr Parser::modelStatement() {
                         defaultValues.push_back(ternary());
                         hadDefault = true;
                     } else {
-                        if (hadDefault) error(paramToken, "Required parameter cannot follow optional parameter");
+                        if (hadDefault) throw ParseError("Required parameter cannot follow optional parameter", paramToken.line);
                         defaultValues.push_back(nullptr);
                     }
                 } while (match(TokenType::COMMA));
@@ -978,8 +976,7 @@ StmtPtr Parser::modelStatement() {
         } else {
             // Property declaration
             if (isAsync) {
-                error(peek(), "Expected 'task' after 'async' modifier");
-                advance(); // Avoid infinite loop
+                throw ParseError("Expected 'task' after 'async' modifier", peek().line);
             }
             else if (check(TokenType::IDENTIFIER)) {
                 Token propName = advance();
@@ -1051,8 +1048,7 @@ StmtPtr Parser::modelStatement() {
                 member.validators = std::move(propValidators);
                 members.push_back(member);
             } else {
-                error(peek(), "Unexpected token in model body");
-                advance(); // Avoid infinite loop
+                throw ParseError("Unexpected token in model body", peek().line);
             }
         }
         }

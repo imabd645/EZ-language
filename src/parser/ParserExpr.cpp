@@ -14,33 +14,39 @@ ExprPtr Parser::assignment() {
         
         // Handle compound assignment
         if (op.type != TokenType::EQUAL) {
-            TokenType binOp;
-            switch (op.type) {
-                case TokenType::PLUS_EQUAL: binOp = TokenType::PLUS; break;
-                case TokenType::MINUS_EQUAL: binOp = TokenType::MINUS; break;
-                case TokenType::STAR_EQUAL: binOp = TokenType::STAR; break;
-                case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
-                default: binOp = TokenType::PLUS; break;
+            if (std::holds_alternative<std::shared_ptr<TupleExpr>>(expr->variant)) {
+                throw ParseError("Compound assignment is not allowed for tuple destructuring", op.line);
             }
-            value = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, binOp, value);
         }
         
         if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr->variant)) {
+            if (op.type != TokenType::EQUAL) {
+                TokenType binOp;
+                switch (op.type) {
+                    case TokenType::PLUS_EQUAL: binOp = TokenType::PLUS; break;
+                    case TokenType::MINUS_EQUAL: binOp = TokenType::MINUS; break;
+                    case TokenType::STAR_EQUAL: binOp = TokenType::STAR; break;
+                    case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
+                    default: binOp = TokenType::PLUS; break;
+                }
+                value = makeBinaryExpr(op.line, op.column, op.lexeme.length(), op.filename, expr, binOp, value);
+            }
             std::string name = std::get<std::shared_ptr<IdentifierExpr>>(expr->variant)->name;
             return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, name, value);
         } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(expr->variant)) {
             auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(expr->variant);
-            // Handle obj[idx] = val where obj can be complex
-            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, "", value, indexExpr->index, indexExpr->object);
+            std::optional<TokenType> compoundOp = (op.type != TokenType::EQUAL) ? std::make_optional(op.type) : std::nullopt;
+            return makeAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, "", value, indexExpr->index, indexExpr->object, compoundOp);
         } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr->variant)) {
             auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(expr->variant);
-            return makeSetExpr(op.line, op.column, op.lexeme.length(), op.filename, propExpr->object, propExpr->property, value);
+            std::optional<TokenType> compoundOp = (op.type != TokenType::EQUAL) ? std::make_optional(op.type) : std::nullopt;
+            return makeSetExpr(op.line, op.column, op.lexeme.length(), op.filename, propExpr->object, propExpr->property, value, compoundOp);
         } else if (std::holds_alternative<std::shared_ptr<TupleExpr>>(expr->variant)) {
             auto tupleExpr = std::get<std::shared_ptr<TupleExpr>>(expr->variant);
             return makeDestructureAssignExpr(op.line, op.column, op.lexeme.length(), op.filename, tupleExpr->elements, std::move(value));
         }
         
-        error(op, "Invalid assignment target");
+        throw ParseError("Invalid assignment target", op.line);
     }
     
     return expr;
@@ -380,41 +386,32 @@ ExprPtr Parser::primary() {
     // Dictionary literal
     if (match(TokenType::LBRACE)) {
         int line = previous().line;
-    int column = previous().column;
+        int column = previous().column;
     int length = previous().lexeme.length();
         std::vector<std::pair<ExprPtr, ExprPtr>> pairs;
         
         skipNewlines();
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
-            ExprPtr expr = expression();
+            ExprPtr key = ternary();
             
-            if (std::holds_alternative<std::shared_ptr<AssignExpr>>(expr->variant)) {
-                 auto assign = std::get<std::shared_ptr<AssignExpr>>(expr->variant);
-                 ExprPtr key = makeLiteralExpr(expr->line, expr->column, expr->length, expr->filename, assign->name);
-                 pairs.push_back({key, assign->value});
-            } else {
-                 ExprPtr key = expr;
-                 
-                 bool isAssign = match(TokenType::EQUAL);
-                 if (!isAssign) {
-                      consume(TokenType::COLON, "Expected ':' or '=' after dictionary key");
-                 }
-                 
-                 // Support keys like {x: 1} or {x=1} -> {"x": 1}
-                 // If the key is an identifier, convert it to a string literal
-                 if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(key->variant)) {
-                      auto ident = std::get<std::shared_ptr<IdentifierExpr>>(key->variant);
-                      key = makeLiteralExpr(key->line, key->column, key->length, key->filename, ident->name);
-                 }
-                 
-                 ExprPtr value = expression();
-                 pairs.push_back({key, value});
+            consume(TokenType::COLON, "Expected ':' after dictionary key");
+            
+            // Support keys like {x: 1} -> {"x": 1}
+            // If the key is an identifier, convert it to a string literal
+            if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(key->variant)) {
+                auto ident = std::get<std::shared_ptr<IdentifierExpr>>(key->variant);
+                key = makeLiteralExpr(key->line, key->column, key->length, key->filename, ident->name);
             }
+            
+            ExprPtr value = expression();
+            pairs.push_back({key, value});
             
             if (match(TokenType::COMMA)) {
                 skipNewlines();
             } else if (check(TokenType::NEWLINE)) {
                 skipNewlines();
+            } else if (!check(TokenType::RBRACE)) {
+                throw ParseError("Expected ',' or newline between dictionary entries", peek().line);
             }
         }
         

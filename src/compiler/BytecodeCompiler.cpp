@@ -1,5 +1,6 @@
 #include "compiler/BytecodeCompiler.h"
 #include <iostream>
+#include <memory>
 #include <chrono>
 #include <fstream>
 #include <sstream>
@@ -32,6 +33,10 @@ BytecodeCompiler::BytecodeCompiler() : current(nullptr), currentLine(0), hadErro
 uint16_t BytecodeCompiler::globalSlotFor(const std::string& name) {
     auto it = globalSlots.find(name);
     if (it != globalSlots.end()) return it->second;
+    if (nextGlobalSlot > 65535) {
+        errorAt("Too many global variables (max 65535)", currentLine);
+        return 0;
+    }
     uint16_t slot = nextGlobalSlot++;
     globalSlots[name] = slot;
     return slot;
@@ -44,7 +49,8 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     compiledFunctions.clear();
 
     // Create main function compiler
-    current = new Compiler("<main>", 0, nullptr);
+    std::unique_ptr<Compiler> compilerFrame(new Compiler("<main>", 0, nullptr));
+    current = compilerFrame.get();
 
     // Compile all statements
     for (const auto& stmt : statements) {
@@ -61,7 +67,6 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     if (hadError) {
         result.success = false;
         result.error = errorMessage;
-        delete current;
         current = nullptr;
         return result;
     }
@@ -81,7 +86,6 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     compiledFunctions.push_back(current->function);
     result.functions = compiledFunctions;
 
-    delete current;
     current = nullptr;
 
     return result;
@@ -93,7 +97,8 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     Compiler* enclosing = current;
 
     // Create a new compiler scope for this function
-    current = new Compiler(name, task.params.size(), enclosing);
+    std::unique_ptr<Compiler> compilerFrame(new Compiler(name, task.params.size(), enclosing));
+    current = compilerFrame.get();
     
     // Inherit class context (needed for 'super')
     if (enclosing) {
@@ -122,14 +127,12 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         emitOp(OpCode::EQUAL);
         size_t hitJump = emitJump(OpCode::JUMP_IF_FALSE);
         
-        emitOp(OpCode::POP); // pop boolean
-        emitOp(OpCode::POP); // pop nil
+        emitOp(OpCode::POP); // pop nil (miss branch)
         
         size_t skipHit = emitJump(OpCode::JUMP);
         
         patchJump(hitJump);
-        emitOp(OpCode::POP); // pop boolean
-        emitReturn();
+        emitReturn(); // Return cached value
         
         patchJump(skipHit);
     }
@@ -278,7 +281,6 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     // The index assigned here is what CLOSURE will use.
     compiledFunctions.push_back(result);
 
-    delete current;
     current = enclosing;
 
     return result;

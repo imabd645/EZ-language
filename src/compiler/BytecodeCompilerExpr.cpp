@@ -50,8 +50,7 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
             compileNew(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SetExpr>>) {
             compileSet(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) {
-            compileDictionary(*arg);
+
         } else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) {
             compileSpread(*arg);
         } else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) {
@@ -133,7 +132,7 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
             emitOp(OpCode::SUPER);
             return;
         } else {
-            error("Cannot use 'super' outside of a model with a parent.");
+            errorAt("Cannot use 'super' outside of a model with a parent.", currentLine);
             return;
         }
     }
@@ -198,7 +197,7 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         case TokenType::GREATER:       emitOp(OpCode::GREATER);    break;
         case TokenType::GREATER_EQUAL: emitOp(OpCode::GREATER_EQ); break;
         default:
-            error("Unknown binary operator: " + std::to_string(static_cast<int>(expr.op)));
+            errorAt("Unknown binary operator: " + std::to_string(static_cast<int>(expr.op)), currentLine);
     }
 }
 
@@ -238,7 +237,7 @@ void BytecodeCompiler::compileUnary(const UnaryExpr& expr) {
         case TokenType::MINUS: emitOp(OpCode::NEGATE);  break;
         case TokenType::NOT:   emitOp(OpCode::NOT);     break;
         case TokenType::TILDE: emitOp(OpCode::BIT_NOT); break;
-        default: error("Unknown unary operator");
+        default: errorAt("Unknown unary operator", currentLine);
     }
 }
 
@@ -314,6 +313,10 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
                   static_cast<uint8_t>(posCount));
     } else if (!hasSpread) {
         // Fast path for normal calls
+        if (expr.arguments.size() > 255) {
+            errorAt("Too many arguments (max 255)", currentLine);
+            return;
+        }
         for (const auto& arg : expr.arguments) compileExpr(arg);
         emitBytes(static_cast<uint8_t>(OpCode::CALL),
                   static_cast<uint8_t>(expr.arguments.size()));
@@ -351,6 +354,10 @@ void BytecodeCompiler::compileArray(const ArrayExpr& expr) {
 
     if (!hasSpread) {
         // Fast path for normal arrays
+        if (expr.elements.size() > 255) {
+            errorAt("Too many array elements (max 255)", currentLine);
+            return;
+        }
         for (const auto& elem : expr.elements) compileExpr(elem);
         emitBytes(static_cast<uint8_t>(OpCode::MAKE_ARRAY),
                   static_cast<uint8_t>(expr.elements.size()));
@@ -375,6 +382,10 @@ void BytecodeCompiler::compileTuple(const TupleExpr& expr) {
         compileExpr(elem);
     }
     emitOp(OpCode::BUILD_TUPLE);
+    if (expr.elements.size() > 255) {
+        errorAt("Too many tuple elements (max 255)", currentLine);
+        return;
+    }
     emitByte(static_cast<uint8_t>(expr.elements.size()));
 }
 
@@ -383,7 +394,20 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
         // arr[idx] = val  — INDEX_SET leaves value on stack already
         compileExpr(expr.object);
         compileExpr(expr.index);
-        compileExpr(expr.value);
+        if (expr.compoundOp.has_value()) {
+            emitOp(OpCode::DUP2);
+            emitOp(OpCode::INDEX_GET);
+            compileExpr(expr.value);
+            switch (expr.compoundOp.value()) {
+                case TokenType::PLUS_EQUAL: emitOp(OpCode::ADD); break;
+                case TokenType::MINUS_EQUAL: emitOp(OpCode::SUB); break;
+                case TokenType::STAR_EQUAL: emitOp(OpCode::MUL); break;
+                case TokenType::SLASH_EQUAL: emitOp(OpCode::DIV); break;
+                default: emitOp(OpCode::ADD); break;
+            }
+        } else {
+            compileExpr(expr.value);
+        }
         emitOp(OpCode::INDEX_SET);
     } else {
         compileExpr(expr.value);
@@ -664,7 +688,7 @@ void BytecodeCompiler::emitLoadSelf() {
         return;
     }
 
-    error("Cannot use 'self' or 'super' outside of a model method");
+    errorAt("Cannot use 'self' or 'super' outside of a model method", currentLine);
 }
 
 void BytecodeCompiler::compileNew(const NewExpr& expr) {
@@ -675,13 +699,34 @@ void BytecodeCompiler::compileNew(const NewExpr& expr) {
     emitOp(OpCode::NEW_INSTANCE);
     emitBytes(static_cast<uint8_t>((modelIdx >> 8) & 0xFF),
               static_cast<uint8_t>(modelIdx & 0xFF));
+    if (expr.arguments.size() > 255) {
+        errorAt("Too many arguments to 'new' (max 255)", currentLine);
+        return;
+    }
     emitByte(static_cast<uint8_t>(expr.arguments.size()));
 }
 
 void BytecodeCompiler::compileSet(const SetExpr& expr) {
     compileExpr(expr.object);
-    compileExpr(expr.value);
     size_t nameIdx = identifierConstant(expr.name);
+
+    if (expr.compoundOp.has_value()) {
+        emitOp(OpCode::DUP);
+        emitOp(OpCode::LOAD_PROPERTY);
+        emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                  static_cast<uint8_t>(nameIdx & 0xFF));
+        compileExpr(expr.value);
+        switch (expr.compoundOp.value()) {
+            case TokenType::PLUS_EQUAL: emitOp(OpCode::ADD); break;
+            case TokenType::MINUS_EQUAL: emitOp(OpCode::SUB); break;
+            case TokenType::STAR_EQUAL: emitOp(OpCode::MUL); break;
+            case TokenType::SLASH_EQUAL: emitOp(OpCode::DIV); break;
+            default: emitOp(OpCode::ADD); break;
+        }
+    } else {
+        compileExpr(expr.value);
+    }
+    
     emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
     emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(nameIdx & 0xFF));
@@ -692,12 +737,16 @@ void BytecodeCompiler::compileDictionary(const DictionaryExpr& expr) {
         compileExpr(key);
         compileExpr(value);
     }
+    if (expr.pairs.size() > 255) {
+        errorAt("Too many dictionary entries (max 255)", currentLine);
+        return;
+    }
     emitBytes(static_cast<uint8_t>(OpCode::MAKE_DICT),
               static_cast<uint8_t>(expr.pairs.size()));
 }
 
 void BytecodeCompiler::compileSpread(const SpreadExpr& expr) {
-    error("Spread expressions are only allowed inside arrays or function calls.");
+    errorAt("Spread expressions are only allowed inside arrays or function calls.", currentLine);
 }
 
 // ============================================================================

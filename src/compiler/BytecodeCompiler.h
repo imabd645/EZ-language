@@ -171,8 +171,8 @@ private:
     void emitLoadSelf();
     
     // === Optimizations ===
-    void optimizeLastJump();  // Convert JUMP_IF_FALSE + JUMP to single op
-    void foldConstants();     // Compile-time constant folding
+      // Convert JUMP_IF_FALSE + JUMP to single op
+    
     bool isConstant(const ExprPtr& expr, Constant& out);
     
     // === Loop Handling ===

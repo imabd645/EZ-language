@@ -2,6 +2,7 @@
 #define AST_EXPR_H
 
 #include "AST_Core.h"
+#include <optional>
 
 // Literal expression (numbers, strings, booleans, nil)
 struct LiteralExpr {
@@ -82,9 +83,10 @@ struct AssignExpr {
     ExprPtr value;
     ExprPtr index;    // For indexed assignment (arr[i] = val)
     ExprPtr object;   // For complex indexed assignment (obj.prop[i] = val)
+    std::optional<TokenType> compoundOp;
     
-    AssignExpr(const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr)
-        : name(name), value(std::move(value)), index(std::move(index)), object(std::move(object)) {}
+    AssignExpr(const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr, std::optional<TokenType> compoundOp = std::nullopt)
+        : name(name), value(std::move(value)), index(std::move(index)), object(std::move(object)), compoundOp(compoundOp) {}
 };
 
 struct LogicalExpr {
@@ -144,9 +146,10 @@ struct SetExpr {
     ExprPtr object;
     std::string name;
     ExprPtr value;
+    std::optional<TokenType> compoundOp;
     
-    SetExpr(ExprPtr obj, const std::string& name, ExprPtr val)
-        : object(std::move(obj)), name(name), value(std::move(val)) {}
+    SetExpr(ExprPtr obj, const std::string& name, ExprPtr val, std::optional<TokenType> compoundOp = std::nullopt)
+        : object(std::move(obj)), name(name), value(std::move(val)), compoundOp(compoundOp) {}
 };
 
 // Dictionary literal expression { key: value, ... }

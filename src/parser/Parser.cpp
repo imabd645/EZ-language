@@ -1,9 +1,8 @@
 #include "Parser.h"
 #include <iostream>
-#include "parser/Parser.h"
-#include <iostream>
+#include "vm/BytecodeVM.h"
 
-Parser::Parser(const std::vector<Token>& tokens) : tokens(tokens) {}
+Parser::Parser(std::vector<Token> tokens) : tokens(std::move(tokens)) {}
 
 bool Parser::isAtEnd() const {
     return peek().type == TokenType::END_OF_FILE;
@@ -61,17 +60,7 @@ void Parser::skipNewlines() {
     while (match(TokenType::NEWLINE)) {}
 }
 
-void Parser::consumeNewlines() {
-    if (!isAtEnd() && !check(TokenType::OTHER)) {
-        // Expect at least one newline or end of file after statements
-        if (!check(TokenType::NEWLINE) && !check(TokenType::END_OF_FILE) && !check(TokenType::RBRACE)) {
-            // Allow no newline if we're at end or before 'other'
-        }
-    }
-    skipNewlines();
-}
 
-#include "vm/BytecodeVM.h"
 
 void Parser::error(const Token& token, const std::string& message) {
     hadError = true;
@@ -100,10 +89,21 @@ void Parser::error(const Token& token, const std::string& message) {
 void Parser::synchronize() {
     advance();
     
+    int depth = 0;
     while (!isAtEnd()) {
-        if (previous().type == TokenType::NEWLINE) return;
+        if (previous().type == TokenType::NEWLINE && depth == 0) return;
         
         switch (peek().type) {
+            case TokenType::LBRACE:
+            case TokenType::LPAREN:
+            case TokenType::LBRACKET:
+                depth++;
+                break;
+            case TokenType::RBRACE:
+            case TokenType::RPAREN:
+            case TokenType::RBRACKET:
+                if (depth > 0) depth--;
+                break;
             case TokenType::TASK:
             case TokenType::WHEN:
             case TokenType::WHILE:
@@ -113,7 +113,8 @@ void Parser::synchronize() {
             case TokenType::GIVE:
             case TokenType::ESCAPE:
             case TokenType::SKIP:
-                return;
+                if (depth == 0) return;
+                break;
             default:
                 break;
         }

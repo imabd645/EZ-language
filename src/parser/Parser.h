@@ -16,7 +16,7 @@ public:
 
 class Parser {
 public:
-    explicit Parser(const std::vector<Token>& tokens);
+    explicit Parser(std::vector<Token> tokens);
     std::vector<StmtPtr> parse();
     bool hasError() const { return hadError; }
 
@@ -38,7 +38,7 @@ private:
     
     // Skip newlines
     void skipNewlines();
-    void consumeNewlines();
+
     
     // Error handling
     void error(const Token& token, const std::string& message);

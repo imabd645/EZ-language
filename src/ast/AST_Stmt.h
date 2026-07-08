@@ -320,8 +320,8 @@ inline ExprPtr makeTupleExpr(int line, int column, int length, const std::string
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<TupleExpr>(std::move(elements)));
 }
 
-inline ExprPtr makeAssignExpr(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object)));
+inline ExprPtr makeAssignExpr(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr, std::optional<TokenType> compoundOp = std::nullopt) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object), compoundOp));
 }
 
 inline ExprPtr makeDestructureAssignExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> targets, ExprPtr value) {
@@ -415,8 +415,8 @@ inline ExprPtr makeNewExpr(int line, int column, int length, const std::string& 
     return std::make_shared<Expr>(line, column, length, file, std::make_shared<NewExpr>(className, std::move(args), std::move(typeArgs)));
 }
 
-inline ExprPtr makeSetExpr(int line, int column, int length, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SetExpr>(std::move(object), name, std::move(value)));
+inline ExprPtr makeSetExpr(int line, int column, int length, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value, std::optional<TokenType> compoundOp = std::nullopt) {
+    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SetExpr>(std::move(object), name, std::move(value), compoundOp));
 }
 
 inline ExprPtr makeDictionaryExpr(int line, int column, int length, const std::string& file, std::vector<std::pair<ExprPtr, ExprPtr>> pairs) {

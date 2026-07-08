@@ -2,6 +2,7 @@
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
+#include <memory>
 namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
 #include "lexer/Lexer.h"
@@ -408,7 +409,7 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
 
 void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
     if (!current) {
-        error("emitClosure: no active compiler");
+        errorAt("emitClosure: no active compiler", currentLine);
         return;
     }
 
@@ -499,7 +500,7 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
             emitOp(OpCode::LOAD_NIL);
         }
 
-        if (current && current->function->isMethod && current->isCached) {
+        if (current && current->isCached) {
             size_t nameIdx = identifierConstant(current->function->name);
             emitOp(OpCode::STORE_CACHED_RESULT);
             emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
@@ -565,7 +566,7 @@ void BytecodeCompiler::compileContractChecks(const std::vector<std::pair<ExprPtr
 
 void BytecodeCompiler::compileEscape(const EscapeStmt& /*stmt*/) {
     if (loopStack.empty()) {
-        error("'escape' outside of loop");
+        errorAt("'escape' outside of loop", currentLine);
         return;
     }
     emitBreak();
@@ -573,7 +574,7 @@ void BytecodeCompiler::compileEscape(const EscapeStmt& /*stmt*/) {
 
 void BytecodeCompiler::compileSkip(const SkipStmt& /*stmt*/) {
     if (loopStack.empty()) {
-        error("'skip' outside of loop");
+        errorAt("'skip' outside of loop", currentLine);
         return;
     }
     emitContinue();
@@ -676,7 +677,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                             if (file.is_open()) {
                                 absolutePath = mainEz;
                             } else {
-                                error("Could not find entry point in module directory '" + libPath + "'");
+                                errorAt("Could not find entry point in module directory '" + libPath + "'", currentLine);
                                 return;
                             }
                         }
@@ -693,7 +694,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                             if (file.is_open()) {
                                 absolutePath = localEzPath;
                             } else {
-                                error("Could not find module '" + path + "'");
+                                errorAt("Could not find module '" + path + "'", currentLine);
                                 return;
                             }
                         }
@@ -708,7 +709,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     
     static std::unordered_set<std::string> compilingModules;
     if (compilingModules.count(absolutePath)) {
-        error("Circular dependency detected when importing '" + absolutePath + "'");
+        errorAt("Circular dependency detected when importing '" + absolutePath + "'", currentLine);
         return;
     }
     compilingModules.insert(absolutePath);
@@ -736,14 +737,14 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         Lexer lexer(source, absolutePath);
         auto tokens = lexer.tokenize();
         if (lexer.hasError()) {
-            error("Lexer error in module '" + absolutePath + "'");
+            errorAt("Lexer error in module '" + absolutePath + "'", currentLine);
             return;
         }
         
         Parser parser(tokens);
         statements = parser.parse();
         if (parser.hasError()) {
-            error("Parser error in module '" + absolutePath + "'");
+            errorAt("Parser error in module '" + absolutePath + "'", currentLine);
             return;
         }
         astCache[absolutePath] = statements;
@@ -779,9 +780,9 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         patchJump(skipExec);
     } else {
         // Namespaced import: wrap in a module closure and return a dictionary of locals
-        Compiler moduleCompiler(alias + "_module", 0, current);
+        std::unique_ptr<Compiler> moduleCompiler(new Compiler(alias + "_module", 0, current));
         Compiler* previous = current;
-        current = &moduleCompiler;
+        current = moduleCompiler.get();
 
         // Force module top-level to be locals by starting at depth 1
         current->scopeDepth = 1;
@@ -1200,6 +1201,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
             beginScope();
             if (!cb.varName.empty()) {
                 int slot = addLocal(cb.varName);
+                current->locals.back().isStackResident = false;
                 markInitialized();
                 // Exception is on stack. Store it into the local variable slot.
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
@@ -1219,6 +1221,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
             beginScope();
             if (!cb.varName.empty()) {
                 int slot = addLocal(cb.varName);
+                current->locals.back().isStackResident = false;
                 markInitialized();
                 // Exception is on stack. Store it into the local variable slot.
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
@@ -1398,7 +1401,7 @@ void BytecodeCompiler::emitOp(OpCode op) {
 void BytecodeCompiler::emitConstant(const Constant& constant) {
     size_t idx = makeConstant(constant);
     if (idx > 65535) {
-        error("Too many constants in one chunk (max 65535)");
+        errorAt("Too many constants in one chunk (max 65535)", currentLine);
         return;
     }
     emitOp(OpCode::LOAD_CONST);
@@ -1532,18 +1535,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
     return false;
 }
 
-void BytecodeCompiler::optimizeLastJump() {
-    auto& chunk = currentChunk();
-    if (chunk.code.size() >= 2) {
-        if (chunk.code.back() == static_cast<uint8_t>(OpCode::POP)) {
-            uint8_t prev = chunk.code[chunk.code.size() - 2];
-            // If we pushed a constant and then immediately popped it, remove both
-            if (prev == static_cast<uint8_t>(OpCode::LOAD_CONST)) {
-                // Actually LOAD_CONST is 3 bytes, let's keep it simple for now
-            }
-        }
-    }
-}
+
 
 void BytecodeCompiler::startLoop() {
     LoopContext loop;
@@ -1556,7 +1548,7 @@ void BytecodeCompiler::endLoop() {
 }
 
 void BytecodeCompiler::emitBreak() {
-    if (loopStack.empty()) { error("'break' outside of loop"); return; }
+    if (loopStack.empty()) { errorAt("'break' outside of loop", currentLine); return; }
     // NOTE: do NOT pop a phantom value here; the value stack is balanced
     // at this point by the loop body itself.
     size_t jumpOffset = emitJump(OpCode::JUMP);
@@ -1564,7 +1556,7 @@ void BytecodeCompiler::emitBreak() {
 }
 
 void BytecodeCompiler::emitContinue() {
-    if (loopStack.empty()) { error("'continue' outside of loop"); return; }
+    if (loopStack.empty()) { errorAt("'continue' outside of loop", currentLine); return; }
     emitLoop(loopStack.back().start);
 }
 

@@ -1,3 +1,4 @@
+
 #ifndef EZCLOSURE_H
 #define EZCLOSURE_H
 
@@ -14,11 +15,7 @@ struct EZClosure {
     std::vector<UpvalueObj*> upvalues;
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
 
-    void traverse(const ValueVisitor& visit) const {
-        for (UpvalueObj* uv : upvalues) {
-            if (uv) visit(uv->closed);
-        }
-    }
+    void traverse(const ValueVisitor& visit) const;
 };
 
 

@@ -21,13 +21,4 @@ struct EZBoundMethod {
     }
 };
 
-#include <atomic>
-
-struct UpvalueObj {
-    std::atomic<Value*> location;   // Points to stack slot (open) or &closed (closed)
-    Value  closed;     // When closed, location == &closed
-    UpvalueObj* next;
-};
-
-
 #endif // EZBOUNDMETHOD_H

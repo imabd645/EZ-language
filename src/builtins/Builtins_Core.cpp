@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "runtime/RuntimeContext.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/EZFuture.h"

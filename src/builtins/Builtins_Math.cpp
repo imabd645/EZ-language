@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 #include <cmath>

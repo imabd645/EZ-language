@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 #include "utils/MiniJson.h"
@@ -13,7 +14,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (args[0].isNil()) return Value(0LL);
             if (args[0].isString()) return Value(static_cast<long long>(args[0].asString().length()));
             if (args[0].isArray()) return Value(static_cast<long long>(args[0].asArray().size()));
-            if (args[0].isDictionary()) return Value(static_cast<long long>(args[0].asDictionary().map.size()));
+            if (args[0].isDictionary()) return Value(static_cast<long long>(args[0].asDictionary().size()));
             if (args[0].isBuffer()) return Value(static_cast<long long>(args[0].asBuffer().size()));
             interp.runtimeError("len() expects string or array", 0, ""); return Value();
          }));
@@ -73,9 +74,8 @@ void registerDataBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) { interp.runtimeError("keys() expects dictionary as first argument", 0, ""); return Value(); }
             auto dictPtr = args[0].asDictionaryPtr();
-            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
             std::vector<Value> keys;
-            for (const auto& kv : dictPtr->map) keys.push_back(Value(kv.first));
+            for (const auto& kv : dictPtr->getMapCopy()) keys.push_back(Value(kv.first));
             return Value::makeArray(keys);
         }));
 
@@ -83,9 +83,8 @@ void registerDataBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isInstance()) { interp.runtimeError("properties() expects an instance object", 0, ""); return Value(); }
             auto instancePtr = args[0].asInstance();
-            std::shared_lock<std::shared_mutex> lk(instancePtr->prop_mutex);
             std::vector<Value> keys;
-            for (const auto& kv : instancePtr->properties) keys.push_back(Value(kv.first));
+            for (const auto& kv : instancePtr->getPropertiesCopy()) keys.push_back(Value(kv.first));
             return Value::makeArray(keys);
         }));
 
@@ -93,9 +92,8 @@ void registerDataBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isDictionary()) { interp.runtimeError("values() expects dictionary as first argument", 0, ""); return Value(); }
             auto dictPtr = args[0].asDictionaryPtr();
-            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
             std::vector<Value> vals;
-            for (const auto& kv : dictPtr->map) vals.push_back(kv.second);
+            for (const auto& kv : dictPtr->getMapCopy()) vals.push_back(kv.second);
             return Value::makeArray(vals);
         }));
 
@@ -104,8 +102,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isDictionary()) { interp.runtimeError("has_key() expects dictionary as first argument", 0, ""); return Value(); }
             std::string key = args[1].toString();
             auto dictPtr = args[0].asDictionaryPtr();
-            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-            return Value(dictPtr->map.find(key) != dictPtr->map.end());
+            return Value(dictPtr->has(key));
         }));
 
     interp.defineGlobal("remove", Value::makeNativeFunction("remove", 2,
@@ -116,7 +113,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             int index = static_cast<int>(args[1].asNumber());
             if (index < 0 || index >= static_cast<int>(arr.size())) { interp.runtimeError("remove() index out of bounds", 0, ""); return Value(); }
             Value removed = arr[index];
-            arr.erase(arr.begin() + index);
+            arr.erase(index);
             return removed;
         }));
 
@@ -125,8 +122,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isDictionary()) { interp.runtimeError("dictRemove() expects dictionary", 0, ""); return Value(); }
             std::string key = args[1].toString();
             auto dictPtr = args[0].asDictionaryPtr();
-            std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-            dictPtr->map.erase(key);
+            dictPtr->erase(key);
             return args[0];
         }));
 
@@ -137,7 +133,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             auto& arr = *args[0].asArrayPtr();
             int index = static_cast<int>(args[1].asNumber());
             if (index < 0 || index > static_cast<int>(arr.size())) { interp.runtimeError("insert() index out of bounds", 0, ""); return Value(); }
-            arr.insert(arr.begin() + index, args[2]);
+            arr.insert(index, args[2]);
             return args[0];
         }));
 
@@ -165,7 +161,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 if (start >= len) return Value::makeArray({});
                 if (end > len) end = len;
                 if (start >= end) return Value::makeArray({});
-                return Value::makeArray(std::vector<Value>(arr.begin() + start, arr.begin() + end));
+                auto copy = arr.getElementsCopy(); return Value::makeArray(std::vector<Value>(copy.begin() + start, copy.begin() + end));
             }
             interp.runtimeError("slice() expects string or array", 0, ""); return Value();
          }));
@@ -195,7 +191,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[1].isCallable()) { interp.runtimeError("map() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
             std::vector<Value> result;
-            for (const auto& elem : arr) result.push_back(interp.callFunction(args[1], {elem}, 0, "native"));
+            for (const auto& elem : arr.getElementsCopy()) result.push_back(interp.callFunction(args[1], {elem}, 0, "native"));
             return Value::makeArray(result);
         }));
 
@@ -205,7 +201,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[1].isCallable()) { interp.runtimeError("filter() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
             std::vector<Value> result;
-            for (const auto& elem : arr) {
+            for (const auto& elem : arr.getElementsCopy()) {
                 Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) result.push_back(elem);
             }
@@ -218,7 +214,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[1].isCallable()) { interp.runtimeError("reduce() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
             Value acc = args[2];
-            for (const auto& elem : arr) acc = interp.callFunction(args[1], {acc, elem}, 0, "native");
+            for (const auto& elem : arr.getElementsCopy()) acc = interp.callFunction(args[1], {acc, elem}, 0, "native");
             return acc;
         }));
 
@@ -227,7 +223,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("forEach() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("forEach() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
-            for (const auto& elem : arr) interp.callFunction(args[1], {elem}, 0, "native");
+            for (const auto& elem : arr.getElementsCopy()) interp.callFunction(args[1], {elem}, 0, "native");
             return Value();
         }));
 
@@ -236,7 +232,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("find() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("find() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
-            for (const auto& elem : arr) {
+            for (const auto& elem : arr.getElementsCopy()) {
                 Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) return elem;
             }
@@ -248,7 +244,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("every() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("every() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
-            for (const auto& elem : arr) {
+            for (const auto& elem : arr.getElementsCopy()) {
                 Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (!test.isTruthy()) return Value(false);
             }
@@ -260,7 +256,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("some() expects array as first argument", 0, ""); return Value(); }
             if (!args[1].isCallable()) { interp.runtimeError("some() expects function as second argument", 0, ""); return Value(); }
             const auto& arr = args[0].asArray();
-            for (const auto& elem : arr) {
+            for (const auto& elem : arr.getElementsCopy()) {
                 Value test = interp.callFunction(args[1], {elem}, 0, "native");
                 if (test.isTruthy()) return Value(true);
             }
@@ -275,7 +271,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             }
             if (args[0].isArray()) {
                 const auto& arr = args[0].asArray();
-                for (const auto& elem : arr) {
+                for (const auto& elem : arr.getElementsCopy()) {
                     if (elem.equals(args[1])) return Value(true);
                 }
                 return Value(false);
@@ -283,8 +279,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (args[0].isDictionary()) {
                 std::string key = args[1].toString();
                 auto dictPtr = args[0].asDictionaryPtr();
-                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                return Value(dictPtr->map.find(key) != dictPtr->map.end());
+                return Value(dictPtr->has(key));
             }
             interp.runtimeError("contains() expects string, array, or dictionary", 0, ""); return Value();
          }));
@@ -337,9 +332,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 return Value(s);
             }
             if (args[0].isArray()) {
-                auto arr = args[0].asArray();
-                std::reverse(arr.begin(), arr.end());
-                return Value::makeArrayCopy(arr);
+                auto arr = args[0].asArray().getElementsCopy(); std::reverse(arr.begin(), arr.end()); return Value::makeArray(arr);
             }
             interp.runtimeError("reverse() expects string or array", 0, ""); return Value();
          }));
@@ -347,8 +340,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("sort", Value::makeNativeFunction("sort", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("sort() expects array", 0, ""); return Value(); }
-            auto arr = args[0].asArray();
-            std::sort(arr.begin(), arr.end(), [](const Value& a, const Value& b) {
+            auto arr = args[0].asArray().getElementsCopy(); std::sort(arr.begin(), arr.end(), [](const Value& a, const Value& b) {
                 if (a.isNumber() && b.isNumber()) return a.asNumber() < b.asNumber();
                 return a.toString() < b.toString();
             });
@@ -364,8 +356,10 @@ void registerDataBuiltins(RuntimeContext& interp) {
             std::function<Value(const MiniJson::Value&)> convert;
             convert = [&](const MiniJson::Value& mv) -> Value {
                 if (mv.type == MiniJson::OBJECT) {
-                    Value dv = Value::makeDictionary(); auto& map = dv.asDictionary().map;
-                    for (const auto& name : mv.getMemberNames()) map[name] = convert(mv[name]);
+                    Value dv = Value::makeDictionary(); 
+                    dv.asDictionary().modifyMap([&](auto& m) {
+                        for (const auto& name : mv.getMemberNames()) m[name] = convert(mv[name]);
+                    });
                     return dv;
                 } else if (mv.type == MiniJson::ARRAY) {
                     std::vector<Value> av; for (const auto& item : mv.items) av.push_back(convert(item));
@@ -389,12 +383,11 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 if (v.isDictionary()) {
                     MiniJson::Value mv(MiniJson::OBJECT);
                     auto dictPtr = v.asDictionaryPtr();
-                    std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                    for (const auto& kv : dictPtr->map) mv[kv.first] = convert(kv.second);
+                    for (const auto& kv : dictPtr->getMapCopy()) mv[kv.first] = convert(kv.second);
                     return mv;
                 } else if (v.isArray()) {
                     MiniJson::Value mv(MiniJson::ARRAY);
-                    for (const auto& item : v.asArray()) mv.append(convert(item));
+                    for (const auto& item : v.asArray().getElementsCopy()) mv.append(convert(item));
                     return mv;
                 } else if (v.isString()) return MiniJson::Value(v.asString());
                 else if (v.isNumber()) {
@@ -423,9 +416,8 @@ void registerDataBuiltins(RuntimeContext& interp) {
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
                 auto dictPtr = args[0].asDictionaryPtr();
-                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                auto it = dictPtr->map.find(prop);
-                if (it != dictPtr->map.end()) return it->second;
+                auto it = dictPtr->getMapCopy().find(prop);
+                if (it != dictPtr->getMapCopy().end()) return it->second;
                 return Value();
             }
             if (args[0].isInstance()) {
@@ -440,8 +432,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
                 auto dictPtr = args[0].asDictionaryPtr();
-                std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                dictPtr->map[prop] = args[2];
+                dictPtr->modifyMap([&](auto& m) { m[prop] = args[2]; });
                 return args[0];
             }
             if (args[0].isInstance()) {
@@ -457,8 +448,7 @@ void registerDataBuiltins(RuntimeContext& interp) {
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
                 auto dictPtr = args[0].asDictionaryPtr();
-                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                return Value(dictPtr->map.find(prop) != dictPtr->map.end());
+                return Value((dictPtr->getMapCopy().find(prop) != dictPtr->getMapCopy().end()));
             }
             if (args[0].isInstance()) {
                 return Value(args[0].asInstance()->hasProperty(prop));

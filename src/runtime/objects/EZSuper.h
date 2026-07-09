@@ -14,6 +14,11 @@ struct EZSuper {
     std::shared_ptr<EZClass> parentKlass;
     EZSuper(std::shared_ptr<EZInstance> instance, std::shared_ptr<EZClass> parentKlass) 
         : instance(instance), parentKlass(parentKlass) {}
+        
+    void traverse(const ValueVisitor& visit) const {
+        if (instance) visit(Value(instance));
+        if (parentKlass) visit(Value(parentKlass));
+    }
 };
 
 

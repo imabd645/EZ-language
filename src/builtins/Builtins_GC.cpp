@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
 #include "runtime/Environment.h"
@@ -56,7 +57,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             if (args.size() > 0 && args[0].isInstance()) {
                 auto inst = args[0].asInstance();
                 std::string message = args.size() > 1 ? args[1].toString() : "Unknown Error";
-                inst->properties["message"] = Value(message);
+                inst->setProperty("message", Value(message));
             }
             return Value();
         });
@@ -199,7 +200,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("awaitAll() expects array of futures", 0, ""); return Value(); }
             auto& arr = args[0].asArray();
             std::vector<Value> results;
-            for (auto& v : arr) {
+            for (auto& v : arr.getElementsCopy()) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
                 auto fut = v.asFuture();
                 fut->wait();
@@ -218,7 +219,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             // If none are ready, we could wait on multiple events via WaitForMultipleObjects,
             // but since futures hold handles, we can collect them.
             std::vector<HANDLE> handles;
-            for (auto& v : arr) {
+            for (auto& v : arr.getElementsCopy()) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
                 handles.push_back(v.asFuture()->hEvent);
             }

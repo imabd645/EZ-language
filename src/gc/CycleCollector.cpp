@@ -1,4 +1,12 @@
+#include "runtime/objects/EZObjects.h"
 #include "gc/CycleCollector.h"
+#include "runtime/objects/EZUpvalue.h"
+
+void EZClosure::traverse(const ValueVisitor& visit) const {
+    for (UpvalueObj* uv : upvalues) {
+        if (uv) visit(uv->closed);
+    }
+}
 #include "runtime/Value.h"          // Full definition of Value, EZArray, EZInstance, etc.
 #include <algorithm>
 #include <unordered_map>
@@ -73,27 +81,25 @@ void CycleCollector::clearObject(
     switch (type) {
         case ValueType::ARRAY: {
             auto arr = std::static_pointer_cast<EZArray>(obj);
-            arr->elements.clear();
+            arr->modifyElements([&](auto& e) { e.clear(); });
             break;
         }
         case ValueType::TUPLE: {
             auto tup = std::static_pointer_cast<EZTuple>(obj);
-            tup->elements.clear();
+            tup->modifyElements([&](auto& e) { e.clear(); });
             break;
         }
         case ValueType::DICTIONARY: {
             auto dict = std::static_pointer_cast<EZDictionary>(obj);
-            std::unique_lock<std::shared_mutex> lk(dict->map_mutex);
-            dict->map.clear();
+            dict->modifyMap([&](auto& m) { m.clear(); });
             break;
         }
         case ValueType::INSTANCE: {
             auto inst = std::static_pointer_cast<EZInstance>(obj);
-            std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
-            inst->properties.clear();
+            inst->modifyProperties([&](auto& p) { p.clear(); });
             inst->klass = nullptr;
-            if (inst->auditLog)   inst->auditLog->clear();
-            if (inst->cacheStore) inst->cacheStore->clear();
+            if (inst->getAuditLog())   inst->getAuditLog()->clear();
+            if (inst->getCacheStore()) inst->getCacheStore()->clear();
             break;
         }
         case ValueType::CLASS: {

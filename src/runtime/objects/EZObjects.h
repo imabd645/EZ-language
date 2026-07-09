@@ -11,9 +11,11 @@
 #include "EZSuper.h"
 #include "EZInterface.h"
 #include "EZBoundMethod.h"
+#include "EZUpvalue.h"
 #include "EZClosure.h"
 #include "EZBuffer.h"
 #include "EZMutex.h"
 #include "EZAtomic.h"
+#include "ValueImpl.h"
 
 #endif // EZ_OBJECTS_H

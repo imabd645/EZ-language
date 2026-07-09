@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "sqlite3.h"
 #include "eventloop/EventLoop.h"
 #include "vm/BytecodeVM.h"
@@ -243,9 +244,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             else *stackTop++ = val;
                         } else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
-                            std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                            auto it = dictPtr->map.find(propName);
-                            if (it != dictPtr->map.end()) {
+                            auto it = dictPtr->getMapCopy().find(propName);
+                            if (it != dictPtr->getMapCopy().end()) {
                                 *stackTop++ = it->second;
                             } else {
                                 SYNC_IP();
@@ -368,8 +368,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
                         else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
-                            std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                            dictPtr->map[propName] = value;
+                            dictPtr->modifyMap([&](auto& m) { m[propName] = value; });
                         }
                         else {
                             SYNC_IP();
@@ -394,8 +393,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 obj.asClass()->staticMembers[propName] = value;
                             } else if (obj.isDictionary()) {
                                 auto dictPtr = obj.asDictionaryPtr();
-                                std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                                dictPtr->map[propName] = value;
+                                dictPtr->modifyMap([&](auto& m) { m[propName] = value; });
                             } else {
                                 SYNC_IP();
                                 runtimeError("Cannot set property '" + propName + "' on " + obj.typeName());
@@ -449,7 +447,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 inst->setProperty(propName, value);
 
                                 if (klass->behaviors.audited) {
-                                    if (!inst->auditLog) inst->auditLog = new std::vector<AuditEntry>();
                                     AuditEntry e;
                                     e.field     = propName;
                                     e.oldValue  = oldValue;
@@ -457,13 +454,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     e.via       = frame->function->name;
                                     e.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                                                       std::chrono::system_clock::now().time_since_epoch()).count();
-                                    inst->auditLog->push_back(std::move(e));
+                                    inst->modifyAuditLog([&](auto& log) { log.push_back(std::move(e)); });
                                 }
 
-                                if (klass->behaviors.hasCached && inst->cacheStore) {
-                                    for (auto& [methodName, cr] : *inst->cacheStore) {
-                                        if (cr.deps.count(propName)) cr.dirty = true;
-                                    }
+                                if (klass->behaviors.hasCached && inst->getCacheStore()) {
+                                    inst->modifyCacheStore([&](auto& cache) {
+                                        for (auto& [methodName, cr] : cache) {
+                                            if (cr.deps.count(propName)) cr.dirty = true;
+                                        }
+                                    });
                                 }
 
                                 if (klass->behaviors.persistent && !klass->persistPath.empty()) {
@@ -539,9 +538,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value self = frame->slots[0]; // self is first slot
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
-                            if (inst->cacheStore) {
-                                auto it = inst->cacheStore->find(methodName);
-                                if (it != inst->cacheStore->end() && !it->second.dirty) {
+                            if (inst->getCacheStore()) {
+                                auto it = inst->getCacheStore()->find(methodName);
+                                if (it != inst->getCacheStore()->end() && !it->second.dirty) {
                                     *stackTop++ = it->second.result;
                                 } else {
                                     *stackTop++ = Value(); // nil = cache miss
@@ -564,10 +563,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value self = frame->slots[0];
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
-                            if (!inst->cacheStore) inst->cacheStore = new std::unordered_map<std::string, CachedResult>();
-                            auto& cr = (*inst->cacheStore)[methodName];
-                            cr.result = result;
-                            cr.dirty  = false;
+                            inst->modifyCacheStore([&](auto& cache) {
+                                auto& cr = cache[methodName];
+                                cr.result = result;
+                                cr.dirty  = false;
+                            });
                         }
                     }
                     DISPATCH();
@@ -1164,7 +1164,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             
                             if (expectedCallerParams > posCount) {
                                 auto dict = kwargs.asDictionaryPtr();
-                                std::unique_lock<std::shared_mutex> lk(dict->map_mutex);
                                 
                                 std::vector<Value> posArgs(stackTop - posCount, stackTop);
                                 stackTop -= posCount;
@@ -1174,24 +1173,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     if (callerArgIdx < posArgs.size()) {
                                         *stackTop++ = posArgs[callerArgIdx];
                                     } else {
-                                        auto it = dict->map.find(paramNames[i]);
-                                        if (it != dict->map.end()) {
+                                        auto it = dict->getMapCopy().find(paramNames[i]);
+                                        if (it != dict->getMapCopy().end()) {
                                             *stackTop++ = it->second;
-                                            dict->map.erase(it);
+                                            dict->modifyMap([&](auto& m) { m.erase(it->first); });
                                         } else {
                                             *stackTop++ = Value(); // Missing arg, will be handled by defaults
                                         }
                                     }
                                 }
                                 
-                                if (!dict->map.empty()) {
-                                    std::string unexpected = dict->map.begin()->first;
+                                if (!dict->getMapCopy().empty()) {
+                                    std::string unexpected = dict->getMapCopy().begin()->first;
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument '" + unexpected + "'");
                                 }
                                 totalArity = expectedCallerParams;
                             } else {
-                                if (!kwargs.asDictionaryPtr()->map.empty()) {
+                                if (!kwargs.asDictionaryPtr()->getMapCopy().empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument");
                                 }
@@ -1300,7 +1299,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         uint8_t pairs = READ_BYTE();
                         Value dict = Value::makeDictionary();
-                        auto& m = dict.asDictionaryPtr()->map;
+                        auto m = dict.asDictionaryPtr()->getMapCopy();
                         for (int i = 0; i < pairs; i++) {
                             Value val = *(--stackTop);
                             Value key = *(--stackTop);
@@ -1332,7 +1331,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (arr.isArray() && iter.isArray()) {
                             auto& src = iter.asArray();
                             auto& dst = arr.asArray();
-                            for (const Value& v : src) {
+                            for (const Value& v : src.getElementsCopy()) {
                                 dst.push_back(v);
                             }
                         } else if (arr.isArray() && iter.isString()) {
@@ -1366,7 +1365,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         callee = *(stackTop - 1);
                         
                         // Push all arguments to the stack
-                        for (const Value& arg : args) {
+                        for (const Value& arg : args.getElementsCopy()) {
                             *stackTop++ = arg;
                         }
                         
@@ -1481,8 +1480,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             std::vector<Value> ks;
                             {
                                 auto dictPtr = v.asDictionaryPtr();
-                                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                                for (auto& [k, _] : dictPtr->map) ks.push_back(Value(k));
+                                for (auto& [k, _] : dictPtr->getMapCopy()) ks.push_back(Value(k));
                             }
                             *stackTop++ = Value::makeArray({Value::makeArray(ks), Value(0LL)});
                         } else {
@@ -1500,8 +1498,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             std::vector<Value> pairs;
                             {
                                 auto dictPtr = v.asDictionaryPtr();
-                                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                                for (auto& [k, val] : dictPtr->map) {
+                                for (auto& [k, val] : dictPtr->getMapCopy()) {
                                     pairs.push_back(Value::makeArray({Value(k), val}));
                                 }
                             }
@@ -1863,7 +1860,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         if (exc.isDictionary()) {
                             auto dict = exc.asDictionaryPtr();
-                            if (dict->map.count("stackTrace")) {
+                            if (dict->getMapCopy().count("stackTrace")) {
                                 std::string st = "";
                                 for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
                                     int currentLine = it->line;
@@ -1879,7 +1876,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                           "\", line " + std::to_string(currentLine) +
                                           ", in " + fn + "\n";
                                 }
-                                dict->map["stackTrace"] = Value(st);
+                                dict->modifyMap([&](auto& m) { m["stackTrace"] = Value(st); });
                             }
                         }
                         
@@ -1896,8 +1893,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = exc;
                         } else {
                             SYNC_IP();
-                            if (exc.isDictionary() && exc.asDictionaryPtr()->map.count("message")) {
-                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->map["message"].toString());
+                            if (exc.isDictionary() && exc.asDictionaryPtr()->getMapCopy().count("message")) {
+                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->getMapCopy().at("message").toString());
                             } else {
                                 runtimeError("Uncaught exception: " + exc.toString());
                             }
@@ -2294,8 +2291,8 @@ void BytecodeVM::doAdd() {
     }
     if (a.isString()  || b.isString())  { push(Value(a.toString()  + b.toString()));  return; }
     if (a.isArray()   && b.isArray()) {
-        auto res = a.asArray();
-        for (const Value& v : b.asArray()) res.push_back(v);
+        auto res = a.asArray().getElementsCopy();
+        for (const Value& v : b.asArray().getElementsCopy()) res.push_back(v);
         push(Value::makeArrayCopy(res));
         return;
     }
@@ -2426,10 +2423,9 @@ void BytecodeVM::doIndexGet() {
         push(Value(std::string(1, s[i])));
     } else if (obj.isDictionary()) {
         auto dictPtr = obj.asDictionaryPtr();
-        std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
         std::string sKey = idx.toString();
-        auto it = dictPtr->map.find(sKey);
-        push(it != dictPtr->map.end() ? it->second : Value());
+        auto it = dictPtr->getMapCopy().find(sKey);
+        push(it != dictPtr->getMapCopy().end() ? it->second : Value());
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
@@ -2452,8 +2448,7 @@ void BytecodeVM::doIndexSet() {
         arr[i] = val;
     } else if (obj.isDictionary()) {
         auto dictPtr = obj.asDictionaryPtr();
-        std::unique_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-        dictPtr->map[idx.toString()] = val;
+        dictPtr->getMapCopy()[idx.toString()] = val;
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();

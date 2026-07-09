@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
@@ -78,46 +79,46 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
     auto atomicClass = std::make_shared<EZClass>("Atomic");
     
     // Atomic.init(initial)
-    atomicClass->methods["init"] = Value::makeNativeFunction("init", 1,
+    atomicClass->setMethod("init", Value::makeNativeFunction("init", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             // args[0] is the instance, args[1] is the initial value
             auto instance = args[0].asInstance();
             long long initial = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
             instance->setProperty("_atomic", Value::makeAtomic(initial));
             return args[0];
-        });
+        }));
         
-    atomicClass->methods["get"] = Value::makeNativeFunction("get", 0,
+    atomicClass->setMethod("get", Value::makeNativeFunction("get", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto atomic = instance->getProperty("_atomic").asAtomicPtr();
             return Value(atomic->val.load());
-        });
+        }));
         
-    atomicClass->methods["set"] = Value::makeNativeFunction("set", 1,
+    atomicClass->setMethod("set", Value::makeNativeFunction("set", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto atomic = instance->getProperty("_atomic").asAtomicPtr();
             long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
             atomic->val.store(v);
             return Value(v);
-        });
+        }));
         
-    atomicClass->methods["add"] = Value::makeNativeFunction("add", 1,
+    atomicClass->setMethod("add", Value::makeNativeFunction("add", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto atomic = instance->getProperty("_atomic").asAtomicPtr();
             long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
             return Value(atomic->val.fetch_add(v) + v);
-        });
+        }));
         
-    atomicClass->methods["sub"] = Value::makeNativeFunction("sub", 1,
+    atomicClass->setMethod("sub", Value::makeNativeFunction("sub", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto atomic = instance->getProperty("_atomic").asAtomicPtr();
             long long v = args[1].isNumber() ? static_cast<long long>(args[1].asNumber()) : 0;
             return Value(atomic->val.fetch_sub(v) - v);
-        });
+        }));
         
     interp.defineGlobal("Atomic", Value(atomicClass));
 
@@ -125,14 +126,14 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
     auto channelClass = std::make_shared<EZClass>("Channel");
     
     // Channel.init()
-    channelClass->methods["init"] = Value::makeNativeFunction("init", 0,
+    channelClass->setMethod("init", Value::makeNativeFunction("init", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             instance->setProperty("_channel", Value::makeChannel(std::make_shared<EZChannel>()));
             return args[0];
-        });
+        }));
         
-    channelClass->methods["send"] = Value::makeNativeFunction("send", 1,
+    channelClass->setMethod("send", Value::makeNativeFunction("send", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto chan = instance->getProperty("_channel").asChannelPtr();
@@ -146,9 +147,9 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             }
             chan->cv.notify_one();
             return Value(true);
-        });
+        }));
         
-    channelClass->methods["receive"] = Value::makeNativeFunction("receive", 0,
+    channelClass->setMethod("receive", Value::makeNativeFunction("receive", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto chan = instance->getProperty("_channel").asChannelPtr();
@@ -164,9 +165,9 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
                 return v;
             }
             return Value(); // Return nil if closed and empty
-        });
+        }));
         
-    channelClass->methods["close"] = Value::makeNativeFunction("close", 0,
+    channelClass->setMethod("close", Value::makeNativeFunction("close", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             auto instance = args[0].asInstance();
             auto chan = instance->getProperty("_channel").asChannelPtr();
@@ -176,7 +177,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
                 chan->cv.notify_all();
             }
             return Value(true);
-        });
+        }));
 
     interp.defineGlobal("Channel", Value(channelClass));
 }

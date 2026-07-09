@@ -12,13 +12,11 @@
 struct EZClass {
     std::string name;
     std::shared_ptr<EZClass> parent;
+    mutable std::shared_mutex class_mutex;
+
     std::unordered_map<std::string, Value> methods;
     std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool>  visibility;
-
-    // Legacy support for AST Interpreter
-    std::vector<std::string> initParams;
-    std::vector<StmtPtr> initBody;
 
     // ── Decorator metadata ────────────────────────────────────────────────────
     BehaviorFlags behaviors = {false,false,false,false,false};
@@ -30,9 +28,57 @@ struct EZClass {
 
     void traverse(const ValueVisitor& visit) const {
         if (parent) visit(Value(parent));
+        
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
         for (const auto& [k, v] : methods)       visit(v);
         for (const auto& [k, v] : staticMembers) visit(v);
         for (const auto& fv : validators)        visit(fv.param);
+    }
+
+    Value getMethod(const std::string& name) const {
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
+        auto it = methods.find(name);
+        if (it != methods.end()) return it->second;
+        return Value();
+    }
+    
+    Value getStaticMember(const std::string& name) const {
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
+        auto it = staticMembers.find(name);
+        if (it != staticMembers.end()) return it->second;
+        return Value();
+    }
+    
+    void setMethod(const std::string& name, const Value& val) {
+        std::unique_lock<std::shared_mutex> lk(class_mutex);
+        methods[name] = val;
+    }
+
+    void setStaticMember(const std::string& name, const Value& val) {
+        std::unique_lock<std::shared_mutex> lk(class_mutex);
+        staticMembers[name] = val;
+    }
+
+    bool hasMethod(const std::string& name) const {
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
+        return methods.count(name) > 0;
+    }
+
+    bool hasStaticMember(const std::string& name) const {
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
+        return staticMembers.count(name) > 0;
+    }
+    
+    template<typename Func>
+    void modifyMethods(Func&& func) {
+        std::unique_lock<std::shared_mutex> lk(class_mutex);
+        func(methods);
+    }
+    
+    template<typename Func>
+    void modifyStaticMembers(Func&& func) {
+        std::unique_lock<std::shared_mutex> lk(class_mutex);
+        func(staticMembers);
     }
 };
 

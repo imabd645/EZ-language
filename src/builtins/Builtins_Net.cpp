@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 
@@ -92,10 +93,10 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() > 1 && args[1].isDictionary()) {
                 auto dictPtr = args[1].asDictionaryPtr();
                 std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                if (dictPtr->map.count("insecure") && dictPtr->map.at("insecure").isBool() && dictPtr->map.at("insecure").asBool()) {
+                if (dictPtr->getMapCopy().count("insecure") && dictPtr->getMapCopy().at("insecure").isBool() && dictPtr->getMapCopy().at("insecure").asBool()) {
                     ssl_verify = 0L; ssl_verifyhost = 0L;
                 }
-                for (auto& kv : dictPtr->map) {
+                for (auto& kv : dictPtr->getMapCopy()) {
                     if (kv.first == "insecure") continue;
                     std::string h = kv.first + ": " + kv.second.toString();
                     headers = curl_slist_append(headers, h.c_str());
@@ -134,10 +135,10 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() > 2 && args[2].isDictionary()) {
                 auto dictPtr = args[2].asDictionaryPtr();
                 std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                if (dictPtr->map.count("insecure") && dictPtr->map.at("insecure").isBool() && dictPtr->map.at("insecure").asBool()) {
+                if (dictPtr->getMapCopy().count("insecure") && dictPtr->getMapCopy().at("insecure").isBool() && dictPtr->getMapCopy().at("insecure").asBool()) {
                     ssl_verify = 0L; ssl_verifyhost = 0L;
                 }
-                for (auto& kv : dictPtr->map) {
+                for (auto& kv : dictPtr->getMapCopy()) {
                     if (kv.first == "insecure") continue;
                     std::string k = kv.first;
                     std::string h = k + ": " + kv.second.toString();
@@ -183,7 +184,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
                 try {
                     auto makeError = [](const std::string& msg) {
                         Value err = Value::makeDictionary();
-                        err.asDictionaryPtr()->map["error"] = Value(msg);
+                        err.asDictionaryPtr()->modifyMap([&](auto& m) { m["error"] = Value(msg); });
                         return err;
                     };
 
@@ -199,7 +200,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
                     if (options.isDictionary()) {
                         auto dictPtr = options.asDictionaryPtr();
                         std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                        const auto& opts = dictPtr->map;
+                        const auto& opts = dictPtr->getMapCopy();
                         if (opts.count("insecure") && opts.at("insecure").isBool() && opts.at("insecure").asBool()) {
                             ssl_verify = 0L; ssl_verifyhost = 0L;
                         }
@@ -208,7 +209,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
                         if (opts.count("headers") && opts.at("headers").isDictionary()) {
                             auto hDictPtr = opts.at("headers").asDictionaryPtr();
                             std::shared_lock<std::shared_mutex> hLk(hDictPtr->map_mutex);
-                            for (const auto& kv : hDictPtr->map) {
+                            for (const auto& kv : hDictPtr->getMapCopy()) {
                                 std::string h = kv.first + ": " + kv.second.toString();
                                 headers = curl_slist_append(headers, h.c_str());
                             }

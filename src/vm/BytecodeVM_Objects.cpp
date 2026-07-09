@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 #include "vm/BytecodeVM.h"

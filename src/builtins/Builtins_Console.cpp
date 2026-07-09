@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <conio.h>

@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "runtime/RuntimeContext.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/EZFuture.h"
@@ -786,7 +787,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             }
             
             std::string retType = args[1].asString();
-            auto sigArray = args[2].asArray().elements;
+            auto sigArray = args[2].asArray().getElementsCopy();
             size_t argc = sigArray.size();
             if (argc > 4) {
                 interp.runtimeError("os_call_sig: Currently supports up to 4 arguments.", 0, "");
@@ -877,7 +878,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                 interp.runtimeError("os_struct_alloc expects an array of strings", 0, "");
                 return Value();
             }
-            auto layoutArray = args[0].asArray().elements;
+            auto layoutArray = args[0].asArray().getElementsCopy();
             StructLayout layout = computeStructLayout(layoutArray);
             return Value(std::make_shared<EZBuffer>(layout.totalSize));
         }));
@@ -888,8 +889,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                 interp.runtimeError("os_struct_pack expects (layout_array, values_array, [buffer])", 0, "");
                 return Value();
             }
-            auto layoutArray = args[0].asArray().elements;
-            auto valuesArray = args[1].asArray().elements;
+            auto layoutArray = args[0].asArray().getElementsCopy();
+            auto valuesArray = args[1].asArray().getElementsCopy();
             StructLayout layout = computeStructLayout(layoutArray);
             
             Value bufVal;
@@ -933,7 +934,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                 interp.runtimeError("os_struct_unpack expects (layout_array, buffer_or_ptr)", 0, "");
                 return Value();
             }
-            auto layoutArray = args[0].asArray().elements;
+            auto layoutArray = args[0].asArray().getElementsCopy();
             StructLayout layout = computeStructLayout(layoutArray);
             
             uint8_t* base = nullptr;
@@ -989,7 +990,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("arg 0 must be array of strings", 0, ""); return Value(); }
             std::vector<std::string> sigTypes;
-            for (auto& v : args[0].asArray().elements) sigTypes.push_back(v.toString());
+            for (auto& v : args[0].asArray().getElementsCopy()) sigTypes.push_back(v.toString());
             std::string retType = args[1].toString();
             Value ezFunction = args[2];
 

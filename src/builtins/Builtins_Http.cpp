@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 #include <string>
@@ -31,7 +32,7 @@ void registerHttpBuiltins(RuntimeContext& interp) {
             }
             
             Value headers = Value::makeDictionary();
-            auto& hmap = headers.asDictionary().map;
+            auto hmap = headers.asDictionary().getMapCopy();
             
             size_t pos = firstLBreak + 2;
             int contentLen = 0;
@@ -60,7 +61,7 @@ void registerHttpBuiltins(RuntimeContext& interp) {
             }
             
             Value result = Value::makeDictionary();
-            auto& rmap = result.asDictionary().map;
+            auto rmap = result.asDictionary().getMapCopy();
             rmap["method"] = Value(method);
             rmap["fullPath"] = Value(path);
             rmap["headers"] = headers;

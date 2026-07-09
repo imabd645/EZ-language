@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 
@@ -68,7 +69,7 @@ void registerStringBuiltins(RuntimeContext& interp) {
             const auto& arr = args[0].asArray();
             std::string result;
             result.reserve(arr.size());
-            for (const Value& v : arr) {
+            for (const Value& v : arr.getElementsCopy()) {
                 if (!v.isNumber()) { interp.runtimeError("bytesToString() expects array of integers (0-255)", 0, ""); return Value(); }
                 long long b = v.isInteger() ? v.asInteger() : (long long)v.asFloat();
                 result += static_cast<char>(b & 0xFF);
@@ -255,7 +256,7 @@ void registerStringBuiltins(RuntimeContext& interp) {
             std::string in;
             if (args[0].isString()) in = args[0].asString();
             else {
-                for (auto& v : args[0].asArray()) in += (char)v.asNumber();
+                for (auto& v : args[0].asArray().getElementsCopy()) in += (char)v.asNumber();
             }
             std::string out;
             int val = 0, valb = -6;

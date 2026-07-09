@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include <algorithm>
 #include <functional>
 #include "vm/BytecodeVM.h"
@@ -252,7 +253,7 @@ void BytecodeVM::throwException(const std::string& className, const std::string&
     Value classVal = globalEnv->get(className);
     if (classVal.isClass()) {
         auto inst = std::make_shared<EZInstance>(classVal.asClass());
-        inst->properties["message"] = Value(message);
+        inst->setProperty("message", Value(message));
         
         int faultLine = line > 0 ? line : (frames.empty() ? 0 : frames.back().line);
         if (pendingException.isNil()) {
@@ -290,15 +291,15 @@ void BytecodeVM::initBuiltins() {
         auto inst = args[0].asInstance();
         if (!inst->klass->behaviors.audited) { ctx.runtimeError("audit() called on non-@audited model '" + inst->klass->name + "'"); return Value(); }
         auto result = std::make_shared<EZArray>();
-        if (inst->auditLog) {
-            for (const auto& e : *inst->auditLog) {
+        if (inst->getAuditLog()) {
+            for (const auto& e : *inst->getAuditLog()) {
                 auto d = std::make_shared<EZDictionary>();
-                d->map["field"]     = Value(e.field);
-                d->map["old"]       = e.oldValue;
-                d->map["new"]       = e.newValue;
-                d->map["via"]       = Value(e.via);
-                d->map["timestamp"] = Value(e.timestamp);
-                result->elements.push_back(Value(d));
+                d->modifyMap([&](auto& m) { m["field"]     = Value(e.field); });
+                d->modifyMap([&](auto& m) { m["old"]       = e.oldValue; });
+                d->modifyMap([&](auto& m) { m["new"]       = e.newValue; });
+                d->modifyMap([&](auto& m) { m["via"]       = Value(e.via); });
+                d->modifyMap([&](auto& m) { m["timestamp"] = Value(e.timestamp); });
+                result->modifyElements([&](auto& el) { el.push_back(Value(d)); });
             }
         }
         return Value(result);
@@ -306,8 +307,8 @@ void BytecodeVM::initBuiltins() {
 
     // audit_clear(obj) Ã¢â€ â€™ clears audit log
     defineGlobal("audit_clear", Value::makeNativeFunction("audit_clear", 1, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
-        if (args[0].isInstance() && args[0].asInstance()->auditLog)
-            args[0].asInstance()->auditLog->clear();
+        if (args[0].isInstance() && args[0].asInstance()->getAuditLog())
+            args[0].asInstance()->modifyAuditLog([](auto& log) { log.clear(); });
         return Value();
     }));
 
@@ -317,16 +318,16 @@ void BytecodeVM::initBuiltins() {
         auto inst = args[0].asInstance();
         long long since = args[1].isInteger() ? args[1].asInteger() : (long long)args[1].asFloat();
         auto result = std::make_shared<EZArray>();
-        if (inst->auditLog) {
-            for (const auto& e : *inst->auditLog) {
+        if (inst->getAuditLog()) {
+            for (const auto& e : *inst->getAuditLog()) {
                 if (e.timestamp < since) continue;
                 auto d = std::make_shared<EZDictionary>();
-                d->map["field"]     = Value(e.field);
-                d->map["old"]       = e.oldValue;
-                d->map["new"]       = e.newValue;
-                d->map["via"]       = Value(e.via);
-                d->map["timestamp"] = Value(e.timestamp);
-                result->elements.push_back(Value(d));
+                d->modifyMap([&](auto& m) { m["field"]     = Value(e.field); });
+                d->modifyMap([&](auto& m) { m["old"]       = e.oldValue; });
+                d->modifyMap([&](auto& m) { m["new"]       = e.newValue; });
+                d->modifyMap([&](auto& m) { m["via"]       = Value(e.via); });
+                d->modifyMap([&](auto& m) { m["timestamp"] = Value(e.timestamp); });
+                result->modifyElements([&](auto& el) { el.push_back(Value(d)); });
             }
         }
         return Value(result);
@@ -339,8 +340,7 @@ void BytecodeVM::initBuiltins() {
         if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("snapshot() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
         auto snap = std::make_shared<EZDictionary>();
         {
-            std::shared_lock<std::shared_mutex> lk(inst->prop_mutex);
-            for (const auto& [k, v] : inst->properties) snap->map[k] = v;
+            for (const auto& [k, v] : inst->getPropertiesCopy()) snap->modifyMap([&](auto& m) { m[k] = v; });
         }
         return Value(snap);
     }));
@@ -352,7 +352,7 @@ void BytecodeVM::initBuiltins() {
         if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("rollback() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
         if (!args[1].isDictionary()) { ctx.runtimeError("rollback() second argument must be a snapshot dict"); return Value(); }
         auto snap = args[1].asDictionaryPtr();
-        for (const auto& [k, v] : snap->map) inst->setProperty(k, v);
+        for (const auto& [k, v] : snap->getMapCopy()) inst->setProperty(k, v);
         return Value();
     }));
 
@@ -364,14 +364,14 @@ void BytecodeVM::initBuiltins() {
         auto a = args[0].asDictionaryPtr();
         auto b = args[1].asDictionaryPtr();
         auto result = std::make_shared<EZDictionary>();
-        for (const auto& [k, vb] : b->map) {
-            auto it = a->map.find(k);
-            Value va = (it != a->map.end()) ? it->second : Value();
+        for (const auto& [k, vb] : b->getMapCopy()) {
+            auto it = a->getMapCopy().find(k);
+            Value va = (it != a->getMapCopy().end()) ? it->second : Value();
             if (va.toString() != vb.toString()) {
                 auto entry = std::make_shared<EZDictionary>();
-                entry->map["was"] = va;
-                entry->map["now"] = vb;
-                result->map[k] = Value(entry);
+                entry->modifyMap([&](auto& m) { m["was"] = va; });
+                entry->modifyMap([&](auto& m) { m["now"] = vb; });
+                result->modifyMap([&](auto& m) { m[k] = Value(entry); });
             }
         }
         return Value(result);

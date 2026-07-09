@@ -1,3 +1,4 @@
+#include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 
 void registerBuiltins(RuntimeContext& interp) {

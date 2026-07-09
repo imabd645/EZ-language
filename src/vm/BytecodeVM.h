@@ -1,3 +1,4 @@
+#include "runtime/objects/EZUpvalue.h"
 #ifndef BYTECODE_VM_H
 #define BYTECODE_VM_H
 

@@ -441,6 +441,37 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
             return Value(registerWidgetHandle(hwnd));
         }));
 
+    interp.defineGlobal("gui_set_timer", Value::makeNativeFunction("gui_set_timer", 3,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            int ms = (int)vNum(args[1]);
+            Value cb = args[2];
+            UINT_PTR id = g_gui.nextTimerId++;
+            g_gui.timerCallbacks[id] = cb;
+            SetTimer(hwnd, id, ms, NULL);
+            g_gui.hwndTimers[hwnd].push_back(id);
+            return Value((double)id);
+        }));
+
+    interp.defineGlobal("gui_kill_timer", Value::makeNativeFunction("gui_kill_timer", 2,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
+            UINT_PTR id = (UINT_PTR)vNum(args[1]);
+            KillTimer(hwnd, id);
+            g_gui.timerCallbacks.erase(id);
+            return Value();
+        }));
+
+    interp.defineGlobal("gui_run", Value::makeNativeFunction("gui_run", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            MSG msg;
+            while (GetMessage(&msg, NULL, 0, 0)) {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+            return Value();
+        }));
+
     interp.defineGlobal("gui_create_button", Value::makeNativeFunction("gui_create_button", 7,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];

@@ -1584,8 +1584,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
                 CASE_CODE(CLOCK) { 
-                    auto now = std::chrono::steady_clock::now().time_since_epoch();
-                    *stackTop++ = Value(std::chrono::duration<double>(now).count() * 1000.0);
+                    auto now = std::chrono::system_clock::now().time_since_epoch();
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+                    *stackTop++ = Value(static_cast<long long>(ms));
                     DISPATCH(); 
                 }
                 CASE_CODE(TYPE_OF) {

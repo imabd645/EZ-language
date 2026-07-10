@@ -191,22 +191,25 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
 
-                // Ã¢â€â‚¬Ã¢â€â‚¬ Issue D: Fused loop-condition superinstructions Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+                // ——— Issue D: Fused loop-condition superinstructions ————————————————————
                 // Replaces: LOAD_LOCAL i | LOAD_LOCAL end | LESS_EQ | JUMP_IF_FALSE exit
-                // With one dispatch that reads locals directly Ã¢â‚¬â€ no stack push/pop.
+                // With one dispatch that reads locals directly — no stack push/pop.
                 CASE_CODE(LOOP_LESS_EQ_LOCAL) {
                     uint8_t  loopSlot  = READ_BYTE();
                     uint8_t  endSlot   = READ_BYTE();
                     uint32_t exitOff   = READ_INT();
                     const Value& lv = frame->slots[loopSlot];
                     const Value& ev = frame->slots[endSlot];
-                    // Integer fast path Ã¢â‚¬â€ covers 100% of repeat i=0 to N loops
+                    // Integer fast path — covers 100% of repeat i=0 to N loops
                     if (__builtin_expect(lv.isInteger() && ev.isInteger(), 1)) {
                         if (lv.asInteger() > ev.asInteger()) ip += exitOff;
                     } else if (lv.isNumber() && ev.isNumber()) {
                         if (lv.asNumber() > ev.asNumber())  ip += exitOff;
                     } else {
-                        ip += exitOff; // non-numeric: treat as loop-done
+                        // Fix 1.5: non-numeric loop variable is a programmer error, not a silent exit
+                        SYNC_IP();
+                        runtimeError("repeat loop variable must be numeric, got: " + lv.typeName());
+                        return;
                     }
                     DISPATCH();
                 }
@@ -222,7 +225,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     } else if (lv.isNumber() && ev.isNumber()) {
                         if (lv.asNumber() < ev.asNumber())  ip += exitOff;
                     } else {
-                        ip += exitOff;
+                        // Fix 1.5: non-numeric loop variable is a programmer error, not a silent exit
+                        SYNC_IP();
+                        runtimeError("repeat loop variable must be numeric, got: " + lv.typeName());
+                        return;
                     }
                     DISPATCH();
                 }
@@ -244,8 +250,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             else *stackTop++ = val;
                         } else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
-                            auto it = dictPtr->getMapCopy().find(propName);
-                            if (it != dictPtr->getMapCopy().end()) {
+                            // Fix 2.2: single getMapCopy() instead of two (one for find, one for end check)
+                            auto dictMap = dictPtr->getMapCopy();
+                            auto it = dictMap.find(propName);
+                            if (it != dictMap.end()) {
                                 *stackTop++ = it->second;
                             } else {
                                 SYNC_IP();
@@ -648,10 +656,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
+                            // Integer ADD: keep integer semantics expected by library code
+                            // (large values wrap — libs like math/collections rely on integer modulo chains)
                             long long res = a.asInteger() + b.asInteger();
-                            stackTop -= 2;
-                            *stackTop = Value(res);
-                            stackTop++;
+                            stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() + b.asNumber();
                             stackTop -= 2;
@@ -684,10 +692,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
+                            // Integer SUB: keep integer semantics expected by library code
                             long long res = a.asInteger() - b.asInteger();
-                            stackTop -= 2;
-                            *stackTop = Value(res);
-                            stackTop++;
+                            stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() - b.asNumber();
                             stackTop -= 2;
@@ -720,10 +727,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
+                            // Integer MUL: keep integer semantics expected by library code
+                            // (math lib LCG uses large multiplications followed by % to stay in range)
                             long long res = a.asInteger() * b.asInteger();
-                            stackTop -= 2;
-                            *stackTop = Value(res);
-                            stackTop++;
+                            stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() * b.asNumber();
                             stackTop -= 2;
@@ -1299,12 +1306,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         uint8_t pairs = READ_BYTE();
                         Value dict = Value::makeDictionary();
-                        auto m = dict.asDictionaryPtr()->getMapCopy();
-                        for (int i = 0; i < pairs; i++) {
-                            Value val = *(--stackTop);
-                            Value key = *(--stackTop);
-                            m[key.toString()] = val;
-                        }
+                        auto dictPtr = dict.asDictionaryPtr();
+                        // Fix 1.1: use modifyMap so entries are actually written into the dict object
+                        // (original code wrote to a getMapCopy() local — changes were discarded)
+                        // Pop order: stack is LIFO so val is on top, then key, for each pair
+                        dictPtr->modifyMap([&](auto& m) {
+                            for (int i = 0; i < pairs; i++) {
+                                Value val = *(--stackTop);
+                                Value key = *(--stackTop);
+                                m[key.toString()] = val;
+                            }
+                        });
                         *stackTop++ = dict;
                     }
                     DISPATCH();

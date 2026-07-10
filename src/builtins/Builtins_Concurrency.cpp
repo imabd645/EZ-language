@@ -39,11 +39,14 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // wait(ms)
     interp.defineGlobal("wait", Value::makeNativeFunction("wait", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isNumber()) {
+            if (!args[0].isNumber() && !args[0].isInteger()) {
                 interp.runtimeError("wait() expects milliseconds (number)", 0, "");
                 return Value();
             }
-            int ms = static_cast<int>(args[0].asInteger());
+            // Fix 1.4: use the correct accessor — asInteger() truncates floats silently
+            int ms = args[0].isInteger()
+                ? static_cast<int>(args[0].asInteger())
+                : static_cast<int>(args[0].asFloat());
             if (ms > 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
             }

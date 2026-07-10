@@ -4,6 +4,11 @@
 #include <functional>
 #include <algorithm>
 
+// Fix 2.3: Use the VM's in-memory source registry instead of re-opening files on every diagnostic
+// This function is defined in BytecodeVM.cpp and populated by the Lexer via EZ_RegisterSource()
+extern const std::string* EZ_GetSourceLine(const std::string& filename, int line);
+
+
 TypeChecker::TypeChecker() : currentEnv(nullptr), currentReturnType("Any"), hadError(false) {}
 
 void TypeChecker::error(const ExprPtr& expr, const std::string& message, const std::string& hint) {
@@ -20,24 +25,19 @@ void TypeChecker::error(int line, int column, int length, const std::string& fil
     hadError = true;
     std::cerr << "Type Error at line " << line << ", column " << column << ":\n\n";
 
-    if (!filename.empty()) {
-        std::ifstream file(filename);
-        if (file.is_open()) {
-            std::string sourceLine;
-            for (int i = 1; i <= line; ++i) {
-                if (!std::getline(file, sourceLine)) break;
-            }
-            if (!sourceLine.empty()) {
-                std::cerr << "  " << sourceLine << "\n";
-                if (column > 0) {
-                    std::cerr << "  " << std::string(column - 1, ' ');
-                    int caretLen = length > 0 ? length : 1;
-                    std::cerr << std::string(caretLen, '^') << "\n";
-                }
+    // Fix 2.3: use in-memory source registry (populated by Lexer) instead of re-opening the file
+    if (!filename.empty() && line > 0) {
+        const std::string* srcLine = EZ_GetSourceLine(filename, line);
+        if (srcLine && !srcLine->empty()) {
+            std::cerr << "  " << *srcLine << "\n";
+            if (column > 0) {
+                std::cerr << "  " << std::string(column - 1, ' ');
+                int caretLen = length > 0 ? length : 1;
+                std::cerr << std::string(caretLen, '^') << "\n";
             }
         }
     }
-    
+
     std::cerr << "  " << message << "\n";
     if (!hint.empty()) {
         std::cerr << "\n  Hint: " << hint << "\n";
@@ -62,24 +62,19 @@ void TypeChecker::warn(const StmtPtr& stmt, const std::string& message, const st
 void TypeChecker::warn(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint) {
     std::cerr << "\033[33mType Warning\033[0m at line " << line << ", column " << column << ":\n\n";
 
-    if (!filename.empty()) {
-        std::ifstream file(filename);
-        if (file.is_open()) {
-            std::string sourceLine;
-            for (int i = 1; i <= line; ++i) {
-                if (!std::getline(file, sourceLine)) break;
-            }
-            if (!sourceLine.empty()) {
-                std::cerr << "  " << sourceLine << "\n";
-                if (column > 0) {
-                    std::cerr << "  " << std::string(column - 1, ' ');
-                    int caretLen = length > 0 ? length : 1;
-                    std::cerr << std::string(caretLen, '^') << "\n";
-                }
+    // Fix 2.3: use in-memory source registry instead of re-opening the file per warning
+    if (!filename.empty() && line > 0) {
+        const std::string* srcLine = EZ_GetSourceLine(filename, line);
+        if (srcLine && !srcLine->empty()) {
+            std::cerr << "  " << *srcLine << "\n";
+            if (column > 0) {
+                std::cerr << "  " << std::string(column - 1, ' ');
+                int caretLen = length > 0 ? length : 1;
+                std::cerr << std::string(caretLen, '^') << "\n";
             }
         }
     }
-    
+
     std::cerr << "  " << message << "\n";
     if (!hint.empty()) {
         std::cerr << "\n  Hint: " << hint << "\n";

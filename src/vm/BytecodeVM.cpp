@@ -364,9 +364,12 @@ void BytecodeVM::initBuiltins() {
         auto a = args[0].asDictionaryPtr();
         auto b = args[1].asDictionaryPtr();
         auto result = std::make_shared<EZDictionary>();
-        for (const auto& [k, vb] : b->getMapCopy()) {
-            auto it = a->getMapCopy().find(k);
-            Value va = (it != a->getMapCopy().end()) ? it->second : Value();
+        // Fix 2.4: take both map copies once — previous code called getMapCopy() O(n) times inside the loop
+        auto aMap = a->getMapCopy();
+        auto bMap = b->getMapCopy();
+        for (const auto& [k, vb] : bMap) {
+            auto it = aMap.find(k);
+            Value va = (it != aMap.end()) ? it->second : Value();
             if (va.toString() != vb.toString()) {
                 auto entry = std::make_shared<EZDictionary>();
                 entry->modifyMap([&](auto& m) { m["was"] = va; });

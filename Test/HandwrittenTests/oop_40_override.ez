@@ -1,4 +1,5 @@
-get x in [1,2,3]
+arr=[1,2,3]
+get x in arr
 {
   out x    
 }

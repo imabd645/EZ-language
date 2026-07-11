@@ -1532,7 +1532,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const auto& data = iArr[0].asArray();
                         if (idx >= (long long)data.size()) { --stackTop; ip += offset; }
                         else { 
-                            iArr[1] = Value(idx + 1); 
+                            iArr.set(1, Value(idx + 1)); 
                             *(stackTop - 1) = data[idx]; 
                         }
                     }
@@ -2498,10 +2498,10 @@ void BytecodeVM::doIndexSet() {
         long long i = idx.asInteger();
         if (i < 0) { runtimeError("Array index out of bounds"); return; }
         if (i >= (long long)arr.size()) arr.resize(i + 1);
-        arr[i] = val;
+        arr.set(i, val);
     } else if (obj.isDictionary()) {
         auto dictPtr = obj.asDictionaryPtr();
-        dictPtr->getMapCopy()[idx.toString()] = val;
+        dictPtr->set(idx.toString(), val);
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();

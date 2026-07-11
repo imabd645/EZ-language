@@ -1,1 +1,1 @@
-print(type(42) == "number")
+print(type(42))

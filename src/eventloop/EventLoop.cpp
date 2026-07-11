@@ -7,7 +7,7 @@
 EventLoop::EventLoop() {
     uv_async_init(uv_default_loop(), &asyncTaskHandle, asyncCallback);
     asyncTaskHandle.data = this;
-    uv_unref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
+    // Deliberately keep asyncTaskHandle ref'd so uv_run() blocks until we call uv_stop()
 }
 
 void EventLoop::asyncCallback(uv_async_t* handle) {
@@ -33,6 +33,17 @@ void EventLoop::asyncCallback(uv_async_t* handle) {
                 std::cerr << "[EventLoop] Uncaught unknown exception" << std::endl;
             }
         }
+    }
+
+    // After processing tasks, evaluate if we should stop the libuv loop
+    bool hasTasks = false;
+    {
+        std::lock_guard<std::mutex> lock(loop->queueMutex);
+        hasTasks = !loop->taskQueue.empty();
+    }
+    
+    if (!hasTasks && loop->pendingIoCount == 0) {
+        uv_stop(uv_default_loop());
     }
 }
 
@@ -73,8 +84,6 @@ void EventLoop::run() {
     } guard{isRunning};
 
     while (!stopRequested) {
-        uv_run(uv_default_loop(), UV_RUN_DEFAULT);
-        
         bool hasTasks = false;
         {
             std::lock_guard<std::mutex> lock(queueMutex);
@@ -84,6 +93,8 @@ void EventLoop::run() {
         if (!hasTasks && pendingIoCount == 0) {
             break;
         }
+
+        uv_run(uv_default_loop(), UV_RUN_DEFAULT);
     }
 }
 

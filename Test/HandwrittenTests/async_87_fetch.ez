@@ -1,1 +1,1 @@
-try { res = await(fetch("invalid://url")) } catch (e) {}
+try { res = await(fetch("invalid://url")) } catch e {out e}

@@ -47,21 +47,19 @@ void EventLoop::pushTask(std::function<void()> task) {
 void EventLoop::retain() {
     std::lock_guard<std::mutex> lock(queueMutex);
     pendingIoCount++;
-    if (pendingIoCount == 1) {
-        uv_ref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
-    }
 }
 
 void EventLoop::release() {
-    std::lock_guard<std::mutex> lock(queueMutex);
-    pendingIoCount--;
-    if (pendingIoCount < 0) {
-        std::cerr << "[EventLoop] WARNING: pendingIoCount underflow (double release detected)." << std::endl;
-        pendingIoCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        pendingIoCount--;
+        if (pendingIoCount < 0) {
+            std::cerr << "[EventLoop] WARNING: pendingIoCount underflow (double release detected)." << std::endl;
+            pendingIoCount = 0;
+        }
     }
-    if (pendingIoCount == 0) {
-        uv_unref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
-    }
+    // Wake up the loop to evaluate the exit condition
+    uv_async_send(&asyncTaskHandle);
 }
 
 void EventLoop::run() {

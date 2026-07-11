@@ -162,13 +162,17 @@ void registerGCBuiltins(RuntimeContext& interp) {
             EventLoop::instance().retain();
             std::thread([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, tState, threadUpvalues]() {
                 try {
-                    BytecodeVM threadVM(globalEnv);
-                    threadVM.setGlobalSlots(slotNames, slotValues);
-                    threadVM.traceExecution = false;
-                    threadVM.importThreadState(tState);
-                    for (auto& uv : *threadUpvalues) threadVM.adoptUpvalue(std::move(uv));
-                    Value result = threadVM.callFunction(closedFunc, closedArgs, 0, "native");
-                    ezFut->set(result);
+                    auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
+                    threadVM->setGlobalSlots(slotNames, slotValues);
+                    threadVM->traceExecution = false;
+                    threadVM->importThreadState(tState);
+                    threadVM->taskFuture = ezFut;
+                    for (auto& uv : *threadUpvalues) threadVM->adoptUpvalue(std::move(uv));
+                    Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
+                    
+                    if (!threadVM->isYielded) {
+                        ezFut->set(result);
+                    }
                 } catch(std::exception& e) {
                     std::cerr << "[spawn-thread] uncaught: " << e.what() << std::endl;
                     ezFut->set(Value());

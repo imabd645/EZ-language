@@ -83,6 +83,10 @@ public:
         globalSlots = slots;
     }
 
+    bool isYielded = false;
+    bool isAsyncTask = false;
+    std::shared_ptr<EZFuture> taskFuture;
+
 private:
     // ── Call Frame ────────────────────────────────────────────────────────────
     struct CallFrame {
@@ -132,9 +136,6 @@ private:
 
     // Execution flag
     bool running;
-    bool isYielded = false;
-    bool isAsyncTask = false;
-    std::shared_ptr<EZFuture> taskFuture;
 
     // ── Global Slot Array (Issue C: O(1) global access) ──────────────────────
     std::vector<Value>       globalSlots;     // indexed global storage

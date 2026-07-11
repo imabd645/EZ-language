@@ -1,6 +1,11 @@
 test_report.pdf
 lib/pdf.ez
 lib/ 
-ez.exe
 vscode-ez-language/
 build/
+*.exe
+*.o
+*.a
+*.so
+*.obj
+*.db

@@ -48,6 +48,139 @@ static void release_curl_handle(CURL* c) {
     }
 }
 
+#ifdef TokenType
+#undef TokenType
+#define RESTORE_TOKEN_TYPE
+#endif
+
+#include <uv.h>
+
+#ifdef RESTORE_TOKEN_TYPE
+#define TokenType TokenKind
+#endif
+
+static CURLM *g_curl_multi = nullptr;
+static uv_timer_t g_timeout;
+
+struct CurlContext {
+  uv_poll_t poll_handle;
+  curl_socket_t sockfd;
+};
+
+struct RequestState {
+  std::string response;
+  std::shared_ptr<EZFuture> ezFut;
+  struct curl_slist* headers = nullptr;
+};
+
+static void check_multi_info();
+static void curl_perform(uv_poll_t *req, int status, int events);
+static void on_timeout(uv_timer_t *req);
+static int start_timeout(CURLM *multi, long timeout_ms, void *userp);
+static void close_cb(uv_handle_t* handle);
+static int handle_socket(CURL *easy, curl_socket_t s, int action, void *userp, void *socketp);
+
+static void check_multi_info() {
+  CURLMsg *message;
+  int pending;
+  
+  while((message = curl_multi_info_read(g_curl_multi, &pending))) {
+    switch(message->msg) {
+    case CURLMSG_DONE: {
+      CURL *easy_handle = message->easy_handle;
+      RequestState *state = nullptr;
+      curl_easy_getinfo(easy_handle, CURLINFO_PRIVATE, &state);
+      
+      long response_code;
+      curl_easy_getinfo(easy_handle, CURLINFO_RESPONSE_CODE, &response_code);
+      
+      if(message->data.result != CURLE_OK) {
+        Value err = Value::makeDictionary();
+        err.asDictionaryPtr()->modifyMap([&](auto& m) { m["error"] = Value("Fetch failed: " + std::string(curl_easy_strerror(message->data.result))); });
+        state->ezFut->set(err);
+      } else {
+        state->ezFut->set(Value(state->response));
+      }
+      
+      curl_multi_remove_handle(g_curl_multi, easy_handle);
+      if(state->headers) curl_slist_free_all(state->headers);
+      curl_easy_cleanup(easy_handle);
+      delete state;
+      EventLoop::instance().release();
+      break;
+    }
+    default:
+      break;
+    }
+  }
+}
+
+static void curl_perform(uv_poll_t *req, int status, int events) {
+  int running_handles;
+  int flags = 0;
+  if(events & UV_READABLE) flags |= CURL_CSELECT_IN;
+  if(events & UV_WRITABLE) flags |= CURL_CSELECT_OUT;
+  
+  CurlContext *context = (CurlContext*)req->data;
+  curl_multi_socket_action(g_curl_multi, context->sockfd, flags, &running_handles);
+  check_multi_info();
+}
+
+static void on_timeout(uv_timer_t *req) {
+  int running_handles;
+  curl_multi_socket_action(g_curl_multi, CURL_SOCKET_TIMEOUT, 0, &running_handles);
+  check_multi_info();
+}
+
+static int start_timeout(CURLM *multi, long timeout_ms, void *userp) {
+  if(timeout_ms < 0) {
+    uv_timer_stop(&g_timeout);
+  } else {
+    if(timeout_ms == 0) timeout_ms = 1;
+    uv_timer_start(&g_timeout, on_timeout, timeout_ms, 0);
+  }
+  return 0;
+}
+
+static void close_cb(uv_handle_t* handle) {
+  CurlContext* context = (CurlContext*) handle->data;
+  delete context;
+}
+
+static int handle_socket(CURL *easy, curl_socket_t s, int action, void *userp, void *socketp) {
+  CurlContext *curl_context;
+  int events = 0;
+  
+  switch(action) {
+  case CURL_POLL_IN:
+  case CURL_POLL_OUT:
+  case CURL_POLL_INOUT:
+    curl_context = socketp ? (CurlContext*)socketp : new CurlContext();
+    if(!socketp) {
+      curl_context->sockfd = s;
+      uv_poll_init_socket(EventLoop::instance().getLoop(), &curl_context->poll_handle, s);
+      curl_context->poll_handle.data = curl_context;
+      curl_multi_assign(g_curl_multi, s, curl_context);
+    }
+    
+    if(action != CURL_POLL_IN) events |= UV_WRITABLE;
+    if(action != CURL_POLL_OUT) events |= UV_READABLE;
+    
+    uv_poll_start(&curl_context->poll_handle, events, curl_perform);
+    break;
+  case CURL_POLL_REMOVE:
+    if(socketp) {
+      uv_poll_stop(&((CurlContext*)socketp)->poll_handle);
+      uv_close((uv_handle_t*)&((CurlContext*)socketp)->poll_handle, close_cb);
+      curl_multi_assign(g_curl_multi, s, NULL);
+    }
+    break;
+  default:
+    abort();
+  }
+  return 0;
+}
+
 static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;
@@ -56,6 +189,13 @@ static size_t HttpWriteCallback(void* contents, size_t size, size_t nmemb, void*
 void registerNetBuiltins(RuntimeContext& interp) {
     static int curl_init_checker = []() { curl_global_init(CURL_GLOBAL_DEFAULT); return 0; }();
     (void)curl_init_checker;
+
+    if (!g_curl_multi) {
+        g_curl_multi = curl_multi_init();
+        uv_timer_init(EventLoop::instance().getLoop(), &g_timeout);
+        curl_multi_setopt(g_curl_multi, CURLMOPT_SOCKETFUNCTION, handle_socket);
+        curl_multi_setopt(g_curl_multi, CURLMOPT_TIMERFUNCTION, start_timeout);
+    }
 
     interp.defineGlobal("url_encode", Value::makeNativeFunction("url_encode", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -180,79 +320,71 @@ void registerNetBuiltins(RuntimeContext& interp) {
             auto ezFut = std::make_shared<EZFuture>();
             EventLoop::instance().retain();
             
-            std::thread([url, options, ezFut]() {
-                try {
-                    auto makeError = [](const std::string& msg) {
-                        Value err = Value::makeDictionary();
-                        err.asDictionaryPtr()->modifyMap([&](auto& m) { m["error"] = Value(msg); });
-                        return err;
-                    };
+            auto makeError = [](const std::string& msg) {
+                Value err = Value::makeDictionary();
+                err.asDictionaryPtr()->modifyMap([&](auto& m) { m["error"] = Value(msg); });
+                return err;
+            };
 
-                    CURL* curl = curl_easy_init();
-                    if (!curl) { ezFut->set(makeError("CURL init failed")); return; }
-                    std::string response;
-                    std::string method = "GET";
-                    std::string body;
-                    struct curl_slist* headers = nullptr;
-                    long ssl_verify = 1L;
-                    long ssl_verifyhost = 2L;
-                    
-                    if (options.isDictionary()) {
-                        auto dictPtr = options.asDictionaryPtr();
-                        std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                        const auto& opts = dictPtr->getMapCopy();
-                        if (opts.count("insecure") && opts.at("insecure").isBool() && opts.at("insecure").asBool()) {
-                            ssl_verify = 0L; ssl_verifyhost = 0L;
-                        }
-                        if (opts.count("method")) method = opts.at("method").toString();
-                        if (opts.count("body")) body = opts.at("body").toString();
-                        if (opts.count("headers") && opts.at("headers").isDictionary()) {
-                            auto hDictPtr = opts.at("headers").asDictionaryPtr();
-                            std::shared_lock<std::shared_mutex> hLk(hDictPtr->map_mutex);
-                            for (const auto& kv : hDictPtr->getMapCopy()) {
-                                std::string h = kv.first + ": " + kv.second.toString();
-                                headers = curl_slist_append(headers, h.c_str());
-                            }
-                        }
-                    }
-
-                    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HttpWriteCallback);
-                    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-                    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-                    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, ssl_verify);
-                    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, ssl_verifyhost);
-#ifdef CURLSSLOPT_NATIVE_CA
-                    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
-#endif
-                    
-                    if (method == "POST") {
-                        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-                        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-                    } else if (method != "GET") {
-                        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
-                    }
-                    
-                    if (headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-                    
-                    CURLcode res = curl_easy_perform(curl);
-                    if (headers) curl_slist_free_all(headers);
-                    curl_easy_cleanup(curl);
-                    
-                    if (res != CURLE_OK) {
-                        ezFut->set(makeError("Fetch failed: " + std::string(curl_easy_strerror(res))));
-                        return;
-                    }
-                    
-                    ezFut->set(Value(response));
-                } catch(std::exception& e) {
-                    ezFut->setError(e.what());
-                } catch(...) {
-                    ezFut->setError("Unknown error in fetch");
+            CURL* curl = curl_easy_init();
+            if (!curl) { 
+                ezFut->set(makeError("CURL init failed")); 
+                EventLoop::instance().release(); 
+                return Value::makeFuture(ezFut); 
+            }
+            
+            RequestState* state = new RequestState();
+            state->ezFut = ezFut;
+            
+            std::string method = "GET";
+            std::string body;
+            long ssl_verify = 1L;
+            long ssl_verifyhost = 2L;
+            
+            if (options.isDictionary()) {
+                auto dictPtr = options.asDictionaryPtr();
+                std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
+                const auto& opts = dictPtr->getMapCopy();
+                if (opts.count("insecure") && opts.at("insecure").isBool() && opts.at("insecure").asBool()) {
+                    ssl_verify = 0L; ssl_verifyhost = 0L;
                 }
-                EventLoop::instance().release();
-            }).detach();
-                
+                if (opts.count("method")) method = opts.at("method").toString();
+                if (opts.count("body")) body = opts.at("body").toString();
+                if (opts.count("headers") && opts.at("headers").isDictionary()) {
+                    auto hDictPtr = opts.at("headers").asDictionaryPtr();
+                    std::shared_lock<std::shared_mutex> hLk(hDictPtr->map_mutex);
+                    for (const auto& kv : hDictPtr->getMapCopy()) {
+                        std::string h = kv.first + ": " + kv.second.toString();
+                        state->headers = curl_slist_append(state->headers, h.c_str());
+                    }
+                }
+            }
+
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HttpWriteCallback);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, &state->response);
+            curl_easy_setopt(curl, CURLOPT_PRIVATE, state);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, ssl_verify);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, ssl_verifyhost);
+#ifdef CURLSSLOPT_NATIVE_CA
+            curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
+            
+            if (method == "POST") {
+                curl_easy_setopt(curl, CURLOPT_POST, 1L);
+                curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, body.c_str());
+            } else if (method != "GET") {
+                curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+                if (!body.empty()) {
+                    curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS, body.c_str());
+                }
+            }
+            
+            if (state->headers) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, state->headers);
+            
+            curl_multi_add_handle(g_curl_multi, curl);
+            
             return Value::makeFuture(ezFut);
         }));
 

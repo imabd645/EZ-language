@@ -7,8 +7,6 @@ try {
 } catch (e) {
     out "CAUGHT EXCEPTION!"
     out "Message: " + e.message
-    out "Stack Trace:"
-    get st in e.stackTrace {
-        out "  at " + st
-    }
+    
+   
 }

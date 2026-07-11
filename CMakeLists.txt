@@ -68,7 +68,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -st
 link_directories(C:/msys64/mingw64/lib)
 
 # Basic libraries
-target_link_libraries(ez PRIVATE sqlite3 ffi)
+target_link_libraries(ez PRIVATE sqlite3 ffi uv)
 
 # Static libraries (curl and dependencies)
 target_link_libraries(ez PRIVATE
@@ -77,7 +77,7 @@ target_link_libraries(ez PRIVATE
 
 # Dynamic Windows libraries
 target_link_libraries(ez PRIVATE
-    -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi
+    -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
     dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
     pthread
 )

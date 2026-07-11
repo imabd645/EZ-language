@@ -149,7 +149,7 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     InflateRect(&focusRc, -3, -3);
                     DrawFocusRect(hdc, &focusRc);
                 }
-                return TRUE;
+                return true;
             }
             break;
         }
@@ -181,7 +181,7 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case SB_THUMBTRACK: si.nPos = HIWORD(wParam); break;
             }
             si.fMask = SIF_POS;
-            SetScrollInfo(hwnd, bar, &si, TRUE);
+            SetScrollInfo(hwnd, bar, &si, true);
             GetScrollInfo(hwnd, bar, &si);
             if (si.nPos != oldPos) {
                 int dx = (bar == SB_HORZ) ? (oldPos - si.nPos) : 0;
@@ -416,7 +416,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("gui_accept_drop", Value::makeNativeFunction("gui_accept_drop", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            DragAcceptFiles(g_gui.handleMap[(int)vNum(args[0])], TRUE);
+            DragAcceptFiles(g_gui.handleMap[(int)vNum(args[0])], true);
             return Value();
         }));
 
@@ -436,7 +436,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 x, y, w, h, NULL, NULL, g_gui.hInstance, NULL);
             if (!g_gui.mainWindow) g_gui.mainWindow = hwnd;
-            if (g_gui.currentTheme == "dark") { BOOL useD = TRUE; DwmSetWindowAttribute(hwnd, 20, &useD, sizeof(useD)); }
+            if (g_gui.currentTheme == "dark") { BOOL useD = true; DwmSetWindowAttribute(hwnd, 20, &useD, sizeof(useD)); }
             int cp = 2; DwmSetWindowAttribute(hwnd, 33, &cp, sizeof(cp));
             return Value(registerWidgetHandle(hwnd));
         }));
@@ -520,9 +520,9 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
             HWND hwnd = CreateWindowEx(0, "EZWindowClass", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VSCROLL | WS_HSCROLL,
                 (int)vNum(args[1]), (int)vNum(args[2]), w, h, parent, NULL, g_gui.hInstance, NULL);
             SCROLLINFO si = { sizeof(si), SIF_RANGE | SIF_PAGE | SIF_POS, 0, 1000, (UINT)h, 0 };
-            SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+            SetScrollInfo(hwnd, SB_VERT, &si, true);
             si.nMax = 1000; si.nPage = (UINT)w;
-            SetScrollInfo(hwnd, SB_HORZ, &si, TRUE);
+            SetScrollInfo(hwnd, SB_HORZ, &si, true);
             return Value(registerWidgetHandle(hwnd));
         }));
 
@@ -531,9 +531,9 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             RECT rect; GetClientRect(hwnd, &rect);
             SCROLLINFO si = { sizeof(si), SIF_RANGE | SIF_PAGE, 0, (int)vNum(args[2]), (UINT)(rect.bottom - rect.top), 0 };
-            SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+            SetScrollInfo(hwnd, SB_VERT, &si, true);
             si.nMax = (int)vNum(args[1]); si.nPage = (UINT)(rect.right - rect.left);
-            SetScrollInfo(hwnd, SB_HORZ, &si, TRUE);
+            SetScrollInfo(hwnd, SB_HORZ, &si, true);
             return Value();
         }));
 

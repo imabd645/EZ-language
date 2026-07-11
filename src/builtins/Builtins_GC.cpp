@@ -224,7 +224,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 handles.push_back(v.asFuture()->hEvent);
             }
             
-            DWORD result = WaitForMultipleObjects(handles.size(), handles.data(), FALSE, INFINITE);
+            DWORD result = WaitForMultipleObjects(handles.size(), handles.data(), false, INFINITE);
             if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
                 size_t index = result - WAIT_OBJECT_0;
                 return arr[index].asFuture()->get();

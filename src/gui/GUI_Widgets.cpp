@@ -25,7 +25,7 @@ static Value builtin_gui_set_font(RuntimeContext& interp, const std::vector<Valu
     int fontSize = (int)vNum(args[2]);
     
     HFONT hFont = CreateFontA(
-        fontSize, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, ANSI_CHARSET,
+        fontSize, 0, 0, 0, FW_NORMAL, false, false, false, ANSI_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, fontName.c_str()
     );
     
@@ -33,7 +33,7 @@ static Value builtin_gui_set_font(RuntimeContext& interp, const std::vector<Valu
         DeleteObject(g_gui.styles[hwnd].hFont);
     }
     g_gui.styles[hwnd].hFont = hFont;
-    SendMessage(hwnd, WM_SETFONT, (WPARAM)hFont, TRUE);
+    SendMessage(hwnd, WM_SETFONT, (WPARAM)hFont, true);
     return Value();
 }
 
@@ -161,7 +161,7 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             HWND hwnd = CreateWindow(TRACKBAR_CLASS, "", WS_VISIBLE | WS_CHILD | TBS_AUTOTICKS | TBS_TOOLTIPS,
                 (int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), parent, NULL, g_gui.hInstance, NULL);
-            SendMessage(hwnd, TBM_SETRANGE, TRUE, MAKELPARAM((int)vNum(args[5]), (int)vNum(args[6])));
+            SendMessage(hwnd, TBM_SETRANGE, true, MAKELPARAM((int)vNum(args[5]), (int)vNum(args[6])));
             return Value(registerWidgetHandle(hwnd));
         }));
 
@@ -174,7 +174,7 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_set_slider", Value::makeNativeFunction("gui_set_slider", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
-            SendMessage(hwnd, TBM_SETPOS, TRUE, (int)vNum(args[1]));
+            SendMessage(hwnd, TBM_SETPOS, true, (int)vNum(args[1]));
             return Value();
         }));
 

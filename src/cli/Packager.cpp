@@ -127,7 +127,7 @@ bool injectIcon(const std::string& exePath, const std::string& iconPath) {
     EZ_ICONDIR* dir = (EZ_ICONDIR*)icoData.data();
     if (dir->idReserved != 0 || dir->idType != 1) { std::cerr << "Icon error: invalid header\n"; return false; }
 
-    HANDLE hUpdate = BeginUpdateResourceA(exePath.c_str(), FALSE);
+    HANDLE hUpdate = BeginUpdateResourceA(exePath.c_str(), false);
     if (hUpdate == NULL) { std::cerr << "Icon error: BeginUpdateResourceA failed (" << GetLastError() << ")\n"; return false; }
 
     std::vector<uint8_t> grpData(sizeof(EZ_GRPICONDIR) + dir->idCount * sizeof(EZ_GRPICONDIRENTRY));
@@ -154,7 +154,7 @@ bool injectIcon(const std::string& exePath, const std::string& iconPath) {
     }
 
     UpdateResourceA(hUpdate, RT_GROUP_ICON, MAKEINTRESOURCEA(1), MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), grpData.data(), grpData.size());
-    if (!EndUpdateResourceA(hUpdate, FALSE)) {
+    if (!EndUpdateResourceA(hUpdate, false)) {
         std::cerr << "Icon error: EndUpdateResourceA failed (" << GetLastError() << ")\n";
         return false;
     }

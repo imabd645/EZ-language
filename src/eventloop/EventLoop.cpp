@@ -4,29 +4,64 @@
 #define EZFUTURE_IMPL
 #include "runtime/EZFuture.h"
 
+EventLoop::EventLoop() {
+    uv_async_init(uv_default_loop(), &asyncTaskHandle, asyncCallback);
+    asyncTaskHandle.data = this;
+    uv_unref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
+}
+
+void EventLoop::asyncCallback(uv_async_t* handle) {
+    EventLoop* loop = static_cast<EventLoop*>(handle->data);
+    
+    std::function<void()> task;
+    while (true) {
+        {
+            std::lock_guard<std::mutex> lock(loop->queueMutex);
+            if (loop->taskQueue.empty()) break;
+            task = std::move(loop->taskQueue.front());
+            loop->taskQueue.pop();
+        }
+        
+        if (task) {
+            try {
+                task();
+            } catch (const RuntimeError& e) {
+                std::cerr << "[EventLoop] Uncaught RuntimeError: " << e.what() << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "[EventLoop] Uncaught std::exception: " << e.what() << std::endl;
+            } catch (...) {
+                std::cerr << "[EventLoop] Uncaught unknown exception" << std::endl;
+            }
+        }
+    }
+}
+
 void EventLoop::pushTask(std::function<void()> task) {
     {
         std::lock_guard<std::mutex> lock(queueMutex);
         taskQueue.push(std::move(task));
     }
-    cv.notify_one();
+    uv_async_send(&asyncTaskHandle);
 }
 
 void EventLoop::retain() {
     std::lock_guard<std::mutex> lock(queueMutex);
     pendingIoCount++;
+    if (pendingIoCount == 1) {
+        uv_ref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
+    }
 }
 
 void EventLoop::release() {
-    {
-        std::lock_guard<std::mutex> lock(queueMutex);
-        pendingIoCount--;
-        if (pendingIoCount < 0) {
-            std::cerr << "[EventLoop] WARNING: pendingIoCount underflow (double release detected)." << std::endl;
-            pendingIoCount = 0;
-        }
+    std::lock_guard<std::mutex> lock(queueMutex);
+    pendingIoCount--;
+    if (pendingIoCount < 0) {
+        std::cerr << "[EventLoop] WARNING: pendingIoCount underflow (double release detected)." << std::endl;
+        pendingIoCount = 0;
     }
-    cv.notify_one();
+    if (pendingIoCount == 0) {
+        uv_unref(reinterpret_cast<uv_handle_t*>(&asyncTaskHandle));
+    }
 }
 
 void EventLoop::run() {
@@ -40,39 +75,21 @@ void EventLoop::run() {
     } guard{isRunning};
 
     while (!stopRequested) {
-        std::function<void()> task;
+        uv_run(uv_default_loop(), UV_RUN_DEFAULT);
         
+        bool hasTasks = false;
         {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            
-            // Wait until there is a task, OR there are no pending IOs (meaning we should exit), OR we are requested to stop
-            cv.wait(lock, [this]() {
-                return !taskQueue.empty() || pendingIoCount == 0 || stopRequested;
-            });
-            
-            if (stopRequested || (taskQueue.empty() && pendingIoCount == 0)) {
-                // Nothing left to do or stop requested, exit the event loop
-                break;
-            }
-            
-            if (!taskQueue.empty()) {
-                task = std::move(taskQueue.front());
-                taskQueue.pop();
-            }
+            std::lock_guard<std::mutex> lock(queueMutex);
+            hasTasks = !taskQueue.empty();
         }
         
-        // Execute task outside the lock
-        if (task) {
-            try {
-                task();
-            } catch (const RuntimeError& e) {
-                // EZ Runtime errors
-                std::cerr << "[EventLoop] Uncaught RuntimeError: " << e.what() << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "[EventLoop] Uncaught std::exception: " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "[EventLoop] Uncaught unknown exception" << std::endl;
-            }
+        if (!hasTasks && pendingIoCount == 0) {
+            break;
         }
     }
+}
+
+void EventLoop::stop() {
+    stopRequested = true;
+    uv_stop(uv_default_loop());
 }

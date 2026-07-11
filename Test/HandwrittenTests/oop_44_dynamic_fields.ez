@@ -1,4 +1,5 @@
-model Foo {}
+model Foo {
+    bar=1}
 f = Foo()
 f.bar = 42
 print(f.bar)

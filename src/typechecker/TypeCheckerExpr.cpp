@@ -432,7 +432,7 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
         if (expr.isOptional) return TypeInfo("Any");
         
         // Report error with original objType.baseType
-        error(0, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
+        error(currentExprContext, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
     }
     return TypeInfo("Any");
 }
@@ -444,7 +444,7 @@ TypeInfo TypeChecker::checkSet(const SetExpr& expr) {
 
 TypeInfo TypeChecker::checkSelf(const SelfExpr& expr) {
     if (currentModel.empty()) {
-        error(0, "'self' cannot be used outside of a model or class");
+        error(currentExprContext, "'self' cannot be used outside of a model or class");
         return TypeInfo("Any");
     }
     return TypeInfo(currentModel);
@@ -452,11 +452,11 @@ TypeInfo TypeChecker::checkSelf(const SelfExpr& expr) {
 
 TypeInfo TypeChecker::checkSuper(const SuperExpr& expr) {
     if (currentModel.empty()) {
-        error(0, "'super' cannot be used outside of a model");
+        error(currentExprContext, "'super' cannot be used outside of a model");
         return TypeInfo("Any");
     }
     if (modelHierarchy.count(currentModel) == 0) {
-        error(0, "Cannot use 'super' in a model with no parent");
+        error(currentExprContext, "Cannot use 'super' in a model with no parent");
         return TypeInfo("Any");
     }
     return TypeInfo(modelHierarchy[currentModel]);

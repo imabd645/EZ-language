@@ -1666,7 +1666,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     EventLoop::instance().pushTask([sharedVM, rawVM, fut]() {
                                         rawVM->isYielded = false;
                                         if (fut->isError()) {
-                                            // Re-execute OP_AWAIT so it throws from inside the interpret loop
                                             if (!rawVM->frames.empty()) {
                                                 rawVM->frames.back().ip -= 1;
                                             }

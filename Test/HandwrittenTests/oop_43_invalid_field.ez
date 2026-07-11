@@ -1,3 +1,4 @@
-model Foo {}
+
+class Foo {}
 f = Foo()
 try { print(f.bar) } catch (e) {}

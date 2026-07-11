@@ -1642,7 +1642,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (futVal.isFuture()) {
                             auto fut = futVal.asFuture();
                             if (fut->isReady()) {
-                                *(stackTop - 1) = fut->get();
+                                if (fut->isError()) {
+                                    SYNC_IP();
+                                    throwException("Exception", fut->getError());
+                                    return;
+                                } else {
+                                    *(stackTop - 1) = fut->get();
+                                }
                             } else {
                                 SYNC_IP();
                                 this->isYielded = true;

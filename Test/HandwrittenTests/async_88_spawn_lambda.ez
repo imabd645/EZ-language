@@ -1,0 +1,2 @@
+fut = spawn(|| { give 100 })
+print(await(fut))

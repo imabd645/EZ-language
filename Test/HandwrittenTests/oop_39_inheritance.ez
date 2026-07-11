@@ -1,0 +1,4 @@
+model Base { foo() { give 1 } }
+model Child extends Base {}
+c = Child()
+print(c.foo())

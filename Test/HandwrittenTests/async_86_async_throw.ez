@@ -1,0 +1,3 @@
+task foo() { throw "err" }
+fut = spawn(foo)
+try { await(fut) } catch (e) {}

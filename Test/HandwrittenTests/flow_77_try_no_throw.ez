@@ -1,0 +1,1 @@
+try { print("ok") } catch (e) { print("fail") }

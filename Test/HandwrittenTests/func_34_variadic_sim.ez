@@ -1,0 +1,6 @@
+task sum(arr) { s = 0
+ i = 0
+ while i < len(arr) { s = s + arr[i]
+ i = i + 1 }
+ give s }
+print(sum([1,2,3]))

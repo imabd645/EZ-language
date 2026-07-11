@@ -1,0 +1,2 @@
+task foo(a) { give a }
+try { foo(1, 2) } catch (e) {}

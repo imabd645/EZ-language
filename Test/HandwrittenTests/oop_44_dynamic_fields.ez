@@ -1,0 +1,4 @@
+model Foo {}
+f = Foo()
+f.bar = 42
+print(f.bar)

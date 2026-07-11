@@ -1,0 +1,2 @@
+interface Animal {task  makeSound() }
+try { model Cat implements Animal {} } catch(e) {}

@@ -1,0 +1,1 @@
+try { class = 5 } catch (e) { print(e) }

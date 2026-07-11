@@ -1,0 +1,2 @@
+a = [1]
+try { print(a[5]) } catch (e) {}

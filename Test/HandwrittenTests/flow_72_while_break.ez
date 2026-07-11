@@ -1,0 +1,4 @@
+i = 0
+while i < 10 { when i == 5 { escape }
+ i = i + 1 }
+print(i)

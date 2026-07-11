@@ -1,0 +1,2 @@
+s = "line1\nline2\nline3"
+print(s)

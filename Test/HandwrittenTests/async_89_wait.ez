@@ -1,0 +1,4 @@
+start = clock()
+wait(100)
+end = clock()
+print(end - start > 50)

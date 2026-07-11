@@ -1,0 +1,3 @@
+x = 0
+try { throw "err" } catch (e) {} finally { x = 1 }
+print(x)

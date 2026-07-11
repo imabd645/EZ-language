@@ -1,0 +1,4 @@
+task foo(x) { give x }
+f1 = spawn(foo, 1)
+f2 = spawn(foo, 2)
+print(await(f1) + await(f2))

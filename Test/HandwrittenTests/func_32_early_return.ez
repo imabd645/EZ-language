@@ -1,0 +1,3 @@
+task foo() { give 1
+ give 2 }
+print(foo())

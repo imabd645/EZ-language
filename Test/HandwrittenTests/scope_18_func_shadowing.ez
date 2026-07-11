@@ -1,0 +1,3 @@
+x = 5
+task test(x) { print(x) }
+test(10)

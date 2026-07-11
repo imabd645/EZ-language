@@ -1,0 +1,4 @@
+model Base { task foo() { give 1 } }
+model Child extends Base { task foo() { give 2 } }
+c = Child()
+print(c.foo())

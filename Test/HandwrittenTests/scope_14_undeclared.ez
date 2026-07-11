@@ -1,0 +1,1 @@
+try { print(undeclared_var) } catch (e) { print("caught") }

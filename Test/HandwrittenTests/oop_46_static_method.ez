@@ -1,0 +1,2 @@
+model Math { static task add(a, b) { give a+b } }
+print(Math.add(1, 2))

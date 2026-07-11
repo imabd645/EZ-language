@@ -1,0 +1,5 @@
+model A { task a() { give 1 } }
+model B extends A { task b() { give 2 } }
+model C extends B { task c() { give 3 } }
+obj = C()
+print(obj.a() + obj.b() + obj.c())

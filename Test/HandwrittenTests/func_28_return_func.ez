@@ -1,0 +1,3 @@
+task makeAdder(x) { task adder(y) { give x+y } give adder }
+add5 = makeAdder(5)
+print(add5(10))

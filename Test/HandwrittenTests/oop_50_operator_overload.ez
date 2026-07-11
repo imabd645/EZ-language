@@ -1,0 +1,6 @@
+model Vector { init(x) { self.x = x }
+ task +(otherr) { give Vector(self.x + otherr.x) } }
+v1 = Vector(5)
+v2 = Vector(10)
+v3 = v1 + v2
+print(v3.x)

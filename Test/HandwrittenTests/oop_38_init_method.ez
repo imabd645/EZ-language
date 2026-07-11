@@ -1,0 +1,4 @@
+model Point { init(x, y) { self.x = x
+ self.y = y } }
+p = Point(1, 2)
+print(p.x)

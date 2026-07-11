@@ -1,0 +1,1 @@
+try { d = { 1: "one" } } catch (e) {}

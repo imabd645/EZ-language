@@ -1,0 +1,1 @@
+try { print(len(42)) } catch (e) {}

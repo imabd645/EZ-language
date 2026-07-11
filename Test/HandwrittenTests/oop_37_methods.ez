@@ -1,0 +1,3 @@
+model Foo { bar() { give 42 } }
+f = Foo()
+print(f.bar())

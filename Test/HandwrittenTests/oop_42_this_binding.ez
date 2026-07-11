@@ -1,0 +1,5 @@
+model Foo { init() { self.x = 10 }
+ task getX() { give self.x } }
+f = Foo()
+m = f.getX
+print(m())

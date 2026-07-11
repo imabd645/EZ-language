@@ -1,0 +1,2 @@
+self_is_a_very_long_identifier_name_that_tests_lexer_buffer_limits_0123456789 = 42
+print(self_is_a_very_long_identifier_name_that_tests_lexer_buffer_limits_0123456789)

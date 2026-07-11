@@ -1,0 +1,3 @@
+task apply(f, x) { give f(x) }
+task square(x) { give x*x }
+print(apply(square, 5))

@@ -1,0 +1,2 @@
+when true { a = 5 }
+try { print(a) } catch (e) { print("out of scope") }

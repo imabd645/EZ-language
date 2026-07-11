@@ -1,0 +1,1 @@
+try { res = await(fetch("invalid://url")) } catch (e) {}

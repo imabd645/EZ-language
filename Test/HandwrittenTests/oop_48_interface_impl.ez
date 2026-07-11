@@ -1,0 +1,4 @@
+interface Animal { task makeSound() }
+model Dog implements Animal { task makeSound() { print("woof") } }
+d = Dog()
+d.makeSound()

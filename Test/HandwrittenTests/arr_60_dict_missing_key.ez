@@ -1,0 +1,2 @@
+d = {}
+try { print(d["missing"]) } catch (e) {}

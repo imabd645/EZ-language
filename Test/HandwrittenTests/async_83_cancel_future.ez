@@ -1,0 +1,3 @@
+task foo() { wait(1000) }
+fut = spawn(foo)
+cancel(fut)

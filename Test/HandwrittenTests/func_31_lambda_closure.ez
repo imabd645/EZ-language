@@ -1,0 +1,3 @@
+x = 10
+f = || { give x }
+print(f())

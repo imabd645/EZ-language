@@ -1,0 +1,8 @@
+task a() { x = 1
+ task b() { y = 2
+ task c() { print(x+y) }
+ give c }
+ give b }
+f = a()
+g = f()
+g()

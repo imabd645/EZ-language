@@ -1,0 +1,3 @@
+task inner() { give 1 }
+task outer() { give await(spawn(inner)) }
+print(await(spawn(outer)))

@@ -1,0 +1,2 @@
+d = {"a": 1, "b": 2}
+get k in d { print(k) }

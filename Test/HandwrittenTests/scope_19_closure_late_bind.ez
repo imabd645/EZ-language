@@ -1,0 +1,6 @@
+task outer() { x = 1
+ task inner() { print(x) }
+ x = 2
+ give inner }
+f = outer()
+f()

@@ -3,3 +3,4 @@ lib/pdf.ez
 lib/ 
 ez.exe
 vscode-ez-language/
+build/

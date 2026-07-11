@@ -218,7 +218,8 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
             lvc.pszText = (LPSTR)text.c_str();
             lvc.cx = (int)vNum(args[2]);
             lvc.fmt = LVCFMT_LEFT;
-            int count = SendMessage(hwnd, LVM_GETCOLUMNCOUNT, 0, 0);
+            HWND hHeader = (HWND)SendMessage(hwnd, LVM_GETHEADER, 0, 0);
+            int count = (int)SendMessage(hHeader, HDM_GETITEMCOUNT, 0, 0);
             lvc.iSubItem = count;
             SendMessage(hwnd, LVM_INSERTCOLUMN, count, (LPARAM)&lvc);
             return Value();
@@ -268,7 +269,8 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
             int row = (int)vNum(args[1]);
-            int cols = SendMessage(hwnd, LVM_GETCOLUMNCOUNT, 0, 0);
+            HWND hHeader = (HWND)SendMessage(hwnd, LVM_GETHEADER, 0, 0);
+            int cols = (int)SendMessage(hHeader, HDM_GETITEMCOUNT, 0, 0);
             std::vector<Value> rowData;
             for (int i = 0; i < cols; i++) {
                 char buf[1024] = {0};

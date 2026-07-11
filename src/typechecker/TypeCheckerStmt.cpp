@@ -217,6 +217,9 @@ void TypeChecker::checkTry(const TryStmt& stmt) {
         checkStmt(catchBlock.body);
         endScope();
     }
+    if (stmt.finallyBlock) {
+        checkStmt(stmt.finallyBlock);
+    }
 }
 
 void TypeChecker::checkThrow(const ThrowStmt& stmt) {

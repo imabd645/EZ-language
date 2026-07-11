@@ -249,13 +249,14 @@ struct CatchBlock {
     StmtPtr body;
 };
 
-// Try-Catch statement
+// Try-Catch-Finally statement
 struct TryStmt {
     StmtPtr tryBlock;
     std::vector<CatchBlock> catchBlocks;
+    StmtPtr finallyBlock; // Optional finally block
     
-    TryStmt(StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks)
-        : tryBlock(std::move(tryBlk)), catchBlocks(std::move(catchBlocks)) {}
+    TryStmt(StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks, StmtPtr finallyBlk = nullptr)
+        : tryBlock(std::move(tryBlk)), catchBlocks(std::move(catchBlocks)), finallyBlock(std::move(finallyBlk)) {}
 };
 
 // Throw statement (error)
@@ -455,8 +456,8 @@ inline StmtPtr makeUseStmt(int line, int column, int length, const std::string& 
     return std::make_shared<Stmt>(line, column, length, file, std::make_shared<UseStmt>(path, alias));
 }
 
-inline StmtPtr makeTryStmt(int line, int column, int length, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<TryStmt>(std::move(tryBlk), std::move(catchBlocks)));
+inline StmtPtr makeTryStmt(int line, int column, int length, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks, StmtPtr finallyBlk = nullptr) {
+    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<TryStmt>(std::move(tryBlk), std::move(catchBlocks), std::move(finallyBlk)));
 }
 
 inline StmtPtr makeThrowStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {

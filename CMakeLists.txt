@@ -1,12 +1,20 @@
 cmake_minimum_required(VERSION 3.10)
 project(EZLanguage CXX)
 
-# Set the C++ standard to C++17
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Add all source files based on the compiler command
+# Optimization flags (matching build.bat)
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -flto -funroll-loops -fomit-frame-pointer")
+
+# Defines
+add_definitions(-DCURL_STATICLIB)
+
+# Include directories
+include_directories(src)
+include_directories(C:/msys64/mingw64/include)
+
+# Gather all source files explicitly
 set(SOURCES
     src/main.cpp
     src/builtins/Builtins.cpp
@@ -50,27 +58,25 @@ set(SOURCES
     src/vm/BytecodeVM_Objects.cpp
 )
 
-# Create the executable named 'ez'
+# Create the executable
 add_executable(ez ${SOURCES})
 
-# Include directories
-target_include_directories(ez PRIVATE src)
+# Static linking flags
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++ -Wl,--subsystem,console")
 
-# Add compile definitions
-target_compile_definitions(ez PRIVATE CURL_STATICLIB)
+# Link directories
+link_directories(C:/msys64/mingw64/lib)
 
-# Link options to enforce static linking of gcc and stdc++
-target_link_options(ez PRIVATE 
-    -static 
-    -static-libgcc 
-    -static-libstdc++ 
-    -Wl,--subsystem,console
+# Basic libraries
+target_link_libraries(ez PRIVATE sqlite3 ffi)
+
+# Static libraries (curl and dependencies)
+target_link_libraries(ez PRIVATE
+    -Wl,-Bstatic curl ssh2 nghttp2 ngtcp2 ngtcp2_crypto_ossl nghttp3 brotlidec brotlicommon zstd idn2 psl iconv unistring ssl crypto z
 )
 
-# Required libraries matching GCC command exactly
-target_link_libraries(ez PRIVATE 
-    sqlite3
-    -Wl,-Bstatic curl ssh2 nghttp2 ngtcp2 ngtcp2_crypto_ossl nghttp3 brotlidec brotlicommon zstd idn2 psl iconv unistring ssl crypto z
+# Dynamic Windows libraries
+target_link_libraries(ez PRIVATE
     -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi
     dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
     pthread

@@ -640,11 +640,19 @@ StmtPtr Parser::tryStatement() {
         skipNewlines();
     }
     
-    if (catchBlocks.empty()) {
-        throw ParseError("Expected at least one 'catch' block", peek().line);
+    // Parse optional finally block
+    StmtPtr finallyBlock = nullptr;
+    if (match(TokenType::FINALLY)) {
+        skipNewlines();
+        consume(TokenType::LBRACE, "Expected '{' after 'finally'");
+        finallyBlock = blockStatement();
     }
     
-    return makeTryStmt(line, column, length, filename, tryBlock, std::move(catchBlocks));
+    if (catchBlocks.empty() && !finallyBlock) {
+        throw ParseError("Expected at least one 'catch' or 'finally' block", peek().line);
+    }
+    
+    return makeTryStmt(line, column, length, filename, tryBlock, std::move(catchBlocks), std::move(finallyBlock));
 }
 
 StmtPtr Parser::throwStatement() {

@@ -105,9 +105,11 @@ enum class OpCode : uint8_t {
     ITER_HAS_NEXT,       // Check if iterator has more
     
     // Exception handling
-    TRY_START,           // catch_offset, finally_offset
+    TRY_START,           // catch_offset
     TRY_END,             // End try block
     THROW,               // Throw exception
+    FINALLY_START,       // Begin finally block
+    FINALLY_END,         // End finally block; re-throws pending exception if any
     
     // Built-ins
     TO_STRING,           // Convert top of stack to string (calling toString() if instance)

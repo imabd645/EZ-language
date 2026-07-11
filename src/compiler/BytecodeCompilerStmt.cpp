@@ -1169,6 +1169,18 @@ void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {
 }
 
 void BytecodeCompiler::compileTry(const TryStmt& stmt) {
+    bool hasFinally = stmt.finallyBlock != nullptr;
+    bool hasCatch = !stmt.catchBlocks.empty();
+    
+    int pendingSlot = -1;
+    if (hasFinally) {
+        beginScope(); // Scope for the hidden pending exception variable
+        emitOp(OpCode::LOAD_NIL);
+        pendingSlot = addLocal("__pendingExc__" + std::to_string(current->locals.size()));
+        current->locals.back().isStackResident = true; // It is on the stack right now
+        markInitialized();
+    }
+    
     // Emit TRY_START with a placeholder jump offset to the catch handler.
     size_t tryStart = emitJump(OpCode::TRY_START);
 
@@ -1176,80 +1188,117 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     compileStmt(stmt.tryBlock);
     emitOp(OpCode::TRY_END);
 
-    // Jump over catch handlers if no exception was raised
+    // Jump over catch handlers to finally (or end)
     size_t afterCatch = emitJump(OpCode::JUMP);
 
-    // Patch TRY_START to point here (the catch handler entry)
+    // Patch TRY_START to point here (the catch handler entry or finally for try-finally)
     patchJump(tryStart);
 
-    // At this point, the exception is on the stack: [exc]
-    
     std::vector<size_t> successJumps;
 
-    for (const auto& cb : stmt.catchBlocks) {
-        size_t nextCatch = 0;
-        
-        if (!cb.typeName.empty()) {
-            // Typed catch: check if instance of type
-            emitOp(OpCode::DUP); // [exc, exc]
-            emitConstant(Value(cb.typeName)); // [exc, exc, "Type"]
-            emitOp(OpCode::IS_INSTANCE_OF); // [exc, bool]
+    if (hasCatch) {
+        // At this point, the exception is on the stack: [exc]
+        for (const auto& cb : stmt.catchBlocks) {
+            size_t nextCatch = 0;
             
-            nextCatch = emitJump(OpCode::JUMP_IF_FALSE); // Jump to next catch if not this type
-            
-            // Matches! Bind and execute body
-            beginScope();
-            if (!cb.varName.empty()) {
-                int slot = addLocal(cb.varName);
-                current->locals.back().isStackResident = false;
-                markInitialized();
-                // Exception is on stack. Store it into the local variable slot.
-                emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                          static_cast<uint8_t>(slot));
-                emitOp(OpCode::POP);
+            if (!cb.typeName.empty()) {
+                // Typed catch: check if instance of type
+                emitOp(OpCode::DUP); // [exc, exc]
+                emitConstant(Value(cb.typeName)); // [exc, exc, "Type"]
+                emitOp(OpCode::IS_INSTANCE_OF); // [exc, bool]
+                
+                nextCatch = emitJump(OpCode::JUMP_IF_FALSE); // Jump to next catch if not this type
+                
+                // Matches! Bind and execute body
+                beginScope();
+                if (!cb.varName.empty()) {
+                    int slot = addLocal(cb.varName);
+                    current->locals.back().isStackResident = false;
+                    markInitialized();
+                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                              static_cast<uint8_t>(slot));
+                    emitOp(OpCode::POP);
+                } else {
+                    emitOp(OpCode::POP); // No variable bound, discard exception
+                }
+                compileStmt(cb.body);
+                endScope();
+                
+                successJumps.push_back(emitJump(OpCode::JUMP)); // Jump to finally/end
+                
+                patchJump(nextCatch); // Point next catch check here
             } else {
-                emitOp(OpCode::POP); // No variable bound, discard exception
+                // Catch-all
+                beginScope();
+                if (!cb.varName.empty()) {
+                    int slot = addLocal(cb.varName);
+                    current->locals.back().isStackResident = false;
+                    markInitialized();
+                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                              static_cast<uint8_t>(slot));
+                    emitOp(OpCode::POP);
+                } else {
+                    emitOp(OpCode::POP); // No variable bound, discard exception
+                }
+                compileStmt(cb.body);
+                endScope();
+                
+                successJumps.push_back(emitJump(OpCode::JUMP));
+                
+                break;
             }
-            compileStmt(cb.body);
-            endScope();
-            
-            successJumps.push_back(emitJump(OpCode::JUMP)); // Jump to afterCatch
-            
-            patchJump(nextCatch); // Point next catch check here
-        } else {
-            // Catch-all
-            beginScope();
-            if (!cb.varName.empty()) {
-                int slot = addLocal(cb.varName);
-                current->locals.back().isStackResident = false;
-                markInitialized();
-                // Exception is on stack. Store it into the local variable slot.
-                emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                          static_cast<uint8_t>(slot));
-                emitOp(OpCode::POP);
-            } else {
-                emitOp(OpCode::POP); // No variable bound, discard exception
-            }
-            compileStmt(cb.body);
-            endScope();
-            
-            successJumps.push_back(emitJump(OpCode::JUMP));
-            
-            // Catch-all reached, any subsequent catch blocks are unreachable
-            break;
         }
+        
+        // If we fall through here, no catch block matched (and no catch-all was present)
+        if (hasFinally) {
+            // Save exception as pending and jump to finally
+            // The exception is still on the stack from the catch dispatch
+            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(pendingSlot));
+            emitOp(OpCode::POP);
+            
+            // Jump to finally
+            size_t toFinally = emitJump(OpCode::JUMP);
+            successJumps.push_back(toFinally);
+        } else {
+            // Re-throw the exception which is still on the stack
+            emitOp(OpCode::THROW);
+        }
+    } else {
+        // try-finally without catch: exception is on stack from TRY_START catch handler
+        // Save exception as pending and fall through to finally
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(pendingSlot));
+        emitOp(OpCode::POP);
     }
-    
-    // If we fall through here, it means no catch block matched (and no catch-all was present)
-    // Re-throw the exception which is still on the stack
-    emitOp(OpCode::THROW);
 
-    // Patch all successful catch handlers to jump here
+    // Patch all successful catch handlers and afterCatch to jump here
     for (size_t jump : successJumps) {
         patchJump(jump);
     }
-    
     patchJump(afterCatch);
+    
+    // Emit finally block if present
+    if (hasFinally) {
+        compileStmt(stmt.finallyBlock);
+        
+        // Load pending exception
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(pendingSlot));
+        
+        // We want to throw it if it's not nil.
+        // DUP pushes a copy.
+        // JUMP_IF_NIL checks the copy, pops it, and jumps if nil.
+        // If it was nil, we jump to skipRethrow, where we POP the original nil.
+        // If it was NOT nil, it falls through to THROW, which pops and throws the exception!
+        
+        emitOp(OpCode::DUP);
+        size_t skipRethrow = emitJump(OpCode::JUMP_IF_NIL);
+        
+        emitOp(OpCode::THROW); // Re-throw the pending exception
+        
+        patchJump(skipRethrow);
+        emitOp(OpCode::POP); // Pop the nil or the exception
+        
+        endScope(); // End the hidden scope
+    }
 }
 
 void BytecodeCompiler::compileThrow(const ThrowStmt& stmt) {

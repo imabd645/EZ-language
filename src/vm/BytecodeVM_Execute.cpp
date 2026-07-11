@@ -63,7 +63,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_BUILD_TUPLE, &&handle_MAKE_DICT, &&handle_INDEX_GET, &&handle_INDEX_SET, &&handle_ARRAY_APPEND,
         &&handle_ARRAY_EXTEND, &&handle_CALL_SPREAD, &&handle_NEW_INSTANCE, &&handle_GET_METHOD, &&handle_SUPER, &&handle_SUPER_CALL,
         &&handle_GET_ITER, &&handle_GET_DICT_ITER, &&handle_ITER_NEXT, &&handle_ITER_HAS_NEXT, &&handle_TRY_START,
-        &&handle_TRY_END, &&handle_THROW, &&handle_TO_STRING, &&handle_PRINT, &&handle_CLOCK,
+        &&handle_TRY_END, &&handle_THROW, &&handle_FINALLY_START, &&handle_FINALLY_END, &&handle_TO_STRING, &&handle_PRINT, &&handle_CLOCK,
         &&handle_TYPE_OF, &&handle_IS_INSTANCE_OF, &&handle_OP_AWAIT, &&handle_MAKE_INTERFACE, &&handle_MAKE_CLASS, &&handle_BREAKPOINT, &&handle_LINE,
         &&handle_HAS_GLOBAL,
         &&handle_LOAD_GLOBAL_SLOT,
@@ -1864,6 +1864,40 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(TRY_END) {
                     if (!tryStack.empty()) tryStack.pop_back();
+                    DISPATCH();
+                }
+
+                CASE_CODE(FINALLY_START) {
+                    // Mark that we are inside a finally block. No-op for execution flow.
+                    DISPATCH();
+                }
+
+                CASE_CODE(FINALLY_END) {
+                    // If there is a pending exception saved before entering finally, re-throw it now.
+                    if (!pendingException.isNil()) {
+                        Value exc = pendingException;
+                        pendingException = Value(); // Clear it
+                        
+                        if (!tryStack.empty()) {
+                            TryBlock tb = tryStack.back(); tryStack.pop_back();
+                            while (frames.size() > tb.frameIdx + 1) {
+                                closeUpvalues(frames.back().slots);
+                                frames.pop_back(); frameUpvalues.pop_back();
+                            }
+                            stackTop = tb.stackTop;
+                            LOAD_FRAME();
+                            ip = tb.catchIp;
+                            *stackTop++ = exc;
+                        } else {
+                            SYNC_IP();
+                            if (exc.isDictionary() && exc.asDictionaryPtr()->getMapCopy().count("message")) {
+                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->getMapCopy().at("message").toString());
+                            } else {
+                                runtimeError("Uncaught exception: " + exc.toString());
+                            }
+                            return;
+                        }
+                    }
                     DISPATCH();
                 }
 

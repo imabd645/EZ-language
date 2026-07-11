@@ -74,6 +74,7 @@ enum class TokenKind {
     TRY,
     CATCH,
     THROW,
+    FINALLY,
     EXPORT,
     REQUIRES,
     ENSURES,

@@ -1484,12 +1484,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(GET_ITER) {
                     {
                         Value v = *(--stackTop);
-                        if (v.isArray()) {
+                        if (v.isArray() || v.isString()) {
                             *stackTop++ = Value::makeArray({v, Value(0LL)});
-                        } else if (v.isString()) {
-                            std::vector<Value> cs;
-                            for (char c : v.asString()) cs.push_back(Value(std::string(1, c)));
-                            *stackTop++ = Value::makeArray({Value::makeArray(cs), Value(0LL)});
                         } else if (v.isDictionary()) {
                             std::vector<Value> ks;
                             {
@@ -1509,14 +1505,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         Value v = *(--stackTop);
                         if (v.isDictionary()) {
-                            std::vector<Value> pairs;
+                            std::vector<Value> items;
                             {
                                 auto dictPtr = v.asDictionaryPtr();
                                 for (auto& [k, val] : dictPtr->getMapCopy()) {
-                                    pairs.push_back(Value::makeArray({Value(k), val}));
+                                    items.push_back(Value::makeArray({Value(k), val}));
                                 }
                             }
-                            *stackTop++ = Value::makeArray({Value::makeArray(pairs), Value(0LL)});
+                            *stackTop++ = Value::makeArray({Value::makeArray(items), Value(0LL)});
                         } else {
                             SYNC_IP();
                             runtimeError("Not a dictionary: " + v.typeName());
@@ -1531,11 +1527,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value& iter = *(stackTop - 1);
                         auto& iArr = iter.asArray();
                         long long idx = iArr[1].asInteger();
-                        const auto& data = iArr[0].asArray();
-                        if (idx >= (long long)data.size()) { --stackTop; ip += offset; }
+                        Value& dataVal = iArr[0];
+                        
+                        bool hasNext = false;
+                        Value nextVal;
+                        if (dataVal.isArray()) {
+                            const auto& data = dataVal.asArray();
+                            if (idx < (long long)data.size()) { hasNext = true; nextVal = data[idx]; }
+                        } else if (dataVal.isString()) {
+                            const auto& data = dataVal.asString();
+                            if (idx < (long long)data.size()) { hasNext = true; nextVal = Value(std::string(1, data[idx])); }
+                        }
+                        
+                        if (!hasNext) { --stackTop; ip += offset; }
                         else { 
                             iArr.set(1, Value(idx + 1)); 
-                            *(stackTop - 1) = data[idx]; 
+                            *(stackTop - 1) = nextVal; 
                         }
                     }
                     DISPATCH();
@@ -1545,8 +1552,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value& iter = *(stackTop - 1);
                         auto& iArr = iter.asArray();
                         long long idx = iArr[1].asInteger();
-                        const auto& data = iArr[0].asArray();
-                        *stackTop++ = Value(idx < (long long)data.size());
+                        Value& dataVal = iArr[0];
+                        
+                        bool hasNext = false;
+                        if (dataVal.isArray()) {
+                            hasNext = idx < (long long)dataVal.asArray().size();
+                        } else if (dataVal.isString()) {
+                            hasNext = idx < (long long)dataVal.asString().size();
+                        }
+                        *stackTop++ = Value(hasNext);
                     }
                     DISPATCH();
                 }

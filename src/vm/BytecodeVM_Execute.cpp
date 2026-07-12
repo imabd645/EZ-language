@@ -1527,7 +1527,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value& iter = *(stackTop - 1);
                         auto& iArr = iter.asArray();
                         long long idx = iArr[1].asInteger();
-                        Value& dataVal = iArr[0];
+                        Value dataVal = iArr[0];
                         
                         bool hasNext = false;
                         Value nextVal;
@@ -1552,7 +1552,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value& iter = *(stackTop - 1);
                         auto& iArr = iter.asArray();
                         long long idx = iArr[1].asInteger();
-                        Value& dataVal = iArr[0];
+                        Value dataVal = iArr[0];
                         
                         bool hasNext = false;
                         if (dataVal.isArray()) {

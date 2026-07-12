@@ -436,6 +436,7 @@ Value BytecodeVM::callFunction(const Value& callee,
 
     // Save current stack state to prevent corruption if dispatchCall fails
     size_t stackBefore = stackTop - stack.data();
+    size_t framesBefore = frames.size();
     bool savedRunning = running;
     running = true;
 
@@ -446,7 +447,7 @@ Value BytecodeVM::callFunction(const Value& callee,
 
     Value result;
     if (dispatchCall(callee, args.size())) {
-        run(frames.size());
+        run(framesBefore);
         
         if (isYielded) return Value();
 
@@ -457,8 +458,9 @@ Value BytecodeVM::callFunction(const Value& callee,
     
     // Always restore stack to exactly where it was before the call
     stackTop = stack.data() + stackBefore;
-
+    frames.resize(framesBefore);
     running = savedRunning;
+
     return result;
 }
 

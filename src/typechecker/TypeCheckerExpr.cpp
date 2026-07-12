@@ -431,8 +431,8 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
         }
         if (expr.isOptional) return TypeInfo("Any");
         
-        // Report error with original objType.baseType
-        error(currentExprContext, "Property '" + expr.property + "' does not exist on type '" + objType.baseType + "'");
+        // Dynamic properties are allowed on models/classes
+        return TypeInfo("Any");
     }
     return TypeInfo("Any");
 }

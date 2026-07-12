@@ -120,7 +120,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (loc) {
                             *stackTop++ = *loc;
                         } else {
-                            *stackTop++ = Value();
+                            *stackTop++ = cs.upvalues[slot]->closed;
                         }
                     } else {
                         *stackTop++ = Value();
@@ -134,6 +134,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value* loc = cs.upvalues[slot]->location.load();
                         if (loc) {
                             *loc = *(stackTop - 1);
+                        } else {
+                            cs.upvalues[slot]->closed = *(stackTop - 1);
                         }
                     }
                     DISPATCH();

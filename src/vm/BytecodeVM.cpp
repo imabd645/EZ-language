@@ -447,7 +447,7 @@ Value BytecodeVM::callFunction(const Value& callee,
 
     Value result;
     if (dispatchCall(callee, args.size())) {
-        run(framesBefore);
+        run(frames.size());
         
         if (isYielded) return Value();
 

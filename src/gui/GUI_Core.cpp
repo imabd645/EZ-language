@@ -207,6 +207,12 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         case WM_SIZE: {
+            if (g_gui.memDCs.count(hwnd)) {
+                DeleteDC(g_gui.memDCs[hwnd]);
+                DeleteObject(g_gui.memBitmaps[hwnd]);
+                g_gui.memDCs.erase(hwnd);
+                g_gui.memBitmaps.erase(hwnd);
+            }
             fireEventCallback(hwnd, "resize", { Value((double)LOWORD(lParam)), Value((double)HIWORD(lParam)) });
             break;
         }

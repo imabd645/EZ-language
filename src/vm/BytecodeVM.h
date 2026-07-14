@@ -76,8 +76,8 @@ public:
         allUpvalues.push_back(std::move(uv));
     }
 
-    const std::vector<std::string>& getGlobalSlotNames() const { return globalSlotNames; }
-    const std::vector<Value>& getGlobalSlots() const { return globalSlots; }
+    const std::vector<std::string>& getGlobalSlotNames() const { return globalEnv->globalSlotNames; }
+    const std::vector<Value>& getGlobalSlots() const { return globalEnv->globalSlots; }
 
 
     bool isYielded = false;

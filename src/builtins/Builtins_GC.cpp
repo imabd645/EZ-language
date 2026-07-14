@@ -152,18 +152,10 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
             auto ezFut = std::make_shared<EZFuture>();
 
-            std::vector<std::string> slotNames;
-            std::vector<Value> slotValues;
-            if (parentVM) {
-                slotNames = parentVM->getGlobalSlotNames();
-                slotValues = parentVM->getGlobalSlots();
-            }
-
             EventLoop::instance().retain();
-            std::thread([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, tState, threadUpvalues]() {
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
                 try {
                     auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
-                    threadVM->setGlobalSlots(slotNames, slotValues);
                     threadVM->traceExecution = false;
                     threadVM->importThreadState(tState);
                     threadVM->taskFuture = ezFut;

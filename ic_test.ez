@@ -1,0 +1,34 @@
+model Point {
+    x
+    y
+    z
+
+    task init(x, y, z) {
+        self.x = x
+        self.y = y
+        self.z = z
+    }
+
+    task sum() {
+        give self.x + self.y + self.z
+    }
+}
+
+// Warm up
+p = new Point(1, 2, 3)
+total = 0
+
+print("Benchmarking Inline Caching (1 million iterations)...")
+start_time = clock() // clock() or time() ? Let's use clock() assuming it exists, else time()
+
+i = 0
+while (i < 1000000) {
+    total = total + p.x
+    total = total + p.y
+    total = total + p.z
+    total = total + p.sum()
+    i = i + 1
+}
+
+end_time = clock(print("Total: ", total)
+print("Time taken: ", end_time - start_time, " seconds")

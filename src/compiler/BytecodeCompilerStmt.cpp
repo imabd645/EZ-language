@@ -823,6 +823,9 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 size_t propIdx = identifierConstant(local.name);
                 emitBytes(static_cast<uint8_t>((propIdx >> 8) & 0xFF),
                           static_cast<uint8_t>(propIdx & 0xFF));
+                size_t icIdx = current->function->chunk.icEntries.size();
+                current->function->chunk.icEntries.push_back(ICCacheEntry{});
+                emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
                 emitOp(OpCode::POP); // pop result of store_property
             }
         }

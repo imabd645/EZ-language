@@ -1,6 +1,7 @@
 #ifndef EZ_OBJECTS_H
 #define EZ_OBJECTS_H
 
+#include "EZShape.h"
 #include "EZConcatString.h"
 #include "EZArray.h"
 #include "EZTuple.h"

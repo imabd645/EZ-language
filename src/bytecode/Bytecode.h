@@ -231,6 +231,19 @@ struct ModelConstant {
 };
 
 // ============================================================================
+// Inline Caching (Hidden Classes)
+// ============================================================================
+struct EZShape;
+struct EZClass;
+
+struct ICCacheEntry {
+    std::shared_ptr<EZShape> shape = nullptr; // For instance properties
+    EZClass* klass = nullptr;                 // For method bindings
+    size_t offset = 0;                        // Property array offset
+    Value methodValue = Value();              // Cached method
+};
+
+// ============================================================================
 // Bytecode Chunk
 // ============================================================================
 struct Chunk {
@@ -238,6 +251,7 @@ struct Chunk {
     std::vector<Constant> constants;     // Constant pool
     std::vector<Value>    resolvedConstants; // Cached Value versions of constants
     std::vector<size_t> lines;           // Source line for each bytecode
+    std::vector<ICCacheEntry> icEntries; // Inline cache entries
     
     // Helper methods
     size_t addConstant(const Constant& constant);

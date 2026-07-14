@@ -557,6 +557,9 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             int nameIdx = (int)identifierConstant(propExpr->property);
             emitOp(OpCode::STORE_PROPERTY);
             emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF), static_cast<uint8_t>(nameIdx & 0xFF));
+            size_t icIdx = current->function->chunk.icEntries.size();
+            current->function->chunk.icEntries.push_back(ICCacheEntry{});
+            emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
             emitOp(OpCode::POP);
         }
     }
@@ -639,6 +642,9 @@ void BytecodeCompiler::compilePropertyAccess(const PropertyAccessExpr& expr) {
     emitOp(OpCode::LOAD_PROPERTY);
     emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(nameIdx & 0xFF));
+    size_t icIdx = current->function->chunk.icEntries.size();
+    current->function->chunk.icEntries.push_back(ICCacheEntry{});
+    emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
               
     if (expr.isOptional) {
         patchJump(skipJump);
@@ -715,6 +721,9 @@ void BytecodeCompiler::compileSet(const SetExpr& expr) {
         emitOp(OpCode::LOAD_PROPERTY);
         emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
                   static_cast<uint8_t>(nameIdx & 0xFF));
+        size_t icIdx = current->function->chunk.icEntries.size();
+        current->function->chunk.icEntries.push_back(ICCacheEntry{});
+        emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
         compileExpr(expr.value);
         switch (expr.compoundOp.value()) {
             case TokenType::PLUS_EQUAL: emitOp(OpCode::ADD); break;
@@ -730,6 +739,9 @@ void BytecodeCompiler::compileSet(const SetExpr& expr) {
     emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
     emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
               static_cast<uint8_t>(nameIdx & 0xFF));
+    size_t icIdx2 = current->function->chunk.icEntries.size();
+    current->function->chunk.icEntries.push_back(ICCacheEntry{});
+    emitBytes(static_cast<uint8_t>((icIdx2 >> 8) & 0xFF), static_cast<uint8_t>(icIdx2 & 0xFF));
 }
 
 void BytecodeCompiler::compileDictionary(const DictionaryExpr& expr) {

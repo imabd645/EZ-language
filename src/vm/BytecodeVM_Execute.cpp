@@ -238,18 +238,46 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(LOAD_PROPERTY) {
                     {
                         uint16_t nameIdx = READ_SHORT();
+                        uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value obj = *(--stackTop);
                         if (obj.isInstance()) {
-                            CHECK_VISIBILITY(obj.asInstance()->klass, propName);
-                            Value val = obj.asInstance()->getProperty(propName);
-                            if (val.isNil() && !obj.asInstance()->hasProperty(propName)) {
-                                SYNC_IP();
-                                runtimeError("Property or method '" + propName + "' does not exist on instance of '" + obj.asInstance()->klass->name + "'");
-                                return;
+                            auto inst = obj.asInstance();
+                            ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
+
+                            // 1. Fast path for instance properties (Shape IC)
+                            if (ic.shape && ic.shape == inst->shape) {
+                                std::shared_lock<std::shared_mutex> lk(inst->prop_mutex);
+                                *stackTop++ = inst->propertyValues[ic.offset];
                             }
-                            if (val.isFunction() || val.isClosure() || val.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
-                            else *stackTop++ = val;
+                            // 2. Fast path for method bindings (Class IC)
+                            else if (ic.klass && ic.klass == inst->klass.get()) {
+                                *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, ic.methodValue));
+                            }
+                            // 3. Slow path
+                            else {
+                                CHECK_VISIBILITY(inst->klass, propName);
+                                Value val = inst->getProperty(propName);
+                                if (val.isNil() && !inst->hasProperty(propName)) {
+                                    SYNC_IP();
+                                    runtimeError("Property or method '" + propName + "' does not exist on instance of '" + inst->klass->name + "'");
+                                    return;
+                                }
+
+                                // Populate cache
+                                if (val.isFunction() || val.isClosure() || val.isNativeFunction()) {
+                                    ic.klass = inst->klass.get();
+                                    ic.methodValue = val;
+                                    *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
+                                } else {
+                                    size_t offset;
+                                    if (inst->shape->getOffset(propName, offset)) {
+                                        ic.shape = inst->shape;
+                                        ic.offset = offset;
+                                    }
+                                    *stackTop++ = val;
+                                }
+                            }
                         } else if (obj.isDictionary()) {
                             auto dictPtr = obj.asDictionaryPtr();
                             // Fix 2.2: single getMapCopy() instead of two (one for find, one for end check)
@@ -365,12 +393,25 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(STORE_PROPERTY) {
                     {
                         uint16_t nameIdx = READ_SHORT();
+                        uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value value = *(--stackTop);
                         Value obj   = *(--stackTop);
                         if (obj.isInstance()) {
-                            CHECK_VISIBILITY(obj.asInstance()->klass, propName);
-                            obj.asInstance()->setProperty(propName, value);
+                            auto inst = obj.asInstance();
+                            ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
+                            if (ic.shape && ic.shape == inst->shape) {
+                                std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
+                                inst->propertyValues[ic.offset] = value;
+                            } else {
+                                CHECK_VISIBILITY(inst->klass, propName);
+                                inst->setProperty(propName, value);
+                                size_t offset;
+                                if (inst->shape->getOffset(propName, offset)) {
+                                    ic.shape = inst->shape;
+                                    ic.offset = offset;
+                                }
+                            }
                         }
                         else if (obj.isClass()) {
                             CHECK_VISIBILITY(obj.asClass(), propName);
@@ -393,6 +434,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(INTERCEPTED_STORE_PROPERTY) {
                     {
                         uint16_t nameIdx = READ_SHORT();
+                        uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value value = *(--stackTop);
                         Value obj   = *(--stackTop);
@@ -416,7 +458,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                             if (!klass->behaviors.any()) {
                                 CHECK_VISIBILITY(klass, propName);
-                                inst->setProperty(propName, value);
+                                ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
+                                if (ic.shape && ic.shape == inst->shape) {
+                                    std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
+                                    inst->propertyValues[ic.offset] = value;
+                                } else {
+                                    inst->setProperty(propName, value);
+                                    size_t offset;
+                                    if (inst->shape->getOffset(propName, offset)) {
+                                        ic.shape = inst->shape;
+                                        ic.offset = offset;
+                                    }
+                                }
                                 *stackTop++ = value;
                             } else {
                                 if (klass->behaviors.validated) {

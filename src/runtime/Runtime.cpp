@@ -5,6 +5,7 @@
 #include "runtime/Environment.h"
 #include "runtime/Value.h"
 #include "gc/CycleCollector.h"
+#include "runtime/objects/EZShape.h"
 
 // ── Thread-local string interning pool ───────────────────────────────────────
 thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
@@ -20,4 +21,9 @@ void EZFunction::traverse(const ValueVisitor& /*visit*/) const {}
 // ── Environment::createChild() ───────────────────────────────────────────────
 std::shared_ptr<Environment> Environment::createChild() {
     return std::make_shared<Environment>(shared_from_this());
+}
+
+// ── EZClass::EZClass() ───────────────────────────────────────────────────────
+EZClass::EZClass(const std::string& name) : name(name), parent(nullptr) {
+    initialShape = std::make_shared<EZShape>();
 }

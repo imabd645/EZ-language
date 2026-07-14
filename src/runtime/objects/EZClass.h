@@ -12,6 +12,7 @@
 struct EZClass {
     std::string name;
     std::shared_ptr<EZClass> parent;
+    std::shared_ptr<struct EZShape> initialShape;
     mutable std::shared_mutex class_mutex;
 
     std::unordered_map<std::string, Value> methods;
@@ -24,8 +25,7 @@ struct EZClass {
     std::vector<FieldValidator> validators;
     std::unordered_set<std::string> cachedMethods;
 
-    EZClass(const std::string& name) : name(name), parent(nullptr) {}
-
+    EZClass(const std::string& name);
     void traverse(const ValueVisitor& visit) const {
         if (parent) visit(Value(parent));
         

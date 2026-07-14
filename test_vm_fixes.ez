@@ -1,0 +1,16 @@
+// Test 1: Dictionary index
+d = {"a": 10, "b": 20}
+out "Dict get existing: " + str(d["a"] == 10)
+out "Dict get missing: " + str(d["c"] == nil)
+
+// Test 2: Async spawn and OP_AWAIT (using async task)
+async task simpleAsync(val) {
+    out "Inside async task with val: " + str(val)
+    give val * 2
+}
+
+f = simpleAsync(21)
+res = await f
+out "Spawn result: " + str(res == 42)
+
+out "All simple tests passed!"

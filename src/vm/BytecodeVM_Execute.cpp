@@ -2257,7 +2257,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             
             EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs, shouldTrace]() {
                 try {
-                    auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
+                    auto taskVM = std::make_shared<BytecodeVM>(globalEnv, 8192);
                     taskVM->taskFuture = ezFut;
                     taskVM->traceExecution = shouldTrace;
                     taskVM->isAsyncTask = true;
@@ -2379,7 +2379,7 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
 // ============================================================================
 
 void BytecodeVM::push(const Value& value) {
-    if (stackTop >= stack.data() + STACK_MAX) {
+    if (stackTop >= stack.data() + stackMax) {
         runtimeError("Stack overflow");
         throw std::runtime_error("Stack overflow");
     }
@@ -2571,17 +2571,17 @@ void BytecodeVM::doIndexGet() {
     if (obj.isArray()) {
         auto& arr = obj.asArray();
         long long i = idx.asInteger();
-        if (i < 0 || i >= (long long)arr.size()) { runtimeError("Array index out of bounds"); return; }
+        if (!checkBounds(i, arr.size(), "Array index out of bounds")) return;
         push(arr[i]);
     } else if (obj.isTuple()) {
         auto& tup = obj.asTuple();
         long long i = idx.asInteger();
-        if (i < 0 || i >= (long long)tup.size()) { runtimeError("Tuple index out of bounds"); return; }
+        if (!checkBounds(i, tup.size(), "Tuple index out of bounds")) return;
         push(tup[i]);
     } else if (obj.isString()) {
         const std::string& s = obj.asString();
         long long i = idx.asInteger();
-        if (i < 0 || i >= (long long)s.length()) { runtimeError("String index out of bounds"); return; }
+        if (!checkBounds(i, s.length(), "String index out of bounds")) return;
         push(Value(std::string(1, s[i])));
     } else if (obj.isDictionary()) {
         auto dictPtr = obj.asDictionaryPtr();
@@ -2592,7 +2592,7 @@ void BytecodeVM::doIndexGet() {
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
-        if (i < 0 || i >= (long long)buf.size()) { runtimeError("Buffer index out of bounds"); return; }
+        if (!checkBounds(i, buf.size(), "Buffer index out of bounds")) return;
         push(Value((long long)buf[i]));
     } else {
         runtimeError("Cannot index " + obj.typeName());
@@ -2615,7 +2615,7 @@ void BytecodeVM::doIndexSet() {
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
-        if (i < 0 || i >= (long long)buf.size()) { runtimeError("Buffer index out of bounds"); return; }
+        if (!checkBounds(i, buf.size(), "Buffer index out of bounds")) return;
         buf[i] = (uint8_t)val.asInteger();
     } else {
         runtimeError("Cannot set index on " + obj.typeName());

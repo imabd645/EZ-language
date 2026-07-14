@@ -20,7 +20,9 @@
 #define NOMINMAX 1
 #endif
 #define NOCOMM
+#ifdef _WIN32
 #include <windows.h>
+#endif
 // The Windows COM headers define INTERFACE as a macro used for vtable
 // declarations. If it is still defined here it will corrupt any subsequent
 // reference to ValueType::INTERFACE, so we remove it unconditionally.
@@ -55,10 +57,10 @@ const std::string* EZ_GetSourceLine(const std::string& filename, int line) {
 // BytecodeVM Implementation
 // ============================================================================
 
-BytecodeVM::BytecodeVM()
-    : stackTop(nullptr), openUpvalues(nullptr),
+BytecodeVM::BytecodeVM(size_t stackSize)
+    : stackMax(stackSize), stackTop(nullptr), openUpvalues(nullptr),
       isExceptionPending(false), running(false) {
-    stack.resize(STACK_MAX);
+    stack.resize(stackMax);
     stackTop = stack.data();
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
@@ -66,10 +68,10 @@ BytecodeVM::BytecodeVM()
         initBuiltins();
 }
 
-BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
-    : globalEnv(globalEnv_), stackTop(nullptr), openUpvalues(nullptr),
+BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_, size_t stackSize)
+    : globalEnv(globalEnv_), stackMax(stackSize), stackTop(nullptr), openUpvalues(nullptr),
       isExceptionPending(false), running(false) {
-    stack.resize(STACK_MAX);
+    stack.resize(stackMax);
     stackTop = stack.data();
     frames.reserve(1024);
     frameUpvalues.reserve(1024);
@@ -104,13 +106,7 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function) {
     return execute(function, {});
 }
 
-BytecodeVM::ThreadState BytecodeVM::exportThreadState() const {
-    ThreadState state;
-    return state;
-}
 
-void BytecodeVM::importThreadState(const ThreadState& state) {
-}
 
 Value BytecodeVM::execute(BytecodeFunctionPtr function,
                            const std::vector<Value>& args) {
@@ -204,12 +200,16 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     }
 
     if (tryStack.empty() && !isAsyncTask) {
-        // Ã¢â€â‚¬Ã¢â€â‚¬ Print the error header Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+        // ── Print the error header ────────────────────────────────────────────────────────────
+#ifdef _WIN32
         // Use ANSI escapes if the terminal supports them (Windows 10+)
         HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
         DWORD  consoleMode = 0;
         bool   ansi = GetConsoleMode(hErr, &consoleMode) != 0;
         if (ansi) SetConsoleMode(hErr, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+        bool ansi = true; // Assume POSIX terminals support ANSI
+#endif
 
         auto RED    = ansi ? "\033[1;31m" : "";
         auto YELLOW = ansi ? "\033[1;33m" : "";
@@ -422,7 +422,9 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
         globalEnv->compiledFunctionCache[func] = bfunc;
     }
     
-    // Clear AST data to free memory, as it's no longer needed after bytecode compilation
+    // Clear AST data to free memory, as it's no longer needed after bytecode compilation.
+    // The AST statements hold large tree structures that are expensive to keep around.
+    // Since EZ-language now executes strictly via bytecode, the runtime only needs the BytecodeFunctionPtr.
     func->body.clear();
     func->defaultValues.clear();
     

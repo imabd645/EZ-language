@@ -28,8 +28,8 @@ const std::string* EZ_GetSourceLine(const std::string& filename, int line);
 class BytecodeVM : public RuntimeContext, public std::enable_shared_from_this<BytecodeVM> {
 public:
     bool traceExecution = false;
-    BytecodeVM();
-    explicit BytecodeVM(std::shared_ptr<Environment> globalEnv);
+    BytecodeVM(size_t stackSize = 256 * 1024);
+    explicit BytecodeVM(std::shared_ptr<Environment> globalEnv, size_t stackSize = 256 * 1024);
     ~BytecodeVM();
 
     // Execute compiled bytecode
@@ -58,15 +58,6 @@ public:
     size_t getStackSize() const {
         return static_cast<size_t>(stackTop - stack.data());
     }
-
-
-
-
-    struct ThreadState {
-        // No longer needs closure handles
-    };
-    ThreadState exportThreadState() const;
-    void importThreadState(const ThreadState& state);
 
     struct ClosureState {
         std::vector<UpvalueObj*> upvalues;
@@ -107,10 +98,8 @@ private:
     };
 
     // ── VM Configuration ──────────────────────────────────────────────────────
-    static constexpr size_t STACK_MAX  = 256 * 1024; // 256K value slots
+    size_t                 stackMax;
     static constexpr size_t FRAMES_MAX = 512;
-
-    // ── State ─────────────────────────────────────────────────────────────────
     std::vector<Value>     stack;
     Value*                 stackTop;
 
@@ -167,6 +156,14 @@ private:
     // ── Utility ──────────────────────────────────────────────────────────────
     void               initBuiltins();
     BytecodeFunctionPtr compileEZFunction(EZFunction* func);
+    inline bool checkBounds(long long index, size_t size, const char* errorMsg) {
+        if (index < 0 || index >= (long long)size) {
+            runtimeError(errorMsg);
+            return false;
+        }
+        return true;
+    }
+
     void               printStack() const;
     Value              instantiate(std::shared_ptr<EZClass> klass, const std::vector<Value>& args, int line, const std::string& filename);
 };

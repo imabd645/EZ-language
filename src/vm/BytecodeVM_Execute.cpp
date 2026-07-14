@@ -145,8 +145,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         uint16_t nameIdx = READ_SHORT();
                         const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
-                        Value v = globalEnv->get(name, frame->line);
-                        if (v.isNil() && !globalEnv->contains(name)) {
+                        Value v;
+                        if (!globalEnv->getIfExists(name, v)) {
                             SYNC_IP();
                             runtimeError("Undefined variable '" + name + "'");
                             return;
@@ -174,11 +174,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(LOAD_GLOBAL_SLOT) {
                     uint16_t slot = READ_SHORT();
-                    // Fast O(1) indexed array access Ã¢â‚¬â€ no mutex, no hash lookup
-                    if (__builtin_expect(slot < globalSlots.size(), 1)) {
-                        *stackTop++ = globalSlots[slot];
+                    std::shared_lock<std::shared_mutex> lk(globalEnv->slotMutex);
+                    if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
+                        *stackTop++ = globalEnv->globalSlots[slot];
                     } else {
-                        // Slot not yet initialized Ã¢â‚¬â€ should not happen in well-formed bytecode
                         *stackTop++ = Value();
                     }
                     DISPATCH();
@@ -186,9 +185,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(STORE_GLOBAL_SLOT) {
                     uint16_t slot = READ_SHORT();
-                    // O(1) direct array write Ã¢â‚¬â€ no mutex, no hash
-                    if (__builtin_expect(slot < globalSlots.size(), 1)) {
-                        globalSlots[slot] = *(stackTop - 1);
+                    std::unique_lock<std::shared_mutex> lk(globalEnv->slotMutex);
+                    if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
+                        globalEnv->globalSlots[slot] = *(stackTop - 1);
                     }
                     DISPATCH();
                 }
@@ -590,6 +589,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             return;
                         }
                         win.push_back(now);
+
+                        // Fix 1.3: Prevent unbounded growth by periodically sweeping empty or stale entries
+                        static int rateLimitSweepCounter = 0;
+                        if (++rateLimitSweepCounter > 1000) {
+                            rateLimitSweepCounter = 0;
+                            for (auto it = rateLimiterRegistry.begin(); it != rateLimiterRegistry.end(); ) {
+                                if (it->second.empty() || now - it->second.back() > 86400000LL) {
+                                    it = rateLimiterRegistry.erase(it);
+                                } else {
+                                    ++it;
+                                }
+                            }
+                        }
                     }
                     DISPATCH();
                 }
@@ -1249,12 +1261,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     std::string unexpected = dict->getMapCopy().begin()->first;
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument '" + unexpected + "'");
+                                    return;
                                 }
                                 totalArity = expectedCallerParams;
                             } else {
                                 if (!kwargs.asDictionaryPtr()->getMapCopy().empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument");
+                                    return;
                                 }
                             }
                         }
@@ -1723,33 +1737,27 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 this->isYielded = true;
                                 this->stackTop = stackTop;
                                 
-                                std::shared_ptr<BytecodeVM> sharedVM;
-                                try {
-                                    sharedVM = this->shared_from_this();
-                                } catch (const std::bad_weak_ptr&) {
-                                    // Main VM is stack allocated and kept alive by main()
-                                }
-                                BytecodeVM* rawVM = this;
+                                std::shared_ptr<BytecodeVM> sharedVM = this->shared_from_this();
 
-                                fut->then([sharedVM, rawVM, fut]() {
-                                    EventLoop::instance().pushTask([sharedVM, rawVM, fut]() {
-                                        rawVM->isYielded = false;
+                                fut->then([sharedVM, fut]() {
+                                    EventLoop::instance().pushTask([sharedVM, fut]() {
+                                        sharedVM->isYielded = false;
                                         if (fut->isError()) {
-                                            if (!rawVM->frames.empty()) {
-                                                rawVM->frames.back().ip -= 1;
+                                            if (!sharedVM->frames.empty()) {
+                                                sharedVM->frames.back().ip -= 1;
                                             }
                                         } else {
-                                            *(rawVM->stackTop - 1) = fut->get();
+                                            *(sharedVM->stackTop - 1) = fut->get();
                                         }
-                                        rawVM->run(0);
+                                        sharedVM->run(0);
                                         
-                                        if (!rawVM->isYielded && rawVM->taskFuture) {
-                                            if (!rawVM->running && !rawVM->frames.empty()) {
-                                                std::string errMsg = rawVM->pendingException.isString() ? rawVM->pendingException.toString() : "Async task failed with an exception";
-                                                rawVM->taskFuture->setError(errMsg);
+                                        if (!sharedVM->isYielded && sharedVM->taskFuture) {
+                                            if (!sharedVM->running && !sharedVM->frames.empty()) {
+                                                std::string errMsg = sharedVM->pendingException.isString() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
+                                                sharedVM->taskFuture->setError(errMsg);
                                             } else {
-                                                Value result = (rawVM->stackTop > rawVM->stack.data()) ? *(rawVM->stackTop - 1) : Value();
-                                                rawVM->taskFuture->set(result);
+                                                Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
+                                                sharedVM->taskFuture->set(result);
                                             }
                                         }
                                     });
@@ -2220,15 +2228,12 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             
             // Snapshot VM state needed
             auto globalEnv = this->globalEnv;
-            auto slotNames = this->globalSlotNames;
-            auto slotValues = this->globalSlots;
             Value closedFunc = callee;
             bool shouldTrace = this->traceExecution;
             
-            EventLoop::instance().pushTask([ezFut, globalEnv, slotNames, slotValues, closedFunc, closedArgs, shouldTrace]() {
+            EventLoop::instance().pushTask([ezFut, globalEnv, closedFunc, closedArgs, shouldTrace]() {
                 try {
                     auto taskVM = std::make_shared<BytecodeVM>(globalEnv);
-                    taskVM->setGlobalSlots(slotNames, slotValues);
                     taskVM->taskFuture = ezFut;
                     taskVM->traceExecution = shouldTrace;
                     taskVM->isAsyncTask = true;
@@ -2475,6 +2480,18 @@ void BytecodeVM::doModulo() {
 
 void BytecodeVM::doPower() {
     Value b = pop(), a = pop();
+    if (a.isInteger() && b.isInteger() && b.asInteger() >= 0) {
+        long long base = a.asInteger();
+        long long exp = b.asInteger();
+        long long result = 1;
+        while (exp > 0) {
+            if (exp % 2 == 1) result *= base;
+            base *= base;
+            exp /= 2;
+        }
+        push(Value(result));
+        return;
+    }
     if (a.isNumber() && b.isNumber()) {
         push(Value(std::pow(a.asFloat(), b.asFloat())));
         return;
@@ -2545,8 +2562,9 @@ void BytecodeVM::doIndexGet() {
     } else if (obj.isDictionary()) {
         auto dictPtr = obj.asDictionaryPtr();
         std::string sKey = idx.toString();
-        auto it = dictPtr->getMapCopy().find(sKey);
-        push(it != dictPtr->getMapCopy().end() ? it->second : Value());
+        auto mapCopy = dictPtr->getMapCopy();
+        auto it = mapCopy.find(sKey);
+        push(it != mapCopy.end() ? it->second : Value());
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();

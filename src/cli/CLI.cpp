@@ -70,8 +70,8 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     }
     
     auto globalEnv = std::make_shared<Environment>();
-    BytecodeVM vm(globalEnv);
-    vm.traceExecution = traceExecution;
+    auto vm = std::make_shared<BytecodeVM>(globalEnv);
+    vm->traceExecution = traceExecution;
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
@@ -91,10 +91,10 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     }
 
     // Initialize fast global slot array (Issue C: replaces mutex-locked hash lookups)
-    vm.initGlobalSlots(result.globalSlotNames);
+        vm->initGlobalSlots(result.globalSlotNames);
     
     try {
-        vm.execute(result.mainFunction);
+        vm->execute(result.mainFunction);
         EventLoop::instance().run();
     } catch (const RuntimeError& e) {
         // runtimeError() already printed the formatted error + stack trace
@@ -123,12 +123,12 @@ void runFile(const std::string& path, bool traceExecution) {
         }
         
         auto globalEnv = std::make_shared<Environment>();
-        BytecodeVM vm(globalEnv);
-        vm.traceExecution = traceExecution;
-        vm.initGlobalSlots(globalSlots);
+        auto vm = std::make_shared<BytecodeVM>(globalEnv);
+        vm->traceExecution = traceExecution;
+        vm->initGlobalSlots(globalSlots);
         
         try {
-            vm.execute(mainFunc);
+            vm->execute(mainFunc);
             EventLoop::instance().run();
         } catch (const RuntimeError& e) {
             exit(70); 
@@ -246,7 +246,7 @@ void dumpFileToEzasm(const std::string& path) {
     if (parser.hasError()) exit(65);
     
     auto globalEnv = std::make_shared<Environment>();
-    BytecodeVM vm(globalEnv);
+    auto vm = std::make_shared<BytecodeVM>(globalEnv);
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);

@@ -31,8 +31,8 @@ void runRepl(bool traceExecution) {
     std::cout << std::endl;
     
     auto globalEnv = std::make_shared<Environment>();
-    BytecodeVM vm(globalEnv);
-    vm.traceExecution = traceExecution;
+    auto vm = std::make_shared<BytecodeVM>(globalEnv);
+    vm->traceExecution = traceExecution;
     ASTArena arena;
     BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
@@ -84,7 +84,7 @@ void runRepl(bool traceExecution) {
                     try {
                         CompileResult result = compiler.compile(statements);
                         if (result.success) {
-                            vm.execute(result.mainFunction);
+                            vm->execute(result.mainFunction);
                         } else {
                             std::cerr << "Compile error: " << result.error << std::endl;
                         }

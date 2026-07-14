@@ -78,10 +78,7 @@ public:
 
     const std::vector<std::string>& getGlobalSlotNames() const { return globalSlotNames; }
     const std::vector<Value>& getGlobalSlots() const { return globalSlots; }
-    void setGlobalSlots(const std::vector<std::string>& names, const std::vector<Value>& slots) {
-        globalSlotNames = names;
-        globalSlots = slots;
-    }
+
 
     bool isYielded = false;
     bool isAsyncTask = false;
@@ -137,9 +134,7 @@ private:
     // Execution flag
     bool running;
 
-    // ── Global Slot Array (Issue C: O(1) global access) ──────────────────────
-    std::vector<Value>       globalSlots;     // indexed global storage
-    std::vector<std::string> globalSlotNames; // slot index -> name (for write-through)
+    // Global Slot Array moved to Environment for async task sharing
 
     // ── Rate limiter sliding windows (key = taskName:keyExpr) ──────────────────
     std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;

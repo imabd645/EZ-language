@@ -86,12 +86,13 @@ BytecodeVM::~BytecodeVM() {
 }
 
 void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
-    globalSlotNames = slotNames;
-    globalSlots.resize(slotNames.size(), Value());
+    std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+    globalEnv->globalSlotNames = slotNames;
+    globalEnv->globalSlots.resize(slotNames.size(), Value());
     // Pre-seed slots from globalEnv for any built-in names that share a slot name
     for (size_t i = 0; i < slotNames.size(); ++i) {
         if (!slotNames[i].empty() && globalEnv->contains(slotNames[i])) {
-            globalSlots[i] = globalEnv->get(slotNames[i]);
+            globalEnv->globalSlots[i] = globalEnv->get(slotNames[i]);
         }
     }
 }

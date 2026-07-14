@@ -23,13 +23,7 @@ void BytecodeVM::defineGlobal(const std::string& name, const Value& value) {
 }
 
 Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
-    // Sync all slot values back into globalEnv so the new code can see
-    // globals that were written via STORE_GLOBAL_SLOT since the last sync.
-    for (size_t i = 0; i < globalSlots.size() && i < globalSlotNames.size(); ++i) {
-        if (!globalSlotNames[i].empty()) {
-            globalEnv->assign(globalSlotNames[i], globalSlots[i]);
-        }
-    }
+    // Since globalSlots are now shared in globalEnv, we don't need to manually sync them back to the hash map.
 
     Lexer lexer(code, filename);
     std::vector<Token> tokens = lexer.tokenize();
@@ -46,17 +40,18 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
 
     // Merge any new slots the eval'd code introduced
     if (!result.globalSlotNames.empty()) {
+        std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
         size_t newCount = result.globalSlotNames.size();
-        if (newCount > globalSlots.size()) {
-            globalSlots.resize(newCount, Value());
-            globalSlotNames.resize(newCount);
+        if (newCount > globalEnv->globalSlots.size()) {
+            globalEnv->globalSlots.resize(newCount, Value());
+            globalEnv->globalSlotNames.resize(newCount);
         }
         for (size_t i = 0; i < newCount; ++i) {
-            if (globalSlotNames[i].empty() && !result.globalSlotNames[i].empty()) {
-                globalSlotNames[i] = result.globalSlotNames[i];
+            if (globalEnv->globalSlotNames[i].empty() && !result.globalSlotNames[i].empty()) {
+                globalEnv->globalSlotNames[i] = result.globalSlotNames[i];
                 // Seed from globalEnv if already defined
-                if (globalEnv->contains(globalSlotNames[i]))
-                    globalSlots[i] = globalEnv->get(globalSlotNames[i]);
+                if (globalEnv->contains(globalEnv->globalSlotNames[i]))
+                    globalEnv->globalSlots[i] = globalEnv->get(globalEnv->globalSlotNames[i]);
             }
         }
     }

@@ -23,6 +23,11 @@ public:
     mutable std::shared_mutex mutex;
     bool isStatic = false;
 
+    // Fast O(1) slot arrays shared across all VMs
+    std::vector<Value> globalSlots;
+    std::vector<std::string> globalSlotNames;
+    mutable std::shared_mutex slotMutex;
+
     Environment() : parent(nullptr), version(0) {}
     explicit Environment(std::shared_ptr<Environment> parent, bool isStatic = false)
         : parent(parent), isStatic(isStatic), version(0) {}
@@ -60,6 +65,22 @@ public:
         }
 
         return Value(); // Return nil, let Interpreter handle undefined error
+    }
+
+    // Get a variable, returning true if it exists
+    bool getIfExists(const std::string& name, Value& outValue) const {
+        std::shared_lock<std::shared_mutex> lock(mutex);
+        auto it = variables.find(name);
+        if (it != variables.end()) {
+            outValue = it->second;
+            return true;
+        }
+
+        if (parent) {
+            return parent->getIfExists(name, outValue);
+        }
+
+        return false;
     }
 
     // Check if variable exists

@@ -119,8 +119,7 @@ private:
 
     std::shared_ptr<Environment> globalEnv;
 
-    // BytecodeFunction cache: EZFunction* → compiled BytecodeFunction
-    std::unordered_map<EZFunction*, BytecodeFunctionPtr> compiledFunctionCache;
+    // BytecodeFunction cache moved to Environment
     
     // Upvalue management
     UpvalueObj*                              openUpvalues; // sorted linked list
@@ -136,11 +135,7 @@ private:
 
     // Global Slot Array moved to Environment for async task sharing
 
-    // ── Rate limiter sliding windows (key = taskName:keyExpr) ──────────────────
-    std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;
-
-    // ── SQLite DB Connections (cached for @persist) ─────────────────────────
-    std::unordered_map<std::string, void*> persistDBConnections;
+    // ── Shared registries moved to Environment ─────────────────────────
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);

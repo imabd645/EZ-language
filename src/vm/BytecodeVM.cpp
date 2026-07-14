@@ -77,12 +77,15 @@ BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_)
 }
 
 BytecodeVM::~BytecodeVM() {
+    // allUpvalues unique_ptrs handle cleanup automatically
+}
+
+Environment::~Environment() {
     for (auto& pair : persistDBConnections) {
         if (pair.second) {
             sqlite3_close(static_cast<sqlite3*>(pair.second));
         }
     }
-    // allUpvalues unique_ptrs handle cleanup automatically
 }
 
 void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
@@ -400,8 +403,11 @@ void BytecodeVM::printStack() const {
 // ============================================================================
 
 BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
-    auto it = compiledFunctionCache.find(func);
-    if (it != compiledFunctionCache.end()) return it->second;
+    {
+        std::shared_lock<std::shared_mutex> lock(globalEnv->registryMutex);
+        auto it = globalEnv->compiledFunctionCache.find(func);
+        if (it != globalEnv->compiledFunctionCache.end()) return it->second;
+    }
 
     ASTArena arena;
     BytecodeCompiler compiler(arena);
@@ -411,7 +417,10 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
                       func->body, func->isVariadic);
     BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
 
-    compiledFunctionCache[func] = bfunc;
+    {
+        std::unique_lock<std::shared_mutex> lock(globalEnv->registryMutex);
+        globalEnv->compiledFunctionCache[func] = bfunc;
+    }
     
     // Clear AST data to free memory, as it's no longer needed after bytecode compilation
     func->body.clear();

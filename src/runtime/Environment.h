@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <deque>
 #include <stdexcept>
 #include <shared_mutex>
 #include "runtime/Value.h"
@@ -28,9 +29,16 @@ public:
     std::vector<std::string> globalSlotNames;
     mutable std::shared_mutex slotMutex;
 
+    // Shared Caches for the entire process (across all async VMs)
+    std::unordered_map<void*, std::shared_ptr<struct BytecodeFunction>> compiledFunctionCache; // Key is EZFunction*
+    std::unordered_map<std::string, void*> persistDBConnections;
+    std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;
+    mutable std::shared_mutex registryMutex;
+
     Environment() : parent(nullptr), version(0) {}
     explicit Environment(std::shared_ptr<Environment> parent, bool isStatic = false)
         : parent(parent), isStatic(isStatic), version(0) {}
+    ~Environment();
 
     uint64_t version = 0;
 

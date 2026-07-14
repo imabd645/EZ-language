@@ -296,16 +296,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
                                     auto inst = std::make_shared<EZInstance>(klass);
                                     sqlite3* db = nullptr;
-                                    auto it = this->persistDBConnections.find(klass->persistPath);
-                                    if (it != this->persistDBConnections.end()) {
-                                        db = static_cast<sqlite3*>(it->second);
-                                    } else {
-                                        if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                            const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                            sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                            this->persistDBConnections[klass->persistPath] = db;
+                                    {
+                                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
+                                        auto it = globalEnv->persistDBConnections.find(klass->persistPath);
+                                        if (it != globalEnv->persistDBConnections.end()) {
+                                            db = static_cast<sqlite3*>(it->second);
                                         } else {
-                                            db = nullptr;
+                                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                                globalEnv->persistDBConnections[klass->persistPath] = db;
+                                            } else {
+                                                db = nullptr;
+                                            }
                                         }
                                     }
                                     if (db) {
@@ -529,16 +532,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                                 if (klass->behaviors.persistent && !klass->persistPath.empty()) {
                                     sqlite3* db = nullptr;
-                                    auto it = persistDBConnections.find(klass->persistPath);
-                                    if (it != persistDBConnections.end()) {
-                                        db = static_cast<sqlite3*>(it->second);
-                                    } else {
-                                        if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                            const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                            sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                            persistDBConnections[klass->persistPath] = db;
+                                    {
+                                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
+                                        auto it = globalEnv->persistDBConnections.find(klass->persistPath);
+                                        if (it != globalEnv->persistDBConnections.end()) {
+                                            db = static_cast<sqlite3*>(it->second);
                                         } else {
-                                            db = nullptr;
+                                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
+                                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
+                                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
+                                                globalEnv->persistDBConnections[klass->persistPath] = db;
+                                            } else {
+                                                db = nullptr;
+                                            }
                                         }
                                     }
                                     
@@ -580,10 +586,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         else if (per == "day") windowMs = 86400000LL;
                         long long now = std::chrono::duration_cast<std::chrono::milliseconds>(
                                             std::chrono::system_clock::now().time_since_epoch()).count();
-                        auto& win = rateLimiterRegistry[key];
+                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
+                        auto& win = globalEnv->rateLimiterRegistry[key];
                         while (!win.empty() && now - win.front() > windowMs) win.pop_front();
                         if ((long long)win.size() >= maxCnt) {
                             long long waitMs = windowMs - (now - win.front());
+                            lk.unlock();
                             SYNC_IP();
                             runtimeError("RateLimitError: rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
                             return;
@@ -594,9 +602,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         static int rateLimitSweepCounter = 0;
                         if (++rateLimitSweepCounter > 1000) {
                             rateLimitSweepCounter = 0;
-                            for (auto it = rateLimiterRegistry.begin(); it != rateLimiterRegistry.end(); ) {
+                            for (auto it = globalEnv->rateLimiterRegistry.begin(); it != globalEnv->rateLimiterRegistry.end(); ) {
                                 if (it->second.empty() || now - it->second.back() > 86400000LL) {
-                                    it = rateLimiterRegistry.erase(it);
+                                    it = globalEnv->rateLimiterRegistry.erase(it);
                                 } else {
                                     ++it;
                                 }
@@ -1294,14 +1302,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         if (callee.isFunction()) {
                             auto ezFunc = callee.asFunction();
-                            auto it = compiledFunctionCache.find(ezFunc.get());
-                            if (it != compiledFunctionCache.end() && it->second == frame->function) {
+                            bool isSelfTailCall = false;
+                            if (ezFunc) {
+                                std::shared_lock<std::shared_mutex> lk(globalEnv->registryMutex);
+                                auto it = globalEnv->compiledFunctionCache.find(ezFunc.get());
+                                if (it != globalEnv->compiledFunctionCache.end() && it->second == frame->function) {
+                                    isSelfTailCall = true;
+                                }
+                            }
+                            if (isSelfTailCall) {
                                 for (int i = 0; i < argCount; i++) {
                                     frame->slots[i] = *(stackTop - argCount + i);
                                 }
                                 stackTop = frame->slots + frame->function->localCount;
                                 ip = frame->function->chunk.code.data();
-                                // callee/ezFunc destroyed at scope exit below before DISPATCH
                                 goto tail_call_restart;
                             }
                         }
@@ -2087,7 +2101,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
             running = true;
             goto dispatch_start;
         }
-        // Uncaught std exception Ã¢â‚¬â€ format like our runtime errors
+        // Uncaught std exception Ã¢â‚¬â€  format like our runtime errors
         pendingException = Value(e.what());
         if (!isAsyncTask) {
             std::string fname = frames.empty() ? "" : frames.back().filename;
@@ -2166,11 +2180,15 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             bcFunc = closure->function;
         } else {
             auto ezFunc = callee.asFunction();
-            auto it = compiledFunctionCache.find(ezFunc.get());
-            if (it != compiledFunctionCache.end()) {
-                bcFunc = it->second;
-            } else {
-                bcFunc = compileEZFunction(ezFunc.get());
+            if (ezFunc) {
+                std::shared_lock<std::shared_mutex> lk(globalEnv->registryMutex);
+                auto it = globalEnv->compiledFunctionCache.find(ezFunc.get());
+                if (it != globalEnv->compiledFunctionCache.end()) {
+                    bcFunc = it->second;
+                } else {
+                    lk.unlock();
+                    bcFunc = compileEZFunction(ezFunc.get());
+                }
             }
         }
 

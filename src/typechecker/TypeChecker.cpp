@@ -156,8 +156,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
     
     // First pass: declare all functions
     for (const auto& stmt : statements) {
-        if (std::holds_alternative<std::shared_ptr<TaskStmt>>(stmt->variant)) {
-            auto task = std::get<std::shared_ptr<TaskStmt>>(stmt->variant);
+        if (std::holds_alternative<TaskStmt*>(stmt->variant)) {
+            auto task = std::get<TaskStmt*>(stmt->variant);
             FunctionSignature sig;
             for (const auto& p : task->params) sig.paramNames.push_back(p);
             for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
@@ -170,8 +170,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             sig.minArgs = minArgs;
             
             declareFunction(task->name, sig);
-        } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(stmt->variant)) {
-            auto model = std::get<std::shared_ptr<ModelStmt>>(stmt->variant);
+        } else if (std::holds_alternative<ModelStmt*>(stmt->variant)) {
+            auto model = std::get<ModelStmt*>(stmt->variant);
             FunctionSignature sig;
             for (const auto& p : model->initParams) sig.paramNames.push_back(p);
             for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
@@ -224,13 +224,13 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                     for (const auto& s : body) {
                         if (!s) continue;
                         // ExpressionStmt wrapping a SetExpr (self.xxx = ...)
-                        if (std::holds_alternative<std::shared_ptr<ExpressionStmt>>(s->variant)) {
-                            auto exprStmt = std::get<std::shared_ptr<ExpressionStmt>>(s->variant);
+                        if (std::holds_alternative<ExpressionStmt*>(s->variant)) {
+                            auto exprStmt = std::get<ExpressionStmt*>(s->variant);
                             if (exprStmt->expr &&
-                                std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expr->variant)) {
-                                auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expr->variant);
+                                std::holds_alternative<SetExpr*>(exprStmt->expr->variant)) {
+                                auto setExpr = std::get<SetExpr*>(exprStmt->expr->variant);
                                 if (setExpr->object &&
-                                    std::holds_alternative<std::shared_ptr<SelfExpr>>(setExpr->object->variant)) {
+                                    std::holds_alternative<SelfExpr*>(setExpr->object->variant)) {
                                     std::string key = model->name + "." + setExpr->name;
                                     if (!currentEnv->variables.count(key))
                                         declareVariable(key, TypeInfo("Any"));
@@ -238,10 +238,10 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                             }
                         }
                         // Also recurse into block bodies (when/while/etc.)
-                        if (std::holds_alternative<std::shared_ptr<BlockStmt>>(s->variant)) {
-                            scanBodyForSelfProps(std::get<std::shared_ptr<BlockStmt>>(s->variant)->statements);
-                        } else if (std::holds_alternative<std::shared_ptr<WhenStmt>>(s->variant)) {
-                            auto ws = std::get<std::shared_ptr<WhenStmt>>(s->variant);
+                        if (std::holds_alternative<BlockStmt*>(s->variant)) {
+                            scanBodyForSelfProps(std::get<BlockStmt*>(s->variant)->statements);
+                        } else if (std::holds_alternative<WhenStmt*>(s->variant)) {
+                            auto ws = std::get<WhenStmt*>(s->variant);
                             if (ws->thenBranch) scanBodyForSelfProps({ws->thenBranch});
                             if (ws->elseBranch) scanBodyForSelfProps({ws->elseBranch});
                         }
@@ -258,8 +258,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                 }
             }
 
-        } else if (std::holds_alternative<std::shared_ptr<StructStmt>>(stmt->variant)) {
-            auto structStmt = std::get<std::shared_ptr<StructStmt>>(stmt->variant);
+        } else if (std::holds_alternative<StructStmt*>(stmt->variant)) {
+            auto structStmt = std::get<StructStmt*>(stmt->variant);
             FunctionSignature sig;
             for (size_t i = 0; i < structStmt->fields.size(); ++i) {
                 sig.paramNames.push_back(structStmt->fields[i]);
@@ -269,8 +269,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             }
             sig.returnType = TypeInfo(structStmt->name);
             declareFunction(structStmt->name, sig);
-        } else if (std::holds_alternative<std::shared_ptr<InterfaceStmt>>(stmt->variant)) {
-            auto interfaceStmt = std::get<std::shared_ptr<InterfaceStmt>>(stmt->variant);
+        } else if (std::holds_alternative<InterfaceStmt*>(stmt->variant)) {
+            auto interfaceStmt = std::get<InterfaceStmt*>(stmt->variant);
             for (const auto& method : interfaceStmt->methods) {
                 FunctionSignature methodSig;
                 for (const auto& p : method.params) methodSig.paramNames.push_back(p);
@@ -278,24 +278,24 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                 methodSig.returnType = TypeInfo::fromAST(method.returnType);
                 declareFunction(interfaceStmt->name + "." + method.name, methodSig);
             }
-        } else if (std::holds_alternative<std::shared_ptr<ExportStmt>>(stmt->variant)) {
-            auto exportStmt = std::get<std::shared_ptr<ExportStmt>>(stmt->variant);
+        } else if (std::holds_alternative<ExportStmt*>(stmt->variant)) {
+            auto exportStmt = std::get<ExportStmt*>(stmt->variant);
             std::vector<StmtPtr> innerVec;
             innerVec.push_back(exportStmt->inner);
             // Recursively process the inner statement for declarations
             auto tempEnv = currentEnv; // Keep environment
             std::vector<StmtPtr> tempStatements = innerVec;
             for (const auto& innerStmt : tempStatements) {
-                if (std::holds_alternative<std::shared_ptr<TaskStmt>>(innerStmt->variant)) {
-                    auto task = std::get<std::shared_ptr<TaskStmt>>(innerStmt->variant);
+                if (std::holds_alternative<TaskStmt*>(innerStmt->variant)) {
+                    auto task = std::get<TaskStmt*>(innerStmt->variant);
                     FunctionSignature sig;
                     for (const auto& p : task->params) sig.paramNames.push_back(p);
                     for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
                     sig.returnType = TypeInfo::fromAST(task->returnType);
                     sig.isVariadic = task->isVariadic;
                     declareFunction(task->name, sig);
-                } else if (std::holds_alternative<std::shared_ptr<ModelStmt>>(innerStmt->variant)) {
-                    auto model = std::get<std::shared_ptr<ModelStmt>>(innerStmt->variant);
+                } else if (std::holds_alternative<ModelStmt*>(innerStmt->variant)) {
+                    auto model = std::get<ModelStmt*>(innerStmt->variant);
                     FunctionSignature sig;
                     for (const auto& p : model->initParams) sig.paramNames.push_back(p);
                     for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
@@ -319,23 +319,23 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                         [&](const std::vector<StmtPtr>& body) {
                             for (const auto& s : body) {
                                 if (!s) continue;
-                                if (std::holds_alternative<std::shared_ptr<ExpressionStmt>>(s->variant)) {
-                                    auto exprStmt = std::get<std::shared_ptr<ExpressionStmt>>(s->variant);
+                                if (std::holds_alternative<ExpressionStmt*>(s->variant)) {
+                                    auto exprStmt = std::get<ExpressionStmt*>(s->variant);
                                     if (exprStmt->expr &&
-                                        std::holds_alternative<std::shared_ptr<SetExpr>>(exprStmt->expr->variant)) {
-                                        auto setExpr = std::get<std::shared_ptr<SetExpr>>(exprStmt->expr->variant);
+                                        std::holds_alternative<SetExpr*>(exprStmt->expr->variant)) {
+                                        auto setExpr = std::get<SetExpr*>(exprStmt->expr->variant);
                                         if (setExpr->object &&
-                                            std::holds_alternative<std::shared_ptr<SelfExpr>>(setExpr->object->variant)) {
+                                            std::holds_alternative<SelfExpr*>(setExpr->object->variant)) {
                                             std::string key = model->name + "." + setExpr->name;
                                             if (!currentEnv->variables.count(key))
                                                 declareVariable(key, TypeInfo("Any"));
                                         }
                                     }
                                 }
-                                if (std::holds_alternative<std::shared_ptr<BlockStmt>>(s->variant)) {
-                                    scanBodyForSelfProps(std::get<std::shared_ptr<BlockStmt>>(s->variant)->statements);
-                                } else if (std::holds_alternative<std::shared_ptr<WhenStmt>>(s->variant)) {
-                                    auto ws = std::get<std::shared_ptr<WhenStmt>>(s->variant);
+                                if (std::holds_alternative<BlockStmt*>(s->variant)) {
+                                    scanBodyForSelfProps(std::get<BlockStmt*>(s->variant)->statements);
+                                } else if (std::holds_alternative<WhenStmt*>(s->variant)) {
+                                    auto ws = std::get<WhenStmt*>(s->variant);
                                     if (ws->thenBranch) scanBodyForSelfProps({ws->thenBranch});
                                     if (ws->elseBranch) scanBodyForSelfProps({ws->elseBranch});
                                 }

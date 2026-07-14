@@ -35,11 +35,12 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
     std::vector<Token> tokens = lexer.tokenize();
     if (lexer.hasError()) return Value();
 
-    Parser parser(tokens);
+    ASTArena arena;
+    Parser parser(tokens, arena);
     std::vector<StmtPtr> statements = parser.parse();
     if (parser.hasError()) return Value();
 
-    BytecodeCompiler compiler;
+    BytecodeCompiler compiler(arena);
     CompileResult result = compiler.compile(statements);
     if (!result.success) return Value();
 

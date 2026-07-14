@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "ast/AST.h"
+#include "ast/ASTArena.h"
 #include "bytecode/Bytecode.h"
 #include "runtime/Value.h"
 
@@ -23,7 +24,8 @@ inline std::string getDirectoryName(const std::string& path) {
 
 class BytecodeCompiler {
 public:
-    BytecodeCompiler();
+    BytecodeCompiler(ASTArena& arena);
+    ASTArena& arena;
     
     // Configuration
     bool disableContracts = false;

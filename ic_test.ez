@@ -30,5 +30,6 @@ while (i < 1000000) {
     i = i + 1
 }
 
-end_time = clock(print("Total: ", total)
+end_time = clock()
+print("Total: ", total)
 print("Time taken: ", end_time - start_time, " seconds")

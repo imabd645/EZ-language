@@ -11,6 +11,7 @@
 #include "eventloop/EventLoop.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
+#include "ast/ASTArena.h"
 #include "typechecker/TypeChecker.h"
 #include "vm/BytecodeVM.h"
 #include "compiler/BytecodeCompiler.h"
@@ -60,7 +61,8 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
         exit(65);
     }
     
-    Parser parser(tokens);
+    ASTArena arena;
+    Parser parser(tokens, arena);
     std::vector<StmtPtr> statements = parser.parse();
     
     if (parser.hasError()) {
@@ -79,7 +81,7 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
         exit(65);
     }
     
-    BytecodeCompiler compiler;
+    BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
     
     CompileResult result = compiler.compile(statements);
@@ -186,7 +188,8 @@ void compileFileToEzc(const std::string& path) {
     std::vector<Token> tokens = lexer.tokenize();
     if (lexer.hasError()) exit(65);
     
-    Parser parser(tokens);
+    ASTArena arena;
+    Parser parser(tokens, arena);
     std::vector<StmtPtr> statements = parser.parse();
     if (parser.hasError()) exit(65);
     
@@ -199,7 +202,7 @@ void compileFileToEzc(const std::string& path) {
     TypeChecker typeChecker;
     if (!typeChecker.check(statements, builtins)) exit(65);
     
-    BytecodeCompiler compiler;
+    BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
@@ -237,7 +240,8 @@ void dumpFileToEzasm(const std::string& path) {
     std::vector<Token> tokens = lexer.tokenize();
     if (lexer.hasError()) exit(65);
     
-    Parser parser(tokens);
+    ASTArena arena;
+    Parser parser(tokens, arena);
     std::vector<StmtPtr> statements = parser.parse();
     if (parser.hasError()) exit(65);
     
@@ -250,7 +254,7 @@ void dumpFileToEzasm(const std::string& path) {
     TypeChecker typeChecker;
     if (!typeChecker.check(statements, builtins)) exit(65);
     
-    BytecodeCompiler compiler;
+    BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {

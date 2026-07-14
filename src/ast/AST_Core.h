@@ -12,11 +12,11 @@
 struct Expr;
 struct Stmt;
 
-using ExprPtr = std::shared_ptr<Expr>;
-using StmtPtr = std::shared_ptr<Stmt>;
+using ExprPtr = Expr*;
+using StmtPtr = Stmt*;
 
 struct TypeAST;
-using TypeASTPtr = std::shared_ptr<TypeAST>;
+using TypeASTPtr = TypeAST*;
 
 struct TypeAST {
     std::string baseType;
@@ -88,27 +88,27 @@ struct StructStmt;
 struct UseStmt;
 
 using ExprVariant = std::variant<
-    std::shared_ptr<LiteralExpr>,
-    std::shared_ptr<IdentifierExpr>,
-    std::shared_ptr<BinaryExpr>,
-    std::shared_ptr<UnaryExpr>,
-    std::shared_ptr<CallExpr>,
-    std::shared_ptr<IndexExpr>,
-    std::shared_ptr<ArrayExpr>,
-    std::shared_ptr<TupleExpr>,
-    std::shared_ptr<AssignExpr>,
-    std::shared_ptr<LogicalExpr>,
-    std::shared_ptr<LambdaExpr>,
-    std::shared_ptr<PropertyAccessExpr>,
-    std::shared_ptr<SelfExpr>,
-    std::shared_ptr<SuperExpr>,
-    std::shared_ptr<NewExpr>,
-    std::shared_ptr<SetExpr>,
-    std::shared_ptr<DictionaryExpr>,
-    std::shared_ptr<SpreadExpr>,
-    std::shared_ptr<TernaryExpr>,
-    std::shared_ptr<AwaitExpr>,
-    std::shared_ptr<DestructureAssignExpr>
+    LiteralExpr*,
+    IdentifierExpr*,
+    BinaryExpr*,
+    UnaryExpr*,
+    CallExpr*,
+    IndexExpr*,
+    ArrayExpr*,
+    TupleExpr*,
+    AssignExpr*,
+    LogicalExpr*,
+    LambdaExpr*,
+    PropertyAccessExpr*,
+    SelfExpr*,
+    SuperExpr*,
+    NewExpr*,
+    SetExpr*,
+    DictionaryExpr*,
+    SpreadExpr*,
+    TernaryExpr*,
+    AwaitExpr*,
+    DestructureAssignExpr*
 >;
 
 struct Expr {
@@ -126,40 +126,40 @@ struct Expr {
 
 
 using StmtVariant = std::variant<
-    std::shared_ptr<BlockStmt>,
-    std::shared_ptr<ExpressionStmt>,
-    std::shared_ptr<VarDeclStmt>,
-    std::shared_ptr<OutStmt>,
-    std::shared_ptr<IfStmt>,
-    std::shared_ptr<WhenStmt>,
-    std::shared_ptr<WhileStmt>,
-    std::shared_ptr<RepeatStmt>,
-    std::shared_ptr<BreakStmt>,
-    std::shared_ptr<ContinueStmt>,
-    std::shared_ptr<FunctionDeclStmt>,
-    std::shared_ptr<ReturnStmt>,
-    std::shared_ptr<ClassDeclStmt>,
-    std::shared_ptr<InterfaceDeclStmt>,
-    std::shared_ptr<ArrayAssignStmt>,
-    std::shared_ptr<ImportStmt>,
-    std::shared_ptr<ExportStmt>,
-    std::shared_ptr<PropertyAssignStmt>,
-    std::shared_ptr<TryStmt>,
-    std::shared_ptr<ThrowStmt>,
-    std::shared_ptr<GetStmt>,
-    std::shared_ptr<TupleAssignStmt>,
-    std::shared_ptr<StructDeclStmt>,
-    std::shared_ptr<ModelDeclStmt>,
-    std::shared_ptr<MatchStmt>,
-    std::shared_ptr<TaskStmt>,
-    std::shared_ptr<GiveStmt>,
-    std::shared_ptr<EscapeStmt>,
-    std::shared_ptr<SkipStmt>,
-    std::shared_ptr<StaticStmt>,
-    std::shared_ptr<InterfaceStmt>,
-    std::shared_ptr<ModelStmt>,
-    std::shared_ptr<StructStmt>,
-    std::shared_ptr<UseStmt>
+    BlockStmt*,
+    ExpressionStmt*,
+    VarDeclStmt*,
+    OutStmt*,
+    IfStmt*,
+    WhenStmt*,
+    WhileStmt*,
+    RepeatStmt*,
+    BreakStmt*,
+    ContinueStmt*,
+    FunctionDeclStmt*,
+    ReturnStmt*,
+    ClassDeclStmt*,
+    InterfaceDeclStmt*,
+    ArrayAssignStmt*,
+    ImportStmt*,
+    ExportStmt*,
+    PropertyAssignStmt*,
+    TryStmt*,
+    ThrowStmt*,
+    GetStmt*,
+    TupleAssignStmt*,
+    StructDeclStmt*,
+    ModelDeclStmt*,
+    MatchStmt*,
+    TaskStmt*,
+    GiveStmt*,
+    EscapeStmt*,
+    SkipStmt*,
+    StaticStmt*,
+    InterfaceStmt*,
+    ModelStmt*,
+    StructStmt*,
+    UseStmt*
 >;
 
 struct Stmt {

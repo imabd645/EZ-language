@@ -12,6 +12,7 @@ extern bool g_disableContracts;
 #include "eventloop/EventLoop.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
+#include "ast/ASTArena.h"
 #include "typechecker/TypeChecker.h"
 #include "vm/BytecodeVM.h"
 #include "compiler/BytecodeCompiler.h"
@@ -32,7 +33,8 @@ void runRepl(bool traceExecution) {
     auto globalEnv = std::make_shared<Environment>();
     BytecodeVM vm(globalEnv);
     vm.traceExecution = traceExecution;
-    BytecodeCompiler compiler;
+    ASTArena arena;
+    BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
     std::string line;
     std::string multiline;
@@ -70,7 +72,7 @@ void runRepl(bool traceExecution) {
         std::vector<Token> tokens = lexer.tokenize();
         
         if (!lexer.hasError()) {
-            Parser parser(tokens);
+            Parser parser(tokens, arena);
             std::vector<StmtPtr> statements = parser.parse();
             
             if (!parser.hasError()) {

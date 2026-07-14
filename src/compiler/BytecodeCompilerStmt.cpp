@@ -18,45 +18,45 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     std::visit([this](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
 
-        if constexpr (std::is_same_v<T, std::shared_ptr<ExpressionStmt>>) {
+        if constexpr (std::is_same_v<T, ExpressionStmt*>) {
             compileExpressionStmt(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<OutStmt>>) {
+        } else if constexpr (std::is_same_v<T, OutStmt*>) {
             compileOutStmt(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<VarDeclStmt>>) {
+        } else if constexpr (std::is_same_v<T, VarDeclStmt*>) {
             compileVarDecl(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<BlockStmt>>) {
+        } else if constexpr (std::is_same_v<T, BlockStmt*>) {
             compileBlock(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<WhenStmt>>) {
+        } else if constexpr (std::is_same_v<T, WhenStmt*>) {
             compileWhen(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<WhileStmt>>) {
+        } else if constexpr (std::is_same_v<T, WhileStmt*>) {
             compileWhile(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<RepeatStmt>>) {
+        } else if constexpr (std::is_same_v<T, RepeatStmt*>) {
             compileRepeat(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<GetStmt>>) {
+        } else if constexpr (std::is_same_v<T, GetStmt*>) {
             compileGet(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<MatchStmt>>) {
+        } else if constexpr (std::is_same_v<T, MatchStmt*>) {
             compileMatch(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<TaskStmt>>) {
+        } else if constexpr (std::is_same_v<T, TaskStmt*>) {
             compileTask(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<GiveStmt>>) {
+        } else if constexpr (std::is_same_v<T, GiveStmt*>) {
             compileGive(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {
+        } else if constexpr (std::is_same_v<T, UseStmt*>) {
             compileUse(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<ExportStmt>>) {
+        } else if constexpr (std::is_same_v<T, ExportStmt*>) {
             compileExport(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<EscapeStmt>>) {
+        } else if constexpr (std::is_same_v<T, EscapeStmt*>) {
             compileEscape(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {
+        } else if constexpr (std::is_same_v<T, SkipStmt*>) {
             compileSkip(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<ModelStmt>>) {
+        } else if constexpr (std::is_same_v<T, ModelStmt*>) {
             compileModel(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<StaticStmt>>) {
+        } else if constexpr (std::is_same_v<T, StaticStmt*>) {
             compileStatic(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<TryStmt>>) {
+        } else if constexpr (std::is_same_v<T, TryStmt*>) {
             compileTry(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<ThrowStmt>>) {
+        } else if constexpr (std::is_same_v<T, ThrowStmt*>) {
             compileThrow(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<InterfaceStmt>>) {
+        } else if constexpr (std::is_same_v<T, InterfaceStmt*>) {
             compileInterface(*arg);
         }
     }, stmt->variant);
@@ -142,8 +142,8 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
     // Try to detect loop direction if both start and end are literals
     bool isReverse = false;
-    auto startLit = std::get_if<std::shared_ptr<LiteralExpr>>(&stmt.start->variant);
-    auto endLit = std::get_if<std::shared_ptr<LiteralExpr>>(&stmt.end->variant);
+    auto startLit = std::get_if<LiteralExpr*>(&stmt.start->variant);
+    auto endLit = std::get_if<LiteralExpr*>(&stmt.end->variant);
     if (startLit && endLit) {
         if (std::holds_alternative<double>((*startLit)->value) && std::holds_alternative<double>((*endLit)->value)) {
             if (std::get<double>((*startLit)->value) > std::get<double>((*endLit)->value)) isReverse = true;
@@ -312,13 +312,13 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
         emitOp(OpCode::DUP); // [array, array]
         
         // key = array[0]
-        compileExpr(std::make_shared<Expr>(currentLine, 0, 0, currentFile, std::make_shared<LiteralExpr>(0LL)));
+        compileExpr(arena.allocate<Expr>(currentLine, 0, 0, currentFile, arena.allocate<LiteralExpr>(0LL)));
         emitOp(OpCode::INDEX_GET); // [array, key]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
         emitOp(OpCode::POP); // [array]
         
         // value = array[1]
-        compileExpr(std::make_shared<Expr>(currentLine, 0, 0, currentFile, std::make_shared<LiteralExpr>(1LL)));
+        compileExpr(arena.allocate<Expr>(currentLine, 0, 0, currentFile, arena.allocate<LiteralExpr>(1LL)));
         emitOp(OpCode::INDEX_GET); // [value]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopValueVar));
         emitOp(OpCode::POP); // []
@@ -360,7 +360,7 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
             // Detect type-match pattern: a bare uppercase identifier like String, Integer, User
             bool isTypePattern = false;
             std::string typeName;
-            if (auto* idPtr = std::get_if<std::shared_ptr<IdentifierExpr>>(&arm.pattern->variant)) {
+            if (auto* idPtr = std::get_if<IdentifierExpr*>(&arm.pattern->variant)) {
                 const std::string& name = (*idPtr)->name;
                 if (!name.empty() && std::isupper((unsigned char)name[0])) {
                     isTypePattern = true;
@@ -472,10 +472,10 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
     bool isTailCall = false;
     if (stmt.value && current && !current->isCached
         && (!currentEnsuresClauses || currentEnsuresClauses->empty())) {
-        if (auto* callPtr = std::get_if<std::shared_ptr<CallExpr>>(&stmt.value->variant)) {
+        if (auto* callPtr = std::get_if<CallExpr*>(&stmt.value->variant)) {
             const CallExpr& call = **callPtr;
             // Check if callee is an identifier matching the current function name
-            if (auto* idPtr = std::get_if<std::shared_ptr<IdentifierExpr>>(&call.callee->variant)) {
+            if (auto* idPtr = std::get_if<IdentifierExpr*>(&call.callee->variant)) {
                 if ((*idPtr)->name == current->function->name) {
                     // Compile callee (the function itself)
                     compileExpr(call.callee);
@@ -741,7 +741,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             return;
         }
         
-        Parser parser(tokens);
+        Parser parser(tokens, arena);
         statements = parser.parse();
         if (parser.hasError()) {
             errorAt("Parser error in module '" + absolutePath + "'", currentLine);
@@ -938,7 +938,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
         params.insert(params.end(), stmt.initParams.begin(), stmt.initParams.end());
         std::vector<ExprPtr> defaults = {nullptr}; // for 'self'
         defaults.insert(defaults.end(), stmt.initDefaultValues.begin(), stmt.initDefaultValues.end());
-        TaskStmt initTask("init", params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, stmt.initBody);
+        TaskStmt initTask("init", params, std::vector<TypeASTPtr>(params.size(), arena.allocate<TypeAST>("Any")), defaults, nullptr, stmt.initBody);
         emitClosure(initTask, true); // Pushes closure
         
         // Push isStatic flag (false for constructor)
@@ -972,7 +972,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             }
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
-            TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), std::make_shared<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
+            TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), arena.allocate<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
             methodTask.isCached = member.isCached;
             emitClosure(methodTask, true); // Pushes closure
         } else {
@@ -1525,7 +1525,7 @@ void BytecodeCompiler::errorAt(const std::string& message, int line) {
 bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
     if (!expr) return false;
     
-    if (auto* litPtr = std::get_if<std::shared_ptr<LiteralExpr>>(&expr->variant)) {
+    if (auto* litPtr = std::get_if<LiteralExpr*>(&expr->variant)) {
         auto lit = *litPtr;
         if (std::holds_alternative<double>(lit->value)) {
             out = Constant(std::get<double>(lit->value));
@@ -1543,7 +1543,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
             out = Constant(); // NIL
             return true;
         }
-    } else if (auto* binPtr = std::get_if<std::shared_ptr<BinaryExpr>>(&expr->variant)) {
+    } else if (auto* binPtr = std::get_if<BinaryExpr*>(&expr->variant)) {
         auto bin = *binPtr;
         Constant left, right;
         if (isConstant(bin->left, left) && isConstant(bin->right, right)) {
@@ -1569,7 +1569,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
                 }
             }
         }
-    } else if (auto* unPtr = std::get_if<std::shared_ptr<UnaryExpr>>(&expr->variant)) {
+    } else if (auto* unPtr = std::get_if<UnaryExpr*>(&expr->variant)) {
         auto un = *unPtr;
         Constant operand;
         if (isConstant(un->operand, operand)) {

@@ -7,6 +7,7 @@
 #include <sstream>
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
+#include "ast/ASTArena.h"
 #include "builtins/Builtins.h"
 #include "gui/GUIBuiltins.h"
 #include "eventloop/EventLoop.h"
@@ -401,10 +402,11 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
     auto it = compiledFunctionCache.find(func);
     if (it != compiledFunctionCache.end()) return it->second;
 
-    BytecodeCompiler compiler;
+    ASTArena arena;
+    BytecodeCompiler compiler(arena);
 
     // Build a minimal TaskStmt from the EZFunction
-    TaskStmt fakeTask(func->name, func->params, std::vector<TypeASTPtr>(func->params.size(), std::make_shared<TypeAST>("Any")), func->defaultValues, nullptr,
+    TaskStmt fakeTask(func->name, func->params, std::vector<TypeASTPtr>(func->params.size(), arena.allocate<TypeAST>("Any")), func->defaultValues, nullptr,
                       func->body, func->isVariadic);
     BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
 

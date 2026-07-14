@@ -11,6 +11,7 @@
 #include "eventloop/EventLoop.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
+#include "ast/ASTArena.h"
 #include "typechecker/TypeChecker.h"
 #include "vm/BytecodeVM.h"
 #include "compiler/BytecodeCompiler.h"

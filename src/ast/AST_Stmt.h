@@ -3,6 +3,7 @@
 
 #include "AST_Core.h"
 #include "AST_Expr.h"
+#include "ASTArena.h"
 
 // Block of statements
 
@@ -111,7 +112,7 @@ struct TaskStmt {
     std::vector<std::pair<std::string, ExprPtr>> oldCaptures;
     // Decorator flags
     bool isCached = false;
-    std::shared_ptr<RateLimitConfig> rateLimit = nullptr; // nullptr = not rate limited
+    RateLimitConfig* rateLimit = nullptr; // nullptr = not rate limited
     std::vector<ExprPtr> userDecorators; // Custom user-defined decorators
     std::vector<std::string> typeParams;
     
@@ -273,203 +274,203 @@ struct ExportStmt {
 };
 
 // Helper functions to create expressions
-inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, std::nullptr_t) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(nullptr));
+inline ExprPtr makeLiteralExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::nullptr_t) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LiteralExpr>(nullptr));
 }
 
-inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, double val) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(ASTArena& arena, int line, int column, int length, const std::string& file, double val) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LiteralExpr>(val));
 }
 
-inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, long long val) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(ASTArena& arena, int line, int column, int length, const std::string& file, long long val) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LiteralExpr>(val));
 }
 
-inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, const std::string& val) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& val) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LiteralExpr>(val));
 }
 
-inline ExprPtr makeLiteralExpr(int line, int column, int length, const std::string& file, bool val) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LiteralExpr>(val));
+inline ExprPtr makeLiteralExpr(ASTArena& arena, int line, int column, int length, const std::string& file, bool val) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LiteralExpr>(val));
 }
 
-inline ExprPtr makeIdentifierExpr(int line, int column, int length, const std::string& file, const std::string& name) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<IdentifierExpr>(name));
+inline ExprPtr makeIdentifierExpr(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<IdentifierExpr>(name));
 }
 
-inline ExprPtr makeBinaryExpr(int line, int column, int length, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<BinaryExpr>(std::move(left), op, std::move(right)));
+inline ExprPtr makeBinaryExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<BinaryExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeUnaryExpr(int line, int column, int length, const std::string& file, TokenType op, ExprPtr operand) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<UnaryExpr>(op, std::move(operand)));
+inline ExprPtr makeUnaryExpr(ASTArena& arena, int line, int column, int length, const std::string& file, TokenType op, ExprPtr operand) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<UnaryExpr>(op, std::move(operand)));
 }
 
-inline ExprPtr makeCallExpr(int line, int column, int length, const std::string& file, ExprPtr callee, std::vector<ExprPtr> args, std::vector<std::string> argNames = {}) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<CallExpr>(std::move(callee), std::move(args), std::move(argNames)));
+inline ExprPtr makeCallExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr callee, std::vector<ExprPtr> args, std::vector<std::string> argNames = {}) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<CallExpr>(std::move(callee), std::move(args), std::move(argNames)));
 }
 
-inline ExprPtr makeIndexExpr(int line, int column, int length, const std::string& file, ExprPtr object, ExprPtr index) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<IndexExpr>(std::move(object), std::move(index)));
+inline ExprPtr makeIndexExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr object, ExprPtr index) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<IndexExpr>(std::move(object), std::move(index)));
 }
 
-inline ExprPtr makeArrayExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<ArrayExpr>(std::move(elements)));
+inline ExprPtr makeArrayExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<ArrayExpr>(std::move(elements)));
 }
 
-inline ExprPtr makeTupleExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<TupleExpr>(std::move(elements)));
+inline ExprPtr makeTupleExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<ExprPtr> elements) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<TupleExpr>(std::move(elements)));
 }
 
-inline ExprPtr makeAssignExpr(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr, std::optional<TokenType> compoundOp = std::nullopt) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<AssignExpr>(name, std::move(value), std::move(index), std::move(object), compoundOp));
+inline ExprPtr makeAssignExpr(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, ExprPtr value, ExprPtr index = nullptr, ExprPtr object = nullptr, std::optional<TokenType> compoundOp = std::nullopt) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<AssignExpr>(name, std::move(value), std::move(index), std::move(object), compoundOp));
 }
 
-inline ExprPtr makeDestructureAssignExpr(int line, int column, int length, const std::string& file, std::vector<ExprPtr> targets, ExprPtr value) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<DestructureAssignExpr>(std::move(targets), std::move(value)));
+inline ExprPtr makeDestructureAssignExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<ExprPtr> targets, ExprPtr value) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<DestructureAssignExpr>(std::move(targets), std::move(value)));
 }
 
-inline ExprPtr makeLogicalExpr(int line, int column, int length, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LogicalExpr>(std::move(left), op, std::move(right)));
+inline ExprPtr makeLogicalExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr left, TokenType op, ExprPtr right) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LogicalExpr>(std::move(left), op, std::move(right)));
 }
 
-inline ExprPtr makeLambdaExpr(int line, int column, int length, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, ExprPtr body, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(body), std::move(returnType), variadic, isAsync));
+inline ExprPtr makeLambdaExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, ExprPtr body, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(body), std::move(returnType), variadic, isAsync));
 }
 
-inline ExprPtr makeLambdaExpr(int line, int column, int length, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, std::vector<StmtPtr> stmtBody, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(stmtBody), std::move(returnType), variadic, isAsync));
+inline ExprPtr makeLambdaExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes, std::vector<StmtPtr> stmtBody, TypeASTPtr returnType = nullptr, bool variadic = false, bool isAsync = false) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<LambdaExpr>(std::move(params), std::move(paramTypes), std::move(stmtBody), std::move(returnType), variadic, isAsync));
 }
 
 // Helper functions to create statements
-inline StmtPtr makeExpressionStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExpressionStmt>(std::move(expr)));
+inline StmtPtr makeExpressionStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr expr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ExpressionStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeOutStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<OutStmt>(std::move(expr)));
+inline StmtPtr makeOutStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr expr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<OutStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeVarDeclStmt(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr init, TypeASTPtr typeHint = nullptr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<VarDeclStmt>(name, std::move(init), std::move(typeHint)));
+inline StmtPtr makeVarDeclStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, ExprPtr init, TypeASTPtr typeHint = nullptr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<VarDeclStmt>(name, std::move(init), std::move(typeHint)));
 }
 
-inline StmtPtr makeBlockStmt(int line, int column, int length, const std::string& file, std::vector<StmtPtr> stmts) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<BlockStmt>(std::move(stmts)));
+inline StmtPtr makeBlockStmt(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<StmtPtr> stmts) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<BlockStmt>(std::move(stmts)));
 }
 
-inline StmtPtr makeWhenStmt(int line, int column, int length, const std::string& file, ExprPtr cond, StmtPtr thenBr, StmtPtr elseBr = nullptr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<WhenStmt>(std::move(cond), std::move(thenBr), std::move(elseBr)));
+inline StmtPtr makeWhenStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr cond, StmtPtr thenBr, StmtPtr elseBr = nullptr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<WhenStmt>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
-inline StmtPtr makeWhileStmt(int line, int column, int length, const std::string& file, ExprPtr cond, StmtPtr body) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<WhileStmt>(std::move(cond), std::move(body)));
+inline StmtPtr makeWhileStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr cond, StmtPtr body) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<WhileStmt>(std::move(cond), std::move(body)));
 }
 
-inline StmtPtr makeRepeatStmt(int line, int column, int length, const std::string& file, const std::string& var, ExprPtr start, ExprPtr end, ExprPtr step, StmtPtr body) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<RepeatStmt>(var, std::move(start), std::move(end), std::move(step), std::move(body)));
+inline StmtPtr makeRepeatStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& var, ExprPtr start, ExprPtr end, ExprPtr step, StmtPtr body) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<RepeatStmt>(var, std::move(start), std::move(end), std::move(step), std::move(body)));
 }
 
-inline StmtPtr makeGetStmt(int line, int column, int length, const std::string& file, const std::string& var, ExprPtr iter, StmtPtr body) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<GetStmt>(var, "", std::move(iter), std::move(body)));
+inline StmtPtr makeGetStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& var, ExprPtr iter, StmtPtr body) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<GetStmt>(var, "", std::move(iter), std::move(body)));
 }
 
-inline StmtPtr makeGetKVStmt(int line, int column, int length, const std::string& file, const std::string& keyVar, const std::string& valVar, ExprPtr iter, StmtPtr body) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<GetStmt>(keyVar, valVar, std::move(iter), std::move(body)));
+inline StmtPtr makeGetKVStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& keyVar, const std::string& valVar, ExprPtr iter, StmtPtr body) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<GetStmt>(keyVar, valVar, std::move(iter), std::move(body)));
 }
 
-inline StmtPtr makeMatchStmt(int line, int column, int length, const std::string& file, ExprPtr subject, std::vector<MatchArm> arms) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<MatchStmt>(std::move(subject), std::move(arms)));
+inline StmtPtr makeMatchStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr subject, std::vector<MatchArm> arms) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<MatchStmt>(std::move(subject), std::move(arms)));
 }
 
-inline StmtPtr makeTaskStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
+inline StmtPtr makeTaskStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> params, std::vector<TypeASTPtr> paramTypes,
                             std::vector<ExprPtr> defaultValues, TypeASTPtr returnType, std::vector<StmtPtr> body, bool variadic = false, bool isAsync = false) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<TaskStmt>(name, std::move(params), std::move(paramTypes),
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<TaskStmt>(name, std::move(params), std::move(paramTypes),
                                                                      std::move(defaultValues), std::move(returnType), std::move(body), variadic, isAsync));
 }
 
-inline StmtPtr makeGiveStmt(int line, int column, int length, const std::string& file, ExprPtr val = nullptr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<GiveStmt>(std::move(val)));
+inline StmtPtr makeGiveStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr val = nullptr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<GiveStmt>(std::move(val)));
 }
 
-inline StmtPtr makeEscapeStmt(int line, int column, int length, const std::string& file) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<EscapeStmt>());
+inline StmtPtr makeEscapeStmt(ASTArena& arena, int line, int column, int length, const std::string& file) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<EscapeStmt>());
 }
 
-inline StmtPtr makeSkipStmt(int line, int column, int length, const std::string& file) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<SkipStmt>());
+inline StmtPtr makeSkipStmt(ASTArena& arena, int line, int column, int length, const std::string& file) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<SkipStmt>());
 }
 
-inline ExprPtr makePropertyAccessExpr(int line, int column, int length, const std::string& file, ExprPtr obj, const std::string& prop, bool isOptional = false) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<PropertyAccessExpr>(std::move(obj), prop, isOptional));
+inline ExprPtr makePropertyAccessExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr obj, const std::string& prop, bool isOptional = false) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<PropertyAccessExpr>(std::move(obj), prop, isOptional));
 }
 
-inline ExprPtr makeSelfExpr(int line, int column, int length, const std::string& file) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SelfExpr>());
+inline ExprPtr makeSelfExpr(ASTArena& arena, int line, int column, int length, const std::string& file) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<SelfExpr>());
 }
 
-inline ExprPtr makeSuperExpr(int line, int column, int length, const std::string& file) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SuperExpr>());
+inline ExprPtr makeSuperExpr(ASTArena& arena, int line, int column, int length, const std::string& file) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<SuperExpr>());
 }
 
-inline ExprPtr makeNewExpr(int line, int column, int length, const std::string& file, const std::string& className, std::vector<ExprPtr> args, std::vector<TypeASTPtr> typeArgs = {}) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<NewExpr>(className, std::move(args), std::move(typeArgs)));
+inline ExprPtr makeNewExpr(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& className, std::vector<ExprPtr> args, std::vector<TypeASTPtr> typeArgs = {}) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<NewExpr>(className, std::move(args), std::move(typeArgs)));
 }
 
-inline ExprPtr makeSetExpr(int line, int column, int length, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value, std::optional<TokenType> compoundOp = std::nullopt) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SetExpr>(std::move(object), name, std::move(value), compoundOp));
+inline ExprPtr makeSetExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr object, const std::string& name, ExprPtr value, std::optional<TokenType> compoundOp = std::nullopt) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<SetExpr>(std::move(object), name, std::move(value), compoundOp));
 }
 
-inline ExprPtr makeDictionaryExpr(int line, int column, int length, const std::string& file, std::vector<std::pair<ExprPtr, ExprPtr>> pairs) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<DictionaryExpr>(std::move(pairs)));
+inline ExprPtr makeDictionaryExpr(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<std::pair<ExprPtr, ExprPtr>> pairs) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<DictionaryExpr>(std::move(pairs)));
 }
 
-inline ExprPtr makeSpreadExpr(int line, int column, int length, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<SpreadExpr>(std::move(expr)));
+inline ExprPtr makeSpreadExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr expr) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<SpreadExpr>(std::move(expr)));
 }
 
-inline ExprPtr makeTernaryExpr(int line, int column, int length, const std::string& file, ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr) {
-    return std::make_shared<Expr>(line, column, length, file, std::make_shared<TernaryExpr>(std::move(cond), std::move(thenBr), std::move(elseBr)));
+inline ExprPtr makeTernaryExpr(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr cond, ExprPtr thenBr, ExprPtr elseBr) {
+    return arena.allocate<Expr>(line, column, length, file, arena.allocate<TernaryExpr>(std::move(cond), std::move(thenBr), std::move(elseBr)));
 }
 
-inline StmtPtr makeInterfaceStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<InterfaceMethod> methods) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<InterfaceStmt>(line, name, std::move(methods)));
+inline StmtPtr makeInterfaceStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, std::vector<InterfaceMethod> methods) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<InterfaceStmt>(line, name, std::move(methods)));
 }
 
-inline StmtPtr makeModelStmt(int line, int column, int length, const std::string& file, const std::string& name, const std::string& parent,
+inline StmtPtr makeModelStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, const std::string& parent,
                              std::vector<std::string> interfaces,
                              std::vector<std::string> initParams, 
                              std::vector<TypeASTPtr> initParamTypes,
                              std::vector<ExprPtr> initDefaultValues,
                              std::vector<StmtPtr> initBody,
                              std::vector<ModelMember> members) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ModelStmt>(
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ModelStmt>(
         line, name, parent, std::move(interfaces), std::move(initParams), std::move(initParamTypes),
         std::move(initDefaultValues), std::move(initBody), std::move(members)));
 }
 
-inline StmtPtr makeStructStmt(int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<StructStmt>(name, std::move(fields), std::move(types), std::move(defaults)));
+inline StmtPtr makeStructStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<StructStmt>(name, std::move(fields), std::move(types), std::move(defaults)));
 }
 
-inline StmtPtr makeUseStmt(int line, int column, int length, const std::string& file, const std::string& path, const std::string& alias = "") {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<UseStmt>(path, alias));
+inline StmtPtr makeUseStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& path, const std::string& alias = "") {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<UseStmt>(path, alias));
 }
 
-inline StmtPtr makeTryStmt(int line, int column, int length, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks, StmtPtr finallyBlk = nullptr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<TryStmt>(std::move(tryBlk), std::move(catchBlocks), std::move(finallyBlk)));
+inline StmtPtr makeTryStmt(ASTArena& arena, int line, int column, int length, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks, StmtPtr finallyBlk = nullptr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<TryStmt>(std::move(tryBlk), std::move(catchBlocks), std::move(finallyBlk)));
 }
 
-inline StmtPtr makeThrowStmt(int line, int column, int length, const std::string& file, ExprPtr expr) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ThrowStmt>(std::move(expr)));
+inline StmtPtr makeThrowStmt(ASTArena& arena, int line, int column, int length, const std::string& file, ExprPtr expr) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ThrowStmt>(std::move(expr)));
 }
 
-inline StmtPtr makeStaticStmt(int line, int column, int length, const std::string& file, const std::string& name, ExprPtr init) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<StaticStmt>(name, std::move(init)));
+inline StmtPtr makeStaticStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, ExprPtr init) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<StaticStmt>(name, std::move(init)));
 }
 
-inline StmtPtr makeExportStmt(int line, int column, int length, const std::string& file, StmtPtr inner) {
-    return std::make_shared<Stmt>(line, column, length, file, std::make_shared<ExportStmt>(std::move(inner)));
+inline StmtPtr makeExportStmt(ASTArena& arena, int line, int column, int length, const std::string& file, StmtPtr inner) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ExportStmt>(std::move(inner)));
 }
 
 

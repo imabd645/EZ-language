@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include "lexer/Token.h"
 #include "ast/AST.h"
+#include "ast/ASTArena.h"
 
 class ParseError : public std::runtime_error {
 public:
@@ -16,12 +17,13 @@ public:
 
 class Parser {
 public:
-    explicit Parser(std::vector<Token> tokens);
+    Parser(std::vector<Token> tokens, ASTArena& arena);
     std::vector<StmtPtr> parse();
     bool hasError() const { return hadError; }
 
 private:
     std::vector<Token> tokens;
+    ASTArena& arena;
     size_t current = 0;
     bool hadError = false;
 

@@ -34,7 +34,7 @@ TypeASTPtr Parser::parseType() {
         consume(TokenType::RBRACKET, "Expected ']' after type arguments");
     }
     
-    return std::make_shared<TypeAST>(baseType, typeArgs);
+    return arena.allocate<TypeAST>(baseType, typeArgs);
 }
 
 StmtPtr Parser::varDeclStatement() {
@@ -53,7 +53,7 @@ StmtPtr Parser::varDeclStatement() {
         initializer = expression();
     }
     
-    return makeVarDeclStmt(line, column, length, filename, nameToken.lexeme, initializer, typeHint);
+    return makeVarDeclStmt(arena, line, column, length, filename, nameToken.lexeme, initializer, typeHint);
 }
 
 
@@ -84,7 +84,7 @@ StmtPtr Parser::statement() {
     // Decorators like @audited, @cached, @persist etc. precede model/task
     std::vector<ExprPtr> userDecorators;
     std::string persistPath;
-    std::shared_ptr<RateLimitConfig> rateLimitCfg = nullptr;
+    RateLimitConfig* rateLimitCfg = nullptr;
     bool isCached = false;
     bool isAudited = false;
     bool isSnapshot = false;
@@ -93,21 +93,21 @@ StmtPtr Parser::statement() {
         ExprPtr decExpr = expression();
         bool isBuiltin = false;
         
-        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(decExpr->variant)) {
-            auto varExpr = std::get<std::shared_ptr<IdentifierExpr>>(decExpr->variant);
+        if (std::holds_alternative<IdentifierExpr*>(decExpr->variant)) {
+            auto varExpr = std::get<IdentifierExpr*>(decExpr->variant);
             std::string name = varExpr->name;
             if (name == "cached") { isCached = true; isBuiltin = true; }
             else if (name == "audited") { isAudited = true; isBuiltin = true; }
             else if (name == "snapshot") { isSnapshot = true; isBuiltin = true; }
-        } else if (std::holds_alternative<std::shared_ptr<CallExpr>>(decExpr->variant)) {
-            auto callExpr = std::get<std::shared_ptr<CallExpr>>(decExpr->variant);
-            if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(callExpr->callee->variant)) {
-                auto varExpr = std::get<std::shared_ptr<IdentifierExpr>>(callExpr->callee->variant);
+        } else if (std::holds_alternative<CallExpr*>(decExpr->variant)) {
+            auto callExpr = std::get<CallExpr*>(decExpr->variant);
+            if (std::holds_alternative<IdentifierExpr*>(callExpr->callee->variant)) {
+                auto varExpr = std::get<IdentifierExpr*>(callExpr->callee->variant);
                 std::string name = varExpr->name;
                 if (name == "persist") {
                     if (callExpr->arguments.size() == 1) {
-                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant)) {
-                            auto strExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant);
+                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[0]->variant)) {
+                            auto strExpr = std::get<LiteralExpr*>(callExpr->arguments[0]->variant);
                             if (std::holds_alternative<std::string>(strExpr->value)) {
                                 persistPath = std::get<std::string>(strExpr->value);
                                 isBuiltin = true;
@@ -117,17 +117,17 @@ StmtPtr Parser::statement() {
                 } else if (name == "ratelimit") {
                     if (callExpr->arguments.size() >= 2) {
                         int count = 0;
-                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant)) {
-                            auto numExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[0]->variant);
+                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[0]->variant)) {
+                            auto numExpr = std::get<LiteralExpr*>(callExpr->arguments[0]->variant);
                             if (std::holds_alternative<long long>(numExpr->value)) count = (int)std::get<long long>(numExpr->value);
                             else if (std::holds_alternative<double>(numExpr->value)) count = (int)std::get<double>(numExpr->value);
                         }
                         std::string perStr;
-                        if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(callExpr->arguments[1]->variant)) {
-                            auto strExpr = std::get<std::shared_ptr<LiteralExpr>>(callExpr->arguments[1]->variant);
+                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[1]->variant)) {
+                            auto strExpr = std::get<LiteralExpr*>(callExpr->arguments[1]->variant);
                             if (std::holds_alternative<std::string>(strExpr->value)) perStr = std::get<std::string>(strExpr->value);
                         }
-                        rateLimitCfg = std::make_shared<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
+                        rateLimitCfg = arena.allocate<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
                         isBuiltin = true;
                     }
                 }
@@ -148,7 +148,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::TASK) || match(TokenType::DECORATOR_KW)) {
         auto taskNode = taskStatement(isAsync);
         // Apply task-level decorators
-        auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskNode->variant);
+        auto& task = *std::get<TaskStmt*>(taskNode->variant);
         task.userDecorators = userDecorators;
         if (isCached) task.isCached = true;
         if (rateLimitCfg) task.rateLimit = rateLimitCfg;
@@ -161,7 +161,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::MODEL)) {
         auto modelNode = modelStatement();
         // Apply model-level decorators
-        auto& model = *std::get<std::shared_ptr<ModelStmt>>(modelNode->variant);
+        auto& model = *std::get<ModelStmt*>(modelNode->variant);
         model.userDecorators = userDecorators;
         if (isAudited) model.audited = true;
         if (isSnapshot) model.snapshot = true;
@@ -188,7 +188,7 @@ StmtPtr Parser::statement() {
 StmtPtr Parser::outStatement() {
     Token op = previous();
     ExprPtr value = expression();
-    return makeOutStmt(op.line, op.column, op.lexeme.length(), op.filename, value);
+    return makeOutStmt(arena, op.line, op.column, op.lexeme.length(), op.filename, value);
 }
 
 StmtPtr Parser::whenStatement() {
@@ -229,7 +229,7 @@ StmtPtr Parser::whenStatement() {
         if (thenStmts.size() == 1) {
             thenBranch = thenStmts[0];
         } else {
-            thenBranch = makeBlockStmt(line, column, length, peek().filename, thenStmts);
+            thenBranch = makeBlockStmt(arena, line, column, length, peek().filename, thenStmts);
         }
     }
     
@@ -249,7 +249,7 @@ StmtPtr Parser::whenStatement() {
         }
     }
     
-    return makeWhenStmt(line, column, length, peek().filename, condition, thenBranch, elseBranch);
+    return makeWhenStmt(arena, line, column, length, peek().filename, condition, thenBranch, elseBranch);
 }
 
 StmtPtr Parser::whileStatement() {
@@ -267,7 +267,7 @@ StmtPtr Parser::whileStatement() {
         body = statement();
     }
     
-    return makeWhileStmt(line, column, length, peek().filename, condition, body);
+    return makeWhileStmt(arena, line, column, length, peek().filename, condition, body);
 }
 
 StmtPtr Parser::repeatStatement() {
@@ -301,7 +301,7 @@ StmtPtr Parser::repeatStatement() {
         body = statement();
     }
     
-    return makeRepeatStmt(line, column, length, varToken.filename, varName, startValue, endValue, stepValue, body);
+    return makeRepeatStmt(arena, line, column, length, varToken.filename, varName, startValue, endValue, stepValue, body);
 }
 
 StmtPtr Parser::getStatement() {
@@ -341,9 +341,9 @@ StmtPtr Parser::getStatement() {
     }
     
     if (!valName.empty()) {
-        return makeGetKVStmt(line, column, length, filename, keyName, valName, iterable, body);
+        return makeGetKVStmt(arena, line, column, length, filename, keyName, valName, iterable, body);
     }
-    return makeGetStmt(line, column, length, filename, keyName, iterable, body);
+    return makeGetStmt(arena, line, column, length, filename, keyName, iterable, body);
 }
 
 StmtPtr Parser::matchStatement() {
@@ -382,7 +382,7 @@ StmtPtr Parser::matchStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after match arms");
     
-    return makeMatchStmt(line, column, length, filename, subject, std::move(arms));
+    return makeMatchStmt(arena, line, column, length, filename, subject, std::move(arms));
 }
 
 StmtPtr Parser::taskStatement(bool isAsync) {
@@ -423,7 +423,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
             if (match(TokenType::COLON)) {
                 pType = parseType();
             } else {
-                pType = std::make_shared<TypeAST>("Any");
+                pType = arena.allocate<TypeAST>("Any");
             }
             paramTypes.push_back(pType);
             defaultValues.push_back(nullptr);
@@ -443,7 +443,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
             if (match(TokenType::COLON)) {
                 pType = parseType();
             } else {
-                pType = std::make_shared<TypeAST>("Any");
+                pType = arena.allocate<TypeAST>("Any");
             }
             paramTypes.push_back(pType);
             
@@ -467,7 +467,7 @@ StmtPtr Parser::taskStatement(bool isAsync) {
     if (match(TokenType::ARROW)) {
         returnType = parseType();
     } else {
-        returnType = std::make_shared<TypeAST>("Any");
+        returnType = arena.allocate<TypeAST>("Any");
     }
     skipNewlines();
     
@@ -528,11 +528,11 @@ StmtPtr Parser::taskStatement(bool isAsync) {
         if (stmt) body.push_back(stmt);
     }
     
-    auto taskStmt = makeTaskStmt(line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
-    std::get<std::shared_ptr<TaskStmt>>(taskStmt->variant)->typeParams = typeParams;
+    auto taskStmt = makeTaskStmt(arena, line, column, length, nameToken.filename, name, params, paramTypes, defaultValues, returnType, body, isVariadic, isAsync);
+    std::get<TaskStmt*>(taskStmt->variant)->typeParams = typeParams;
     
     // Attach contract clauses
-    auto& task = *std::get<std::shared_ptr<TaskStmt>>(taskStmt->variant);
+    auto& task = *std::get<TaskStmt*>(taskStmt->variant);
     task.requiresClauses = std::move(requiresClauses);
     task.ensuresClauses  = std::move(ensuresClauses);
     return taskStmt;
@@ -556,28 +556,28 @@ StmtPtr Parser::giveStatement() {
             while (match(TokenType::COMMA)) {
                 elems.push_back(expression());
             }
-            value = makeArrayExpr(line, column, length, filename, std::move(elems));
+            value = makeArrayExpr(arena, line, column, length, filename, std::move(elems));
         } else {
             // TCO: Mark tail calls if the expression is a direct call
             if (value) {
-                if (std::holds_alternative<std::shared_ptr<CallExpr>>(value->variant)) {
-                    std::get<std::shared_ptr<CallExpr>>(value->variant)->isTailCall = true;
+                if (std::holds_alternative<CallExpr*>(value->variant)) {
+                    std::get<CallExpr*>(value->variant)->isTailCall = true;
                 }
             }
         }
     }
     
-    return makeGiveStmt(line, column, length, filename, value);
+    return makeGiveStmt(arena, line, column, length, filename, value);
 }
 
 StmtPtr Parser::escapeStatement() {
     Token op = previous();
-    return makeEscapeStmt(op.line, op.column, op.lexeme.length(), op.filename);
+    return makeEscapeStmt(arena, op.line, op.column, op.lexeme.length(), op.filename);
 }
 
 StmtPtr Parser::skipStatement() {
     Token op = previous();
-    return makeSkipStmt(op.line, op.column, op.lexeme.length(), op.filename);
+    return makeSkipStmt(arena, op.line, op.column, op.lexeme.length(), op.filename);
 }
 
 StmtPtr Parser::staticStatement() {
@@ -585,7 +585,7 @@ StmtPtr Parser::staticStatement() {
     Token nameToken = consume(TokenType::IDENTIFIER, "Expected variable name after 'static'");
     consume(TokenType::EQUAL, "Expected '=' after static variable name");
     ExprPtr value = expression();
-    return makeStaticStmt(op.line, op.column, op.lexeme.length(), op.filename, nameToken.lexeme, value);
+    return makeStaticStmt(arena, op.line, op.column, op.lexeme.length(), op.filename, nameToken.lexeme, value);
 }
 
 StmtPtr Parser::tryStatement() {
@@ -652,13 +652,13 @@ StmtPtr Parser::tryStatement() {
         throw ParseError("Expected at least one 'catch' or 'finally' block", peek().line);
     }
     
-    return makeTryStmt(line, column, length, filename, tryBlock, std::move(catchBlocks), std::move(finallyBlock));
+    return makeTryStmt(arena, line, column, length, filename, tryBlock, std::move(catchBlocks), std::move(finallyBlock));
 }
 
 StmtPtr Parser::throwStatement() {
     Token op = previous();
     ExprPtr expr = expression();
-    return makeThrowStmt(op.line, op.column, op.lexeme.length(), op.filename, expr);
+    return makeThrowStmt(arena, op.line, op.column, op.lexeme.length(), op.filename, expr);
 }
 
 StmtPtr Parser::blockStatement() {
@@ -677,7 +677,7 @@ StmtPtr Parser::blockStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after block");
     
-    return makeBlockStmt(line, column, length, peek().filename, statements);
+    return makeBlockStmt(arena, line, column, length, peek().filename, statements);
 }
 
 StmtPtr Parser::expressionStatement() {
@@ -689,7 +689,7 @@ StmtPtr Parser::expressionStatement() {
     // Check if this is a variable declaration (assignment to new variable)
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
     // Otherwise, treat as regular assignment statement
-    return makeExpressionStmt(line, column, length, peek().filename, expr);
+    return makeExpressionStmt(arena, line, column, length, peek().filename, expr);
 }
 
 StmtPtr Parser::structStatement() {
@@ -724,7 +724,7 @@ StmtPtr Parser::structStatement() {
         if (match(TokenType::COLON)) {
             typeHint = parseType();
         } else {
-            typeHint = std::make_shared<TypeAST>("Any");
+            typeHint = arena.allocate<TypeAST>("Any");
         }
         types.push_back(typeHint);
         
@@ -743,8 +743,8 @@ StmtPtr Parser::structStatement() {
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
     
-    auto stmt = makeStructStmt(line, column, length, nameToken.filename, name, fields, types, defaults);
-    std::get<std::shared_ptr<StructStmt>>(stmt->variant)->typeParams = typeParams;
+    auto stmt = makeStructStmt(arena, line, column, length, nameToken.filename, name, fields, types, defaults);
+    std::get<StructStmt*>(stmt->variant)->typeParams = typeParams;
     return stmt;
 }
 
@@ -771,7 +771,7 @@ StmtPtr Parser::useStatement() {
         }
     }
     
-    return makeUseStmt(line, column, length, pathToken.filename, path, alias);
+    return makeUseStmt(arena, line, column, length, pathToken.filename, path, alias);
 }
 
 StmtPtr Parser::exportStatement() {
@@ -783,7 +783,7 @@ StmtPtr Parser::exportStatement() {
     if (!inner) {
         throw ParseError("Expected declaration after 'export'", tok.line);
     }
-    return makeExportStmt(tok.line, tok.column, (int)tok.lexeme.length(), tok.filename, std::move(inner));
+    return makeExportStmt(arena, tok.line, tok.column, (int)tok.lexeme.length(), tok.filename, std::move(inner));
 }
 
 // ============ Expression Parsing ============
@@ -859,7 +859,7 @@ StmtPtr Parser::modelStatement() {
                     if (match(TokenType::COLON)) {
                         initParamTypes.push_back(parseType());
                     } else {
-                        initParamTypes.push_back(std::make_shared<TypeAST>("Any"));
+                        initParamTypes.push_back(arena.allocate<TypeAST>("Any"));
                     }
                     
                     if (match(TokenType::EQUAL)) {
@@ -932,7 +932,7 @@ StmtPtr Parser::modelStatement() {
                     if (match(TokenType::COLON)) {
                         paramTypes.push_back(parseType());
                     } else {
-                        paramTypes.push_back(std::make_shared<TypeAST>("Any"));
+                        paramTypes.push_back(arena.allocate<TypeAST>("Any"));
                     }
                     
                     if (match(TokenType::EQUAL)) {
@@ -952,7 +952,7 @@ StmtPtr Parser::modelStatement() {
             if (match(TokenType::ARROW)) {
                 returnType = parseType();
             } else {
-                returnType = std::make_shared<TypeAST>("Any");
+                returnType = arena.allocate<TypeAST>("Any");
             }
             skipNewlines();
             
@@ -1021,8 +1021,8 @@ StmtPtr Parser::modelStatement() {
                             // if another comma follows, this was the param, next will be message
                             if (match(TokenType::COMMA)) {
                                 // param is string literal
-                                auto strLit = std::make_shared<LiteralExpr>(std::get<std::string>(maybeMsg.literal));
-                                param = std::make_shared<Expr>(maybeMsg.line, maybeMsg.column, 1, maybeMsg.filename, strLit);
+                                auto strLit = arena.allocate<LiteralExpr>(std::get<std::string>(maybeMsg.literal));
+                                param = arena.allocate<Expr>(maybeMsg.line, maybeMsg.column, 1, maybeMsg.filename, strLit);
                                 Token msgTok = consume(TokenType::STRING, "Expected message string in @validate");
                                 msg = std::get<std::string>(msgTok.literal);
                             } else {
@@ -1067,9 +1067,9 @@ StmtPtr Parser::modelStatement() {
     consume(TokenType::RBRACE, "Expected '}' after model body");
     
     // Use the peek().filename or current filename
-    auto stmt = makeModelStmt(line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
+    auto stmt = makeModelStmt(arena, line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
                          initDefaultValues, initBody, members);
-    std::get<std::shared_ptr<ModelStmt>>(stmt->variant)->typeParams = typeParams;
+    std::get<ModelStmt*>(stmt->variant)->typeParams = typeParams;
     return stmt;
 }
 
@@ -1111,7 +1111,7 @@ StmtPtr Parser::interfaceStatement() {
                 if (match(TokenType::COLON)) {
                     method.paramTypes.push_back(parseType());
                 } else {
-                    method.paramTypes.push_back(std::make_shared<TypeAST>("Any"));
+                    method.paramTypes.push_back(arena.allocate<TypeAST>("Any"));
                 }
             } while (match(TokenType::COMMA));
         }
@@ -1120,7 +1120,7 @@ StmtPtr Parser::interfaceStatement() {
         if (match(TokenType::ARROW)) {
             method.returnType = parseType();
         } else {
-            method.returnType = std::make_shared<TypeAST>("Any");
+            method.returnType = arena.allocate<TypeAST>("Any");
         }
         
         methods.push_back(method);
@@ -1128,7 +1128,7 @@ StmtPtr Parser::interfaceStatement() {
     }
     consume(TokenType::RBRACE, "Expected '}' after interface body");
     
-    auto stmt = makeInterfaceStmt(line, column, length, nameToken.filename, nameToken.lexeme, methods);
-    std::get<std::shared_ptr<InterfaceStmt>>(stmt->variant)->typeParams = typeParams;
+    auto stmt = makeInterfaceStmt(arena, line, column, length, nameToken.filename, nameToken.lexeme, methods);
+    std::get<InterfaceStmt*>(stmt->variant)->typeParams = typeParams;
     return stmt;
 }

@@ -2,7 +2,7 @@
 #include <iostream>
 #include "vm/BytecodeVM.h"
 
-Parser::Parser(std::vector<Token> tokens) : tokens(std::move(tokens)) {}
+Parser::Parser(std::vector<Token> tokens, ASTArena& arena) : tokens(std::move(tokens)), arena(arena) {}
 
 bool Parser::isAtEnd() const {
     return peek().type == TokenType::END_OF_FILE;

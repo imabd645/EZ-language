@@ -28,7 +28,7 @@ BytecodeCompiler::Compiler::Compiler(const std::string& name, size_t arity, Comp
     compilerId = ++globalCompilerIdCounter;
 }
 
-BytecodeCompiler::BytecodeCompiler() : current(nullptr), currentLine(0), hadError(false), nextGlobalSlot(0) {}
+BytecodeCompiler::BytecodeCompiler(ASTArena& arena) : arena(arena), current(nullptr), currentLine(0), hadError(false), nextGlobalSlot(0) {}
 
 uint16_t BytecodeCompiler::globalSlotFor(const std::string& name) {
     auto it = globalSlots.find(name);
@@ -202,10 +202,10 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         // with callee name "old". We capture each unique old(expr) into a hidden local.
         std::function<void(const ExprPtr&)> captureOldExprs = [&](const ExprPtr& e) {
             if (!e) return;
-            if (auto* call = std::get_if<std::shared_ptr<CallExpr>>(&e->variant)) {
+            if (auto* call = std::get_if<CallExpr*>(&e->variant)) {
                 auto& c = **call;
                 // Check if callee is identifier "old"
-                if (auto* id = std::get_if<std::shared_ptr<IdentifierExpr>>(&c.callee->variant)) {
+                if (auto* id = std::get_if<IdentifierExpr*>(&c.callee->variant)) {
                     if ((*id)->name == "old" && c.arguments.size() == 1) {
                         // Build a stable key from source position of the argument
                         std::string key = "old_" + std::to_string(c.arguments[0]->line) + "_" +
@@ -230,13 +230,13 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
                 // Generic recursive visit through other expr types
                 std::visit([&](auto&& node) {
                     using T = std::decay_t<decltype(node)>;
-                    if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) {
+                    if constexpr (std::is_same_v<T, BinaryExpr*>) {
                         captureOldExprs(node->left); captureOldExprs(node->right);
-                    } else if constexpr (std::is_same_v<T, std::shared_ptr<UnaryExpr>>) {
+                    } else if constexpr (std::is_same_v<T, UnaryExpr*>) {
                         captureOldExprs(node->operand);
-                    } else if constexpr (std::is_same_v<T, std::shared_ptr<LogicalExpr>>) {
+                    } else if constexpr (std::is_same_v<T, LogicalExpr*>) {
                         captureOldExprs(node->left); captureOldExprs(node->right);
-                    } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
+                    } else if constexpr (std::is_same_v<T, TernaryExpr*>) {
                         captureOldExprs(node->condition); captureOldExprs(node->thenBranch); captureOldExprs(node->elseBranch);
                     }
                 }, e->variant);

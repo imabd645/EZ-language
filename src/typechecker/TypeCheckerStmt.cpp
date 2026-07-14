@@ -4,36 +4,36 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
     if (!stmt) return;
     std::visit([this](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, std::shared_ptr<VarDeclStmt>>) checkVarDecl(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<TaskStmt>>) checkTask(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<GiveStmt>>) checkGive(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<BlockStmt>>) checkBlock(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<WhenStmt>>) checkWhen(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<WhileStmt>>) checkWhile(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<RepeatStmt>>) checkRepeat(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<GetStmt>>) checkGet(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ExpressionStmt>>) checkExpr(arg->expr);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<OutStmt>>) checkExpr(arg->expr);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ModelStmt>>) checkModel(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<StructStmt>>) checkStruct(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<InterfaceStmt>>) checkInterface(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<TryStmt>>) checkTry(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ThrowStmt>>) checkThrow(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<MatchStmt>>) checkMatch(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<StaticStmt>>) checkStatic(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<EscapeStmt>>) {
+        if constexpr (std::is_same_v<T, VarDeclStmt*>) checkVarDecl(*arg);
+        else if constexpr (std::is_same_v<T, TaskStmt*>) checkTask(*arg);
+        else if constexpr (std::is_same_v<T, GiveStmt*>) checkGive(*arg);
+        else if constexpr (std::is_same_v<T, BlockStmt*>) checkBlock(*arg);
+        else if constexpr (std::is_same_v<T, WhenStmt*>) checkWhen(*arg);
+        else if constexpr (std::is_same_v<T, WhileStmt*>) checkWhile(*arg);
+        else if constexpr (std::is_same_v<T, RepeatStmt*>) checkRepeat(*arg);
+        else if constexpr (std::is_same_v<T, GetStmt*>) checkGet(*arg);
+        else if constexpr (std::is_same_v<T, ExpressionStmt*>) checkExpr(arg->expr);
+        else if constexpr (std::is_same_v<T, OutStmt*>) checkExpr(arg->expr);
+        else if constexpr (std::is_same_v<T, ModelStmt*>) checkModel(*arg);
+        else if constexpr (std::is_same_v<T, StructStmt*>) checkStruct(*arg);
+        else if constexpr (std::is_same_v<T, InterfaceStmt*>) checkInterface(*arg);
+        else if constexpr (std::is_same_v<T, TryStmt*>) checkTry(*arg);
+        else if constexpr (std::is_same_v<T, ThrowStmt*>) checkThrow(*arg);
+        else if constexpr (std::is_same_v<T, MatchStmt*>) checkMatch(*arg);
+        else if constexpr (std::is_same_v<T, StaticStmt*>) checkStatic(*arg);
+        else if constexpr (std::is_same_v<T, EscapeStmt*>) {
             if (loopDepth == 0) {
                 error(0, "break or continue statement outside of a loop"); // EscapeStmt does not store line currently
             }
         }
-        else if constexpr (std::is_same_v<T, std::shared_ptr<SkipStmt>>) {} // No checking needed
-        else if constexpr (std::is_same_v<T, std::shared_ptr<UseStmt>>) {
+        else if constexpr (std::is_same_v<T, SkipStmt*>) {} // No checking needed
+        else if constexpr (std::is_same_v<T, UseStmt*>) {
             hasImports = true;
             if (!arg->alias.empty()) {
                 declareVariable(arg->alias, TypeInfo("Any"));
             }
         }
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ExportStmt>>) {
+        else if constexpr (std::is_same_v<T, ExportStmt*>) {
             checkStmt(arg->inner); // Delegate to the inner declaration
         }
     }, stmt->variant);

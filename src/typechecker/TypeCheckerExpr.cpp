@@ -9,26 +9,26 @@ TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
     
     TypeInfo result = std::visit([this](auto&& arg) -> TypeInfo {
         using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) return checkAssign(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<DestructureAssignExpr>>) return checkDestructureAssign(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) return checkBinary(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<UnaryExpr>>) return checkUnary(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<CallExpr>>) return checkCall(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<IdentifierExpr>>) return checkIdentifier(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<LiteralExpr>>) return checkLiteral(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<LambdaExpr>>) return checkLambda(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<PropertyAccessExpr>>) return checkPropertyAccess(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<SetExpr>>) return checkSet(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<SelfExpr>>) return checkSelf(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<SuperExpr>>) return checkSuper(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<NewExpr>>) return checkNew(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<IndexExpr>>) return checkIndex(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<ArrayExpr>>) return checkArray(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<TupleExpr>>) return checkTuple(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) return checkDictionary(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) return checkSpread(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) return checkTernary(*arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) return checkAwait(*arg);
+        if constexpr (std::is_same_v<T, AssignExpr*>) return checkAssign(*arg);
+        else if constexpr (std::is_same_v<T, DestructureAssignExpr*>) return checkDestructureAssign(*arg);
+        else if constexpr (std::is_same_v<T, BinaryExpr*>) return checkBinary(*arg);
+        else if constexpr (std::is_same_v<T, UnaryExpr*>) return checkUnary(*arg);
+        else if constexpr (std::is_same_v<T, CallExpr*>) return checkCall(*arg);
+        else if constexpr (std::is_same_v<T, IdentifierExpr*>) return checkIdentifier(*arg);
+        else if constexpr (std::is_same_v<T, LiteralExpr*>) return checkLiteral(*arg);
+        else if constexpr (std::is_same_v<T, LambdaExpr*>) return checkLambda(*arg);
+        else if constexpr (std::is_same_v<T, PropertyAccessExpr*>) return checkPropertyAccess(*arg);
+        else if constexpr (std::is_same_v<T, SetExpr*>) return checkSet(*arg);
+        else if constexpr (std::is_same_v<T, SelfExpr*>) return checkSelf(*arg);
+        else if constexpr (std::is_same_v<T, SuperExpr*>) return checkSuper(*arg);
+        else if constexpr (std::is_same_v<T, NewExpr*>) return checkNew(*arg);
+        else if constexpr (std::is_same_v<T, IndexExpr*>) return checkIndex(*arg);
+        else if constexpr (std::is_same_v<T, ArrayExpr*>) return checkArray(*arg);
+        else if constexpr (std::is_same_v<T, TupleExpr*>) return checkTuple(*arg);
+        else if constexpr (std::is_same_v<T, DictionaryExpr*>) return checkDictionary(*arg);
+        else if constexpr (std::is_same_v<T, SpreadExpr*>) return checkSpread(*arg);
+        else if constexpr (std::is_same_v<T, TernaryExpr*>) return checkTernary(*arg);
+        else if constexpr (std::is_same_v<T, AwaitExpr*>) return checkAwait(*arg);
         else return TypeInfo("Any");
     }, expr->variant);
     
@@ -90,8 +90,8 @@ TypeInfo TypeChecker::checkDestructureAssign(const DestructureAssignExpr& expr) 
         if (!target) {
             continue;
         }
-        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
-            std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
+        if (std::holds_alternative<IdentifierExpr*>(target->variant)) {
+            std::string name = std::get<IdentifierExpr*>(target->variant)->name;
             Environment* env = currentEnv;
             bool found = false;
             while (env) {
@@ -162,16 +162,16 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
     std::string name = "<unknown>";
     FunctionSignature* sig = nullptr;
     
-    if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr.callee->variant)) {
-        name = std::get<std::shared_ptr<IdentifierExpr>>(expr.callee->variant)->name;
+    if (std::holds_alternative<IdentifierExpr*>(expr.callee->variant)) {
+        name = std::get<IdentifierExpr*>(expr.callee->variant)->name;
         sig = resolveFunction(name);
-    } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant)) {
-        auto propAccess = std::get<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant);
+    } else if (std::holds_alternative<PropertyAccessExpr*>(expr.callee->variant)) {
+        auto propAccess = std::get<PropertyAccessExpr*>(expr.callee->variant);
         TypeInfo objType = checkExpr(propAccess->object);
         
         std::string currentType = objType.baseType;
-        if (currentType == "Callable" && std::holds_alternative<std::shared_ptr<IdentifierExpr>>(propAccess->object->variant)) {
-            currentType = std::get<std::shared_ptr<IdentifierExpr>>(propAccess->object->variant)->name;
+        if (currentType == "Callable" && std::holds_alternative<IdentifierExpr*>(propAccess->object->variant)) {
+            currentType = std::get<IdentifierExpr*>(propAccess->object->variant)->name;
         }
 
         if (currentType != "Any") {
@@ -184,8 +184,8 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
         FunctionSignature substitutedSig = *sig;
         
         std::unordered_map<std::string, TypeInfo> bindings;
-        if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant)) {
-            auto propAccess = std::get<std::shared_ptr<PropertyAccessExpr>>(expr.callee->variant);
+        if (std::holds_alternative<PropertyAccessExpr*>(expr.callee->variant)) {
+            auto propAccess = std::get<PropertyAccessExpr*>(expr.callee->variant);
             TypeInfo objType = checkExpr(propAccess->object);
             if (genericParameters.count(objType.baseType)) {
                 const auto& names = genericParameters[objType.baseType];
@@ -300,8 +300,8 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                     if (argTypes[i] != substitutedSig.paramTypes[i] && argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any") {
                         std::string hint = "";
                         if (substitutedSig.paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {
-                            if (std::holds_alternative<std::shared_ptr<LiteralExpr>>(expr.arguments[i]->variant)) {
-                                auto lit = std::get<std::shared_ptr<LiteralExpr>>(expr.arguments[i]->variant);
+                            if (std::holds_alternative<LiteralExpr*>(expr.arguments[i]->variant)) {
+                                auto lit = std::get<LiteralExpr*>(expr.arguments[i]->variant);
                                 if (std::holds_alternative<std::string>(lit->value)) {
                                     std::string strVal = std::get<std::string>(lit->value);
                                     hint = "Did you mean " + strVal + " instead of \"" + strVal + "\"?";
@@ -398,8 +398,8 @@ TypeInfo TypeChecker::checkPropertyAccess(const PropertyAccessExpr& expr) {
         std::string currentType = objType.baseType;
         
         // Handle static methods on classes (e.g. ModelName.load())
-        if (currentType == "Callable" && std::holds_alternative<std::shared_ptr<IdentifierExpr>>(expr.object->variant)) {
-            currentType = std::get<std::shared_ptr<IdentifierExpr>>(expr.object->variant)->name;
+        if (currentType == "Callable" && std::holds_alternative<IdentifierExpr*>(expr.object->variant)) {
+            currentType = std::get<IdentifierExpr*>(expr.object->variant)->name;
         }
 
         while (!currentType.empty()) {

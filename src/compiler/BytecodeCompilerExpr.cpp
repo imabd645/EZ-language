@@ -12,48 +12,48 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
     std::visit([this](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
 
-        if constexpr (std::is_same_v<T, std::shared_ptr<LiteralExpr>>) {
+        if constexpr (std::is_same_v<T, LiteralExpr*>) {
             compileLiteral(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<IdentifierExpr>>) {
+        } else if constexpr (std::is_same_v<T, IdentifierExpr*>) {
             compileIdentifier(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<BinaryExpr>>) {
+        } else if constexpr (std::is_same_v<T, BinaryExpr*>) {
             compileBinary(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<UnaryExpr>>) {
+        } else if constexpr (std::is_same_v<T, UnaryExpr*>) {
             compileUnary(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<CallExpr>>) {
+        } else if constexpr (std::is_same_v<T, CallExpr*>) {
             compileCall(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<IndexExpr>>) {
+        } else if constexpr (std::is_same_v<T, IndexExpr*>) {
             compileIndex(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<ArrayExpr>>) {
+        } else if constexpr (std::is_same_v<T, ArrayExpr*>) {
             compileArray(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<TupleExpr>>) {
+        } else if constexpr (std::is_same_v<T, TupleExpr*>) {
             compileTuple(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<DictionaryExpr>>) {
+        } else if constexpr (std::is_same_v<T, DictionaryExpr*>) {
             compileDictionary(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<AssignExpr>>) {
+        } else if constexpr (std::is_same_v<T, AssignExpr*>) {
             compileAssign(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<DestructureAssignExpr>>) {
+        } else if constexpr (std::is_same_v<T, DestructureAssignExpr*>) {
             compileDestructureAssign(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<LogicalExpr>>) {
+        } else if constexpr (std::is_same_v<T, LogicalExpr*>) {
             compileLogical(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<TernaryExpr>>) {
+        } else if constexpr (std::is_same_v<T, TernaryExpr*>) {
             compileTernary(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<LambdaExpr>>) {
+        } else if constexpr (std::is_same_v<T, LambdaExpr*>) {
             compileLambda(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<PropertyAccessExpr>>) {
+        } else if constexpr (std::is_same_v<T, PropertyAccessExpr*>) {
             compilePropertyAccess(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<SelfExpr>>) {
+        } else if constexpr (std::is_same_v<T, SelfExpr*>) {
             compileSelf(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<SuperExpr>>) {
+        } else if constexpr (std::is_same_v<T, SuperExpr*>) {
             compileSuper(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<NewExpr>>) {
+        } else if constexpr (std::is_same_v<T, NewExpr*>) {
             compileNew(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<SetExpr>>) {
+        } else if constexpr (std::is_same_v<T, SetExpr*>) {
             compileSet(*arg);
 
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<SpreadExpr>>) {
+        } else if constexpr (std::is_same_v<T, SpreadExpr*>) {
             compileSpread(*arg);
-        } else if constexpr (std::is_same_v<T, std::shared_ptr<AwaitExpr>>) {
+        } else if constexpr (std::is_same_v<T, AwaitExpr*>) {
             compileAwait(*arg);
         }
     }, expr->variant);
@@ -250,7 +250,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
     // ---- Intercept old(expr) in ensures clauses ----
     // old(expr) is not a real function — it refers to the value captured at function entry.
     if (!oldCaptures.empty()) {
-        if (auto* id = std::get_if<std::shared_ptr<IdentifierExpr>>(&expr.callee->variant)) {
+        if (auto* id = std::get_if<IdentifierExpr*>(&expr.callee->variant)) {
             if ((*id)->name == "old" && expr.arguments.size() == 1) {
                 // Build the same key used during capture
                 std::string key = "old_" + std::to_string(expr.arguments[0]->line) + "_" +
@@ -267,7 +267,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
     
     bool hasSpread = false;
     for (const auto& arg : expr.arguments) {
-        if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(arg->variant)) {
+        if (std::holds_alternative<SpreadExpr*>(arg->variant)) {
             hasSpread = true;
             break;
         }
@@ -324,8 +324,8 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
         // Slow path for spread calls: pack all arguments into a single array
         emitBytes(static_cast<uint8_t>(OpCode::MAKE_ARRAY), 0);
         for (const auto& arg : expr.arguments) {
-            if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(arg->variant)) {
-                auto spread = std::get<std::shared_ptr<SpreadExpr>>(arg->variant);
+            if (std::holds_alternative<SpreadExpr*>(arg->variant)) {
+                auto spread = std::get<SpreadExpr*>(arg->variant);
                 compileExpr(spread->expression);
                 emitOp(OpCode::ARRAY_EXTEND);
             } else {
@@ -346,7 +346,7 @@ void BytecodeCompiler::compileIndex(const IndexExpr& expr) {
 void BytecodeCompiler::compileArray(const ArrayExpr& expr) {
     bool hasSpread = false;
     for (const auto& elem : expr.elements) {
-        if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(elem->variant)) {
+        if (std::holds_alternative<SpreadExpr*>(elem->variant)) {
             hasSpread = true;
             break;
         }
@@ -365,8 +365,8 @@ void BytecodeCompiler::compileArray(const ArrayExpr& expr) {
         // Slow path for spread arrays
         emitBytes(static_cast<uint8_t>(OpCode::MAKE_ARRAY), 0);
         for (const auto& elem : expr.elements) {
-            if (std::holds_alternative<std::shared_ptr<SpreadExpr>>(elem->variant)) {
-                auto spread = std::get<std::shared_ptr<SpreadExpr>>(elem->variant);
+            if (std::holds_alternative<SpreadExpr*>(elem->variant)) {
+                auto spread = std::get<SpreadExpr*>(elem->variant);
                 compileExpr(spread->expression);
                 emitOp(OpCode::ARRAY_EXTEND);
             } else {
@@ -473,7 +473,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             continue;
         }
         
-        if (std::holds_alternative<std::shared_ptr<IdentifierExpr>>(target->variant)) {
+        if (std::holds_alternative<IdentifierExpr*>(target->variant)) {
             // Target is an identifier: var
             // Load tempVar
             emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
@@ -485,7 +485,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::INDEX_GET);
             
             // Store to target variable
-            std::string name = std::get<std::shared_ptr<IdentifierExpr>>(target->variant)->name;
+            std::string name = std::get<IdentifierExpr*>(target->variant)->name;
             std::string mangled = resolveStatic(name);
             if (!mangled.empty()) {
                 uint16_t slot = globalSlotFor(mangled);
@@ -524,9 +524,9 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             // Pop the stored value
             emitOp(OpCode::POP);
             
-        } else if (std::holds_alternative<std::shared_ptr<IndexExpr>>(target->variant)) {
+        } else if (std::holds_alternative<IndexExpr*>(target->variant)) {
             // Target is an index expression: obj[index]
-            auto indexExpr = std::get<std::shared_ptr<IndexExpr>>(target->variant);
+            auto indexExpr = std::get<IndexExpr*>(target->variant);
             compileExpr(indexExpr->object);
             compileExpr(indexExpr->index);
             
@@ -541,9 +541,9 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::INDEX_SET);
             emitOp(OpCode::POP);
             
-        } else if (std::holds_alternative<std::shared_ptr<PropertyAccessExpr>>(target->variant)) {
+        } else if (std::holds_alternative<PropertyAccessExpr*>(target->variant)) {
             // Target is a property: obj.prop
-            auto propExpr = std::get<std::shared_ptr<PropertyAccessExpr>>(target->variant);
+            auto propExpr = std::get<PropertyAccessExpr*>(target->variant);
             compileExpr(propExpr->object);
             
             // Load element from tempVar
@@ -599,12 +599,12 @@ void BytecodeCompiler::compileTernary(const TernaryExpr& expr) {
 void BytecodeCompiler::compileLambda(const LambdaExpr& expr) {
     std::string name = "<lambda>";
 
-    TaskStmt fakeTask(name, expr.params, std::vector<TypeASTPtr>(expr.params.size(), std::make_shared<TypeAST>("Any")), std::vector<ExprPtr>{}, nullptr,
+    TaskStmt fakeTask(name, expr.params, std::vector<TypeASTPtr>(expr.params.size(), arena.allocate<TypeAST>("Any")), std::vector<ExprPtr>{}, nullptr,
                       expr.body ? std::vector<StmtPtr>{} : expr.stmtBody,
                       expr.isVariadic, expr.isAsync);
 
     if (expr.body) {
-        fakeTask.body.push_back(makeGiveStmt(0, 0, 0, "", expr.body));
+        fakeTask.body.push_back(makeGiveStmt(arena, 0, 0, 0, "", expr.body));
     }
 
     // Record how many functions exist before compiling (so we know the index)

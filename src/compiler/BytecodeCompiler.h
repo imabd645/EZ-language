@@ -4,12 +4,18 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include "ast/AST.h"
 #include "ast/ASTArena.h"
 #include "bytecode/Bytecode.h"
 #include "runtime/Value.h"
+
+// Internal exception for unwinding compiler stack on errors
+struct CompilerError : public std::runtime_error {
+    CompilerError(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 inline std::string getDirectoryName(const std::string& path) {
     size_t lastSlash = path.find_last_of("\\/");
@@ -91,6 +97,11 @@ private:
 
     // Allocate or look up a global slot index for a given name.
     // Idempotent: repeated calls for the same name return the same slot.
+    
+    // Module resolution caches
+    std::unordered_set<std::string> compilingModules;
+    std::unordered_map<std::string, std::vector<StmtPtr>> astCache;
+
     uint16_t globalSlotFor(const std::string& name);
     
     // === Expression Compilation ===

@@ -378,14 +378,14 @@ void BytecodeCompiler::compileArray(const ArrayExpr& expr) {
 }
 
 void BytecodeCompiler::compileTuple(const TupleExpr& expr) {
-    for (const auto& elem : expr.elements) {
-        compileExpr(elem);
-    }
-    emitOp(OpCode::BUILD_TUPLE);
     if (expr.elements.size() > 255) {
         errorAt("Too many tuple elements (max 255)", currentLine);
         return;
     }
+    for (const auto& elem : expr.elements) {
+        compileExpr(elem);
+    }
+    emitOp(OpCode::BUILD_TUPLE);
     emitByte(static_cast<uint8_t>(expr.elements.size()));
 }
 
@@ -698,6 +698,10 @@ void BytecodeCompiler::emitLoadSelf() {
 }
 
 void BytecodeCompiler::compileNew(const NewExpr& expr) {
+    if (expr.arguments.size() > 255) {
+        errorAt("Too many arguments to 'new' (max 255)", currentLine);
+        return;
+    }
     for (const auto& arg : expr.arguments) {
         compileExpr(arg);
     }
@@ -705,10 +709,6 @@ void BytecodeCompiler::compileNew(const NewExpr& expr) {
     emitOp(OpCode::NEW_INSTANCE);
     emitBytes(static_cast<uint8_t>((modelIdx >> 8) & 0xFF),
               static_cast<uint8_t>(modelIdx & 0xFF));
-    if (expr.arguments.size() > 255) {
-        errorAt("Too many arguments to 'new' (max 255)", currentLine);
-        return;
-    }
     emitByte(static_cast<uint8_t>(expr.arguments.size()));
 }
 

@@ -15,6 +15,8 @@ std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem
 // Helper to get directory of a file
 
 
+
+
 // ============================================================================
 // BytecodeCompiler Implementation
 // ============================================================================
@@ -53,9 +55,12 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     current = compilerFrame.get();
 
     // Compile all statements
-    for (const auto& stmt : statements) {
-        if (hadError) break;
-        compileStmt(stmt);
+    try {
+        for (const auto& stmt : statements) {
+            compileStmt(stmt);
+        }
+    } catch (const CompilerError&) {
+        // Error already recorded in hadError / errorMessage
     }
 
     // Emit implicit nil return for main

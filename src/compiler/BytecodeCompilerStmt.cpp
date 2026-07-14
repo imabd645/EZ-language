@@ -140,18 +140,6 @@ void BytecodeCompiler::compileWhile(const WhileStmt& stmt) {
 void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
     beginScope();
 
-    // Try to detect loop direction if both start and end are literals
-    bool isReverse = false;
-    auto startLit = std::get_if<LiteralExpr*>(&stmt.start->variant);
-    auto endLit = std::get_if<LiteralExpr*>(&stmt.end->variant);
-    if (startLit && endLit) {
-        if (std::holds_alternative<double>((*startLit)->value) && std::holds_alternative<double>((*endLit)->value)) {
-            if (std::get<double>((*startLit)->value) > std::get<double>((*endLit)->value)) isReverse = true;
-        } else if (std::holds_alternative<long long>((*startLit)->value) && std::holds_alternative<long long>((*endLit)->value)) {
-            if (std::get<long long>((*startLit)->value) > std::get<long long>((*endLit)->value)) isReverse = true;
-        }
-    }
-
     // Loop variable (slot N)
     size_t loopVar = addLocal(stmt.variable);
     compileExpr(stmt.start);
@@ -171,11 +159,7 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         size_t loopStart = currentChunk().code.size();
         loopStack.back().start = loopStart;
 
-        if (isReverse) {
-            emitOp(OpCode::LOOP_GREATER_EQ_LOCAL);
-        } else {
-            emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
-        }
+        emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
         emitByte(static_cast<uint8_t>(loopVar));
         emitByte(static_cast<uint8_t>(endVar));
         emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
@@ -183,11 +167,7 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
         compileStmt(stmt.body);
 
-        if (isReverse) {
-            emitBytes(static_cast<uint8_t>(OpCode::DEC_LOCAL), static_cast<uint8_t>(loopVar));
-        } else {
-            emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
-        }
+        emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
 
         emitLoop(loopStart);
         patchJump(exitJump);
@@ -312,13 +292,13 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
         emitOp(OpCode::DUP); // [array, array]
         
         // key = array[0]
-        compileExpr(arena.allocate<Expr>(currentLine, 0, 0, currentFile, arena.allocate<LiteralExpr>(0LL)));
+        emitOp(OpCode::LOAD_ZERO);
         emitOp(OpCode::INDEX_GET); // [array, key]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
         emitOp(OpCode::POP); // [array]
         
         // value = array[1]
-        compileExpr(arena.allocate<Expr>(currentLine, 0, 0, currentFile, arena.allocate<LiteralExpr>(1LL)));
+        emitOp(OpCode::LOAD_ONE);
         emitOp(OpCode::INDEX_GET); // [value]
         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopValueVar));
         emitOp(OpCode::POP); // []
@@ -604,6 +584,20 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     
     std::string source;
     
+    std::string ezlibBase;
+    if (const char* env_p = std::getenv("EZLIB_PATH")) {
+        ezlibBase = env_p;
+    } else {
+#ifdef _WIN32
+        ezlibBase = "C:/ezlib";
+#else
+        ezlibBase = "/usr/local/lib/ezlib";
+#endif
+    }
+    if (!ezlibBase.empty() && ezlibBase.back() != '/' && ezlibBase.back() != '\\') {
+        ezlibBase += "/";
+    }
+    
     // 1. Check Virtual File System first
     bool foundInVFS = false;
     std::string vfsSearchPath = absolutePath;
@@ -632,17 +626,17 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         source = virtualFileSystem["lib/" + path + "/main.ez"];
         absolutePath = "lib/" + path + "/main.ez";
         foundInVFS = true;
-    } else if (virtualFileSystem.count("C:/ezlib/" + path)) {
-        source = virtualFileSystem["C:/ezlib/" + path];
-        absolutePath = "C:/ezlib/" + path;
+    } else if (virtualFileSystem.count(ezlibBase + path)) {
+        source = virtualFileSystem[ezlibBase + path];
+        absolutePath = ezlibBase + path;
         foundInVFS = true;
-    } else if (virtualFileSystem.count("C:/ezlib/" + path + ".ez")) {
-        source = virtualFileSystem["C:/ezlib/" + path + ".ez"];
-        absolutePath = "C:/ezlib/" + path + ".ez";
+    } else if (virtualFileSystem.count(ezlibBase + path + ".ez")) {
+        source = virtualFileSystem[ezlibBase + path + ".ez"];
+        absolutePath = ezlibBase + path + ".ez";
         foundInVFS = true;
-    } else if (virtualFileSystem.count("C:/ezlib/" + path + "/main.ez")) {
-        source = virtualFileSystem["C:/ezlib/" + path + "/main.ez"];
-        absolutePath = "C:/ezlib/" + path + "/main.ez";
+    } else if (virtualFileSystem.count(ezlibBase + path + "/main.ez")) {
+        source = virtualFileSystem[ezlibBase + path + "/main.ez"];
+        absolutePath = ezlibBase + path + "/main.ez";
         foundInVFS = true;
     }
     
@@ -661,7 +655,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     absolutePath = localLibPath;
                 } else {
                     // Try standard lib path
-                    std::string libPath = "C:/ezlib/" + path;
+                    std::string libPath = ezlibBase + path;
                     file.open(libPath);
                     if (file.is_open()) {
                         absolutePath = libPath;
@@ -707,7 +701,6 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         source = buffer.str();
     }
     
-    static std::unordered_set<std::string> compilingModules;
     if (compilingModules.count(absolutePath)) {
         errorAt("Circular dependency detected when importing '" + absolutePath + "'", currentLine);
         return;
@@ -722,8 +715,6 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     } cleaner(absolutePath, compilingModules);
     
     std::vector<StmtPtr> statements;
-    static std::unordered_map<std::string, std::vector<StmtPtr>> astCache;
-    
     if (astCache.count(absolutePath)) {
         statements = astCache[absolutePath];
     } else {
@@ -1086,6 +1077,10 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     }
 
     // 7. Emit MAKE_CLASS nameIdx, memberCount, interfaceCount, validatorCount
+    if (memberCount > 255) errorAt("Too many members in model (max 255)", currentLine);
+    if (stmt.interfaces.size() > 255) errorAt("Too many interfaces in model (max 255)", currentLine);
+    if (validatorCount > 255) errorAt("Too many validators in model (max 255)", currentLine);
+    
     size_t classNameIdx = identifierConstant(stmt.name);
     emitOp(OpCode::MAKE_CLASS);
     emitBytes(static_cast<uint8_t>((classNameIdx >> 8) & 0xFF),
@@ -1360,6 +1355,10 @@ size_t BytecodeCompiler::addLocal(const std::string& name, bool isConst) {
     local.localVarInfoIdx = current->function->localVars.size() - 1;
     
     current->locals.push_back(local);
+    if (current->locals.size() > 256) {
+        errorAt("Too many local variables in function (max 256)", currentLine);
+    }
+    
     if (current->locals.size() > current->maxLocals) {
         current->maxLocals = current->locals.size();
     }
@@ -1515,6 +1514,7 @@ void BytecodeCompiler::errorAt(const std::string& message, int line) {
     if (!hadError) {
         hadError = true;
         errorMessage = "[" + std::to_string(line) + "] " + message;
+        throw CompilerError(errorMessage); // Throw to immediately abort current compilation path
     }
 }
 

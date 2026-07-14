@@ -100,8 +100,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             Value func = args[0];
             std::vector<Value> fnArgs(args.begin() + 1, args.end());
             auto globalEnv = interp.getGlobalEnv();
-            BytecodeVM* parentVM = dynamic_cast<BytecodeVM*>(&interp);
-            auto tState = parentVM ? parentVM->exportThreadState() : BytecodeVM::ThreadState();
+
 
             // Close upvalues in any closure/bound-method so the worker thread doesn't hold
             // dangling pointers into the parent VM's stack.
@@ -153,11 +152,11 @@ void registerGCBuiltins(RuntimeContext& interp) {
             auto ezFut = std::make_shared<EZFuture>();
 
             EventLoop::instance().retain();
-            std::thread([ezFut, globalEnv, closedFunc, closedArgs, tState, threadUpvalues]() {
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs, threadUpvalues]() {
                 try {
                     auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
                     threadVM->traceExecution = false;
-                    threadVM->importThreadState(tState);
+
                     threadVM->taskFuture = ezFut;
                     for (auto& uv : *threadUpvalues) threadVM->adoptUpvalue(std::move(uv));
                     Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");

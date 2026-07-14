@@ -166,28 +166,34 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
 
                 CASE_CODE(HAS_GLOBAL) {
-                    uint16_t nameIdx = READ_SHORT();
-                    const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
-                    *stackTop++ = Value(globalEnv->contains(name));
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        const std::string& name = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                        *stackTop++ = Value(globalEnv->contains(name));
+                    }
                     DISPATCH();
                 }
 
                 CASE_CODE(LOAD_GLOBAL_SLOT) {
-                    uint16_t slot = READ_SHORT();
-                    std::shared_lock<std::shared_mutex> lk(globalEnv->slotMutex);
-                    if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
-                        *stackTop++ = globalEnv->globalSlots[slot];
-                    } else {
-                        *stackTop++ = Value();
+                    {
+                        uint16_t slot = READ_SHORT();
+                        std::shared_lock<std::shared_mutex> lk(globalEnv->slotMutex);
+                        if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
+                            *stackTop++ = globalEnv->globalSlots[slot];
+                        } else {
+                            *stackTop++ = Value();
+                        }
                     }
                     DISPATCH();
                 }
 
                 CASE_CODE(STORE_GLOBAL_SLOT) {
-                    uint16_t slot = READ_SHORT();
-                    std::unique_lock<std::shared_mutex> lk(globalEnv->slotMutex);
-                    if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
-                        globalEnv->globalSlots[slot] = *(stackTop - 1);
+                    {
+                        uint16_t slot = READ_SHORT();
+                        std::unique_lock<std::shared_mutex> lk(globalEnv->slotMutex);
+                        if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
+                            globalEnv->globalSlots[slot] = *(stackTop - 1);
+                        }
                     }
                     DISPATCH();
                 }

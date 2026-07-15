@@ -1,0 +1,51 @@
+# Phase 4: verify shared global + container access is thread-safe.
+#
+# spawn() shares globalEnv (global slots) and shared_ptr containers across
+# detached worker threads. The runtime synchronises all of this: global slots
+# via slotMutex, the Environment map via its mutex, and EZArray/EZDictionary via
+# their own per-object shared_mutex. This test stresses that: several workers
+# concurrently mutate a shared global counter and a shared global array under a
+# mutex, and we assert there are no lost updates or container corruption.
+#
+# NOTE: `total`/`shared` are GLOBALS (resolved as shared global slots), not
+# captured locals -- so unlike a captured upvalue they are genuinely shared
+# across threads.
+
+out "=== Concurrent Shared-State Safety Test ==="
+
+total = 0                 # shared global counter
+shared = []               # shared global array
+mu = mutex()
+
+task worker(id) {
+    repeat j = 1 to 200 {
+        lock(mu, || {
+            total = total + 1
+            push(shared, id)
+        })
+    }
+    give id
+}
+
+futures = []
+repeat i = 1 to 5 {
+    push(futures, spawn(worker, i))
+}
+repeat i = 0 to len(futures) - 1 {
+    await futures[i]
+}
+wait(200)
+
+out "total        = " + str(total) + " (expected 1000)"
+out "array length = " + str(len(shared)) + " (expected 1000)"
+
+ok = true
+when total != 1000 { ok = false }
+when len(shared) != 1000 { ok = false }
+
+when ok {
+    out "PASS: concurrent global + shared-array mutation stayed consistent"
+} other {
+    out "FAIL: lost updates / container corruption under concurrency"
+}
+out "=== Done ==="

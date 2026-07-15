@@ -316,5 +316,10 @@ void CycleCollector::collect_major() {
 // ─────────────────────────────────────────────────────────────────────────────
 void CycleCollector::collect() {
     std::lock_guard<std::mutex> lock(mutex_);
+    // Refuse to collect while another mutator thread is live — collecting then
+    // would race concurrent mutation (see track()/beginMutatorThread()). The
+    // garbage stays tracked and is reclaimed by a later collect once the extra
+    // threads have joined.
+    if (activeMutators_.load(std::memory_order_acquire) != 1) return;
     collect_major();
 }

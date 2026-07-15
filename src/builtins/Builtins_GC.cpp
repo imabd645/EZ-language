@@ -170,6 +170,14 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
             EventLoop::instance().retain();
             std::thread([ezFut, globalEnv, closedFunc, closedArgs, threadUpvalues]() {
+                // Register as a concurrent mutator for the whole lifetime of this
+                // worker so the cycle collector defers collection while we run
+                // (it can't safely collect the shared object graph we mutate).
+                // RAII ensures we unregister on every exit path.
+                struct MutatorScope {
+                    MutatorScope()  { CycleCollector::instance().beginMutatorThread(); }
+                    ~MutatorScope() { CycleCollector::instance().endMutatorThread(); }
+                } mutatorScope;
                 try {
                     auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
                     threadVM->traceExecution = false;
@@ -177,7 +185,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     threadVM->taskFuture = ezFut;
                     for (auto& uv : *threadUpvalues) threadVM->adoptUpvalue(std::move(uv));
                     Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
-                    
+
                     if (!threadVM->isYielded) {
                         ezFut->set(result);
                     }

@@ -1,0 +1,85 @@
+# Phase 3: the cycle collector must never run concurrently with other mutator
+# threads. spawn()ed workers register as mutators, so automatic and explicit
+# collection is DEFERRED while they run and resumes once they join.
+#
+# This stresses that gating: several parallel workers allocate cyclic garbage
+# under deliberately low GC thresholds (so collection is attempted constantly)
+# while a mutex-protected shared counter must remain exact and the process must
+# not crash or corrupt. Under the old racy collector, collecting mid-mutation
+# from another thread could wipe live objects or use-after-free.
+
+out "=== GC Thread-Safety Stress Test ==="
+
+model Node { init() { self.peer = nil } }
+
+# Low thresholds => track() tries to collect very frequently, hammering the
+# "only collect when single-threaded" gate.
+gc_set_thresholds(200, 200)
+
+count = 0
+mu = mutex()
+
+task worker(id) {
+    repeat j = 1 to 300 {
+        a = Node()
+        b = Node()
+        a.peer = b
+        b.peer = a          # cyclic garbage allocated off the main thread
+        lock(mu, || {
+            count = count + 1
+        })
+    }
+    give id
+}
+
+# Launch several parallel workers (pass id as an argument, no closure capture).
+futures = []
+repeat i = 1 to 6 {
+    push(futures, spawn(worker, i))
+}
+
+# The main thread also churns cyclic garbage while the workers run.
+repeat k = 1 to 300 {
+    x = Node()
+    y = Node()
+    x.peer = y
+    y.peer = x
+}
+
+# Join all workers.
+repeat i = 0 to len(futures) - 1 {
+    await futures[i]
+}
+
+# A worker sets its future just before it unregisters as a mutator, so give any
+# stragglers a moment to fully unwind before we rely on being single-threaded.
+wait(300)
+
+out "shared counter = " + str(count) + " (expected 1800)"
+when count == 1800 {
+    out "PASS: no lost updates; survived concurrent GC pressure without crashing"
+} other {
+    out "FAIL: counter wrong (" + str(count) + ") -- corruption/race"
+}
+
+# Back to single-threaded: deferred collection must resume and work.
+gc_collect()
+c0 = gc_cycles_collected()
+
+task mkCycle() {
+    a = Node()
+    b = Node()
+    a.peer = b
+    b.peer = a
+    give nil
+}
+mkCycle()
+gc_collect()
+
+when (gc_cycles_collected() - c0) >= 2 {
+    out "PASS: cycle collection resumed after threads joined"
+} other {
+    out "FAIL: collection did not resume after join"
+}
+
+out "=== Done ==="

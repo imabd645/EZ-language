@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include <functional>
 #include <cstdint>
 
@@ -58,7 +59,14 @@ public:
         if (!ptr) return;
         std::lock_guard<std::mutex> lock(mutex_);
         young_tracked_.push_back({ std::static_pointer_cast<void>(ptr), type });
-        if (!disabled_) {
+        // Only run collection when this is the sole active mutator thread.
+        // The Bacon-Rajan phases read use_count() and traverse/clear object
+        // graphs that other spawn()ed VM threads mutate concurrently without
+        // any synchronisation, so collecting while another thread is live would
+        // race (misclassified garbage -> use-after-free / wiped-live-object).
+        // Deferring is safe: the objects stay tracked and are reclaimed once
+        // the extra threads join (activeMutators_ returns to 1).
+        if (!disabled_ && activeMutators_.load(std::memory_order_acquire) == 1) {
             if (young_tracked_.size() >= minor_threshold_) {
                 collect_minor();
             } else if (old_tracked_.size() >= major_threshold_) {
@@ -69,14 +77,22 @@ public:
 
     // Manual trigger (e.g. from tests or shutdown).
     void collect();
-    
+
+    // Register/unregister a concurrent mutator thread (e.g. a spawn() worker).
+    // Locking mutex_ makes registration rendezvous with any in-flight collect():
+    // a starting thread blocks until the current collection finishes, and a
+    // collection cannot begin once a thread has registered — closing the window
+    // where a mutator could start racing mid-collection.
+    void beginMutatorThread() { std::lock_guard<std::mutex> lock(mutex_); ++activeMutators_; }
+    void endMutatorThread()   { std::lock_guard<std::mutex> lock(mutex_); --activeMutators_; }
+
     // GC Control Flags (Python-like)
     void disable() { std::lock_guard<std::mutex> lock(mutex_); disabled_ = true; }
     void enable()  { std::lock_guard<std::mutex> lock(mutex_); disabled_ = false; }
 
     // Statistics
-    size_t trackedCount()     const { return young_tracked_.size() + old_tracked_.size(); }
-    size_t cyclesCollected()  const { return cyclesCollected_; }
+    size_t trackedCount()     const { std::lock_guard<std::mutex> lock(mutex_); return young_tracked_.size() + old_tracked_.size(); }
+    size_t cyclesCollected()  const { std::lock_guard<std::mutex> lock(mutex_); return cyclesCollected_; }
     void   setThresholds(size_t minor, size_t major) { minor_threshold_ = minor; major_threshold_ = major; }
 
 private:
@@ -130,13 +146,16 @@ private:
         ValueType                    type);
 
     // ── State ─────────────────────────────────────────────────────────────────
-    std::mutex                 mutex_;
+    mutable std::mutex         mutex_;
     std::vector<TrackedObject> young_tracked_;
     std::vector<TrackedObject> old_tracked_;
     size_t                     minor_threshold_ = 2000;
     size_t                     major_threshold_ = 10000;
     size_t                     cyclesCollected_ = 0;
     bool                       disabled_        = false;
+    // Number of live mutator threads (main thread counts as 1). Collection only
+    // runs when this is 1, i.e. no spawn() worker is concurrently mutating.
+    std::atomic<int>           activeMutators_{1};
 };
 
 #endif // CYCLE_COLLECTOR_H

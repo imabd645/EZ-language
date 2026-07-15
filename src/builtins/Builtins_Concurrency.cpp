@@ -9,6 +9,12 @@
 #include "eventloop/EventLoop.h"
 #include "runtime/EZFuture.h"
 #include "runtime/EZChannel.h"
+#include <uv.h>
+
+struct TimerContext {
+    uv_timer_t timer;
+    std::shared_ptr<EZFuture> fut;
+};
 
 void registerConcurrencyBuiltins(RuntimeContext& interp) {
     // mutex()
@@ -66,11 +72,22 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             
             if (ms > 0) {
                 EventLoop::instance().retain();
-                std::thread([fut, ms]() {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-                    fut->set(Value(true));
-                    EventLoop::instance().release();
-                }).detach();
+                TimerContext* ctx = new TimerContext();
+                ctx->fut = fut;
+                
+                uv_timer_init(EventLoop::instance().getLoop(), &ctx->timer);
+                ctx->timer.data = ctx;
+                
+                uv_timer_start(&ctx->timer, [](uv_timer_t* handle) {
+                    TimerContext* ctx = static_cast<TimerContext*>(handle->data);
+                    ctx->fut->set(Value(true));
+                    
+                    uv_close(reinterpret_cast<uv_handle_t*>(handle), [](uv_handle_t* handle) {
+                        TimerContext* ctx = static_cast<TimerContext*>(handle->data);
+                        delete ctx;
+                        EventLoop::instance().release();
+                    });
+                }, ms, 0);
             } else {
                 fut->set(Value(true));
             }

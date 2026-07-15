@@ -1,0 +1,38 @@
+out "=== Phase 4: Compiler Tests ==="
+
+out "1. Testing Repeat Loop Direction..."
+// repeat with start > end and no step should execute zero times now
+count = 0
+repeat i = 10 to 1 {
+    count = count + 1
+}
+when count == 0 {
+    out "PASS: Ascending loop with start > end executed 0 times"
+} other {
+    out "FAIL: Loop executed " + str(count) + " times"
+}
+
+// explicit step -1 should work
+count_desc = 0
+repeat i = 10 to 1 step -1 {
+    count_desc = count_desc + 1
+}
+when count_desc == 10 {
+    out "PASS: Descending loop with explicit step -1 executed correctly"
+} other{
+    out "FAIL: Descending loop executed " + str(count_desc) + " times"
+}
+
+out "2. Testing Dictionary Destructuring Optimization..."
+d = {"a": 100, "b": 200}
+sum = 0
+get [k, v]in d {
+    sum = sum + v
+}
+when sum == 300 {
+    out "PASS: Dictionary destructuring works correctly"
+} other {
+    out "FAIL: Expected sum 300, got " + str(sum)
+}
+
+out "=== Phase 4 Tests Complete ==="

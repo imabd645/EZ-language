@@ -415,7 +415,14 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
     // Build a minimal TaskStmt from the EZFunction
     TaskStmt fakeTask(func->name, func->params, std::vector<TypeASTPtr>(func->params.size(), arena.allocate<TypeAST>("Any")), func->defaultValues, nullptr,
                       func->body, func->isVariadic);
-    BytecodeFunctionPtr bfunc = compiler.compileFunction(fakeTask, func->name);
+    BytecodeFunctionPtr bfunc = nullptr;
+    try {
+        bfunc = compiler.compileFunction(fakeTask, func->name);
+    } catch (const CompilerError& e) {
+        // Since this is a lazy evaluation of an async lambda, we must fail gracefully
+        runtimeError("JIT Compilation Error: " + std::string(e.what()));
+        return nullptr;
+    }
 
     {
         std::unique_lock<std::shared_mutex> lock(globalEnv->registryMutex);

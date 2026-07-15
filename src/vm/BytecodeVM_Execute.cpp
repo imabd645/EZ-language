@@ -407,6 +407,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value value = *(--stackTop);
                         Value obj   = *(--stackTop);
+                        // This op pops 2 and pushes 1, so the upper source slot
+                        // (stackTop[1]) is left holding a stale copy that the
+                        // following POP won't reach. Clear it so it doesn't keep
+                        // the assigned object alive / defeat the GC.
+                        stackTop[1] = Value();
                         if (obj.isInstance()) {
                             auto inst = obj.asInstance();
                             ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
@@ -448,6 +453,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value value = *(--stackTop);
                         Value obj   = *(--stackTop);
+                        // Clear the stale upper source slot (pop-2/push-1); see
+                        // STORE_PROPERTY.
+                        stackTop[1] = Value();
 
                         if (!obj.isInstance()) {
                             if (obj.isClass()) {
@@ -1392,9 +1400,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(MAKE_ARRAY) {
                     {
                         uint8_t count = READ_BYTE();
+                        Value* oldTop = stackTop;
                         std::vector<Value> el(count);
                         for (int i = count - 1; i >= 0; i--) el[i] = *(--stackTop);
                         *stackTop++ = Value::makeArray(el);
+                        // Clear the vacated element source slots (pop-N/push-1).
+                        clearStackSlots(stackTop, oldTop);
                     }
                     DISPATCH();
                 }
@@ -1402,9 +1413,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(BUILD_TUPLE) {
                     {
                         uint8_t count = READ_BYTE();
+                        Value* oldTop = stackTop;
                         std::vector<Value> el(count);
                         for (int i = count - 1; i >= 0; i--) el[i] = *(--stackTop);
                         *stackTop++ = Value::makeTuple(el);
+                        clearStackSlots(stackTop, oldTop);
                     }
                     DISPATCH();
                 }
@@ -1412,6 +1425,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(MAKE_DICT) {
                     {
                         uint8_t pairs = READ_BYTE();
+                        Value* oldTop = stackTop;
                         Value dict = Value::makeDictionary();
                         auto dictPtr = dict.asDictionaryPtr();
                         // Fix 1.1: use modifyMap so entries are actually written into the dict object
@@ -1425,6 +1439,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         });
                         *stackTop++ = dict;
+                        // Clear the vacated key/value source slots (pop-2N/push-1).
+                        clearStackSlots(stackTop, oldTop);
                     }
                     DISPATCH();
                 }
@@ -2151,12 +2167,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
 bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck) {
     if (callee.isNativeFunction()) {
         // Collect args from stack (they sit above the callee)
+        Value* oldTop = stackTop;
         std::vector<Value> args(stackTop - argCount, stackTop);
-        
+
         try {
             Value result = callee.asNativeFunction()->function(*this, args);
             // NOW we pop everything and push the result
             stackTop -= argCount + 1;
+            // Release the vacated callee + argument slots so their (possibly
+            // heap-object) copies don't linger above the stack top and defeat
+            // the GC. `args`/`result` hold independent copies, so this is safe.
+            clearStackSlots(stackTop, oldTop);
             push(result);
         } catch (const RuntimeError& e) {
             throw; // Propagate RuntimeError so it can be caught by EZ or VM loop

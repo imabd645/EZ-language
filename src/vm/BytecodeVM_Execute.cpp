@@ -2352,6 +2352,17 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
         return;
     }
 
+    // Guard the fast-path frame-setup pushes below (which bypass push()'s own
+    // bounds check) against overrunning the operand-stack buffer. The caller
+    // (CALL/dispatchCall) has already synced this->stackTop, so it reflects the
+    // live top here. We must have room for any optional-parameter padding, all
+    // local slots, plus the working headroom the function body's expression
+    // temporaries will need.
+    if (!hasStackHeadroom(bcFunc->localCount + STACK_HEADROOM)) {
+        runtimeError("Stack overflow: operand stack exhausted");
+        return;
+    }
+
     // Push nil for any missing optional parameters
     while (argCount < bcFunc->arity) {
         *stackTop++ = Value();

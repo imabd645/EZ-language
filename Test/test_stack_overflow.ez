@@ -1,0 +1,41 @@
+# Phase 1: fast-path stack-overflow guard
+#
+# Deep NON-tail recursion must terminate with a graceful, catchable runtime
+# error instead of overrunning the operand-stack buffer (heap corruption) or
+# crashing the process. Before the fix, pushCallFrame's local-slot padding wrote
+# through raw `*stackTop++` with no bounds check.
+
+out "=== Stack Overflow Safety Test ==="
+
+task blowStack(n) {
+    # Non-tail call: the trailing `+ 1` forces this frame to stay live while the
+    # recursive call runs, so call frames genuinely accumulate (unlike a tail
+    # call, which the VM reuses in place). This must hit the frame/stack guard
+    # and throw rather than corrupt memory.
+    give 1 + blowStack(n + 1)
+}
+
+caught = false
+try {
+    x = blowStack(0)
+    out "FAIL: recursion returned " + str(x) + " (no overflow guard fired)"
+} catch e {
+    caught = true
+    out "PASS: caught stack overflow gracefully -> " + str(e)
+}
+
+when not caught {
+    out "FAIL: no exception was thrown for runaway recursion"
+}
+
+# The interpreter must remain fully usable after unwinding the overflow: the
+# stack pointer and call frames have to be restored to a consistent state.
+task add(a, b) { give a + b }
+r = add(2, 3)
+when r == 5 {
+    out "PASS: VM still functional after recovery (2 + 3 = " + str(r) + ")"
+} other {
+    out "FAIL: VM broken after overflow recovery, got " + str(r)
+}
+
+out "=== Done ==="

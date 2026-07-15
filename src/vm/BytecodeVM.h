@@ -100,6 +100,11 @@ private:
     // ── VM Configuration ──────────────────────────────────────────────────────
     size_t                 stackMax;
     static constexpr size_t FRAMES_MAX = 512;
+    // Working-stack reserve required to be free when a new call frame is
+    // installed. Opcode operands are uint8_t-bounded (arg/element counts <= 255)
+    // and the compiler never emits an unboundedly deep single expression, so this
+    // margin conservatively covers a frame's intra-body expression temporaries.
+    static constexpr size_t STACK_HEADROOM = 1024;
     std::vector<Value>     stack;
     Value*                 stackTop;
 
@@ -162,6 +167,13 @@ private:
             return false;
         }
         return true;
+    }
+
+    // Returns true if at least `extra` more Value slots can be pushed onto the
+    // operand stack without overrunning the backing buffer. Used to guard the
+    // fast-path frame-setup pushes that bypass push()'s own bounds check.
+    inline bool hasStackHeadroom(size_t extra) const {
+        return (size_t)(stackTop - stack.data()) + extra <= stackMax;
     }
 
     void               printStack() const;

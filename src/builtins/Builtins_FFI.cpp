@@ -3,9 +3,12 @@
 #include "vm/BytecodeVM.h"
 #include "runtime/EZFuture.h"
 #include "builtins/Builtins.h"
+#include "eventloop/EventLoop.h"
 #include <ffi.h>
 #include <unordered_map>
 #include <mutex>
+#include <thread>
+#include <future>
 
 struct CallbackClosure {
     ffi_closure* closure;
@@ -19,6 +22,9 @@ struct CallbackClosure {
 
 static std::unordered_map<void*, CallbackClosure*> g_callbacks;
 static std::mutex g_callbacksMutex;
+
+// Capture the main thread ID when the application loads this translation unit
+static std::thread::id g_mainThreadId = std::this_thread::get_id();
 
 static void ffi_callback_dispatcher(ffi_cif* cif, void* ret, void** args, void* user_data) {
     CallbackClosure* cb = static_cast<CallbackClosure*>(user_data);
@@ -47,7 +53,21 @@ static void ffi_callback_dispatcher(ffi_cif* cif, void* ret, void** args, void* 
         }
     }
 
-    Value result = cb->interp->callFunction(cb->ezFunction, ezArgs, 0, "ffi_callback");
+    Value result;
+    if (std::this_thread::get_id() == g_mainThreadId) {
+        result = cb->interp->callFunction(cb->ezFunction, ezArgs, 0, "ffi_callback");
+    } else {
+        std::promise<Value> p;
+        auto f = p.get_future();
+        EventLoop::instance().pushTask([cb, ezArgs, &p]() {
+            try {
+                p.set_value(cb->interp->callFunction(cb->ezFunction, ezArgs, 0, "ffi_callback"));
+            } catch (...) {
+                p.set_value(Value());
+            }
+        });
+        result = f.get();
+    }
 
     if (cb->retType == "int" || cb->retType == "ptr" || cb->retType == "i64" || cb->retType == "u64") {
         *(long long*)ret = result.isNumber() ? (long long)result.asNumber() : 0;

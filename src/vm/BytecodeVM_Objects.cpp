@@ -6,11 +6,12 @@
 #include <iostream>
 
 void BytecodeVM::closeUpvalues(Value* last) {
-    while (openUpvalues != nullptr && openUpvalues->location >= last) {
-        UpvalueObj* uv = openUpvalues;
-        uv->closed     = *uv->location.load();
+    while (openUpvalues != nullptr && openUpvalues->location.load() >= last) {
+        std::shared_ptr<UpvalueObj> uv = openUpvalues;
+        uv->closed = *uv->location.load();
         uv->location.store(&uv->closed);
-        openUpvalues   = uv->next;
+        openUpvalues = uv->next;
+        uv->next = nullptr; // unlink so a removed upvalue doesn't retain the rest of the list
     }
 }
 

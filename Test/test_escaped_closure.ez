@@ -1,0 +1,46 @@
+# Phase 5: a closure that captures a local and escapes its creating VM must keep
+# its captured upvalue alive after that VM -- and its stack -- is destroyed.
+#
+# A spawn() worker builds and returns a counter closure over its local `n`. Once
+# the future resolves and the worker thread unwinds, the worker's BytecodeVM is
+# destroyed. Previously closures held raw UpvalueObj* pointers owned by that VM,
+# so calling the returned closure afterwards was a use-after-free. Now closures
+# co-own their upvalues (shared_ptr) and the VM closes still-open upvalues in its
+# destructor, so the escaped closure stays valid and its state persists.
+
+out "=== Escaped-Closure Upvalue Test ==="
+
+task makeCounter(startVal) {
+    n = startVal
+    give || {
+        n = n + 1
+        give n
+    }
+}
+
+f = spawn(makeCounter, 100)
+counter = await f
+
+# Ensure the worker thread has fully unwound and its VM has been destroyed
+# before we call the escaped closure on this (the main) thread.
+wait(300)
+
+a = counter()
+b = counter()
+c = counter()
+out "counter() -> " + str(a) + ", " + str(b) + ", " + str(c)
+
+when a == 101 and b == 102 and c == 103 {
+    out "PASS: escaped closure kept its captured upvalue and mutable state (no UAF)"
+} other {
+    out "FAIL: wrong values (a=" + str(a) + " b=" + str(b) + " c=" + str(c) + ")"
+}
+
+# Sanity: ordinary same-VM closures still work.
+maker = makeCounter(0)
+out "local closure -> " + str(maker()) + ", " + str(maker())
+when maker != nil {
+    out "PASS: in-VM closures still functional"
+}
+
+out "=== Done ==="

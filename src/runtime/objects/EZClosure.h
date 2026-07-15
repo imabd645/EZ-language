@@ -12,7 +12,7 @@
 
 struct EZClosure {
     std::shared_ptr<struct BytecodeFunction> function;
-    std::vector<UpvalueObj*> upvalues;
+    std::vector<std::shared_ptr<UpvalueObj>> upvalues;   // closures OWN their upvalues
     EZClosure(std::shared_ptr<struct BytecodeFunction> f) : function(f) {}
 
     void traverse(const ValueVisitor& visit) const;

@@ -3,7 +3,7 @@
 #include "runtime/objects/EZUpvalue.h"
 
 void EZClosure::traverse(const ValueVisitor& visit) const {
-    for (UpvalueObj* uv : upvalues) {
+    for (const auto& uv : upvalues) {
         if (uv) visit(uv->closed);
     }
 }

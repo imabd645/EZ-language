@@ -60,12 +60,8 @@ public:
     }
 
     struct ClosureState {
-        std::vector<UpvalueObj*> upvalues;
+        std::vector<std::shared_ptr<UpvalueObj>> upvalues;
     };
-    
-    void adoptUpvalue(std::unique_ptr<struct UpvalueObj> uv) {
-        allUpvalues.push_back(std::move(uv));
-    }
 
     const std::vector<std::string>& getGlobalSlotNames() const { return globalEnv->globalSlotNames; }
     const std::vector<Value>& getGlobalSlots() const { return globalEnv->globalSlots; }
@@ -115,9 +111,11 @@ private:
 
     // BytecodeFunction cache moved to Environment
     
-    // Upvalue management
-    UpvalueObj*                              openUpvalues; // sorted linked list
-    std::vector<std::unique_ptr<UpvalueObj>> allUpvalues;  // owns all UpvalueObjs
+    // Upvalue management. The open list is a shared_ptr chain so an open upvalue
+    // stays alive even if the only closure that captured it is destroyed while
+    // the upvalue is still open. Closures co-own their captured upvalues, so a
+    // closure outliving this VM keeps its upvalues valid.
+    std::shared_ptr<UpvalueObj> openUpvalues; // sorted linked list head
 
     // Try/catch stack
     std::vector<TryBlock> tryStack;
@@ -143,8 +141,8 @@ private:
     void   popN(size_t count);
 
     // ── Upvalues ─────────────────────────────────────────────────────────────
-    UpvalueObj* captureUpvalue(Value* local);
-    void        closeUpvalues(Value* last);
+    std::shared_ptr<UpvalueObj> captureUpvalue(Value* local);
+    void                        closeUpvalues(Value* last);
 
     // ── Arithmetic ───────────────────────────────────────────────────────────
     void doAdd(); void doSubtract(); void doMultiply(); void doDivide();

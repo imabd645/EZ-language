@@ -80,7 +80,11 @@ BytecodeVM::BytecodeVM(std::shared_ptr<Environment> globalEnv_, size_t stackSize
 }
 
 BytecodeVM::~BytecodeVM() {
-    // allUpvalues unique_ptrs handle cleanup automatically
+    // Close any still-open upvalues before our stack is destroyed, so a closure
+    // that escaped this VM (e.g. returned from a spawn()/async worker) keeps a
+    // self-contained value in `closed` instead of a dangling pointer into freed
+    // stack memory. Closed upvalues are still co-owned by those closures.
+    closeUpvalues(stack.data());
 }
 
 Environment::~Environment() {

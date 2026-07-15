@@ -2463,25 +2463,24 @@ void BytecodeVM::popN(size_t count) {
 // Upvalue Handling
 // ============================================================================
 
-UpvalueObj* BytecodeVM::captureUpvalue(Value* local) {
+std::shared_ptr<UpvalueObj> BytecodeVM::captureUpvalue(Value* local) {
     // Walk the open upvalue list to find an existing capture
-    UpvalueObj* prev = nullptr;
-    UpvalueObj* cur  = openUpvalues;
-    while (cur != nullptr && cur->location > local) {
+    std::shared_ptr<UpvalueObj> prev = nullptr;
+    std::shared_ptr<UpvalueObj> cur  = openUpvalues;
+    while (cur != nullptr && cur->location.load() > local) {
         prev = cur;
         cur  = cur->next;
     }
     if (cur != nullptr && cur->location.load() == local) return cur;
 
-    // Create a new open upvalue
-    auto uv = std::make_unique<UpvalueObj>();
+    // Create a new open upvalue, co-owned by the open list (and, once the
+    // CLOSURE opcode stores it, by the closure).
+    auto uv = std::make_shared<UpvalueObj>();
     uv->location.store(local);
-    uv->next       = cur;
-    UpvalueObj* raw = uv.get();
-    if (prev == nullptr) openUpvalues = raw;
-    else prev->next = raw;
-    allUpvalues.push_back(std::move(uv));
-    return raw;
+    uv->next = cur;
+    if (prev == nullptr) openUpvalues = uv;
+    else prev->next = uv;
+    return uv;
 }
 
 void BytecodeVM::doAdd() {

@@ -120,10 +120,11 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
 
             // Close upvalues in any closure/bound-method so the worker thread doesn't hold
-            // dangling pointers into the parent VM's stack.
+            // dangling pointers into the parent VM's stack. The new upvalues are
+            // owned (shared_ptr) by the copied closures themselves, so they need no
+            // separate lifetime management on the worker VM.
             // Arrays, Dicts, and Instances are shared_ptr based  we keep them as-is so
             // worker threads share the same queue/mutex objects.
-            auto threadUpvalues = std::make_shared<std::vector<std::unique_ptr<UpvalueObj>>>();
             std::unordered_map<void*, Value> seen;
 
             std::function<Value(const Value&)> closeUpvals = [&](const Value& v) -> Value {
@@ -134,9 +135,9 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     auto newCl = std::make_shared<EZClosure>(oldCl->function);
                     seen[oldCl.get()] = Value(newCl);
 
-                    for (auto* uv : oldCl->upvalues) {
+                    for (auto& uv : oldCl->upvalues) {
                         if (!uv) { newCl->upvalues.push_back(nullptr); continue; }
-                        auto newUv = std::make_unique<UpvalueObj>();
+                        auto newUv = std::make_shared<UpvalueObj>();
                         Value* loc = uv->location.load();
                         // Snapshot the current value (which may be on parent's stack)
                         Value snap = (loc != nullptr) ? *loc : Value();
@@ -144,8 +145,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                         newUv->closed = closeUpvals(snap);
                         newUv->location.store(&newUv->closed);
                         newUv->next = nullptr;
-                        newCl->upvalues.push_back(newUv.get());
-                        threadUpvalues->push_back(std::move(newUv));
+                        newCl->upvalues.push_back(newUv);   // closure owns the upvalue
                     }
                     return Value(newCl);
                 } else if (v.isBoundMethod()) {
@@ -169,7 +169,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             auto ezFut = std::make_shared<EZFuture>();
 
             EventLoop::instance().retain();
-            std::thread([ezFut, globalEnv, closedFunc, closedArgs, threadUpvalues]() {
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs]() {
                 // Register as a concurrent mutator for the whole lifetime of this
                 // worker so the cycle collector defers collection while we run
                 // (it can't safely collect the shared object graph we mutate).
@@ -183,7 +183,6 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     threadVM->traceExecution = false;
 
                     threadVM->taskFuture = ezFut;
-                    for (auto& uv : *threadUpvalues) threadVM->adoptUpvalue(std::move(uv));
                     Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
 
                     if (!threadVM->isYielded) {

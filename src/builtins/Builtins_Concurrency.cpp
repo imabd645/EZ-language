@@ -1,4 +1,5 @@
 #include "runtime/objects/EZObjects.h"
+#include "gc/CycleCollector.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
@@ -97,6 +98,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
 
     // class Atomic
     auto atomicClass = std::make_shared<EZClass>("Atomic");
+    CycleCollector::instance().track(atomicClass, ValueType::CLASS);
     
     // Atomic.init(initial)
     atomicClass->setMethod("init", Value::makeNativeFunction("init", 1,
@@ -144,6 +146,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
 
     // class Channel
     auto channelClass = std::make_shared<EZClass>("Channel");
+    CycleCollector::instance().track(channelClass, ValueType::CLASS);
     
     // Channel.init()
     channelClass->setMethod("init", Value::makeNativeFunction("init", 0,

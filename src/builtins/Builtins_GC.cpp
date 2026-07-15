@@ -1,4 +1,5 @@
 #include "runtime/objects/EZObjects.h"
+#include "gc/CycleCollector.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
 #include "runtime/Environment.h"
@@ -52,6 +53,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
         }));
 
     auto exceptionClass = std::make_shared<EZClass>("Exception");
+    CycleCollector::instance().track(exceptionClass, ValueType::CLASS);
     exceptionClass->methods["init"] = Value::makeNativeFunction("init", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() > 0 && args[0].isInstance()) {
@@ -65,6 +67,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
     auto makeErrorClass = [&](const std::string& name, std::shared_ptr<EZClass> parent) {
         auto cls = std::make_shared<EZClass>(name);
+        CycleCollector::instance().track(cls, ValueType::CLASS);
         cls->parent = parent;
         interp.defineGlobal(name, Value(cls));
         return cls;

@@ -1,4 +1,5 @@
 #include "runtime/objects/EZObjects.h"
+#include "gc/CycleCollector.h"
 #include "sqlite3.h"
 #include "eventloop/EventLoop.h"
 #include "vm/BytecodeVM.h"
@@ -301,6 +302,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             if (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty()) {
                                 auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
                                     auto inst = std::make_shared<EZInstance>(klass);
+                                    CycleCollector::instance().track(inst, ValueType::INSTANCE);
                                     sqlite3* db = nullptr;
                                     {
                                         std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
@@ -1815,6 +1817,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint8_t validatorCount = READ_BYTE();  // NEW
                         const std::string& className = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         auto klass = std::make_shared<EZClass>(className);
+                        CycleCollector::instance().track(klass, ValueType::CLASS);
                         
                         // 1. Pop behavior metadata (pushed last, so pop first)
                         // Pop validators: each is [field, rule, param, message]

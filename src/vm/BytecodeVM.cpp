@@ -1,4 +1,5 @@
 #include "runtime/objects/EZObjects.h"
+#include "gc/CycleCollector.h"
 #include <algorithm>
 #include <functional>
 #include "vm/BytecodeVM.h"
@@ -258,6 +259,7 @@ void BytecodeVM::throwException(const std::string& className, const std::string&
     Value classVal = globalEnv->get(className);
     if (classVal.isClass()) {
         auto inst = std::make_shared<EZInstance>(classVal.asClass());
+        CycleCollector::instance().track(inst, ValueType::INSTANCE);
         inst->setProperty("message", Value(message));
         
         int faultLine = line > 0 ? line : (frames.empty() ? 0 : frames.back().line);
@@ -490,6 +492,7 @@ Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
                                int line,
                                const std::string& filename) {
     auto inst = std::make_shared<EZInstance>(klass);
+    CycleCollector::instance().track(inst, ValueType::INSTANCE);
     Value instVal(inst);
 
     Value init = Value();

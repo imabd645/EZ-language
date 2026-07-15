@@ -142,45 +142,39 @@ static LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-static intptr_t do_ffi_call(void* funcPtr, intptr_t* cArgs, size_t argc, bool isFloat, double& f_ret, bool& crashed) {
-    intptr_t ret = 0;
-    crashed = false;
-    PVOID vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
-    if (setjmp(os_call_jmp_env) == 0) {
-        if (isFloat) {
-            using fFunc0 = double(*)(); using fFunc1 = double(*)(intptr_t); using fFunc2 = double(*)(intptr_t, intptr_t);
-            using fFunc3 = double(*)(intptr_t, intptr_t, intptr_t); using fFunc4 = double(*)(intptr_t, intptr_t, intptr_t, intptr_t);
-            if (argc == 0) f_ret = ((fFunc0)funcPtr)();
-            else if (argc == 1) f_ret = ((fFunc1)funcPtr)(cArgs[0]);
-            else if (argc == 2) f_ret = ((fFunc2)funcPtr)(cArgs[0], cArgs[1]);
-            else if (argc == 3) f_ret = ((fFunc3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-            else if (argc >= 4) f_ret = ((fFunc4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-        } else {
-            using Func0 = intptr_t(*)(); using Func1 = intptr_t(*)(intptr_t); using Func2 = intptr_t(*)(intptr_t, intptr_t);
-            using Func3 = intptr_t(*)(intptr_t, intptr_t, intptr_t); using Func4 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t);
-            using Func5 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t); using Func6 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
-            using Func7 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t); using Func8 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
-            using Func9 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t); using Func10 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
-            using Func11 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t); using Func12 = intptr_t(*)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
-            if (argc == 0) ret = ((Func0)funcPtr)();
-            else if (argc == 1) ret = ((Func1)funcPtr)(cArgs[0]);
-            else if (argc == 2) ret = ((Func2)funcPtr)(cArgs[0], cArgs[1]);
-            else if (argc == 3) ret = ((Func3)funcPtr)(cArgs[0], cArgs[1], cArgs[2]);
-            else if (argc == 4) ret = ((Func4)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3]);
-            else if (argc == 5) ret = ((Func5)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4]);
-            else if (argc == 6) ret = ((Func6)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5]);
-            else if (argc == 7) ret = ((Func7)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6]);
-            else if (argc == 8) ret = ((Func8)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7]);
-            else if (argc == 9) ret = ((Func9)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8]);
-            else if (argc == 10) ret = ((Func10)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9]);
-            else if (argc == 11) ret = ((Func11)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10]);
-            else if (argc >= 12) ret = ((Func12)funcPtr)(cArgs[0], cArgs[1], cArgs[2], cArgs[3], cArgs[4], cArgs[5], cArgs[6], cArgs[7], cArgs[8], cArgs[9], cArgs[10], cArgs[11]);
+static bool ffi_call_helper(void* funcPtr, size_t argc, ffi_type** argTypes, void** argValues, ffi_type* retType, void* retBuffer, RuntimeContext& interp) {
+    ffi_cif cif;
+    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, (unsigned int)argc, retType, argTypes) == FFI_OK) {
+        bool crashed = false;
+        PVOID vehHandler = nullptr;
+#ifndef _MSC_VER
+        vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
+#endif
+
+#ifdef _MSC_VER
+        __try {
+#else
+        if (setjmp(os_call_jmp_env) == 0) {
+#endif
+            ffi_call(&cif, reinterpret_cast<void(*)()>(funcPtr), retBuffer, argValues);
+#ifdef _MSC_VER
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            crashed = true;
         }
-    } else {
-        crashed = true;
+#else
+        } else {
+            crashed = true;
+        }
+        RemoveVectoredExceptionHandler(vehHandler);
+#endif
+        if (crashed) {
+            interp.runtimeError("os_call: Access violation or fatal memory fault inside external DLL.", 0, "");
+            return false;
+        }
+        return true;
     }
-    RemoveVectoredExceptionHandler(vehHandler);
-    return ret;
+    interp.runtimeError("os_call: Failed to prepare FFI CIF", 0, "");
+    return false;
 }
 #endif
 #endif
@@ -683,36 +677,41 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                 return Value();
             }
             
-            std::string tempStrings[12];
-            intptr_t cArgs[12] = {0};
-            for (size_t i = 2; i < args.size() && i - 2 < 12; i++) {
-                size_t idx = i - 2;
-                if (args[i].isNumber()) cArgs[idx] = static_cast<intptr_t>(args[i].asNumber());
-                else if (args[i].isString()) {
-                    tempStrings[idx] = args[i].asString();
-                    cArgs[idx] = reinterpret_cast<intptr_t>(tempStrings[idx].c_str());
-                }
-                else if (args[i].isBuffer()) cArgs[idx] = reinterpret_cast<intptr_t>(args[i].asBuffer().data());
-                else if (args[i].isBool()) cArgs[idx] = args[i].asBool() ? 1 : 0;
-            }
-            
             size_t argc = args.size() - 2;
             std::string retType = args[1].asString();
+            
+            std::vector<ffi_type*> argTypes(argc, &ffi_type_pointer);
+            std::vector<void*> argValues(argc);
+            std::vector<intptr_t> cArgs(argc, 0);
+            std::vector<std::string> tempStrings(argc);
+            
+            for (size_t i = 0; i < argc; i++) {
+                size_t valIdx = i + 2;
+                if (args[valIdx].isNumber()) cArgs[i] = static_cast<intptr_t>(args[valIdx].asNumber());
+                else if (args[valIdx].isString()) {
+                    tempStrings[i] = args[valIdx].asString();
+                    cArgs[i] = reinterpret_cast<intptr_t>(tempStrings[i].c_str());
+                }
+                else if (args[valIdx].isBuffer()) cArgs[i] = reinterpret_cast<intptr_t>(args[valIdx].asBuffer().data());
+                else if (args[valIdx].isBool()) cArgs[i] = args[valIdx].asBool() ? 1 : 0;
+                
+                argValues[i] = &cArgs[i];
+            }
+            
+            ffi_type* rType = &ffi_type_pointer;
+            if (retType == "float" || retType == "double") rType = &ffi_type_double;
+            
+            union { intptr_t i; double f; } retBuffer;
+            retBuffer.i = 0;
 
-            bool crashed = false;
-            double f_ret = 0.0;
-            intptr_t ret = do_ffi_call(funcPtr, cArgs, argc, (retType == "float"), f_ret, crashed);
-
-            if (crashed) {
-                interp.runtimeError("os_call: Access violation or fatal memory fault inside external DLL.", 0, "");
+            if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp)) {
                 return Value();
             }
             
-            if (retType == "float") return Value(f_ret);
-            
-            if (retType == "int" || retType == "ptr") return Value((long long)ret);
+            if (retType == "float" || retType == "double") return Value(retBuffer.f);
+            if (retType == "int" || retType == "ptr") return Value((long long)retBuffer.i);
             if (retType == "string") {
-                const char* str = reinterpret_cast<const char*>(ret);
+                const char* str = reinterpret_cast<const char*>(retBuffer.i);
                 if (str) return Value(std::string(str));
                 return Value("");
             }
@@ -721,60 +720,6 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             return Value();
 #endif
         }));
-
-#ifdef _WIN32
-#define FFI_DISPATCH_4(retT) \
-    switch(floatMask) { \
-        case 0: { using F = retT(*)(intptr_t, intptr_t, intptr_t, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], iArgs[3]); break; } \
-        case 1: { using F = retT(*)(double, intptr_t, intptr_t, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], iArgs[3]); break; } \
-        case 2: { using F = retT(*)(intptr_t, double, intptr_t, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], iArgs[3]); break; } \
-        case 3: { using F = retT(*)(double, double, intptr_t, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], iArgs[3]); break; } \
-        case 4: { using F = retT(*)(intptr_t, intptr_t, double, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], iArgs[3]); break; } \
-        case 5: { using F = retT(*)(double, intptr_t, double, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], iArgs[3]); break; } \
-        case 6: { using F = retT(*)(intptr_t, double, double, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], iArgs[3]); break; } \
-        case 7: { using F = retT(*)(double, double, double, intptr_t); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], iArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], iArgs[3]); break; } \
-        case 8: { using F = retT(*)(intptr_t, intptr_t, intptr_t, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], iArgs[2], fArgs[3]); break; } \
-        case 9: { using F = retT(*)(double, intptr_t, intptr_t, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], iArgs[2], fArgs[3]); break; } \
-        case 10: { using F = retT(*)(intptr_t, double, intptr_t, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], iArgs[2], fArgs[3]); break; } \
-        case 11: { using F = retT(*)(double, double, intptr_t, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], iArgs[2], fArgs[3]); break; } \
-        case 12: { using F = retT(*)(intptr_t, intptr_t, double, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], iArgs[1], fArgs[2], fArgs[3]); break; } \
-        case 13: { using F = retT(*)(double, intptr_t, double, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], iArgs[1], fArgs[2], fArgs[3]); break; } \
-        case 14: { using F = retT(*)(intptr_t, double, double, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(iArgs[0], fArgs[1], fArgs[2], fArgs[3]); break; } \
-        case 15: { using F = retT(*)(double, double, double, double); \
-            if constexpr(std::is_same_v<retT,double>) f_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], fArgs[3]); \
-            else i_ret = ((F)funcPtr)(fArgs[0], fArgs[1], fArgs[2], fArgs[3]); break; } \
-    }
-#endif
 
     interp.defineGlobal("os_call_sig", Value::makeNativeFunction("os_call_sig", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -789,29 +734,25 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             std::string retType = args[1].asString();
             auto sigArray = args[2].asArray().getElementsCopy();
             size_t argc = sigArray.size();
-            if (argc > 4) {
-                interp.runtimeError("os_call_sig: Currently supports up to 4 arguments.", 0, "");
-                return Value();
-            }
             
-            int floatMask = 0;
-            for (size_t i = 0; i < argc; i++) {
-                if (sigArray[i].isString() && (sigArray[i].asString() == "float" || sigArray[i].asString() == "double")) {
-                    floatMask |= (1 << i);
-                }
-            }
-            
-            intptr_t iArgs[4] = {0};
-            double fArgs[4] = {0.0};
-            std::string tempStrings[4];
+            std::vector<ffi_type*> argTypes(argc);
+            std::vector<void*> argValues(argc);
+            std::vector<intptr_t> iArgs(argc, 0);
+            std::vector<double> fArgs(argc, 0.0);
+            std::vector<std::string> tempStrings(argc);
             
             for (size_t i = 0; i < argc; i++) {
                 size_t valIdx = i + 3;
                 if (valIdx >= args.size()) break;
                 
-                if (floatMask & (1 << i)) {
+                std::string type = sigArray[i].isString() ? sigArray[i].asString() : "ptr";
+                
+                if (type == "float" || type == "double" || type == "f32" || type == "f64") {
+                    argTypes[i] = &ffi_type_double;
                     if (args[valIdx].isNumber()) fArgs[i] = args[valIdx].asNumber();
+                    argValues[i] = &fArgs[i];
                 } else {
+                    argTypes[i] = &ffi_type_pointer;
                     if (args[valIdx].isNumber()) iArgs[i] = (intptr_t)args[valIdx].asNumber();
                     else if (args[valIdx].isString()) {
                         tempStrings[i] = args[valIdx].asString();
@@ -821,48 +762,24 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                     } else if (args[valIdx].isBool()) {
                         iArgs[i] = args[valIdx].asBool() ? 1 : 0;
                     }
+                    argValues[i] = &iArgs[i];
                 }
             }
-
-            bool crashed = false;
-            double f_ret = 0.0;
-            intptr_t i_ret = 0;
             
-            PVOID vehHandler = nullptr;
-#ifndef _MSC_VER
-            vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
-#endif
-
-#ifdef _MSC_VER
-            __try {
-#else
-            if (setjmp(os_call_jmp_env) == 0) {
-#endif
-                if (retType == "float" || retType == "double") {
-                    FFI_DISPATCH_4(double)
-                } else {
-                    FFI_DISPATCH_4(intptr_t)
-                }
-#ifdef _MSC_VER
-            } __except (EXCEPTION_EXECUTE_HANDLER) {
-                crashed = true;
-            }
-#else
-            } else {
-                crashed = true;
-            }
-            RemoveVectoredExceptionHandler(vehHandler);
-#endif
-
-            if (crashed) {
-                interp.runtimeError("os_call_sig: Access violation or fatal memory fault.", 0, "");
+            ffi_type* rType = &ffi_type_pointer;
+            if (retType == "float" || retType == "double" || retType == "f32" || retType == "f64") rType = &ffi_type_double;
+            
+            union { intptr_t i; double f; } retBuffer;
+            retBuffer.i = 0;
+            
+            if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp)) {
                 return Value();
             }
             
-            if (retType == "float" || retType == "double") return Value(f_ret);
-            if (retType == "int" || retType == "ptr") return Value((long long)i_ret);
+            if (retType == "float" || retType == "double" || retType == "f32" || retType == "f64") return Value(retBuffer.f);
+            if (retType == "int" || retType == "ptr" || retType == "i32" || retType == "i64" || retType == "u32" || retType == "u64") return Value((long long)retBuffer.i);
             if (retType == "string") {
-                const char* str = reinterpret_cast<const char*>(i_ret);
+                const char* str = reinterpret_cast<const char*>(retBuffer.i);
                 if (str) return Value(std::string(str));
                 return Value("");
             }

@@ -171,10 +171,15 @@ void CycleCollector::phase2_buildCandidates(
     for (auto& to : candidates) {
         auto sp = to.weakRef.lock();
         if (!sp) continue;
+        // Read use_count BEFORE storing another copy in live[]. At this point the
+        // only collector-owned reference is the local `sp`, so subtracting 1 yields
+        // the object's true external reference count. (Reading after push_back
+        // would count the live[] copy too, inflating every adjustedRC by 1 and
+        // preventing any cycle from ever being collected.)
+        int externalRC = static_cast<int>(sp.use_count()) - 1;
         live.push_back(sp);
         types.push_back(to.type);
-        // Subtract 1 for the local 'sp' we just created.
-        adjustedRC.push_back(static_cast<int>(sp.use_count()) - 1);
+        adjustedRC.push_back(externalRC);
     }
 
     // Build pointer → index map for O(1) lookup during traversal.

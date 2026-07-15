@@ -6,9 +6,11 @@
 #include "eventloop/EventLoop.h"
 #include <ffi.h>
 #include <unordered_map>
+#include <map>
 #include <mutex>
 #include <thread>
 #include <future>
+#include <cstdint>
 
 struct CallbackClosure {
     ffi_closure* closure;
@@ -25,6 +27,72 @@ static std::mutex g_callbacksMutex;
 
 // Capture the main thread ID when the application loads this translation unit
 static std::thread::id g_mainThreadId = std::this_thread::get_id();
+
+// ── FFI allocation registry ─────────────────────────────────────────────────
+// Tracks blocks handed out by os_alloc so that:
+//   * os_free can reject freeing an address it never allocated (or a double
+//     free) — otherwise a script could corrupt the heap by free()ing an
+//     arbitrary integer, and
+//   * os_read_*/os_write_* can bounds-check accesses that land inside a managed
+//     block.
+// Raw pointers that did NOT come from os_alloc (e.g. returned by a C library)
+// are intentionally not tracked: they stay usable for real FFI, protected only
+// by the SEH/VEH guard, not by bounds checking.
+static std::map<uintptr_t, size_t> g_ffiAllocs; // base address -> size
+static std::mutex                  g_ffiAllocsMutex;
+
+static void ffiTrackAlloc(uintptr_t addr, size_t size) {
+    if (!addr) return;
+    std::lock_guard<std::mutex> lock(g_ffiAllocsMutex);
+    g_ffiAllocs[addr] = size;
+}
+
+// Remove a tracked allocation; returns true only if it was actually tracked
+// (i.e. a legitimate free of an os_alloc block).
+static bool ffiUntrackAlloc(uintptr_t addr) {
+    std::lock_guard<std::mutex> lock(g_ffiAllocsMutex);
+    auto it = g_ffiAllocs.find(addr);
+    if (it == g_ffiAllocs.end()) return false;
+    g_ffiAllocs.erase(it);
+    return true;
+}
+
+// Bounds policy for os_read_*/os_write_*:
+//   - access fully inside a tracked os_alloc block  -> allowed
+//   - access starts inside a tracked block but runs past its end -> REJECTED
+//     (the overflow we want to stop)
+//   - access not inside any tracked block           -> allowed (raw FFI pointer)
+// Returns false (after raising a runtime error) only for the overflow/overflowed
+// -address cases.
+static bool ffiBoundsCheck(RuntimeContext& interp, uintptr_t base, size_t offset, size_t accessSize) {
+    uintptr_t addr, end;
+    if (__builtin_add_overflow(base, (uintptr_t)offset, &addr) ||
+        __builtin_add_overflow(addr, (uintptr_t)accessSize, &end)) {
+        interp.runtimeError("FFI access address overflow", 0, "");
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(g_ffiAllocsMutex);
+    if (g_ffiAllocs.empty()) return true;
+    auto it = g_ffiAllocs.upper_bound(addr); // first block with start > addr
+    if (it == g_ffiAllocs.begin()) return true; // addr below all managed blocks
+    --it;
+    uintptr_t blockStart = it->first;
+    uintptr_t blockEnd   = blockStart + it->second;
+    if (addr >= blockStart && addr < blockEnd) {
+        if (end > blockEnd) {
+            interp.runtimeError("FFI out-of-bounds access on managed allocation", 0, "");
+            return false;
+        }
+        return true;
+    }
+    return true; // not inside a managed block -> raw pointer, allowed
+}
+
+// One-line guard for the read/write builtins. `retExpr` is what to return on a
+// rejected access (nil for writes, a zero Value for reads).
+#define FFI_BOUNDS(interp, args, accessSize, retExpr) \
+    do { if (!ffiBoundsCheck((interp), (uintptr_t)(args)[0].asNumber(), \
+                             (size_t)(args)[1].asNumber(), (accessSize))) return retExpr; } while(0)
 
 static void ffi_callback_dispatcher(ffi_cif* cif, void* ret, void** args, void* user_data) {
     CallbackClosure* cb = static_cast<CallbackClosure*>(user_data);
@@ -295,8 +363,13 @@ void registerFFIBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            size_t size = (size_t)args[0].asNumber();
+            // Reject non-positive sizes: a negative number would wrap to a huge
+            // size_t and either fail or allocate absurd amounts.
+            double reqd = args[0].asNumber();
+            if (reqd <= 0) { interp.runtimeError("os_alloc size must be positive", 0, ""); return Value((long long)0); }
+            size_t size = (size_t)reqd;
             void* ptr = calloc(1, size);
+            if (ptr) ffiTrackAlloc(reinterpret_cast<uintptr_t>(ptr), size);
             return Value((long long)(reinterpret_cast<uintptr_t>(ptr)));
 #else
             return Value();
@@ -307,8 +380,15 @@ void registerFFIBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
             if (!args[0].isNumber()) return Value();
-            void* ptr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
-            if (ptr) free(ptr);
+            uintptr_t addr = (uintptr_t)args[0].asNumber();
+            if (!addr) return Value();
+            // Only free memory we handed out via os_alloc. Freeing an arbitrary
+            // or already-freed address is a heap-corruption / double-free bug.
+            if (!ffiUntrackAlloc(addr)) {
+                interp.runtimeError("os_free: address was not returned by os_alloc (or already freed)", 0, "");
+                return Value();
+            }
+            free(reinterpret_cast<void*>(addr));
             return Value();
 #else
             return Value();
@@ -335,6 +415,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint64_t), Value());
             SAFE_MEMORY_OP(interp, *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber(););
             return Value();
 #else
@@ -362,6 +443,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int64_t), Value());
             SAFE_MEMORY_OP(interp, *(int64_t*)(base + offset) = (int64_t)args[2].asNumber(););
             return Value();
 #else
@@ -403,6 +485,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint32_t), Value());
             SAFE_MEMORY_OP(interp, *(uint32_t*)(base + offset) = (uint32_t)args[2].asNumber(););
             return Value();
 #else
@@ -416,6 +499,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int32_t), Value());
             SAFE_MEMORY_OP(interp, *(int32_t*)(base + offset) = (int32_t)args[2].asNumber(););
             return Value();
 #else
@@ -468,6 +552,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint16_t), Value());
             SAFE_MEMORY_OP(interp, *(uint16_t*)(base + offset) = (uint16_t)args[2].asNumber(););
             return Value();
 #else
@@ -481,6 +566,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int16_t), Value());
             SAFE_MEMORY_OP(interp, *(int16_t*)(base + offset) = (int16_t)args[2].asNumber(););
             return Value();
 #else
@@ -494,6 +580,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint64_t), Value());
             SAFE_MEMORY_OP(interp, *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber(););
             return Value();
 #else
@@ -521,6 +608,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(float), Value());
             SAFE_MEMORY_OP(interp, *(float*)(base + offset) = (float)args[2].asFloat(););
             return Value();
 #else
@@ -548,6 +636,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value());
             SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
@@ -575,6 +664,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value());
             SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
@@ -602,6 +692,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value());
             SAFE_MEMORY_OP(interp, *(double*)(base + offset) = args[2].asFloat(););
             return Value();
 #else
@@ -629,6 +720,7 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint8_t), Value());
             SAFE_MEMORY_OP(interp, *(base + offset) = (uint8_t)args[2].asNumber());
             return Value();
 #else
@@ -657,6 +749,9 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             char* base = reinterpret_cast<char*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
             std::string text = args[2].asString();
+            // Include the trailing NUL in the bounds check so the whole memcpy is
+            // validated against the destination allocation.
+            FFI_BOUNDS(interp, args, text.length() + 1, Value());
             SAFE_MEMORY_OP(interp, memcpy(base + offset, text.c_str(), text.length() + 1));
             return Value();
 #else

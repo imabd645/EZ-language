@@ -1,0 +1,78 @@
+# Phase 6: FFI allocation safety.
+#
+# os_alloc'd blocks are tracked so that os_free rejects arbitrary/double frees
+# and os_write_* refuse to write past the end of a managed block. Raw pointers
+# from real C libraries stay usable (only the SEH guard applies to those).
+
+out "=== FFI Memory-Safety Test ==="
+
+# 16-byte managed buffer.
+p = os_alloc(16)
+when p == 0 {
+    out "FAIL: os_alloc returned null"
+}
+
+# In-bounds writes: [0,8) and [8,16) both fit.
+ok1 = true
+try {
+    os_write_int64(p, 0, 123456789)
+    os_write_int64(p, 8, 987654321)
+} catch e {
+    ok1 = false
+}
+when ok1 {
+    out "PASS: in-bounds writes accepted"
+} other {
+    out "FAIL: in-bounds writes were rejected"
+}
+
+# Readback integrity.
+v = os_read_int64(p, 0)
+when v == 123456789 {
+    out "PASS: readback correct (" + str(v) + ")"
+} other {
+    out "FAIL: readback wrong (" + str(v) + ")"
+}
+
+# Out-of-bounds write: offset 12 + 8 bytes = 20 > 16 -> must be rejected.
+try {
+    os_write_int64(p, 12, 42)
+    out "FAIL: out-of-bounds write was NOT rejected"
+} catch e {
+    out "PASS: out-of-bounds write rejected -> " + str(e)
+}
+
+# os_write_string past the end must be rejected too.
+try {
+    os_write_string(p, 10, "this string is far too long for the remaining space")
+    out "FAIL: overflowing os_write_string was NOT rejected"
+} catch e {
+    out "PASS: overflowing os_write_string rejected"
+}
+
+# Legitimate free, then double-free and arbitrary-free must be rejected.
+os_free(p)
+
+try {
+    os_free(p)
+    out "FAIL: double free was NOT rejected"
+} catch e {
+    out "PASS: double free rejected"
+}
+
+try {
+    os_free(999999)
+    out "FAIL: arbitrary free was NOT rejected"
+} catch e {
+    out "PASS: arbitrary free rejected"
+}
+
+# Negative allocation size must be rejected.
+try {
+    os_alloc(-1)
+    out "FAIL: negative os_alloc size was NOT rejected"
+} catch e {
+    out "PASS: negative os_alloc size rejected"
+}
+
+out "=== Done ==="

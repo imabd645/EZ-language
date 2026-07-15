@@ -176,6 +176,15 @@ private:
         return (size_t)(stackTop - stack.data()) + extra <= stackMax;
     }
 
+    // Reset the operand-stack slots in [from, to) back to NIL, releasing any
+    // shared_ptr references they hold. Abandoned slots left above the stack top
+    // would otherwise keep dead objects alive (a leak) and inflate their
+    // shared_ptr use_count, which makes the cycle collector treat genuine
+    // garbage as externally reachable and never reclaim it.
+    inline void clearStackSlots(Value* from, Value* to) {
+        for (Value* p = from; p < to; ++p) *p = Value();
+    }
+
     void               printStack() const;
     Value              instantiate(std::shared_ptr<EZClass> klass, const std::vector<Value>& args, int line, const std::string& filename);
 };

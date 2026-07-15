@@ -1,0 +1,49 @@
+# Phase 2: vacated stack slots are cleared on RETURN/pop, so the cycle
+# collector can reclaim garbage that a returned frame's locals referenced.
+#
+# A reference cycle (a <-> b) is built at the DEEPEST point of a recursion,
+# then the recursion fully unwinds. The program then continues at shallow depth,
+# so those deep stack slots are never reused. If RETURN does not clear them, the
+# stale slot copies keep the cycle's use_count above zero and the collector
+# treats it as still-reachable (a leak). With the fix, the deep frame clears its
+# slots on return and the cycle becomes collectable.
+
+out "=== GC Vacated-Slot Clear Test ==="
+
+model Node {
+    init() { self.peer = nil }
+}
+
+task deep(n) {
+    when n <= 0 {
+        a = Node()
+        b = Node()
+        a.peer = b
+        b.peer = a          # a <-> b cycle; neither object escapes this frame
+        give nil
+    }
+    deep(n - 1)             # non-tail recursion: frames accumulate, then unwind
+    give nil
+}
+
+# Disable threshold-driven auto-collection; only our explicit collects run.
+gc_set_thresholds(100000000, 100000000)
+
+gc_collect()
+before = gc_cycles_collected()
+
+deep(25)                    # build one cycle 25 frames deep, then unwind fully
+
+gc_collect()                # runs at shallow depth; the deep slots stay untouched
+after = gc_cycles_collected()
+
+reclaimed = after - before
+out "cycle objects reclaimed: " + str(reclaimed)
+
+when reclaimed >= 2 {
+    out "PASS: cycle from a returned deep frame was reclaimed (slots cleared)"
+} other {
+    out "FAIL: cycle leaked -- vacated stack slots still root it (reclaimed=" + str(reclaimed) + ")"
+}
+
+out "=== Done ==="

@@ -32,6 +32,20 @@ void registerGCBuiltins(RuntimeContext& interp) {
             return Value(true);
         }));
 
+    // Number of objects currently tracked by the cycle collector. Useful for
+    // leak assertions in tests.
+    interp.defineGlobal("gc_tracked", Value::makeNativeFunction("gc_tracked", 0,
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
+            return Value((long long)CycleCollector::instance().trackedCount());
+        }));
+
+    // Cumulative count of reference cycles reclaimed since startup. Compare
+    // before/after a gc_collect() to observe how much was freed.
+    interp.defineGlobal("gc_cycles_collected", Value::makeNativeFunction("gc_cycles_collected", 0,
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
+            return Value((long long)CycleCollector::instance().cyclesCollected());
+        }));
+
     interp.defineGlobal("gc_set_thresholds", Value::makeNativeFunction("gc_set_thresholds", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isNumber() && args[1].isNumber()) {

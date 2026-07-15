@@ -664,7 +664,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
 
-                CASE_CODE(POP)  --stackTop; DISPATCH();
+                CASE_CODE(POP)  { --stackTop; *stackTop = Value(); } DISPATCH();
                 CASE_CODE(DUP)  *stackTop = *(stackTop - 1); stackTop++; DISPATCH();
                 CASE_CODE(DUP2) {
                     {
@@ -1319,10 +1319,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
                             }
                             if (isSelfTailCall) {
+                                Value* oldTop = stackTop;
+                                size_t localCount = frame->function->localCount;
                                 for (int i = 0; i < argCount; i++) {
                                     frame->slots[i] = *(stackTop - argCount + i);
                                 }
-                                stackTop = frame->slots + frame->function->localCount;
+                                // Reset the reused frame's non-parameter locals to
+                                // NIL (fresh-call semantics) so values from the prior
+                                // iteration don't linger and root dead objects.
+                                clearStackSlots(frame->slots + argCount, frame->slots + localCount);
+                                stackTop = frame->slots + localCount;
+                                // Release the abandoned callee/args/temporaries that
+                                // sat above the reused frame.
+                                clearStackSlots(stackTop, oldTop);
                                 ip = frame->function->chunk.code.data();
                                 goto tail_call_restart;
                             }
@@ -1344,23 +1353,30 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(RETURN) {
                     {
-                        Value result = *(--stackTop);
+                        Value* oldTop = stackTop;                 // top before popping the result
+                        Value result = std::move(*(--stackTop));
                         SYNC_IP();
                         Value* targetSlots = frame->slots;
                         closeUpvalues(targetSlots);
                         frameUpvalues.pop_back();
                         frames.pop_back();
-                        
+
                         if (frames.size() < startingFrameCount) {
                             this->stackTop = targetSlots - 1;
                             *(this->stackTop) = result;
                             this->stackTop++;
+                            // Release the returning frame's abandoned slots so they
+                            // don't keep dead objects alive / defeat the GC.
+                            clearStackSlots(this->stackTop, oldTop);
                             return;
                         }
-                        
+
                         LOAD_FRAME();
                         stackTop = targetSlots - 1; // Replace callee with result
                         *stackTop++ = result;
+                        // Release the returning frame's abandoned local/temporary
+                        // slots [stackTop, oldTop).
+                        clearStackSlots(stackTop, oldTop);
                     }
                     DISPATCH();
                 }
@@ -2405,7 +2421,10 @@ Value BytecodeVM::pop() {
         runtimeError("Stack underflow");
         throw std::runtime_error("Stack underflow");
     }
-    return *--stackTop;
+    --stackTop;
+    Value v = std::move(*stackTop);
+    *stackTop = Value(); // release the vacated slot's reference (see clearStackSlots)
+    return v;
 }
 
 Value& BytecodeVM::peek(int distance) {
@@ -2413,7 +2432,10 @@ Value& BytecodeVM::peek(int distance) {
 }
 
 void BytecodeVM::popN(size_t count) {
-    stackTop -= count;
+    while (count-- > 0) {
+        --stackTop;
+        *stackTop = Value(); // release each vacated slot's reference
+    }
 }
 
 // ============================================================================

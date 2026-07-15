@@ -1,0 +1,24 @@
+# Phase 7: a small but non-trivial program used to round-trip through the
+# bytecode serializer (compile to .ezc, then run the .ezc). It exercises
+# constants, string data, a function, a loop and arithmetic so the serialized
+# chunk has real content to deserialize.
+#
+# Test procedure (driven from the harness):
+#   1. ez test_bundle_source.ez --compile   -> test_bundle_source.ezc
+#   2. ez test_bundle_source.ezc            -> must print the same output
+#   3. corrupt / truncate the .ezc          -> must fail cleanly ("Corrupt
+#      bytecode: ...", exit 65), never crash or hang on a huge allocation.
+
+task fib(n) {
+    when n < 2 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+
+out "=== Bundle Round-Trip Source ==="
+total = 0
+repeat i = 0 to 9 {
+    total = total + fib(i)
+}
+out "sum of fib(0..9) = " + str(total)   # 0+1+1+2+3+5+8+13+21+34 = 88
+out "greeting: " + "hello, bundle"
+out "=== Done ==="

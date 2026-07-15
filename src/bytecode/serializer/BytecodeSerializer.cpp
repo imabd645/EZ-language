@@ -1,5 +1,44 @@
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include <stdexcept>
+#include <string>
+
+// ── Deserialization hardening ────────────────────────────────────────────────
+// A bundled .ezc is untrusted input. Reading it must never trust attacker-
+// controlled lengths (huge-allocation DoS, len*sizeof overflow) or silently
+// proceed past a truncated/corrupt stream (executing zero-filled garbage).
+namespace {
+    // Upper bound on any single serialized length/count. 64M comfortably exceeds
+    // any real program's code/constant/function counts while capping allocation.
+    constexpr uint32_t EZC_MAX_COUNT = 64u * 1024u * 1024u;
+    // Cap on nested-function recursion depth (guards the readFunction recursion
+    // against a maliciously deep nesting chain overflowing the C++ stack).
+    constexpr int EZC_MAX_NEST_DEPTH = 512;
+
+    template <typename T>
+    T readPod(std::istream& in, const char* what) {
+        T v{};
+        in.read(reinterpret_cast<char*>(&v), sizeof(T));
+        if (in.gcount() != static_cast<std::streamsize>(sizeof(T)))
+            throw std::runtime_error(std::string("Corrupt bytecode: truncated ") + what);
+        return v;
+    }
+
+    // Read a length/count and reject implausible values before any allocation.
+    uint32_t readCount(std::istream& in, const char* what) {
+        uint32_t n = readPod<uint32_t>(in, what);
+        if (n > EZC_MAX_COUNT)
+            throw std::runtime_error(std::string("Corrupt bytecode: implausible ") + what);
+        return n;
+    }
+
+    // Read exactly `bytes` into dst, throwing on truncation.
+    void readExact(std::istream& in, void* dst, size_t bytes, const char* what) {
+        if (bytes == 0) return;
+        in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(bytes));
+        if (in.gcount() != static_cast<std::streamsize>(bytes))
+            throw std::runtime_error(std::string("Corrupt bytecode: truncated ") + what);
+    }
+}
 
 void BytecodeSerializer::serialize(const std::shared_ptr<BytecodeFunction>& func, const std::vector<std::string>& globalSlotNames, std::ostream& out) {
     // Magic header
@@ -22,14 +61,13 @@ std::shared_ptr<BytecodeFunction> BytecodeSerializer::deserialize(std::istream& 
         throw std::runtime_error("Invalid EZC file format");
     }
     
-    uint32_t slotCount = 0;
-    in.read(reinterpret_cast<char*>(&slotCount), sizeof(slotCount));
+    uint32_t slotCount = readCount(in, "global slot count");
     outGlobalSlotNames.clear();
     for (uint32_t i = 0; i < slotCount; ++i) {
         outGlobalSlotNames.push_back(readString(in));
     }
-    
-    return readFunction(in);
+
+    return readFunction(in, 0);
 }
 
 void BytecodeSerializer::writeString(const std::string& str, std::ostream& out) {
@@ -41,11 +79,10 @@ void BytecodeSerializer::writeString(const std::string& str, std::ostream& out) 
 }
 
 std::string BytecodeSerializer::readString(std::istream& in) {
-    uint32_t len = 0;
-    in.read(reinterpret_cast<char*>(&len), sizeof(len));
+    uint32_t len = readCount(in, "string length");
     if (len == 0) return "";
     std::string str(len, '\0');
-    in.read(&str[0], len);
+    readExact(in, &str[0], len, "string data");
     return str;
 }
 
@@ -99,59 +136,49 @@ void BytecodeSerializer::writeChunk(const Chunk& chunk, std::ostream& out) {
 }
 
 void BytecodeSerializer::readChunk(Chunk& chunk, std::istream& in) {
-    uint32_t codeSize = 0;
-    in.read(reinterpret_cast<char*>(&codeSize), sizeof(codeSize));
+    uint32_t codeSize = readCount(in, "code size");
     if (codeSize > 0) {
         chunk.code.resize(codeSize);
         chunk.lines.resize(codeSize);
-        in.read(reinterpret_cast<char*>(chunk.code.data()), codeSize);
-        in.read(reinterpret_cast<char*>(chunk.lines.data()), codeSize * sizeof(size_t));
+        readExact(in, chunk.code.data(), codeSize, "code");
+        // codeSize is bounded by EZC_MAX_COUNT, so codeSize*sizeof(size_t) cannot
+        // overflow size_t; readExact validates the stream actually holds it.
+        readExact(in, chunk.lines.data(), static_cast<size_t>(codeSize) * sizeof(size_t), "line table");
     }
-    
-    uint32_t constSize = 0;
-    in.read(reinterpret_cast<char*>(&constSize), sizeof(constSize));
+
+    uint32_t constSize = readCount(in, "constant count");
     for (uint32_t i = 0; i < constSize; ++i) {
-        uint8_t t;
-        in.read(reinterpret_cast<char*>(&t), sizeof(t));
+        uint8_t t = readPod<uint8_t>(in, "constant tag");
         Constant c;
         c.type = static_cast<Constant::Type>(t);
         switch (c.type) {
             case Constant::Type::NIL:
+            case Constant::Type::FUNCTION:   // payloadless in EZ bytecode
+            case Constant::Type::MODEL:
                 c.value = nullptr;
                 break;
-            case Constant::Type::BOOL: {
-                bool b;
-                in.read(reinterpret_cast<char*>(&b), sizeof(b));
-                c.value = b;
+            case Constant::Type::BOOL:
+                c.value = readPod<bool>(in, "bool constant");
                 break;
-            }
-            case Constant::Type::INT: {
-                long long v;
-                in.read(reinterpret_cast<char*>(&v), sizeof(v));
-                c.value = v;
+            case Constant::Type::INT:
+                c.value = readPod<long long>(in, "int constant");
                 break;
-            }
-            case Constant::Type::DOUBLE: {
-                double v;
-                in.read(reinterpret_cast<char*>(&v), sizeof(v));
-                c.value = v;
+            case Constant::Type::DOUBLE:
+                c.value = readPod<double>(in, "double constant");
                 break;
-            }
-            case Constant::Type::STRING: {
+            case Constant::Type::STRING:
                 c.value = readString(in);
                 break;
-            }
             case Constant::Type::ARRAY_CONST: {
-                uint32_t len = 0;
-                in.read(reinterpret_cast<char*>(&len), sizeof(len));
+                uint32_t len = readCount(in, "array constant length");
                 std::vector<size_t> arr(len);
-                if (len > 0) in.read(reinterpret_cast<char*>(arr.data()), len * sizeof(size_t));
+                readExact(in, arr.data(), static_cast<size_t>(len) * sizeof(size_t), "array constant");
                 c.value = arr;
                 break;
             }
             default:
-                c.value = nullptr;
-                break;
+                // Tag outside the known enum range -> the stream is corrupt.
+                throw std::runtime_error("Corrupt bytecode: unknown constant type tag");
         }
         chunk.addConstant(c);
     }
@@ -201,60 +228,49 @@ void BytecodeSerializer::writeFunction(const std::shared_ptr<BytecodeFunction>& 
     }
 }
 
-std::shared_ptr<BytecodeFunction> BytecodeSerializer::readFunction(std::istream& in) {
+std::shared_ptr<BytecodeFunction> BytecodeSerializer::readFunction(std::istream& in, int depth) {
+    if (depth > EZC_MAX_NEST_DEPTH)
+        throw std::runtime_error("Corrupt bytecode: nested-function recursion too deep");
+
     auto func = std::make_shared<BytecodeFunction>("", 0);
     func->name = readString(in);
     func->filename = readString(in);
-    
-    uint32_t arity = 0;
-    in.read(reinterpret_cast<char*>(&arity), sizeof(arity));
-    func->arity = arity;
-    
+
+    func->arity = readPod<uint32_t>(in, "arity");
+
     bool flags[3];
-    in.read(reinterpret_cast<char*>(flags), sizeof(flags));
+    readExact(in, flags, sizeof(flags), "function flags");
     func->isVariadic = flags[0];
     func->isAsync = flags[1];
     func->isMethod = flags[2];
-    
-    uint32_t upCount = 0;
-    in.read(reinterpret_cast<char*>(&upCount), sizeof(upCount));
-    func->upvalueCount = upCount;
-    
-    uint32_t localCount = 0;
-    in.read(reinterpret_cast<char*>(&localCount), sizeof(localCount));
-    func->localCount = localCount;
-    
-    uint32_t upSize = 0;
-    in.read(reinterpret_cast<char*>(&upSize), sizeof(upSize));
+
+    func->upvalueCount = readPod<uint32_t>(in, "upvalue count");
+    func->localCount   = readPod<uint32_t>(in, "local count");
+
+    uint32_t upSize = readCount(in, "upvalue table size");
     for (uint32_t i = 0; i < upSize; ++i) {
-        uint8_t t;
-        uint32_t idx;
-        in.read(reinterpret_cast<char*>(&t), sizeof(t));
-        in.read(reinterpret_cast<char*>(&idx), sizeof(idx));
+        uint8_t  t   = readPod<uint8_t>(in, "upvalue kind");
+        uint32_t idx = readPod<uint32_t>(in, "upvalue index");
         func->upvalues.push_back({static_cast<Upvalue::Type>(t), idx});
     }
-    
-    uint32_t locInfoSize = 0;
-    in.read(reinterpret_cast<char*>(&locInfoSize), sizeof(locInfoSize));
+
+    uint32_t locInfoSize = readCount(in, "local-var table size");
     for (uint32_t i = 0; i < locInfoSize; ++i) {
         LocalVarInfo lv;
         lv.name = readString(in);
-        uint32_t slot = 0, spc = 0, epc = 0;
-        in.read(reinterpret_cast<char*>(&slot), sizeof(slot));
-        in.read(reinterpret_cast<char*>(&spc), sizeof(spc));
-        in.read(reinterpret_cast<char*>(&epc), sizeof(epc));
-        lv.slot = slot; lv.startPC = spc; lv.endPC = epc;
+        lv.slot    = readPod<uint32_t>(in, "local slot");
+        lv.startPC = readPod<uint32_t>(in, "local startPC");
+        lv.endPC   = readPod<uint32_t>(in, "local endPC");
         func->localVars.push_back(lv);
     }
-    
+
     readChunk(func->chunk, in);
     func->chunk.resolveConstants();
-    
-    uint32_t nestCount = 0;
-    in.read(reinterpret_cast<char*>(&nestCount), sizeof(nestCount));
+
+    uint32_t nestCount = readCount(in, "nested-function count");
     for (uint32_t i = 0; i < nestCount; ++i) {
-        func->nestedFunctions.push_back(readFunction(in));
+        func->nestedFunctions.push_back(readFunction(in, depth + 1));
     }
-    
+
     return func;
 }

@@ -20,7 +20,7 @@ private:
     static void readChunk(Chunk& chunk, std::istream& in);
 
     static void writeFunction(const std::shared_ptr<BytecodeFunction>& func, std::ostream& out);
-    static std::shared_ptr<BytecodeFunction> readFunction(std::istream& in);
+    static std::shared_ptr<BytecodeFunction> readFunction(std::istream& in, int depth);
 };
 
 #endif // BYTECODE_SERIALIZER_H

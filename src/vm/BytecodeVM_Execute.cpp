@@ -98,6 +98,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
             SYNC_IP();
                 CASE_CODE(LOAD_CONST) {
                     uint16_t idx = READ_SHORT();
+                    // Guard against a corrupt/hostile bytecode constant index
+                    // (e.g. from a tampered .ezc bundle). Predictable branch, so
+                    // effectively free for valid bytecode.
+                    if (__builtin_expect(idx >= frame->function->chunk.resolvedConstants.size(), 0)) {
+                        SYNC_IP();
+                        runtimeError("Invalid bytecode: constant index out of range");
+                        return;
+                    }
                     *stackTop++ = frame->function->chunk.resolvedConstants[idx];
                     DISPATCH();
                 }

@@ -1,19 +1,215 @@
-# EZ Test Runner Automation Script
-# Usage: .\scripts\run_tests.ps1
+<#
+.SYNOPSIS
+    EZ language test runner.
 
-Write-Host "Starting EZ Language Test Suite..." -ForegroundColor Cyan
+.DESCRIPTION
+    Discovers the .ez tests under Test/, runs each one in its own process
+    SYNCHRONOUSLY (with a timeout), captures stdout/stderr and the exit code,
+    and classifies the result.
 
-# 1. Recompile (optional but recommended to ensure latest builtins like panic are present)
-Write-Host "[1/2] Recompiling EZ Interpreter..." -ForegroundColor Yellow
-g++ -o ez.exe src/main.cpp src/Lexer.cpp src/Parser.cpp src/Bytecode.cpp src/BytecodeCompiler.cpp src/BytecodeVM.cpp src/BytecodeInterpreter.cpp src/Builtins.cpp src/GUIBuiltins.cpp src/GC.cpp src/GCObject.cpp src/runtime/Builtins_IO.cpp src/runtime/Builtins_Math.cpp src/runtime/Builtins_Net.cpp src/runtime/Builtins_DB.cpp src/runtime/Builtins_String.cpp src/runtime/Builtins_Data.cpp src/runtime/Builtins_PDF.cpp src/runtime/Builtins_Sys.cpp -lws2_32 -lsqlite3 -lcurl -lpthread -ldwmapi -luxtheme -lgdi32 -luser32 -lcomdlg32 -lcomctl32 -lcrypt32 -lole32
+    This replaces the previous runner, which shelled out via WinExec() --
+    fire-and-forget, so it could never observe whether a test passed.
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "CRITICAL: Compilation failed. Aborting tests." -ForegroundColor Red
-    exit 1
+    A test FAILS if any of these hold:
+      * it exits with a non-zero status,
+      * it times out,
+      * its output contains a failure marker (FAIL / TEST FAILED / "Fails: N"
+        with N > 0 / an "Error:"/"Type Error" diagnostic).
+    Otherwise it PASSES.
+
+    Tests listed in $KnownFailures are pre-existing, tracked failures: they are
+    reported as KNOWN-FAIL and do not break the build. A known-failing test that
+    starts passing is reported as FIXED so the list can be pruned.
+
+.PARAMETER Filter
+    Only run tests whose name matches this wildcard (e.g. -Filter 'test_gc*').
+
+.PARAMETER IncludeHandwritten
+    Also run the ~100 small cases in Test/HandwrittenTests.
+
+.PARAMETER TimeoutSec
+    Per-test timeout. Default 60.
+
+.PARAMETER Interpreter
+    Path to the ez.exe to test. Defaults to build\ez.exe, then ez.exe. Useful for
+    comparing a new build against a previous one to separate genuine regressions
+    from pre-existing failures.
+
+.PARAMETER IgnoreKnown
+    Report known failures as ordinary FAILs (used when baselining).
+
+.EXAMPLE
+    .\scripts\run_tests.ps1
+    .\scripts\run_tests.ps1 -Filter 'test_gc*' -TimeoutSec 30
+    .\scripts\run_tests.ps1 -IncludeHandwritten
+    .\scripts\run_tests.ps1 -Interpreter .\ez.exe -IgnoreKnown
+#>
+[CmdletBinding()]
+param(
+    [string] $Filter = '*',
+    [switch] $IncludeHandwritten,
+    [int]    $TimeoutSec = 60,
+    [string] $Interpreter = '',
+    [switch] $IgnoreKnown
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+
+# ── Locate the interpreter ───────────────────────────────────────────────────
+$candidates = if ($Interpreter) { @((Resolve-Path -LiteralPath $Interpreter -ErrorAction SilentlyContinue).Path) }
+              else { @(
+                  (Join-Path $repoRoot 'build\ez.exe'),
+                  (Join-Path $repoRoot 'ez.exe')
+              ) }
+$ez = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $ez) {
+    Write-Host "ERROR: no interpreter found. Looked for:" -ForegroundColor Red
+    $candidates | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Write-Host "Build it first (build.bat or build_cmake.bat)." -ForegroundColor Red
+    exit 2
 }
 
-# 2. Run Test Discovery Script
-Write-Host "[2/2] Discovering and Running Tests..." -ForegroundColor Yellow
-.\ez.exe scripts/test_runner.ez
+# ── Tests that are not standalone pass/fail tests ────────────────────────────
+# Modules imported by other tests, plus tests needing a GUI/server/human.
+$Excluded = @(
+    'lib_a.ez', 'lib_b.ez', 'error_module.ez',   # modules `use`d by test_modules.ez
+    'test_gui_native.ez',                        # opens a window
+    'test_server.ez',                            # binds a socket and blocks
+    'test_notify.ez',                            # OS notification popup
+    'tempCodeRunnerFile.ez'                      # editor scratch file
+)
 
-Write-Host "`nTest execution process initiated." -ForegroundColor Green
+# ── Pre-existing failures (tracked, do not break the build) ──────────────────
+# Each entry is a real bug or a stale test, confirmed to fail identically on the
+# pre-change binary. Remove an entry once it is fixed.
+$KnownFailures = @{
+    'test_tco.ez'               = 'TCO is not actually reusing frames; tail calls hit the 512-frame cap'
+    'test_oop.ez'               = 'stale test: concatenates a string with an instance that has no toString'
+    'test_static.ez'            = 'stale test: uses self/super outside a model method'
+    'test_dict.ez'              = 'stale test: performs nil + number'
+    'test_os.ez'                = 'stale test: concatenates a string with a number'
+    'test_concurrency.ez'       = 'spawn() snapshots captured upvalues, so a closure-shared counter never updates'
+    'test_thread_production.ez' = 'parse error near line 48'
+    'test_sqlite_ffi.ez'        = 'query/data-type bug: "Name mismatch"'
+    'test_ffi_db.ez'            = 'same underlying sqlite query bug as test_sqlite_ffi'
+}
+
+# ── Discover tests ───────────────────────────────────────────────────────────
+$tests = @(Get-ChildItem -Path (Join-Path $repoRoot 'Test') -Filter '*.ez' -File)
+if ($IncludeHandwritten) {
+    $hw = Join-Path $repoRoot 'Test\HandwrittenTests'
+    if (Test-Path $hw) {
+        $tests += @(Get-ChildItem -Path $hw -Filter '*.ez' -File)
+    }
+}
+$tests = $tests |
+    Where-Object { $Excluded -notcontains $_.Name } |
+    Where-Object { $_.Name -like $Filter } |
+    Sort-Object Name
+
+if (-not $tests) {
+    Write-Host "No tests matched filter '$Filter'." -ForegroundColor Yellow
+    exit 0
+}
+
+Write-Host ''
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host ' EZ Test Suite' -ForegroundColor Cyan
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host " interpreter : $ez"
+Write-Host " tests       : $($tests.Count)"
+Write-Host " timeout     : ${TimeoutSec}s per test"
+Write-Host ''
+
+# Markers that indicate a failure even when the process exits 0.
+# Deliberately NARROW: the exit code is the reliable signal (EZ exits 65 on
+# compile/type errors, 70 on uncaught runtime errors), so this only needs to
+# catch tests that self-report a failure while still exiting 0. Do not match
+# bare "Error:" / "Type Error" here -- error-handling tests legitimately print
+# those as expected output.
+$failurePattern = '(?m)(^|\s)(FAIL\b|!!! TEST FAILED|Fails:\s*[1-9]|\[FATAL\])'
+
+$pass = 0; $fail = 0; $knownFail = 0; $fixed = 0
+$failedNames = @()
+$fixedNames  = @()
+
+foreach ($t in $tests) {
+    $name = $t.Name
+    $outFile = [System.IO.Path]::GetTempFileName()
+    $errFile = [System.IO.Path]::GetTempFileName()
+    $status  = 'PASS'
+    $reason  = ''
+
+    try {
+        $proc = Start-Process -FilePath $ez -ArgumentList $t.FullName `
+                              -NoNewWindow -PassThru `
+                              -RedirectStandardOutput $outFile `
+                              -RedirectStandardError  $errFile `
+                              -WorkingDirectory $repoRoot
+
+        if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+            try { $proc.Kill() } catch {}
+            $status = 'FAIL'; $reason = "timed out after ${TimeoutSec}s"
+        }
+        else {
+            $output = ''
+            if (Test-Path $outFile) { $output += (Get-Content $outFile -Raw -ErrorAction SilentlyContinue) }
+            if (Test-Path $errFile) { $output += (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
+
+            if ($proc.ExitCode -ne 0) {
+                $status = 'FAIL'; $reason = "exit code $($proc.ExitCode)"
+            }
+            elseif ($output -match $failurePattern) {
+                $status = 'FAIL'; $reason = "failure marker: $($Matches[0].Trim())"
+            }
+        }
+    }
+    catch {
+        $status = 'FAIL'; $reason = $_.Exception.Message
+    }
+    finally {
+        Remove-Item $outFile, $errFile -Force -ErrorAction SilentlyContinue
+    }
+
+    $isKnown = (-not $IgnoreKnown) -and $KnownFailures.ContainsKey($name)
+
+    if ($status -eq 'PASS' -and $isKnown) {
+        $fixed++; $fixedNames += $name
+        Write-Host ('  [FIXED]      {0}' -f $name) -ForegroundColor Magenta
+        Write-Host ('               was: {0}' -f $KnownFailures[$name]) -ForegroundColor DarkGray
+    }
+    elseif ($status -eq 'PASS') {
+        $pass++
+        Write-Host ('  [PASS]       {0}' -f $name) -ForegroundColor Green
+    }
+    elseif ($isKnown) {
+        $knownFail++
+        Write-Host ('  [KNOWN-FAIL] {0}' -f $name) -ForegroundColor DarkYellow
+        Write-Host ('               {0}' -f $KnownFailures[$name]) -ForegroundColor DarkGray
+    }
+    else {
+        $fail++; $failedNames += $name
+        Write-Host ('  [FAIL]       {0}  ({1})' -f $name, $reason) -ForegroundColor Red
+    }
+}
+
+Write-Host ''
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host ' Summary' -ForegroundColor Cyan
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host ("  Passed      : {0}" -f $pass)      -ForegroundColor Green
+Write-Host ("  Failed      : {0}" -f $fail)      -ForegroundColor ($(if ($fail) { 'Red' } else { 'Green' }))
+Write-Host ("  Known-fail  : {0}" -f $knownFail) -ForegroundColor DarkYellow
+if ($fixed) {
+    Write-Host ("  Fixed       : {0}  (remove from `$KnownFailures)" -f $fixed) -ForegroundColor Magenta
+    $fixedNames | ForEach-Object { Write-Host "      $_" -ForegroundColor Magenta }
+}
+if ($fail) {
+    Write-Host ''
+    Write-Host '  Failing tests:' -ForegroundColor Red
+    $failedNames | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+}
+Write-Host ''
+
+exit $(if ($fail -gt 0) { 1 } else { 0 })

@@ -84,7 +84,7 @@ $Excluded = @(
 # Each entry is a real bug or a stale test, confirmed to fail identically on the
 # pre-change binary. Remove an entry once it is fixed.
 $KnownFailures = @{
-    'test_tco.ez'               = 'TCO is not actually reusing frames; tail calls hit the 512-frame cap'
+    # 'test_tco.ez' was here (TCO never reused frames) -- fixed in Phase 13.
     'test_oop.ez'               = 'stale test: concatenates a string with an instance that has no toString'
     'test_static.ez'            = 'stale test: uses self/super outside a model method'
     'test_dict.ez'              = 'stale test: performs nil + number'

@@ -1,0 +1,47 @@
+# Phase 12 benchmark: dictionary read throughput.
+#
+# Reading dict[key] and dict.prop used to copy the ENTIRE map (getMapCopy())
+# just to look up one key -- O(n) per read, and every copied entry meant a
+# string copy plus an atomic shared_ptr refcount bump on the Value. With a
+# 1000-entry dict this makes a single read ~1000x more expensive than it
+# should be. EZDictionary already had a locked O(1) get()/has().
+#
+# Run before/after the fix to compare. Timings are printed, not asserted, so
+# this file is informational and never fails the suite.
+
+out "=== Dict Read Benchmark ==="
+
+N = 1000
+READS = 20000
+
+# NOTE: seeded with a string-keyed entry on purpose. An empty `{}` literal
+# mis-infers its key type, so the type checker then rejects a computed string
+# index ("Dictionary index expected Any but got string") -- a separate
+# type-checker bug, unrelated to what this benchmark measures.
+d = {"seed": 0}
+repeat i = 0 to N - 1 {
+    d["key" + str(i)] = i
+}
+out "dict entries : " + str(N)
+out "reads        : " + str(READS)
+
+# --- dict[key] (doIndexGet) ---
+start = clock()
+total = 0
+repeat r = 0 to READS - 1 {
+    total = total + d["key500"]
+}
+elapsed = clock() - start
+out "dict[key]    : " + str(elapsed) + "ms   (checksum " + str(total) + ")"
+
+# --- dict.prop (LOAD_PROPERTY) ---
+start2 = clock()
+total2 = 0
+repeat r = 0 to READS - 1 {
+    total2 = total2 + d.key500
+}
+elapsed2 = clock() - start2
+out "dict.prop    : " + str(elapsed2) + "ms   (checksum " + str(total2) + ")"
+
+out "TOTAL        : " + str(elapsed + elapsed2) + "ms"
+out "=== Done ==="

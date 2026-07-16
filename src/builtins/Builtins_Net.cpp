@@ -233,7 +233,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() > 1 && args[1].isDictionary()) {
                 auto dictPtr = args[1].asDictionaryPtr();
                 std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                if (dictPtr->getMapCopy().count("insecure") && dictPtr->getMapCopy().at("insecure").isBool() && dictPtr->getMapCopy().at("insecure").asBool()) {
+                if (dictPtr->get("insecure").isBool() && dictPtr->get("insecure").asBool()) {
                     ssl_verify = 0L; ssl_verifyhost = 0L;
                 }
                 for (auto& kv : dictPtr->getMapCopy()) {
@@ -275,7 +275,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
             if (args.size() > 2 && args[2].isDictionary()) {
                 auto dictPtr = args[2].asDictionaryPtr();
                 std::shared_lock<std::shared_mutex> lk(dictPtr->map_mutex);
-                if (dictPtr->getMapCopy().count("insecure") && dictPtr->getMapCopy().at("insecure").isBool() && dictPtr->getMapCopy().at("insecure").asBool()) {
+                if (dictPtr->get("insecure").isBool() && dictPtr->get("insecure").asBool()) {
                     ssl_verify = 0L; ssl_verifyhost = 0L;
                 }
                 for (auto& kv : dictPtr->getMapCopy()) {

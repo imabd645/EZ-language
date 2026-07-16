@@ -415,10 +415,13 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.runtimeError("getattr() expects property name as string", 0, ""); return Value(); }
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
-                auto dictPtr = args[0].asDictionaryPtr();
-                auto it = dictPtr->getMapCopy().find(prop);
-                if (it != dictPtr->getMapCopy().end()) return it->second;
-                return Value();
+                // Was: `auto it = dictPtr->getMapCopy().find(prop);
+                //       if (it != dictPtr->getMapCopy().end()) return it->second;`
+                // Each getMapCopy() returns a TEMPORARY map that dies at the end of
+                // its full-expression, so `it` dangled and was then compared against
+                // end() of a *different* container -- undefined behaviour, plus two
+                // full O(n) map copies. One locked O(1) lookup instead.
+                return args[0].asDictionaryPtr()->get(prop);
             }
             if (args[0].isInstance()) {
                 return args[0].asInstance()->getProperty(prop);
@@ -447,8 +450,9 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.runtimeError("hasattr() expects property name as string", 0, ""); return Value(); }
             std::string prop = args[1].asString();
             if (args[0].isDictionary()) {
-                auto dictPtr = args[0].asDictionaryPtr();
-                return Value((dictPtr->getMapCopy().find(prop) != dictPtr->getMapCopy().end()));
+                // Was comparing iterators from two DIFFERENT temporary map copies
+                // (undefined behaviour, and 2x O(n)). One locked O(1) lookup.
+                return Value(args[0].asDictionaryPtr()->has(prop));
             }
             if (args[0].isInstance()) {
                 return Value(args[0].asInstance()->hasProperty(prop));

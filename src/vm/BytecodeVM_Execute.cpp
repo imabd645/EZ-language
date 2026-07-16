@@ -102,8 +102,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_STORE_CACHED_RESULT,
         &&handle_END
     };
+    // Tracing is off in every normal run, so mark the check cold: the compiler
+    // keeps the cerr call out of line instead of inlining an I/O path into the
+    // hottest loop in the interpreter. (--trace still works.)
     #define DISPATCH() { \
-        if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
+        if (__builtin_expect(traceExecution, 0)) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
     #define INTERPRET_LOOP DISPATCH();
@@ -318,12 +321,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
                             }
                         } else if (obj.isDictionary()) {
+                            // Two locked O(1) lookups instead of copying the whole
+                            // map to read one key (which made dict.prop O(n), with a
+                            // string copy + atomic refcount bump per entry).
                             auto dictPtr = obj.asDictionaryPtr();
-                            // Fix 2.2: single getMapCopy() instead of two (one for find, one for end check)
-                            auto dictMap = dictPtr->getMapCopy();
-                            auto it = dictMap.find(propName);
-                            if (it != dictMap.end()) {
-                                *stackTop++ = it->second;
+                            Value found = dictPtr->get(propName);
+                            if (!found.isNil() || dictPtr->has(propName)) {
+                                *stackTop++ = found;
                             } else {
                                 SYNC_IP();
                                 runtimeError("Key or property '" + propName + "' does not exist in dictionary");
@@ -1307,25 +1311,39 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     if (callerArgIdx < posArgs.size()) {
                                         *stackTop++ = posArgs[callerArgIdx];
                                     } else {
-                                        auto it = dict->getMapCopy().find(paramNames[i]);
-                                        if (it != dict->getMapCopy().end()) {
-                                            *stackTop++ = it->second;
-                                            dict->modifyMap([&](auto& m) { m.erase(it->first); });
-                                        } else {
-                                            *stackTop++ = Value(); // Missing arg, will be handled by defaults
-                                        }
+                                        // Was: find() on a TEMPORARY getMapCopy(), compared
+                                        // against end() of a second temporary, then
+                                        // dereferenced (it->second / it->first) after both
+                                        // had been destroyed -- undefined behaviour, and two
+                                        // O(n) map copies per parameter. Now one locked pass
+                                        // that finds, extracts and erases atomically.
+                                        bool  found = false;
+                                        Value kwVal;
+                                        dict->modifyMap([&](auto& m) {
+                                            auto mit = m.find(paramNames[i]);
+                                            if (mit != m.end()) {
+                                                found = true;
+                                                kwVal = mit->second;
+                                                m.erase(mit);
+                                            }
+                                        });
+                                        // Missing args fall through to defaults.
+                                        *stackTop++ = found ? kwVal : Value();
                                     }
                                 }
-                                
-                                if (!dict->getMapCopy().empty()) {
-                                    std::string unexpected = dict->getMapCopy().begin()->first;
+
+                                std::string unexpected;
+                                dict->readMap([&](const auto& m) {
+                                    if (!m.empty()) unexpected = m.begin()->first;
+                                });
+                                if (!unexpected.empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument '" + unexpected + "'");
                                     return;
                                 }
                                 totalArity = expectedCallerParams;
                             } else {
-                                if (!kwargs.asDictionaryPtr()->getMapCopy().empty()) {
+                                if (!kwargs.asDictionaryPtr()->empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument");
                                     return;
@@ -2063,8 +2081,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = exc;
                         } else {
                             SYNC_IP();
-                            if (exc.isDictionary() && exc.asDictionaryPtr()->getMapCopy().count("message")) {
-                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->getMapCopy().at("message").toString());
+                            if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
+                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->get("message").toString());
                             } else {
                                 runtimeError("Uncaught exception: " + exc.toString());
                             }
@@ -2080,7 +2098,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         if (exc.isDictionary()) {
                             auto dict = exc.asDictionaryPtr();
-                            if (dict->getMapCopy().count("stackTrace")) {
+                            if (dict->has("stackTrace")) {
                                 std::string st = "";
                                 for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
                                     int currentLine = it->line;
@@ -2113,8 +2131,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = exc;
                         } else {
                             SYNC_IP();
-                            if (exc.isDictionary() && exc.asDictionaryPtr()->getMapCopy().count("message")) {
-                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->getMapCopy().at("message").toString());
+                            if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
+                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->get("message").toString());
                             } else {
                                 runtimeError("Uncaught exception: " + exc.toString());
                             }
@@ -2716,11 +2734,10 @@ void BytecodeVM::doIndexGet() {
         if (!checkBounds(i, s.length(), "String index out of bounds")) return;
         push(Value(std::string(1, s[i])));
     } else if (obj.isDictionary()) {
-        auto dictPtr = obj.asDictionaryPtr();
-        std::string sKey = idx.toString();
-        auto mapCopy = dictPtr->getMapCopy();
-        auto it = mapCopy.find(sKey);
-        push(it != mapCopy.end() ? it->second : Value());
+        // Single locked O(1) lookup. This used to copy the WHOLE map
+        // (getMapCopy()) just to read one key, making every dict[key] O(n) --
+        // with a string copy and an atomic refcount bump per copied entry.
+        push(obj.asDictionaryPtr()->get(idx.toString()));
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();

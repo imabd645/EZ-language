@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <csignal>
 #include <algorithm>
+#include "utils/EzLibPath.h"
 #include "runtime/Value.h"
 #include "gc/CycleCollector.h"
 #include "eventloop/EventLoop.h"
@@ -67,8 +68,8 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
             std::vector<std::string> searchPaths = {
                 baseDir + "/lib/" + usePath + ".ez",
                 baseDir + "/lib/" + usePath + "/main.ez",
-                "C:/ezlib/" + usePath + ".ez",
-                "C:/ezlib/" + usePath + "/main.ez",
+                ezLibBase() + usePath + ".ez",
+                ezLibBase() + usePath + "/main.ez",
                 usePath,
                 usePath + ".ez"
             };
@@ -218,8 +219,8 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
             std::vector<std::string> searchPaths = {
                 baseDir + "/lib/" + usePath + ".ez",
                 baseDir + "/lib/" + usePath + "/main.ez",
-                "C:/ezlib/" + usePath + ".ez",
-                "C:/ezlib/" + usePath + "/main.ez",
+                ezLibBase() + usePath + ".ez",
+                ezLibBase() + usePath + "/main.ez",
                 usePath,
                 usePath + ".ez"
             };

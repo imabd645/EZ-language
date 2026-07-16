@@ -5,6 +5,7 @@
 #include <memory>
 namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
+#include "utils/EzLibPath.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 
@@ -584,19 +585,9 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     
     std::string source;
     
-    std::string ezlibBase;
-    if (const char* env_p = std::getenv("EZLIB_PATH")) {
-        ezlibBase = env_p;
-    } else {
-#ifdef _WIN32
-        ezlibBase = "C:/ezlib";
-#else
-        ezlibBase = "/usr/local/lib/ezlib";
-#endif
-    }
-    if (!ezlibBase.empty() && ezlibBase.back() != '/' && ezlibBase.back() != '\\') {
-        ezlibBase += "/";
-    }
+    // Shared resolver so the compiler, bundler and package manager all agree on
+    // where the stdlib lives (see src/utils/EzLibPath.h).
+    std::string ezlibBase = ezLibBase();
     
     // 1. Check Virtual File System first
     bool foundInVFS = false;

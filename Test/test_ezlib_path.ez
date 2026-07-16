@@ -1,0 +1,17 @@
+# Phase 11: the stdlib location must be configurable, and every command must
+# agree on it.
+#
+# The base path used to be resolved in three places: the compiler honoured
+# EZLIB_PATH, but the bundler and the package manager both hardcoded
+# "C:/ezlib". So `ez run` could resolve a module from a custom EZLIB_PATH while
+# `ez bundle` / `ez install` looked somewhere else. All three now go through
+# ezLibBase() (src/utils/EzLibPath.h).
+#
+# This file is the module the harness resolves via a temporary EZLIB_PATH:
+#   1. copy it to $TMP/ezlib_probe/probe.ez
+#   2. EZLIB_PATH=$TMP/ezlib_probe ez test_ezlib_path_user.ez
+#   3. `use "probe"` must resolve from there, not from C:/ezlib
+
+task probeGreeting() {
+    give "resolved from EZLIB_PATH"
+}

@@ -10,6 +10,7 @@
 #include <memory>
 #include <filesystem>
 #include <algorithm>
+#include "utils/EzLibPath.h"
 #include <map>
 #include <curl/curl.h>
 
@@ -228,9 +229,12 @@ private:
     }
 
 public:
-    PackageManager(const std::string& baseDir = "C:/ezlib") {
-        packagesDir = baseDir;
-        cacheDir = baseDir + "/.cache";
+    // An empty baseDir means "use the configured stdlib location" (EZLIB_PATH,
+    // else the platform default) so `ez install` puts packages exactly where
+    // the compiler and bundler will look for them.
+    PackageManager(const std::string& baseDir = "") {
+        packagesDir = baseDir.empty() ? ezLibBaseNoSlash() : baseDir;
+        cacheDir = packagesDir + "/.cache";
         configFile = packagesDir + "/packages.json";
         
         fs::create_directories(packagesDir);

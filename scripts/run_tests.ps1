@@ -90,19 +90,17 @@ $Excluded = @(
 )
 
 # ── Pre-existing failures (tracked, do not break the build) ──────────────────
-# Each entry is a real bug or a stale test, confirmed to fail identically on the
-# pre-change binary. Remove an entry once it is fixed.
-$KnownFailures = @{
-    # 'test_tco.ez' was here (TCO never reused frames) -- fixed in Phase 13.
-    'test_oop.ez'               = 'stale test: concatenates a string with an instance that has no toString'
-    'test_static.ez'            = 'stale test: uses self/super outside a model method'
-    'test_dict.ez'              = 'stale test: performs nil + number'
-    'test_os.ez'                = 'stale test: concatenates a string with a number'
-    'test_concurrency.ez'       = 'spawn() snapshots captured upvalues, so a closure-shared counter never updates'
-    'test_thread_production.ez' = 'parse error near line 48'
-    'test_sqlite_ffi.ez'        = 'query/data-type bug: "Name mismatch"'
-    'test_ffi_db.ez'            = 'same underlying sqlite query bug as test_sqlite_ffi'
-}
+# Add an entry here only for a failure that is understood and deliberately
+# deferred; a quarantined test that starts passing is reported as FIXED so this
+# list does not rot.
+#
+# Currently EMPTY: the whole suite passes. Everything that used to live here was
+# either a real defect (TCO never reusing frames; typeOf() reporting "unknown"
+# for short/concatenated strings, which silently stopped lib/db.ez binding text
+# parameters; `async { }` blocks documented but never parsed) or a test asserting
+# something the language deliberately does not do (spawn snapshots captured
+# upvalues, so shared state must be an instance/array/dict).
+$KnownFailures = @{}
 
 # ── Discover tests ───────────────────────────────────────────────────────────
 $tests = @(Get-ChildItem -Path (Join-Path $repoRoot 'Test') -Filter '*.ez' -File)

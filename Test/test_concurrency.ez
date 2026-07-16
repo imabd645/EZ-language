@@ -1,27 +1,56 @@
 use "lib/unittest.ez"
 
+# Shared state across spawn()ed threads must live in a shared_ptr-based value --
+# a model instance, array or dictionary. Per README, "Notes on `spawn`": spawn
+# CLOSES the upvalues captured by the worker function so it cannot hold dangling
+# pointers into the parent VM's stack. A captured plain local is therefore a
+# per-thread snapshot, and the parent never observes the workers' writes.
+#
+# This test used to capture a bare `count = 0` local and assert it reached 1000.
+# It always read 0: it was asserting behaviour the language deliberately does not
+# provide. Rewritten around the documented pattern -- the README's own Mutex
+# example is exactly this SafeCounter model -- which still tests the real point:
+# that a mutex serialises concurrent increments so no updates are lost.
+
+model SafeCounter {
+    init() {
+        self.mu = mutex()
+        self.value = 0
+    }
+
+    task increment() {
+        lock(self.mu, || {
+            self.value = self.value + 1
+        })
+    }
+
+    task get() {
+        give self.value
+    }
+}
+
 describe("Concurrency & Thread Safety", || {
 
     it("should prevent race conditions using mutex and lock", || {
-        count = 0
-        mu = mutex()
-        
-        # Spawn 10 parallel agents
+        counter = SafeCounter()
+
+        # 10 workers x 100 increments. The instance is shared across threads
+        # (shared_ptr); the mutex is what makes the read-modify-write safe.
+        futures = []
         repeat i = 1 to 10 {
-            spawn(|| {
+            push(futures, spawn(|| {
                 repeat j = 1 to 100 {
-                    lock(mu, || {
-                        count = count + 1
-                    })
+                    counter.increment()
                 }
-            })
+            }))
         }
-        
-        # Give them time to finish
-        wait(1000) 
-        
-        # If lock works, count should be exactly 1000
-        assertEquals(count, 1000, "Count should be exactly 1000 with locking")
+
+        # Join deterministically instead of sleeping and hoping.
+        repeat i = 0 to len(futures) - 1 {
+            await futures[i]
+        }
+
+        assertEquals(counter.get(), 1000, "Count should be exactly 1000 with locking")
     })
 
     it("should handle nested locking (recursive mutex)", || {

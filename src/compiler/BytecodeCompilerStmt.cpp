@@ -6,6 +6,7 @@
 namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
 #include "utils/EzLibPath.h"
+#include "utils/WrapArith.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 
@@ -636,8 +637,20 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         if (!file.is_open()) {
             // Try exactly as typed
             file.open(path);
+            // A relative path to a local module written WITHOUT the .ez
+            // extension, e.g. `use "Test/lib_a"` for ./Test/lib_a.ez. Every
+            // other search location below appends .ez, but the raw relative path
+            // never did -- so a local module could only be imported by spelling
+            // out the extension.
+            std::string rawEzPath = path;
+            if (!file.is_open() && path.find(".ez") == std::string::npos) {
+                rawEzPath = path + ".ez";
+                file.open(rawEzPath);
+            }
+
             if (file.is_open()) {
-                absolutePath = path;
+                // rawEzPath == path unless the .ez fallback above opened it.
+                absolutePath = rawEzPath;
             } else {
                 // Try local lib/ directory
                 std::string localLibPath = "lib/" + path;
@@ -1541,11 +1554,28 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
             if (left.type == Constant::Type::INT && right.type == Constant::Type::INT) {
                 long long l = std::get<long long>(left.value);
                 long long r = std::get<long long>(right.value);
+                // These must produce exactly what the VM would produce for the
+                // same expression, or a constant expression silently means
+                // something different from its runtime equivalent.
                 switch (bin->op) {
-                    case TokenType::PLUS: out = Constant(l + r); return true;
-                    case TokenType::MINUS: out = Constant(l - r); return true;
-                    case TokenType::STAR: out = Constant(l * r); return true;
-                    case TokenType::SLASH: if (r != 0) { out = Constant(l / r); return true; } break;
+                    // Wrapping (defined) arithmetic, matching the VM. Plain
+                    // l + r / l - r / l * r here was signed-overflow UB.
+                    case TokenType::PLUS:  out = Constant(ezarith::wrapAdd(l, r)); return true;
+                    case TokenType::MINUS: out = Constant(ezarith::wrapSub(l, r)); return true;
+                    case TokenType::STAR:  out = Constant(ezarith::wrapMul(l, r)); return true;
+                    case TokenType::SLASH:
+                        // The VM keeps an integer result only when the division is
+                        // exact and promotes to double otherwise. This folded with
+                        // C++ integer division instead, so `5 / 2` compiled to 2
+                        // while `a / b` (a=5, b=2) evaluated to 2.5 at runtime.
+                        // Leave the UB cases (÷0, LLONG_MIN / -1) unfolded so the
+                        // VM reports them.
+                        if (!ezarith::divIsUB(l, r)) {
+                            if (ezarith::divIsExact(l, r)) out = Constant(l / r);
+                            else out = Constant(static_cast<double>(l) / static_cast<double>(r));
+                            return true;
+                        }
+                        break;
                     default: break;
                 }
             } else if (left.type == Constant::Type::DOUBLE || right.type == Constant::Type::DOUBLE) {
@@ -1566,7 +1596,9 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
         if (isConstant(un->operand, operand)) {
             if (un->op == TokenType::MINUS) {
                 if (operand.type == Constant::Type::INT) {
-                    out = Constant(-std::get<long long>(operand.value));
+                    // wrapNeg matches the VM's doNegate; plain -x was UB for
+                    // LLONG_MIN.
+                    out = Constant(ezarith::wrapNeg(std::get<long long>(operand.value)));
                     return true;
                 } else if (operand.type == Constant::Type::DOUBLE) {
                     out = Constant(-std::get<double>(operand.value));

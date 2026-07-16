@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include "ast/AST.h"
 
@@ -79,7 +80,17 @@ private:
     bool hasImports = false;
     std::unordered_map<std::string, std::string> modelHierarchy;
     std::unordered_map<std::string, std::vector<std::string>> genericParameters;
-    
+    // Every declared model name. modelHierarchy only holds models that have a
+    // parent and genericParameters only generic ones, so neither can answer
+    // "is this type a model?" -- which the operator-overloading rules need.
+    std::unordered_set<std::string> declaredModels;
+
+    // True if `t` names a user-defined model, whose instances may overload
+    // operators (the VM looks the method up on the left-hand instance).
+    bool isModelType(const TypeInfo& t) const {
+        return declaredModels.count(t.baseType) > 0;
+    }
+
     void beginScope();
     void endScope();
     void declareVariable(const std::string& name, const TypeInfo& type);

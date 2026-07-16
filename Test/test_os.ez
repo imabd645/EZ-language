@@ -5,13 +5,13 @@ out "      PURE EZ OS LIBRARY VERIFICATION        "
 out "============================================="
 
 out "Platform      : " + os.platform()
-out "Uptime (sec)  : " + os.uptime()
+out "Uptime (sec)  : " + str(os.uptime())
 
 # Memory Status verification via FFI Kernel32
 totalMem = os.totalMemory() / (1024 * 1024)
 freeMem = os.freeMemory() / (1024 * 1024)
-out "Total Memory  : " + totalMem + " MB"
-out "Free Memory   : " + freeMem + " MB"
+out "Total Memory  : " + str(totalMem) + " MB"
+out "Free Memory   : " + str(freeMem) + " MB"
 
 # Environment manipulation via FFI MSVCRT
 os.env.set("TEST_EZ_VAR", "NativeFFIWorks!")

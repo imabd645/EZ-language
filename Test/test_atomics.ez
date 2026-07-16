@@ -1,28 +1,71 @@
+# Atomic class.
+#
+# This test previously called atomic_inc("name") / atomic_add("name", n) /
+# atomic_dec("name") -- global functions that mutate a variable named by a
+# string. No such builtins exist anywhere in src/, lib/ or the docs, so every
+# case failed with "Value is not callable: nil". The real, documented API
+# (BUILTINS.md, "Atomic Class") is the Atomic class: init/get/set/add/sub.
+#
+# The old test also never tested atomicity -- it only made sequential calls.
+# This one does: parallel workers hammer a shared Atomic and the total must be
+# exact, which a non-atomic read-modify-write would not achieve.
+
 use "lib/unittest.ez" as *
 
 describe("Atomic Operations", || {
-    it("should atomically increment variables", || {
-        global_counter = 0
-        
-        # We simulate concurrent access by running multiple tasks
-        # But for simple verification, let's just test the builtin behavior
-        atomic_inc("global_counter")
-        atomic_inc("global_counter")
-        
-        assertEquals(global_counter, 2, "Counter should be 2 after two increments")
+
+    it("should initialize and read a value", || {
+        a = Atomic()
+        a.init(0)
+        assertEquals(a.get(), 0, "Fresh atomic should read 0")
+
+        b = Atomic()
+        b.init(42)
+        assertEquals(b.get(), 42, "Atomic should hold its initial value")
     })
 
-    it("should atomically add values", || {
-        score = 10
-        atomic_add("score", 5)
-        assertEquals(score, 15, "Score should be 15")
+    it("should add and return the new value", || {
+        a = Atomic()
+        a.init(10)
+        a.add(5)
+        assertEquals(a.get(), 15, "10 + 5 should be 15")
     })
 
-    it("should atomically decrement variables", || {
-        countdown = 10
-        atomic_dec("countdown")
-        assertEquals(countdown, 9, "Countdown should be 9")
+    it("should subtract and return the new value", || {
+        a = Atomic()
+        a.init(10)
+        a.sub(1)
+        assertEquals(a.get(), 9, "10 - 1 should be 9")
     })
+
+    it("should set a value", || {
+        a = Atomic()
+        a.init(1)
+        a.set(99)
+        assertEquals(a.get(), 99, "set() should overwrite the value")
+    })
+
+    it("should not lose updates under concurrent increments", || {
+        counter = Atomic()
+        counter.init(0)
+
+        # 8 workers x 500 increments. Without atomicity the interleaved
+        # read-modify-writes would lose updates and the total would fall short.
+        futures = []
+        repeat i = 1 to 8 {
+            push(futures, spawn(|| {
+                repeat j = 1 to 500 {
+                    counter.add(1)
+                }
+            }))
+        }
+        repeat i = 0 to len(futures) - 1 {
+            await futures[i]
+        }
+
+        assertEquals(counter.get(), 4000, "8 workers x 500 increments should total exactly 4000")
+    })
+
 })
 
 testSummary()

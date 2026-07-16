@@ -30,8 +30,8 @@ v1 = Vector(10, 20)
 v2 = Vector(5, 5)
 
 # Test +
-v3 = v1 + 
-out "v1 + v2 = " + v3.toString() 
+v3 = v1 + v2
+out "v1 + v2 = " + v3.toString()
 
 # Test += (desugared to +)
 v1 += v2

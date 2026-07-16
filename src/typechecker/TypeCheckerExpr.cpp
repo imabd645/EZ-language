@@ -122,7 +122,14 @@ TypeInfo TypeChecker::checkBinary(const BinaryExpr& expr) {
     
     if (expr.op == TokenType::PLUS || expr.op == TokenType::MINUS || expr.op == TokenType::STAR || expr.op == TokenType::SLASH) {
         if (left.baseType != "Any" && right.baseType != "Any") {
-            if (left.baseType != right.baseType || (left.baseType != "number" && left.baseType != "string")) {
+            // A model instance on the left may overload the operator. The VM
+            // looks the method up by name on the left-hand instance (README,
+            // "Operator Overloading": `task +(other)` etc.) before falling back
+            // to built-in behaviour, so defer those to the runtime. Without this
+            // the type checker rejected `v1 + v2` for any model and the
+            // documented feature was unusable.
+            if (!isModelType(left) &&
+                (left.baseType != right.baseType || (left.baseType != "number" && left.baseType != "string"))) {
                 error(expr.left, "Invalid operand types for arithmetic operator.", "Got " + left.toString() + " and " + right.toString());
             }
         }
@@ -146,7 +153,10 @@ TypeInfo TypeChecker::checkBinary(const BinaryExpr& expr) {
 
 TypeInfo TypeChecker::checkUnary(const UnaryExpr& expr) {
     TypeInfo operand = checkExpr(expr.operand);
-    if (expr.op == TokenType::MINUS && operand.baseType != "Any" && operand.baseType != "number") {
+    // A model instance may overload unary minus via `task neg()` (README,
+    // "Operator Overloading"), so let the runtime resolve those.
+    if (expr.op == TokenType::MINUS && operand.baseType != "Any"
+        && operand.baseType != "number" && !isModelType(operand)) {
         error(expr.operand, "Invalid operand for unary minus.", "Expected number but got " + operand.toString());
     }
     if (expr.op == TokenType::NOT) return TypeInfo("bool");

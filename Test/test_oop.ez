@@ -14,4 +14,8 @@ model Person {
 p = Person("Alice", 30)
 out p
 out "Person is: " + str(p)
-out "Person: " + p
+# NOTE: concatenation needs an explicit str() -- EZ does not implicitly coerce a
+# non-string operand of `+` (README uses `+ str(x)` throughout, and backtick
+# templates desugar to str(...) calls). This line used to read `"Person: " + p`,
+# which the type checker correctly rejects.
+out "Person: " + str(p)

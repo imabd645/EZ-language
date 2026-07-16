@@ -139,6 +139,7 @@ void TypeChecker::checkGet(const GetStmt& stmt) {
 }
 
 void TypeChecker::checkModel(const ModelStmt& stmt) {
+    declaredModels.insert(stmt.name);
     if (!stmt.typeParams.empty()) {
         genericParameters[stmt.name] = stmt.typeParams;
     }

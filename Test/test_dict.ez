@@ -21,8 +21,13 @@ out "dict.keys(): " + str(dict.keys())
 out "dict.values(): " + str(dict.values())
 
 out "\n5. Testing nil behavior:"
+# This intentionally checks the RUNTIME error for nil arithmetic. Written as a
+# literal `nil + 1` the static type checker rejects it at compile time, which
+# stopped the whole file from running, so the nil is routed through a function
+# to keep it opaque to the checker.
+task opaqueNil() { give nil }
 try {
-    x = nil + 1
+    x = opaqueNil() + 1
     out "Success adding to nil (unexpected)"
 } catch e {
     out "Caught expected error adding to nil: " + str(e)

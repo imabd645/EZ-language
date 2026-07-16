@@ -77,7 +77,16 @@ $Excluded = @(
     'test_gui_native.ez',                        # opens a window
     'test_server.ez',                            # binds a socket and blocks
     'test_notify.ez',                            # OS notification popup
-    'tempCodeRunnerFile.ez'                      # editor scratch file
+    'tempCodeRunnerFile.ez',                     # editor scratch file
+    'test.ez',                                   # scratch pad, not a test: prints a
+                                                 # name then does `z+=1` on an
+                                                 # undeclared variable
+    'test_suite_demo.ez',                        # a DEMO of the unittest lib whose
+                                                 # last case asserts 1+1==3 on purpose
+                                                 # ("Intentional failure") to show what
+                                                 # a failure looks like
+    'bench_dict.ez'                              # benchmark: prints timings, asserts
+                                                 # nothing
 )
 
 # ── Pre-existing failures (tracked, do not break the build) ──────────────────

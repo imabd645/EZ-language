@@ -10,29 +10,13 @@
 #include <limits>
 #include <chrono>
 
-// ── Wrapping integer arithmetic ──────────────────────────────────────────────
-// EZ deliberately uses wrapping (two's-complement) integer semantics: the math
-// library's LCG relies on large multiplications wrapping before a `%`, and
-// hash/modulo chains in the standard library depend on the same behaviour.
-//
-// Signed overflow is undefined behaviour in C++ though, so doing it directly on
-// `long long` lets the optimiser assume it never happens. Performing the op on
-// the unsigned representation is fully defined and produces exactly the wrap the
-// language intends, so these helpers keep the semantics while removing the UB.
-namespace {
-    inline long long wrapAdd(long long a, long long b) {
-        return (long long)((unsigned long long)a + (unsigned long long)b);
-    }
-    inline long long wrapSub(long long a, long long b) {
-        return (long long)((unsigned long long)a - (unsigned long long)b);
-    }
-    inline long long wrapMul(long long a, long long b) {
-        return (long long)((unsigned long long)a * (unsigned long long)b);
-    }
-    inline long long wrapNeg(long long a) {
-        return (long long)(0ULL - (unsigned long long)a);
-    }
-}
+// EZ's wrapping integer semantics live in one shared header so that the VM and
+// the compiler's constant folder cannot drift apart (see utils/WrapArith.h).
+#include "utils/WrapArith.h"
+using ezarith::wrapAdd;
+using ezarith::wrapSub;
+using ezarith::wrapMul;
+using ezarith::wrapNeg;
 
 void BytecodeVM::run(size_t targetFrameCount) {
     if (frames.empty()) return;

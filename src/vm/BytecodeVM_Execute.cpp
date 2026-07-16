@@ -10,6 +10,30 @@
 #include <limits>
 #include <chrono>
 
+// ── Wrapping integer arithmetic ──────────────────────────────────────────────
+// EZ deliberately uses wrapping (two's-complement) integer semantics: the math
+// library's LCG relies on large multiplications wrapping before a `%`, and
+// hash/modulo chains in the standard library depend on the same behaviour.
+//
+// Signed overflow is undefined behaviour in C++ though, so doing it directly on
+// `long long` lets the optimiser assume it never happens. Performing the op on
+// the unsigned representation is fully defined and produces exactly the wrap the
+// language intends, so these helpers keep the semantics while removing the UB.
+namespace {
+    inline long long wrapAdd(long long a, long long b) {
+        return (long long)((unsigned long long)a + (unsigned long long)b);
+    }
+    inline long long wrapSub(long long a, long long b) {
+        return (long long)((unsigned long long)a - (unsigned long long)b);
+    }
+    inline long long wrapMul(long long a, long long b) {
+        return (long long)((unsigned long long)a * (unsigned long long)b);
+    }
+    inline long long wrapNeg(long long a) {
+        return (long long)(0ULL - (unsigned long long)a);
+    }
+}
+
 void BytecodeVM::run(size_t targetFrameCount) {
     if (frames.empty()) return;
     size_t startingFrameCount = (targetFrameCount > 0) ? targetFrameCount : frames.size();
@@ -757,8 +781,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
                             // Integer ADD: keep integer semantics expected by library code
-                            // (large values wrap — libs like math/collections rely on integer modulo chains)
-                            long long res = a.asInteger() + b.asInteger();
+                            // (large values wrap — libs like math/collections rely on integer modulo chains).
+                            // wrapAdd makes that wrap defined instead of signed-overflow UB.
+                            long long res = wrapAdd(a.asInteger(), b.asInteger());
                             stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() + b.asNumber();
@@ -793,7 +818,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
                             // Integer SUB: keep integer semantics expected by library code
-                            long long res = a.asInteger() - b.asInteger();
+                            // (wrapSub makes the wrap defined instead of signed-overflow UB)
+                            long long res = wrapSub(a.asInteger(), b.asInteger());
                             stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() - b.asNumber();
@@ -828,8 +854,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
                             // Integer MUL: keep integer semantics expected by library code
-                            // (math lib LCG uses large multiplications followed by % to stay in range)
-                            long long res = a.asInteger() * b.asInteger();
+                            // (math lib LCG uses large multiplications followed by % to stay in range).
+                            // wrapMul makes that wrap defined instead of signed-overflow UB.
+                            long long res = wrapMul(a.asInteger(), b.asInteger());
                             stackTop -= 2; *stackTop++ = Value(res);
                         } else if (a.isNumber() && b.isNumber()) {
                             double res = a.asNumber() * b.asNumber();
@@ -2501,14 +2528,7 @@ std::shared_ptr<UpvalueObj> BytecodeVM::captureUpvalue(Value* local) {
 
 void BytecodeVM::doAdd() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) {
-        // Signed overflow is UB; detect it and fall back to double so the result
-        // is an approximation rather than a wrapped-around garbage integer.
-        long long ai = a.asInteger(), bi = b.asInteger(), r;
-        if (__builtin_add_overflow(ai, bi, &r)) push(Value((double)ai + (double)bi));
-        else                                    push(Value(r));
-        return;
-    }
+    if (a.isInteger() && b.isInteger()) { push(Value(wrapAdd(a.asInteger(), b.asInteger()))); return; }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   + b.asFloat()));   return; }
     if (a.isString() && b.isString()) {
         auto cs = std::make_shared<EZConcatString>();
@@ -2530,24 +2550,14 @@ void BytecodeVM::doAdd() {
 
 void BytecodeVM::doSubtract() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) {
-        long long ai = a.asInteger(), bi = b.asInteger(), r;
-        if (__builtin_sub_overflow(ai, bi, &r)) push(Value((double)ai - (double)bi));
-        else                                    push(Value(r));
-        return;
-    }
+    if (a.isInteger() && b.isInteger()) { push(Value(wrapSub(a.asInteger(), b.asInteger()))); return; }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   - b.asFloat()));   return; }
     runtimeError("'-' operands must be numbers");
 }
 
 void BytecodeVM::doMultiply() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) {
-        long long ai = a.asInteger(), bi = b.asInteger(), r;
-        if (__builtin_mul_overflow(ai, bi, &r)) push(Value((double)ai * (double)bi));
-        else                                    push(Value(r));
-        return;
-    }
+    if (a.isInteger() && b.isInteger()) { push(Value(wrapMul(a.asInteger(), b.asInteger()))); return; }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   * b.asFloat()));   return; }
     // "str" * N  repetition
     if (a.isString() && b.isInteger()) {
@@ -2604,24 +2614,20 @@ void BytecodeVM::doModulo() {
 
 void BytecodeVM::doPower() {
     Value b = pop(), a = pop();
+    // NOTE: the compiler never emits OpCode::POW (EZ has no power operator; the
+    // pow() builtin calls std::pow directly), so this path is currently
+    // unreachable. Kept correct anyway: wrapping square-and-multiply, consistent
+    // with the language's defined-wrap integer semantics.
     if (a.isInteger() && b.isInteger() && b.asInteger() >= 0) {
         long long base = a.asInteger();
         long long exp = b.asInteger();
         long long result = 1;
-        bool overflowed = false;
-        while (exp > 0 && !overflowed) {
-            if (exp % 2 == 1) {
-                if (__builtin_mul_overflow(result, base, &result)) { overflowed = true; break; }
-            }
+        while (exp > 0) {
+            if (exp % 2 == 1) result = wrapMul(result, base);
             exp /= 2;
-            // Only square the base if another round will actually use it —
-            // squaring unconditionally can overflow even when the result cannot.
-            if (exp > 0) {
-                if (__builtin_mul_overflow(base, base, &base)) { overflowed = true; break; }
-            }
+            if (exp > 0) base = wrapMul(base, base);
         }
-        if (overflowed) push(Value(std::pow(a.asFloat(), b.asFloat())));
-        else            push(Value(result));
+        push(Value(result));
         return;
     }
     if (a.isNumber() && b.isNumber()) {
@@ -2633,13 +2639,9 @@ void BytecodeVM::doPower() {
 
 void BytecodeVM::doNegate() {
     Value a = pop();
-    if (a.isInteger()) {
-        long long v = a.asInteger();
-        // -LLONG_MIN has no representable result and is UB; promote to double.
-        if (v == std::numeric_limits<long long>::min()) { push(Value(-(double)v)); return; }
-        push(Value(-v));
-        return;
-    }
+    // -LLONG_MIN is not representable (UB); wrapNeg gives the defined
+    // two's-complement result, consistent with the language's wrapping integers.
+    if (a.isInteger()) { push(Value(wrapNeg(a.asInteger()))); return; }
     if (a.isFloat())   { push(Value(-a.asFloat()));   return; }
     runtimeError("Negation operand must be a number");
 }

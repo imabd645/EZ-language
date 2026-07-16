@@ -1,0 +1,123 @@
+# Phase 8: checked integer arithmetic, defined shifts, and index type validation.
+#
+# Previously: integer +,-,* and ** wrapped on signed overflow (undefined
+# behaviour -> garbage results); negating LLONG_MIN was UB; shift counts were
+# unmasked (a << 64 is UB); and indexing with a non-number called asInteger() on
+# it, which logged to stderr and threw bad_variant_access instead of raising a
+# clean, catchable EZ error.
+
+out "=== Checked Arithmetic & Index Validation ==="
+
+MAXI = 9223372036854775807      # LLONG_MAX
+MINI = -9223372036854775808     # LLONG_MIN
+
+# --- Integer overflow must NOT wrap to a negative/garbage value ---
+sum = MAXI + 1
+out "MAXI + 1 = " + str(sum)
+when sum > 0 {
+    out "PASS: add overflow did not wrap negative"
+} other {
+    out "FAIL: add overflow wrapped -> " + str(sum)
+}
+
+diff = MINI - 1
+out "MINI - 1 = " + str(diff)
+when diff < 0 {
+    out "PASS: sub overflow did not wrap positive"
+} other {
+    out "FAIL: sub overflow wrapped -> " + str(diff)
+}
+
+prod = MAXI * 2
+out "MAXI * 2 = " + str(prod)
+when prod > 0 {
+    out "PASS: mul overflow did not wrap negative"
+} other {
+    out "FAIL: mul overflow wrapped -> " + str(prod)
+}
+
+# 2 ** 100 overflows a 64-bit int; must fall back to a float approximation.
+big = 2 ** 100
+out "2 ** 100 = " + str(big)
+when big > 1000000000000000000 {
+    out "PASS: pow overflow fell back to float"
+} other {
+    out "FAIL: pow overflow wrapped -> " + str(big)
+}
+
+# Negating LLONG_MIN must not be UB.
+neg = -MINI
+out "-MINI = " + str(neg)
+when neg > 0 {
+    out "PASS: negating LLONG_MIN handled"
+} other {
+    out "FAIL: negating LLONG_MIN wrapped -> " + str(neg)
+}
+
+# --- Normal arithmetic must still be exact ---
+when (2 + 3) == 5 and (10 - 4) == 6 and (6 * 7) == 42 and (2 ** 10) == 1024 {
+    out "PASS: ordinary integer arithmetic still exact"
+} other {
+    out "FAIL: ordinary arithmetic broke"
+}
+
+# --- Shifts ---
+when (1 << 10) == 1024 and (1024 >> 10) == 1 {
+    out "PASS: normal shifts correct"
+} other {
+    out "FAIL: normal shifts wrong"
+}
+
+try {
+    x = 1 << 64
+    out "FAIL: shift of 64 was NOT rejected -> " + str(x)
+} catch e {
+    out "PASS: out-of-range shift rejected -> " + str(e)
+}
+
+try {
+    y = 1 << -1
+    out "FAIL: negative shift was NOT rejected -> " + str(y)
+} catch e {
+    out "PASS: negative shift rejected"
+}
+
+# --- Index type validation ---
+arr = [10, 20, 30]
+
+try {
+    v = arr["not a number"]
+    out "FAIL: string index was NOT rejected -> " + str(v)
+} catch e {
+    out "PASS: string index rejected -> " + str(e)
+}
+
+try {
+    v = arr[nil]
+    out "FAIL: nil index was NOT rejected -> " + str(v)
+} catch e {
+    out "PASS: nil index rejected"
+}
+
+try {
+    arr[nil] = 5
+    out "FAIL: nil index assignment was NOT rejected"
+} catch e {
+    out "PASS: nil index assignment rejected"
+}
+
+# Valid indexing must still work.
+when arr[0] == 10 and arr[2] == 30 {
+    out "PASS: valid indexing still works"
+} other {
+    out "FAIL: valid indexing broke"
+}
+
+s = "hello"
+when s[1] == "e" {
+    out "PASS: string indexing still works"
+} other {
+    out "FAIL: string indexing broke"
+}
+
+out "=== Done ==="

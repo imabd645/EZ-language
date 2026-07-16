@@ -7,6 +7,7 @@
 #include "runtime/EZFuture.h"
 #include <iostream>
 #include <cmath>
+#include <limits>
 #include <chrono>
 
 void BytecodeVM::run(size_t targetFrameCount) {
@@ -2209,6 +2210,13 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         
         Value* calleePtr = stackTop - argCount - 2;
         
+        // dispatchCall takes a uint8_t argCount, so argCount+1 would wrap to 0 at
+        // 255 args and silently drop every argument.
+        if (argCount >= 255) {
+            runtimeError("Too many arguments to method call (max 254)");
+            return false;
+        }
+
         // Shift existing arguments to the right
         for (Value* p = stackTop - 1; p > calleePtr + 1; --p) {
             *p = *(p - 1);
@@ -2493,7 +2501,14 @@ std::shared_ptr<UpvalueObj> BytecodeVM::captureUpvalue(Value* local) {
 
 void BytecodeVM::doAdd() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() + b.asInteger())); return; }
+    if (a.isInteger() && b.isInteger()) {
+        // Signed overflow is UB; detect it and fall back to double so the result
+        // is an approximation rather than a wrapped-around garbage integer.
+        long long ai = a.asInteger(), bi = b.asInteger(), r;
+        if (__builtin_add_overflow(ai, bi, &r)) push(Value((double)ai + (double)bi));
+        else                                    push(Value(r));
+        return;
+    }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   + b.asFloat()));   return; }
     if (a.isString() && b.isString()) {
         auto cs = std::make_shared<EZConcatString>();
@@ -2515,19 +2530,40 @@ void BytecodeVM::doAdd() {
 
 void BytecodeVM::doSubtract() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() - b.asInteger())); return; }
+    if (a.isInteger() && b.isInteger()) {
+        long long ai = a.asInteger(), bi = b.asInteger(), r;
+        if (__builtin_sub_overflow(ai, bi, &r)) push(Value((double)ai - (double)bi));
+        else                                    push(Value(r));
+        return;
+    }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   - b.asFloat()));   return; }
     runtimeError("'-' operands must be numbers");
 }
 
 void BytecodeVM::doMultiply() {
     Value b = pop(), a = pop();
-    if (a.isInteger() && b.isInteger()) { push(Value(a.asInteger() * b.asInteger())); return; }
+    if (a.isInteger() && b.isInteger()) {
+        long long ai = a.asInteger(), bi = b.asInteger(), r;
+        if (__builtin_mul_overflow(ai, bi, &r)) push(Value((double)ai * (double)bi));
+        else                                    push(Value(r));
+        return;
+    }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   * b.asFloat()));   return; }
     // "str" * N  repetition
     if (a.isString() && b.isInteger()) {
+        long long count = b.asInteger();
+        if (count < 0) { runtimeError("String repeat count must not be negative"); return; }
+        // Refuse absurd repetitions rather than trying to allocate them.
+        const long long kMaxRepeatBytes = 64LL * 1024 * 1024;
+        long long unit = (long long)a.stringLength();
+        if (unit > 0 && count > kMaxRepeatBytes / unit) {
+            runtimeError("String repeat result too large");
+            return;
+        }
         std::string result;
-        for (long long i = 0; i < b.asInteger(); i++) result += a.asString();
+        result.reserve((size_t)(unit * count));
+        std::string s = a.asString();
+        for (long long i = 0; i < count; i++) result += s;
         push(Value(result));
         return;
     }
@@ -2572,12 +2608,20 @@ void BytecodeVM::doPower() {
         long long base = a.asInteger();
         long long exp = b.asInteger();
         long long result = 1;
-        while (exp > 0) {
-            if (exp % 2 == 1) result *= base;
-            base *= base;
+        bool overflowed = false;
+        while (exp > 0 && !overflowed) {
+            if (exp % 2 == 1) {
+                if (__builtin_mul_overflow(result, base, &result)) { overflowed = true; break; }
+            }
             exp /= 2;
+            // Only square the base if another round will actually use it —
+            // squaring unconditionally can overflow even when the result cannot.
+            if (exp > 0) {
+                if (__builtin_mul_overflow(base, base, &base)) { overflowed = true; break; }
+            }
         }
-        push(Value(result));
+        if (overflowed) push(Value(std::pow(a.asFloat(), b.asFloat())));
+        else            push(Value(result));
         return;
     }
     if (a.isNumber() && b.isNumber()) {
@@ -2589,7 +2633,13 @@ void BytecodeVM::doPower() {
 
 void BytecodeVM::doNegate() {
     Value a = pop();
-    if (a.isInteger()) { push(Value(-a.asInteger())); return; }
+    if (a.isInteger()) {
+        long long v = a.asInteger();
+        // -LLONG_MIN has no representable result and is UB; promote to double.
+        if (v == std::numeric_limits<long long>::min()) { push(Value(-(double)v)); return; }
+        push(Value(-v));
+        return;
+    }
     if (a.isFloat())   { push(Value(-a.asFloat()));   return; }
     runtimeError("Negation operand must be a number");
 }
@@ -2617,14 +2667,23 @@ void BytecodeVM::doBitwiseNot() {
 void BytecodeVM::doShiftLeft() {
     Value b = pop(), a = pop();
     if (a.isNumber() && b.isNumber()) {
-        push(Value(a.asInteger() << b.asInteger())); return;
+        // A shift count outside [0,63] is undefined behaviour, as is left-shifting
+        // a negative value; reject the former and shift as unsigned for the latter.
+        long long shift = b.asInteger();
+        if (shift < 0 || shift > 63) { runtimeError("Shift amount must be between 0 and 63"); return; }
+        unsigned long long ua = (unsigned long long)a.asInteger();
+        push(Value((long long)(ua << shift)));
+        return;
     }
     runtimeError("'<<' operands must be numbers");
 }
 void BytecodeVM::doShiftRight() {
     Value b = pop(), a = pop();
     if (a.isNumber() && b.isNumber()) {
-        push(Value(a.asInteger() >> b.asInteger())); return;
+        long long shift = b.asInteger();
+        if (shift < 0 || shift > 63) { runtimeError("Shift amount must be between 0 and 63"); return; }
+        push(Value(a.asInteger() >> shift));
+        return;
     }
     runtimeError("'>>' operands must be numbers");
 }
@@ -2632,6 +2691,13 @@ void BytecodeVM::doShiftRight() {
 void BytecodeVM::doIndexGet() {
     Value idx = pop();
     Value obj = pop();
+    // Sequence types require a numeric index. Without this check asInteger() on a
+    // nil/string/object index logs to stderr and throws bad_variant_access rather
+    // than producing a clean, catchable EZ error.
+    if ((obj.isArray() || obj.isTuple() || obj.isString() || obj.isBuffer()) && !idx.isNumber()) {
+        runtimeError("Index must be a number, got " + idx.typeName());
+        return;
+    }
     if (obj.isArray()) {
         auto& arr = obj.asArray();
         long long i = idx.asInteger();
@@ -2667,10 +2733,17 @@ void BytecodeVM::doIndexSet() {
     Value val = pop();
     Value idx = pop();
     Value obj = pop();
+    if ((obj.isArray() || obj.isBuffer()) && !idx.isNumber()) {
+        runtimeError("Index must be a number, got " + idx.typeName());
+        return;
+    }
     if (obj.isArray()) {
         auto& arr = obj.asArray();
         long long i = idx.asInteger();
         if (i < 0) { runtimeError("Array index out of bounds"); return; }
+        // Assigning far past the end would silently allocate a huge array.
+        const long long kMaxGrow = 64LL * 1024 * 1024;
+        if (i >= kMaxGrow) { runtimeError("Array index too large"); return; }
         if (i >= (long long)arr.size()) arr.resize(i + 1);
         arr.set(i, val);
     } else if (obj.isDictionary()) {
@@ -2680,6 +2753,7 @@ void BytecodeVM::doIndexSet() {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
         if (!checkBounds(i, buf.size(), "Buffer index out of bounds")) return;
+        if (!val.isNumber()) { runtimeError("Buffer value must be a number, got " + val.typeName()); return; }
         buf[i] = (uint8_t)val.asInteger();
     } else {
         runtimeError("Cannot set index on " + obj.typeName());

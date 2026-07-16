@@ -1,4 +1,5 @@
 #include "BytecodeCompiler.h"
+#include "utils/WrapArith.h"
 #include <iostream>
 void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
     if (!expr) {
@@ -156,11 +157,24 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         if (leftConst.type == Constant::Type::INT && rightConst.type == Constant::Type::INT) {
             long long l = std::get<long long>(leftConst.value);
             long long r = std::get<long long>(rightConst.value);
+            // A folded expression MUST produce what the VM would produce for the
+            // same operands (see utils/WrapArith.h). Plain l+r / l-r / l*r was
+            // signed-overflow UB where the VM wraps, and `l / r` was C++ integer
+            // division where the VM promotes to double unless the division is
+            // exact -- so `5 / 2` compiled to 2 while `a / b` gave 2.5.
             switch (expr.op) {
-                case TokenType::PLUS: emitConstant(Constant(l + r)); return;
-                case TokenType::MINUS: emitConstant(Constant(l - r)); return;
-                case TokenType::STAR: emitConstant(Constant(l * r)); return;
-                case TokenType::SLASH: if (r != 0) { emitConstant(Constant(l / r)); return; } break;
+                case TokenType::PLUS:  emitConstant(Constant(ezarith::wrapAdd(l, r))); return;
+                case TokenType::MINUS: emitConstant(Constant(ezarith::wrapSub(l, r))); return;
+                case TokenType::STAR:  emitConstant(Constant(ezarith::wrapMul(l, r))); return;
+                case TokenType::SLASH:
+                    // Leave the UB cases (÷0, LLONG_MIN / -1) unfolded so the VM
+                    // reports them at runtime.
+                    if (!ezarith::divIsUB(l, r)) {
+                        if (ezarith::divIsExact(l, r)) emitConstant(Constant(l / r));
+                        else emitConstant(Constant(static_cast<double>(l) / static_cast<double>(r)));
+                        return;
+                    }
+                    break;
                 default: break;
             }
         } else if (leftConst.type == Constant::Type::DOUBLE || rightConst.type == Constant::Type::DOUBLE) {
@@ -224,7 +238,8 @@ void BytecodeCompiler::compileUnary(const UnaryExpr& expr) {
     if (isConstant(expr.operand, operandConst)) {
         if (expr.op == TokenType::MINUS) {
             if (operandConst.type == Constant::Type::INT) {
-                emitConstant(Constant(-std::get<long long>(operandConst.value)));
+                // wrapNeg matches the VM's doNegate; plain -x was UB for LLONG_MIN.
+                emitConstant(Constant(ezarith::wrapNeg(std::get<long long>(operandConst.value))));
                 return;
             } else if (operandConst.type == Constant::Type::DOUBLE) {
                 emitConstant(Constant(-std::get<double>(operandConst.value)));

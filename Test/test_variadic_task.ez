@@ -1,0 +1,76 @@
+# Regression: calling a variadic `task` with 2+ collected arguments crashed the
+# COMPILER (not the VM).
+#
+# The typechecker's call-site loop iterated to argTypes.size() while indexing
+# substitutedSig.paramTypes[i]. The arity guards bound the upper end only for
+# non-variadic signatures -- passing more arguments than there are parameters is
+# normal for a variadic -- so the loop read past the end of paramTypes:
+#
+#   task f(...xs)   ->  paramTypes.size() == 1
+#   f(1, 2)         ->  reads paramTypes[1]   (out of bounds)
+#
+# The garbage TypeInfo's std::string had a bogus length, so the comparison
+# crashed with std::bad_alloc or an access violation at 0xffff...ffff --
+# non-deterministically, depending on the heap. f() and f(1) happened to survive
+# because the loop read at most paramTypes[0].
+#
+# This is why test_spread.ez died before printing a single line.
+
+out "=== Variadic Task Argument Handling ==="
+
+task countArgs(...xs) {
+    give len(xs)
+}
+
+# 0 and 1 always worked; 2+ is the regression.
+a0 = countArgs()
+a1 = countArgs(1)
+a2 = countArgs(1, 2)
+a5 = countArgs(1, 2, 3, 4, 5)
+out "countArgs(): " + str(a0) + " " + str(a1) + " " + str(a2) + " " + str(a5)
+
+when a0 == 0 and a1 == 1 and a2 == 2 and a5 == 5 {
+    out "PASS: rest-only task collects any number of args"
+} other {
+    out "FAIL: rest-only task wrong"
+}
+
+# Fixed parameter followed by a rest parameter.
+task label(prefix, ...rest) {
+    give prefix + ":" + str(len(rest))
+}
+b0 = label("a")
+b3 = label("a", 1, 2, 3)
+out "label: " + b0 + " / " + b3
+
+when b0 == "a:0" and b3 == "a:3" {
+    out "PASS: fixed + rest task"
+} other {
+    out "FAIL: fixed + rest wrong"
+}
+
+# Values must actually arrive intact, not just the count.
+task total(...nums) {
+    sum = 0
+    get n in nums { sum += n }
+    give sum
+}
+when total(1, 2, 3, 4) == 10 {
+    out "PASS: variadic values arrive intact (sum=10)"
+} other {
+    out "FAIL: variadic values corrupted -> " + str(total(1, 2, 3, 4))
+}
+
+# Spread into a variadic task.
+merged = [1, 2, 3, 4, 5]
+when total(...merged) == 15 {
+    out "PASS: spread into variadic task (sum=15)"
+} other {
+    out "FAIL: spread into variadic wrong"
+}
+
+# A genuine arity error must STILL be reported (the fix must not disable checks).
+# `too few args` for a variadic is still enforced -- verified separately, since a
+# compile error would stop this file from running.
+
+out "=== Done ==="

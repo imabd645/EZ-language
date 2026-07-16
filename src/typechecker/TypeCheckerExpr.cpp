@@ -301,7 +301,23 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                 std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
                 error(expr.callee, msg);
             } else {
-                for (size_t i = 0; i < argTypes.size(); i++) {
+                // Only the leading FIXED parameters have a positional type to check:
+                // for a variadic signature every argument from the rest parameter
+                // onwards is collected into the rest array instead.
+                //
+                // This loop used to run to argTypes.size() while indexing
+                // paramTypes[i]. The arity guards above bound the upper end only for
+                // non-variadic calls -- passing more arguments than there are
+                // parameters is normal for a variadic -- so e.g. `task f(...xs)`
+                // called as f(1,2) read paramTypes[1] from a one-element vector.
+                // That out-of-bounds read produced a garbage TypeInfo whose
+                // std::string had a bogus length, crashing the compiler with
+                // std::bad_alloc or an access violation (test_spread.ez).
+                size_t checkCount = std::min(argTypes.size(), substitutedSig.paramTypes.size());
+                if (substitutedSig.isVariadic && !substitutedSig.paramTypes.empty()) {
+                    checkCount = std::min(checkCount, substitutedSig.paramTypes.size() - 1);
+                }
+                for (size_t i = 0; i < checkCount; i++) {
                     if (argTypes[i] != substitutedSig.paramTypes[i] && argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any") {
                         std::string hint = "";
                         if (substitutedSig.paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {

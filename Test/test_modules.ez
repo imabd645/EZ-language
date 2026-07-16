@@ -1,5 +1,5 @@
-use "Test/lib_a" as a
-use "Test/lib_b" as b
+use "Test/lib_a.ez" as a
+use "Test/lib_b.ez" as b
 
 resA = a.foo()
 resB = b.foo()
@@ -7,9 +7,12 @@ resB = b.foo()
 out "A: " + resA
 out "B: " + resB
 
-if (resA == "A" and resB == "B") {
+# EZ uses when/other -- there is no `if`/`else` keyword, so `if (...) {...}`
+# parsed as a call to an undefined function named `if` and failed with
+# "Value is not callable: nil".
+when (resA == "A" and resB == "B") {
     out "SUCCESS: Modules are namespaced!"
-} else {
+} other {
     out "FAILURE: Module collision or error."
     exit(1)
 }

@@ -637,20 +637,16 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         if (!file.is_open()) {
             // Try exactly as typed
             file.open(path);
-            // A relative path to a local module written WITHOUT the .ez
-            // extension, e.g. `use "Test/lib_a"` for ./Test/lib_a.ez. Every
-            // other search location below appends .ez, but the raw relative path
-            // never did -- so a local module could only be imported by spelling
-            // out the extension.
-            std::string rawEzPath = path;
-            if (!file.is_open() && path.find(".ez") == std::string::npos) {
-                rawEzPath = path + ".ez";
-                file.open(rawEzPath);
-            }
-
+            // NOTE: deliberately NOT falling back to `path + ".ez"` here.
+            // Whether an import exports everything or only `export`-marked
+            // declarations is decided further down by whether the path was
+            // spelled with a .ez extension (file inclusion vs package import).
+            // Resolving a bare relative path to a local file would therefore
+            // load it under package semantics and hand back an empty namespace
+            // -- a silent, confusing failure. A local file is imported as
+            // `use "Test/lib_a.ez"`.
             if (file.is_open()) {
-                // rawEzPath == path unless the .ez fallback above opened it.
-                absolutePath = rawEzPath;
+                absolutePath = path;
             } else {
                 // Try local lib/ directory
                 std::string localLibPath = "lib/" + path;

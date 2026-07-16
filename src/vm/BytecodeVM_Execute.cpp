@@ -20,7 +20,17 @@ using ezarith::wrapNeg;
 
 void BytecodeVM::run(size_t targetFrameCount) {
     if (frames.empty()) return;
-    size_t startingFrameCount = (targetFrameCount > 0) ? targetFrameCount : frames.size();
+    // targetFrameCount is the frame depth to run down to: RETURN leaves run()
+    // once the frame at that depth has returned.
+    //
+    // 0 means "run every frame to completion" -- what the async resume paths
+    // (OP_AWAIT's continuation, async task VMs) ask for. It previously fell back
+    // to frames.size(), i.e. the depth *at the moment of resumption*, so
+    // resuming a yielded `await` inside a function stopped the instant that
+    // function returned and silently abandoned all of its callers: the awaiting
+    // function's own code ran, then the program just ended with no error and
+    // exit 0. Only a top-level `await` worked.
+    size_t startingFrameCount = (targetFrameCount > 0) ? targetFrameCount : 1;
     CallFrame* frame = &frames.back();
     const uint8_t* ip = frame->ip;
     Value* stackTop = this->stackTop;

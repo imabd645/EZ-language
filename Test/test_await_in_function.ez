@@ -1,0 +1,88 @@
+# Regression: `await` inside a function silently killed the program.
+#
+# Awaiting a future that is not yet ready makes the VM yield: OP_AWAIT records a
+# continuation on the event loop and returns out of run(). The continuation
+# later calls run(0), meaning "run every remaining frame to completion".
+#
+# But run() read a targetFrameCount of 0 as "unspecified" and substituted
+# frames.size() -- the depth AT THE MOMENT OF RESUMPTION. So resuming an await
+# inside a function ran that function's remaining code and then, the instant it
+# returned, RETURN saw frames.size() < startingFrameCount and left the
+# interpreter, abandoning every caller. The program ended with no error and
+# exit 0, having silently skipped the rest of the script:
+#
+#   task go() { f = spawn(...)  await f  give "ok" }
+#   out "before"        -> printed
+#   r = go()            -> go() ran to completion...
+#   out "after " + r    -> ...but this NEVER ran
+#
+# Only a top-level await worked, because there the abandoned depth happened to
+# be the bottom frame.
+
+out "=== await inside a function ==="
+
+task awaitInTask() {
+    f = spawn(|| { give 7 })
+    v = await f
+    give v * 2
+}
+
+r1 = awaitInTask()
+out "task  -> " + str(r1)
+when r1 == 14 {
+    out "PASS: await inside a task returns, and the CALLER resumes"
+} other {
+    out "FAIL: expected 14, got " + str(r1)
+}
+
+awaitInLambda = || {
+    f = spawn(|| { give 5 })
+    give await f
+}
+r2 = awaitInLambda()
+out "lambda -> " + str(r2)
+when r2 == 5 {
+    out "PASS: await inside a lambda returns to its caller"
+} other {
+    out "FAIL: expected 5, got " + str(r2)
+}
+
+# Nested: await inside a lambda invoked by another lambda (the describe/it shape
+# that first exposed this).
+runner = |cb| { give cb() }
+r3 = runner(|| {
+    f = spawn(|| { give 3 })
+    give await f
+})
+out "nested -> " + str(r3)
+when r3 == 3 {
+    out "PASS: await inside nested closures resumes correctly"
+} other {
+    out "FAIL: expected 3, got " + str(r3)
+}
+
+# Awaiting several futures from inside a function.
+task sumAll() {
+    a = spawn(|| { give 1 })
+    b = spawn(|| { give 2 })
+    give (await a) + (await b)
+}
+r4 = sumAll()
+when r4 == 3 {
+    out "PASS: multiple awaits inside one function"
+} other {
+    out "FAIL: expected 3, got " + str(r4)
+}
+
+# Top-level await must still work.
+f5 = spawn(|| { give 99 })
+r5 = await f5
+when r5 == 99 {
+    out "PASS: top-level await still works"
+} other {
+    out "FAIL: top-level await broke"
+}
+
+# The whole script must reach this line -- the original bug's signature was the
+# script ending early, silently, with exit 0.
+out "=== Done ==="

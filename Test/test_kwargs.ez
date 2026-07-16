@@ -1,0 +1,38 @@
+# Phase 12 regression test for the CALL_KW path.
+#
+# Keyword-argument dispatch used to look each parameter up with
+# `dict->getMapCopy().find(name)` and compare against `getMapCopy().end()` --
+# two full O(n) map copies per parameter, and undefined behaviour: both copies
+# were temporaries that died at the end of the expression, so the iterator was
+# dangling when it was compared and then dereferenced (it->second, it->first).
+#
+# It now does a single locked pass that finds, extracts and erases the keyword
+# atomically. These cases cover the resulting behaviour: pure keyword calls,
+# mixed positional+keyword, and out-of-order keywords.
+
+out "=== Keyword Argument (CALL_KW) Test ==="
+
+task greet(name, greeting, punct) {
+    give greeting + ", " + name + punct
+}
+
+allKw    = greet(name="World", greeting="Hello", punct="!")
+mixed    = greet("World", greeting="Hi", punct="?")
+reordered = greet(punct="!!", name="Reordered", greeting="Yo")
+
+out "all-keyword : " + allKw
+out "mixed       : " + mixed
+out "reordered   : " + reordered
+
+ok = true
+when allKw != "Hello, World!"      { ok = false }
+when mixed != "Hi, World?"         { ok = false }
+when reordered != "Yo, Reordered!!" { ok = false }
+
+when ok {
+    out "PASS: keywords resolve correctly (all-keyword, mixed, reordered)"
+} other {
+    out "FAIL: CALL_KW resolved keywords incorrectly"
+}
+
+out "=== Done ==="

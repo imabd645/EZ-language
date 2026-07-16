@@ -6,7 +6,11 @@ model MathUtil {
     }
 
     static task circleArea(r) {
-        give self.PI * self.square(r)
+        # Static members are reached through the model name, not `self` -- a
+        # static task has no instance, so `self` is invalid there (README,
+        # "Static Members" uses `Counter.count`). This previously read
+        # `self.PI * self.square(r)` and failed to compile.
+        give MathUtil.PI * MathUtil.square(r)
     }
 }
 

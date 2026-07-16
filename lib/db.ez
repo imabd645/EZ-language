@@ -161,7 +161,7 @@ model Database {
         give DbStatement(self, stmtHandle)
     }
 
-    task query(sql, params) {
+    task query(sql, params = nil) {
         stmt = self.prepareStatement(sql)
         stmt.bind(params)
 
@@ -174,7 +174,7 @@ model Database {
         give results
     }
 
-    task execute(sql, params) {
+    task execute(sql, params = nil) {
         stmt = self.prepareStatement(sql)
         stmt.bind(params)
         

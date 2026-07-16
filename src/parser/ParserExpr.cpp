@@ -357,10 +357,27 @@ ExprPtr Parser::primary() {
     
     // Async Lambda expression: async |params| => expr
     if (match(TokenType::ASYNC)) {
+        int asyncLine = previous().line;
+        int asyncCol = previous().column;
+        int asyncLen = previous().lexeme.length();
+
         if (match(TokenType::PIPE)) {
             return lambdaExpression(true);
         }
-        throw ParseError("Expected '|' for lambda after 'async'", previous().line);
+
+        // `async { ... }` block (README, "async { ... } blocks"):
+        //     result = await async { wait(500)  give "done" }
+        // It evaluates to a future, so it is an IMMEDIATELY-INVOKED
+        // zero-parameter async lambda -- calling an async function is what
+        // produces the future. This was documented but never parsed; `async {`
+        // failed with "Expected '|' for lambda after 'async'".
+        if (check(TokenType::LBRACE)) {
+            ExprPtr asyncLambda = lambdaExpression(true, /*noParams=*/true);
+            return makeCallExpr(arena, asyncLine, asyncCol, asyncLen, peek().filename,
+                                asyncLambda, std::vector<ExprPtr>{}, std::vector<std::string>{});
+        }
+
+        throw ParseError("Expected '|' or '{' after 'async'", previous().line);
     }
     
     if (match(TokenType::LBRACKET)) {
@@ -446,34 +463,38 @@ ExprPtr Parser::primary() {
 }
 
 // Lambda: |x, y| => x + y  OR  |x, y| { statements }
-ExprPtr Parser::lambdaExpression(bool isAsync) {
+ExprPtr Parser::lambdaExpression(bool isAsync, bool noParams) {
     int line = previous().line;
     int column = previous().column;
     int length = previous().lexeme.length();
-    
+
     // Parse parameters
     std::vector<std::string> params;
     bool isVariadic = false;
-    
-    if (!check(TokenType::PIPE)) {
-        do {
-            if (match(TokenType::ELLIPSIS)) {
-                isVariadic = true;
-                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
-                params.push_back(paramToken.lexeme);
-                if (check(TokenType::COMMA)) {
-                    error(peek(), "Rest parameter must be the last parameter");
+
+    // An `async { ... }` block has no `|...|` list at all -- it is a
+    // zero-parameter lambda, so skip straight to the body.
+    if (!noParams) {
+        if (!check(TokenType::PIPE)) {
+            do {
+                if (match(TokenType::ELLIPSIS)) {
+                    isVariadic = true;
+                    Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
+                    params.push_back(paramToken.lexeme);
+                    if (check(TokenType::COMMA)) {
+                        error(peek(), "Rest parameter must be the last parameter");
+                    }
+                    break;
                 }
-                break;
-            }
-            Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
-            params.push_back(paramToken.lexeme);
-        } while (match(TokenType::COMMA));
+                Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
+                params.push_back(paramToken.lexeme);
+            } while (match(TokenType::COMMA));
+        }
+
+        consume(TokenType::PIPE, "Expected '|' after lambda parameters");
+
+        skipNewlines();
     }
-    
-    consume(TokenType::PIPE, "Expected '|' after lambda parameters");
-    
-    skipNewlines();
     
     // Check for block body { ... } or expression body => expr
     if (match(TokenType::ARROW)) {

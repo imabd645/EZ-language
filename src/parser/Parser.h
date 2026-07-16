@@ -94,7 +94,9 @@ private:
     ExprPtr primary();
     
     ExprPtr finishCall(ExprPtr callee);
-    ExprPtr lambdaExpression(bool isAsync = false);
+    // noParams: the caller has no `|...|` list to parse (an `async { ... }`
+    // block, which is a zero-parameter lambda).
+    ExprPtr lambdaExpression(bool isAsync = false, bool noParams = false);
 };
 
 #endif // PARSER_H

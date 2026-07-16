@@ -193,7 +193,16 @@ inline std::string Value::typeName() const {
         case ValueType::BOOL: return "bool";
         case ValueType::INTEGER: return "integer";
         case ValueType::NUMBER: return "float";
-        case ValueType::STRING: return "string";
+        // A string has three runtime representations: a heap STRING, an inline
+        // SHORT_STRING (<=14 chars) and a lazy CONCAT_STRING. Only STRING was
+        // listed here, so typeOf() answered "unknown" for any short or
+        // concatenated string -- i.e. for most strings in practice. That silently
+        // broke value dispatch in EZ code: lib/db.ez binds a parameter with
+        // `when typeOf(val) == "string"`, so text params were never bound and the
+        // column stored NULL (reads then came back nil -> "Name mismatch").
+        case ValueType::STRING:
+        case ValueType::SHORT_STRING:
+        case ValueType::CONCAT_STRING: return "string";
         case ValueType::ARRAY: return "array";
         case ValueType::TUPLE: return "tuple";
         case ValueType::FUNCTION: return "function";
@@ -209,6 +218,7 @@ inline std::string Value::typeName() const {
         case ValueType::CLOSURE_VAL: return "function";
         case ValueType::INTERFACE: return "interface";
         case ValueType::CHANNEL: return "channel";
+        case ValueType::ATOMIC: return "atomic";
         default: return "unknown";
     }
 }

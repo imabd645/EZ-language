@@ -1,0 +1,59 @@
+# Regression: typeOf() answered "unknown" for most strings.
+#
+# A string has three runtime representations: a heap STRING, an inline
+# SHORT_STRING (<= 14 chars) and a lazy CONCAT_STRING. Value::typeName() only
+# listed STRING, so the other two fell through to `default: "unknown"`. Only a
+# string LONGER than 14 characters reported "string":
+#
+#   typeOf("Alice")            -> "unknown"   (short)
+#   typeOf("ab" + "cd")        -> "unknown"   (concatenated)
+#   typeOf("...15+ chars...")  -> "string"
+#
+# That silently broke value dispatch written in EZ. lib/db.ez binds a query
+# parameter with `when typeOf(val) == "string"`, so text parameters were never
+# bound, the column stored NULL, and reading it back gave nil -- surfacing as
+# test_sqlite_ffi's "Name mismatch" and test_db_advanced finding 0 rows for a
+# parameterized WHERE.
+
+out "=== typeOf ==="
+
+short = "Alice"
+long = "this string is definitely longer than fourteen characters"
+concat = "ab" + "cd"
+interp = "x" + str(1)
+
+out "short  : " + typeOf(short)
+out "long   : " + typeOf(long)
+out "concat : " + typeOf(concat)
+out "interp : " + typeOf(interp)
+
+ok = true
+when typeOf(short) != "string"  { ok = false }
+when typeOf(long) != "string"   { ok = false }
+when typeOf(concat) != "string" { ok = false }
+when typeOf(interp) != "string" { ok = false }
+when typeOf("") != "string"     { ok = false }
+
+when ok {
+    out "PASS: every string representation reports \"string\""
+} other {
+    out "FAIL: some string reported the wrong type"
+}
+
+# The other primitives must keep their existing names.
+ok2 = true
+when typeOf(30) != "integer"     { ok2 = false }
+when typeOf(1.5) != "float"      { ok2 = false }
+when typeOf(true) != "bool"      { ok2 = false }
+when typeOf(nil) != "nil"        { ok2 = false }
+when typeOf([1, 2]) != "array"   { ok2 = false }
+when typeOf({"a": 1}) != "dictionary" { ok2 = false }
+
+out "integer/float/bool/nil/array/dictionary: " + str(ok2)
+when ok2 {
+    out "PASS: other types unchanged"
+} other {
+    out "FAIL: a non-string type regressed"
+}
+
+out "=== Done ==="

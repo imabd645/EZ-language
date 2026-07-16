@@ -1,0 +1,8 @@
+{
+    "name": "ezgame",
+    "version": "1.0.0",
+    "description": "High-level GUI Game Engine for EZ",
+    "author": "EZ Game Hub",
+    "main": "main.ez",
+    "dependencies": {}
+}

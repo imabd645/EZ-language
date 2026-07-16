@@ -1,0 +1,95 @@
+# ============================================================================
+# EZ Game Library - GUI Game Engine
+# Wraps native GDI drawing and timers for real-time game development
+# ============================================================================
+
+# Virtual Key Codes
+KEYS = {
+    "LEFT": 37,
+    "UP": 38,
+    "RIGHT": 39,
+    "DOWN": 40,
+    "SPACE": 32,
+    "ESC": 27,
+    "W": 87,
+    "A": 65,
+    "S": 83,
+    "D": 68,
+    "ENTER": 13
+}
+
+model GUIGame {
+    init(title, width, height) {
+        self.title = title
+        self.width = width
+        self.height = height
+        self.win = 0
+        self.fps = 30
+        self.onUpdate = nil
+        self.onDraw = nil
+        self.isExiting = false
+        
+        # Create Main Window
+        self.win = gui_create_window(self.title, 100, 100, self.width, self.height)
+    }
+
+    task setFPS(f) {
+        self.fps = f
+    }
+
+    task onUpdateCall(callback) {
+        self.onUpdate = callback
+    }
+
+    task onDrawCall(callback) {
+        self.onDraw = callback
+    }
+
+    task stop() {
+        self.isExiting = true
+        gui_kill_timer(self.win, self.timerId)
+    }
+
+    # Core engine loop handler
+    task _loop() {
+        when self.isExiting { give false }
+        
+        # 1. Update Game State
+        upd = self.onUpdate
+        when upd != nil {
+            upd()
+        }
+        
+        # 2. Render
+        drw = self.onDraw
+        when drw != nil {
+            drw()
+        }
+    }
+
+    task run() {
+        interval = 1000 / self.fps
+        
+        # Set up the loop timer
+        self.timerId = gui_set_timer(self.win, interval, || {
+            self._loop()
+        })
+        
+        # Show window and enter message loop
+        gui_show(self.win)
+        gui_run()
+    }
+    
+    # Utility functions
+    task clear(r, g, b) { gui_clear(self.win, r, g, b) }
+    task drawRect(x, y, w, h, r, g, b) { gui_draw_rect(self.win, x, y, w, h, r, g, b) }
+    task drawCircle(x, y, radius, r, g, b) { gui_draw_circle(self.win, x, y, radius, r, g, b) }
+    task drawText(text, x, y, size, r, g, b) { gui_draw_text(self.win, text, x, y, size, r, g, b) }
+    task isKeyDown(key) { give gui_is_key_down(key) == 1 }
+    task getCenter() { give [self.width / 2, self.height / 2] }
+}
+
+# Factory function
+task createGame(title, w, h) {
+    give GUIGame(title, w, h)
+}

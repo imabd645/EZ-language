@@ -1,0 +1,213 @@
+# ============================================================================
+# EZ ORM — SQLite Driver (FFI)
+# Database-agnostic driver interface implementation for SQLite
+# ============================================================================
+
+use "orm/errors.ez"
+
+export model SQLiteDriver {
+    init(path) {
+        # Load SQLite DLL
+        self._lib = os_load_lib("sqlite3.dll")
+        when self._lib == 0 or type(self._lib) == "nil" {
+            self._lib = os_load_lib("libsqlite3-0.dll")
+        }
+        when self._lib == 0 or type(self._lib) == "nil" {
+            self._lib = os_load_lib("dlls\\libsqlite3-0.dll")
+        }
+        when self._lib == 0 or type(self._lib) == "nil" {
+            throw DriverError("sqlite3.dll or libsqlite3-0.dll not found. Place it in your project or system PATH.")
+        }
+
+        # ── Core API ────────────────────────────────────────────────
+        self._openApi        = os_get_func(self._lib, "sqlite3_open")
+        self._closeApi       = os_get_func(self._lib, "sqlite3_close")
+        self._prepare        = os_get_func(self._lib, "sqlite3_prepare_v2")
+        self._step           = os_get_func(self._lib, "sqlite3_step")
+        self._finalize       = os_get_func(self._lib, "sqlite3_finalize")
+        self._reset          = os_get_func(self._lib, "sqlite3_reset")
+        self._clearBindings  = os_get_func(self._lib, "sqlite3_clear_bindings")
+        self._errmsg         = os_get_func(self._lib, "sqlite3_errmsg")
+
+        # ── Bind API ───────────────────────────────────────────────
+        self._bindText       = os_get_func(self._lib, "sqlite3_bind_text")
+        self._bindInt        = os_get_func(self._lib, "sqlite3_bind_int64")
+        self._bindDouble     = os_get_func(self._lib, "sqlite3_bind_double")
+        self._bindBlob       = os_get_func(self._lib, "sqlite3_bind_blob")
+        self._bindNull       = os_get_func(self._lib, "sqlite3_bind_null")
+
+        # ── Column API ─────────────────────────────────────────────
+        self._columnCount    = os_get_func(self._lib, "sqlite3_column_count")
+        self._columnName     = os_get_func(self._lib, "sqlite3_column_name")
+        self._columnType     = os_get_func(self._lib, "sqlite3_column_type")
+        self._columnText     = os_get_func(self._lib, "sqlite3_column_text")
+        self._columnInt      = os_get_func(self._lib, "sqlite3_column_int64")
+        self._columnDouble   = os_get_func(self._lib, "sqlite3_column_double")
+        self._columnBlob     = os_get_func(self._lib, "sqlite3_column_blob")
+        self._columnBytes    = os_get_func(self._lib, "sqlite3_column_bytes")
+
+        # ── Metadata API ──────────────────────────────────────────
+        self._lastInsertRowid = os_get_func(self._lib, "sqlite3_last_insert_rowid")
+        self._changesApi      = os_get_func(self._lib, "sqlite3_changes")
+
+        # ── Open Database ──────────────────────────────────────────
+        outPtr = os_alloc(8)
+        rc = os_call(self._openApi, "int", path, outPtr)
+        self._handle = os_read_uint64(outPtr, 0)
+        os_free(outPtr)
+
+        when rc != 0 {
+            msg = self._getError()
+            throw DriverError("Failed to open database '" + path + "': " + msg)
+        }
+
+        # Enable WAL mode for better concurrent performance
+        self.execute("PRAGMA journal_mode=WAL", [])
+        # Enable foreign keys
+        self.execute("PRAGMA foreign_keys=ON", [])
+    }
+
+    # ── Driver Interface ──────────────────────────────────────────
+
+    task execute(sql, params) {
+        stmt = self._prepareStmt(sql)
+        self._bindParams(stmt, params)
+
+        rc = os_call(self._step, "int", stmt)
+        when rc != 101 and rc != 100 {
+            msg = self._getError()
+            os_call(self._finalize, "int", stmt)
+            throw DriverError("Execute failed: " + msg)
+        }
+        os_call(self._finalize, "int", stmt)
+    }
+
+    task query(sql, params) {
+        stmt = self._prepareStmt(sql)
+        self._bindParams(stmt, params)
+
+        results = []
+        while self._stepRow(stmt) {
+            row = self._readRow(stmt)
+            push(results, row)
+        }
+        os_call(self._finalize, "int", stmt)
+        give results
+    }
+
+    task lastInsertId() {
+        give os_call(self._lastInsertRowid, "int", self._handle)
+    }
+
+    task changes() {
+        give os_call(self._changesApi, "int", self._handle)
+    }
+
+    task begin() {
+        self.execute("BEGIN TRANSACTION", [])
+    }
+
+    task commit() {
+        self.execute("COMMIT", [])
+    }
+
+    task rollback() {
+        self.execute("ROLLBACK", [])
+    }
+
+    task close() {
+        when self._handle {
+            os_call(self._closeApi, "int", self._handle)
+            self._handle = 0
+        }
+    }
+
+    # ── Internal Helpers ──────────────────────────────────────────
+
+    task _prepareStmt(sql) {
+        stmtPtr = os_alloc(8)
+        rc = os_call(self._prepare, "int", self._handle, sql, -1, stmtPtr, 0)
+
+        when rc != 0 {
+            msg = self._getError()
+            os_free(stmtPtr)
+            throw DriverError("Prepare failed for SQL '" + sql + "': " + msg)
+        }
+
+        handle = os_read_uint64(stmtPtr, 0)
+        os_free(stmtPtr)
+        give handle
+    }
+
+    task _bindParams(stmt, params) {
+        when params == nil or len(params) == 0 {
+            give nil
+        }
+
+        repeat i = 0 to len(params) - 1 {
+            idx = i + 1
+            val = params[i]
+            t = typeOf(val)
+
+            when t == "string" {
+                os_call(self._bindText, "int", stmt, idx, val, -1, -1)
+            } other when t == "integer" {
+                os_call(self._bindInt, "int", stmt, idx, val)
+            } other when t == "float" {
+                os_call(self._bindDouble, "float", stmt, idx, val)
+            } other when t == "buffer" {
+                os_call(self._bindBlob, "int", stmt, idx, val, len(val), -1)
+            } other when t == "nil" {
+                os_call(self._bindNull, "int", stmt, idx)
+            } other when t == "boolean" {
+                boolVal = 0
+                when val { boolVal = 1 }
+                os_call(self._bindInt, "int", stmt, idx, boolVal)
+            } other {
+                # Fallback: convert to string
+                os_call(self._bindText, "int", stmt, idx, str(val), -1, -1)
+            }
+        }
+    }
+
+    task _stepRow(stmt) {
+        rc = os_call(self._step, "int", stmt)
+        when rc == 100 { give true }
+        when rc == 101 { give false }
+
+        msg = self._getError()
+        throw DriverError("Step failed: " + msg)
+    }
+
+    task _readRow(stmt) {
+        row = {}
+        colCount = os_call(self._columnCount, "int", stmt)
+
+        repeat i = 0 to colCount - 1 {
+            name = os_call(self._columnName, "string", stmt, i)
+            typeCode = os_call(self._columnType, "int", stmt, i)
+
+            when typeCode == 1 {
+                row[name] = os_call(self._columnInt, "int", stmt, i)
+            } other when typeCode == 2 {
+                row[name] = os_call(self._columnDouble, "float", stmt, i)
+            } other when typeCode == 4 {
+                size = os_call(self._columnBytes, "int", stmt, i)
+                ptr = os_call(self._columnBlob, "ptr", stmt, i)
+                row[name] = os_buffer_from_ptr(ptr, size)
+            } other when typeCode == 5 {
+                row[name] = nil
+            } other {
+                row[name] = os_call(self._columnText, "string", stmt, i)
+            }
+        }
+        give row
+    }
+
+    task _getError() {
+        when self._handle {
+            give os_call(self._errmsg, "string", self._handle)
+        }
+        give "Unknown error"
+    }
+}

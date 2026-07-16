@@ -1,0 +1,61 @@
+# EZ Professional PDF Library (v1.0)
+# Wrapper for native pdf_ builtins
+
+model PDF {
+    init(filename) {
+        self.filename = filename
+        pdf_begin(filename)
+        give self
+    }
+
+    task addPage() {
+        pdf_add_page()
+        give self
+    }
+
+    # x, y are from bottom-left (Standard PDF coordinates)
+    # MediaBox is [0 0 595 842] (A4)
+    task text(x, y, txt, size) {
+        pdf_text(size, x, y, txt)
+        give self
+    }
+
+    task line(x1, y1, x2, y2) {
+        pdf_line(x1, y1, x2, y2)
+        give self
+    }
+
+    task save() {
+        pdf_save()
+        out "PDF Saved to: " + self.filename
+    }
+
+    # -- Professional Helpers --
+
+    task header(title) {
+        self.text(50, 800, title, 24)
+        self.line(50, 790, 550, 790)
+        give self
+    }
+
+    task tableHeader(y, columns, xPos) {
+        i = 0
+        get col in columns {
+            px = xPos[i]
+            self.text(px, y, col, 12)
+            i = i + 1
+        }
+        self.line(50, y - 5, 550, y - 5)
+        give self
+    }
+
+    task tableRow(y, data, xPos) {
+        i = 0
+        get val in data {
+            px = xPos[i]
+            self.text(px, y, str(val), 10)
+            i = i + 1
+        }
+        give self
+    }
+}

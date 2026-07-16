@@ -1,0 +1,171 @@
+# ============================================================================
+# EZ ORM — Query Builder
+# Chainable API for constructing and executing SQL queries
+# ============================================================================
+
+export model Query {
+    init(session, modelClass) {
+        self.session = session
+        self.modelClass = modelClass
+        self.meta = session.engine.getMeta(modelClass)
+        self.tableName = self.meta["table"]
+        
+        self._filters = []
+        self._orderings = []
+        self._limit = nil
+        self._offset = nil
+    }
+
+    ## Adds a WHERE clause.
+    ## e.g., filter("age", ">", 18) or filter("name", "Abdullah")
+    task filter(field, op_or_val, val=nil) {
+        op = "="
+        value = op_or_val
+        
+        when val != nil {
+            op = op_or_val
+            value = val
+        }
+        
+        push(self._filters, {
+            "field": field,
+            "op": op,
+            "value": value
+        })
+        give self
+    }
+
+    ## Adds an ORDER BY clause.
+    task orderBy(field, direction="ASC") {
+        push(self._orderings, {
+            "field": field,
+            "direction": direction
+        })
+        give self
+    }
+
+    ## Adds a LIMIT clause.
+    task limit(n) {
+        self._limit = n
+        give self
+    }
+
+    ## Adds an OFFSET clause.
+    task offset(n) {
+        self._offset = n
+        give self
+    }
+
+    ## Executes the query and returns an array of model instances.
+    task all() {
+        res = self._buildSQL("SELECT *")
+        sql = res["sql"]
+        params = res["params"]
+        
+        rows = self.session.engine.driver.query(sql, params)
+        instances = []
+        
+        get row in rows {
+            inst = self._hydrate(row)
+            push(instances, inst)
+        }
+        
+        give instances
+    }
+
+    ## Executes the query and returns the first instance, or nil if none found.
+    task first() {
+        self.limit(1)
+        res = self.all()
+        when len(res) > 0 {
+            give res[0]
+        }
+        give nil
+    }
+
+    ## Executes a COUNT(*) query and returns the integer result.
+    task count() {
+        res = self._buildSQL("SELECT COUNT(*)")
+        sql = res["sql"]
+        params = res["params"]
+        
+        rows = self.session.engine.driver.query(sql, params)
+        when len(rows) > 0 {
+            row = rows[0]
+            # Get the first value in the dictionary
+            get k in keys(row) {
+                give row[k]
+            }
+        }
+        give 0
+    }
+
+    ## Executes a bulk DELETE for all rows matching the query filters.
+    task delete() {
+        res = self._buildSQL("DELETE")
+        sql = res["sql"]
+        params = res["params"]
+        
+        self.session.engine.driver.execute(sql, params)
+        give self.session.engine.driver.changes()
+    }
+
+    # ── Internal Helpers ──────────────────────────────────────────
+
+    ## Converts a database row dictionary into a model instance.
+    task _hydrate(row) {
+        inst = self.modelClass()
+        get colInfo in self.meta["columns"] {
+            colName = colInfo["name"]
+            when has_key(row, colName) {
+                # Overwrite the Column definition with the actual data value
+                setattr(inst, colName, row[colName])
+            }
+        }
+        give inst
+    }
+
+    ## Builds the SQL string and parameter array.
+    task _buildSQL(base) {
+        sql = base + " FROM " + self.tableName
+        params = []
+        
+        # WHERE clauses
+        when len(self._filters) > 0 {
+            sql += " WHERE "
+            filterParts = []
+            get f in self._filters {
+                push(filterParts, f["field"] + " " + f["op"] + " ?")
+                push(params, f["value"])
+            }
+            sql += join(filterParts, " AND ")
+        }
+        
+        # ORDER BY clauses
+        when len(self._orderings) > 0 {
+            sql += " ORDER BY "
+            orderParts = []
+            get o in self._orderings {
+                push(orderParts, o["field"] + " " + o["direction"])
+            }
+            sql += join(orderParts, ", ")
+        }
+        
+        # LIMIT
+        when self._limit != nil {
+            sql += " LIMIT ?"
+            push(params, self._limit)
+        }
+        
+        # OFFSET
+        when self._offset != nil {
+            sql += " OFFSET ?"
+            push(params, self._offset)
+        }
+        
+        give {
+            "sql": sql,
+            "params": params
+        }
+    }
+}

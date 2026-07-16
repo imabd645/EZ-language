@@ -1,11 +1,24 @@
-test_report.pdf
-lib/pdf.ez
-lib/ 
-vscode-ez-language/
+# ── Build artifacts ──────────────────────────────────────────────────────────
 build/
 *.exe
 *.o
 *.a
 *.so
 *.obj
+*.ezc
+
+# ── Generated / local output ─────────────────────────────────────────────────
+test_report.pdf
 *.db
+
+# ── Editor scratch ───────────────────────────────────────────────────────────
+**/tempCodeRunnerFile.ez
+
+# ── Separate sub-project (own tooling / node_modules) ────────────────────────
+vscode-ez-language/
+
+# NOTE: lib/ (the standard library) and the top-level *.md docs used to be
+# ignored here. That left a fresh clone with neither the stdlib that
+# `use "lib/..."` resolves against -- so the test suite could not run -- nor any
+# of the architecture/build/contributing documentation. Both are source, so they
+# are tracked now.

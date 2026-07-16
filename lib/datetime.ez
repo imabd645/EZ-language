@@ -1,0 +1,203 @@
+# ============================================================================
+# DATETIME - Date and Time Library for EZ Language
+# Version 2.0.0 (Ported to New Interpreter)
+# Uses Unix Timestamp (milliseconds since 1970-01-01 UTC)
+# ============================================================================
+
+# Milliseconds in one second
+MS_PER_SEC = 1000
+# Milliseconds in one minute
+MS_PER_MIN = 60000
+# Milliseconds in one hour
+MS_PER_HOUR = 3600000
+# Milliseconds in one day
+MS_PER_DAY = 86400000
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+# Performs floor division of two numbers (a / b)
+export task floorDiv(a, b) {
+    rem = a % b
+    give (a - rem) / b
+}
+
+# Checks if a given year is a leap year
+export task isLeap(year) {
+    when (year % 4 == 0) and ((year % 100 != 0) or (year % 400 == 0)) {
+        give true
+    }
+    give false
+}
+
+# Pads a single-digit number with a leading zero for formatting
+export task padZero(num) {
+    s = str(num)
+    when len(s) == 1 {
+        give "0" + s
+    }
+    give s
+}
+
+# Returns the number of days in a specific month of a given year
+export task daysInMonth(year, month) {
+    when month == 2 {
+        when isLeap(year) { give 29 }
+        give 28
+    }
+    
+    when month == 4 or month == 6 or month == 9 or month == 11 {
+        give 30
+    }
+    
+    give 31
+}
+
+# ============================================================================
+# Core Functions
+# ============================================================================
+
+# Returns the current system time in milliseconds (Unix timestamp)
+export task now() {
+    give clock()
+}
+
+# Decomposes a millisecond timestamp into year, month, day, hour, etc.
+export task getComponents(ts) {
+    total_ms = ts
+    ms = total_ms % 1000
+    total_seconds = floorDiv(total_ms, 1000)
+    
+    second = total_seconds % 60
+    total_minutes = floorDiv(total_seconds, 60)
+    
+    minute = total_minutes % 60
+    total_hours = floorDiv(total_minutes, 60)
+    
+    hour = total_hours % 24
+    total_days = floorDiv(total_hours, 24)
+    
+    current_year = 1970
+    weekday = (total_days + 4) % 7 # 1970-01-01 was Thursday (4)
+    
+    days_in_year = 365
+    when isLeap(current_year) { days_in_year = 366 }
+    
+    while total_days >= days_in_year {
+        total_days = total_days - days_in_year
+        current_year = current_year + 1
+        
+        days_in_year = 365
+        when isLeap(current_year) { days_in_year = 366 }
+    }
+    
+    month = 1
+    dim = daysInMonth(current_year, month)
+    
+    while total_days >= dim {
+        total_days = total_days - dim
+        month = month + 1
+        dim = daysInMonth(current_year, month)
+    }
+    
+    day = total_days + 1
+    
+    give {
+        year: current_year,
+        month: month,
+        day: day,
+        hour: hour,
+        minute: minute,
+        second: second,
+        millisecond: ms,
+        weekday: weekday
+    }
+}
+
+# Creates a Unix timestamp from date and time components
+export task makeTimestamp(y, m, d, h, mn, s) {
+    total_days = 0
+    curr_y = 1970
+    
+    while curr_y < y {
+        dy = 365
+        when isLeap(curr_y) { dy = 366 }
+        total_days = total_days + dy
+        curr_y = curr_y + 1
+    }
+    
+    curr_m = 1
+    while curr_m < m {
+        dm = daysInMonth(y, curr_m)
+        total_days = total_days + dm
+        curr_m = curr_m + 1
+    }
+    
+    total_days = total_days + (d - 1)
+    
+    total_ms = total_days * 86400000
+    total_ms = total_ms + (h * 3600000)
+    total_ms = total_ms + (mn * 60000)
+    total_ms = total_ms + (s * 1000)
+    
+    give total_ms
+}
+
+# Formats a timestamp into a human-readable YYYY-MM-DD HH:MM:SS string
+export task format(ts) {
+    c = getComponents(ts)
+    give str(c.year) + "-" + padZero(c.month) + "-" + padZero(c.day) + " " + padZero(c.hour) + ":" + padZero(c.minute) + ":" + padZero(c.second)
+}
+
+# Returns the date portion of a timestamp as a YYYY-MM-DD string
+export task dateStr(ts) {
+    c = getComponents(ts)
+    give str(c.year) + "-" + padZero(c.month) + "-" + padZero(c.day)
+}
+
+# Returns the time portion of a timestamp as an HH:MM:SS string
+export task timeStr(ts) {
+    c = getComponents(ts)
+    give padZero(c.hour) + ":" + padZero(c.minute) + ":" + padZero(c.second)
+}
+
+# Adds an arbitrary amount of time to a timestamp
+export task addTime(ts, days, hours, mins, secs) {
+    ms = ts
+    ms = ms + (days * MS_PER_DAY)
+    ms = ms + (hours * MS_PER_HOUR)
+    ms = ms + (mins * MS_PER_MIN)
+    ms = ms + (secs * MS_PER_SEC)
+    give ms
+}
+
+# Calculates the difference between two timestamps in milliseconds
+export task diffMs(ts1, ts2) {
+    give ts1 - ts2
+}
+
+# Calculates the difference between two timestamps in full days
+export task diffDays(ts1, ts2) {
+    diff = ts1 - ts2
+    give floorDiv(diff, MS_PER_DAY)
+}
+
+# Returns a formatted date string with an optional hour offset
+export task dateTime(x) {
+    time = now()
+    time = addTime(time, 0, x, 0, 0)
+    give format(time)
+}
+
+# Returns the current date as a YYYY-MM-DD string
+export task dateNow() {
+    give dateStr(now()) 
+}
+
+# Returns the current time as an HH:MM:SS string with an optional hour offset
+export task timeNow(x) {
+    time = now()
+    time = addTime(time, 0, x, 0, 0)
+    give timeStr(time)
+}

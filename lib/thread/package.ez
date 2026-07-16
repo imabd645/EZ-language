@@ -1,0 +1,7 @@
+ {
+    "name": "thread",
+    "version": "1.0.0",
+    "description": "Multithreading and Task Management Library",
+    "author": "Antigravity",
+    "entry": "main.ez"
+}

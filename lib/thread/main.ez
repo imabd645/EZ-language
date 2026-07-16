@@ -1,0 +1,63 @@
+# ============================================================================
+# EZ Production-Ready Threading Library
+# High-level concurrency primitives leveraging native async/await
+# ============================================================================
+
+# --- Task Combinators ---
+
+# Waits for all futures in a list and returns their results as an array.
+# Usage: results = thread.all([f1, f2, f3])
+task all(futures) {
+    results = []
+    get f in futures {
+        push(results, await f)
+    }
+    give results
+}
+
+# --- High-Level Parallel Patterns ---
+
+# Processes an array in parallel by spawning an async task for each item.
+# Best for CPU-bound tasks or I/O bound tasks that can run concurrently.
+# Usage: results = thread.parallelMap(items, |x| { return x * 2 })
+task parallelMap(items, mapper) {
+    futures = []
+    get item in items {
+        # Offload each mapping to a background thread
+        push(futures, spawn(mapper, item))
+    }
+    
+    # Wait for all background tasks to complete
+    give all(futures)
+}
+
+# --- Task Group Management ---
+
+# A TaskGroup collects multiple async operations so they can be awaited together.
+model TaskGroup {
+    init() {
+        self.tasks = []
+    }
+    
+    # Adds a new operation to the group
+    task add(func, arg) {
+        t = spawn(func, arg)
+        push(self.tasks, t)
+        give t
+    }
+    
+    # Waits for all tasks in the group and returns results
+    task wait() {
+        give all(self.tasks)
+    }
+}
+
+# Returns a new TaskGroup instance
+task createGroup() {
+    give TaskGroup()
+}
+
+# Standardized Sleep (millis)
+task sleep(ms) {
+    wait(ms)
+}

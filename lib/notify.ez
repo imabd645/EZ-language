@@ -1,0 +1,71 @@
+# ============================================================================
+# Notify - Native Windows Notification Library for EZ
+# Decoupled from C++, uses raw FFI and Kernel32/Shell32
+# ============================================================================
+
+__k32 = os_load_lib("Kernel32.dll")
+__u32 = os_load_lib("User32.dll")
+__s32 = os_load_lib("Shell32.dll")
+
+model NotifyFFI {
+    static getConsoleWindow = os_get_func(__k32, "GetConsoleWindow")
+    static loadIcon = os_get_func(__u32, "LoadIconA")
+    static shellNotifyIcon = os_get_func(__s32, "Shell_NotifyIconA")
+}
+
+model notify {
+    # Icon Types
+    static NONE = 0
+    static INFO = 1
+    static WARNING = 2
+    static ERROR = 3
+
+    static task _write32(buf, offset, val) {
+        os_write_byte(buf, offset, val & 255)
+        os_write_byte(buf, offset + 1, (val >> 8) & 255)
+        os_write_byte(buf, offset + 2, (val >> 16) & 255)
+        os_write_byte(buf, offset + 3, (val >> 24) & 255)
+    }
+
+    static task show(title, message) {
+        notify.showWithIcon(title, message, notify.INFO)
+    }
+
+    static task showWithIcon(title, message, iconType) {
+        # NOTIFYICONDATAA struct (64-bit alignment)
+        # Size for V3 (Windows 2000 and later)
+        size = 508
+        buf = os_alloc(size)
+        
+        # Zero the buffer
+        repeat i = 0 to size {
+            os_write_byte(buf, i, 0)
+        }
+
+        hWnd = os_call(NotifyFFI.getConsoleWindow, "ptr")
+        hIcon = os_call(NotifyFFI.loadIcon, "ptr", 0, 32512) # IDI_APPLICATION = 32512
+        
+        # Fill struct
+        notify._write32(buf, 0, size)        # cbSize
+        os_write_uint64(buf, 8, hWnd)        # hWnd
+        notify._write32(buf, 16, 1234)       # uID
+        notify._write32(buf, 20, 22)         # uFlags (NIF_ICON | NIF_TIP | NIF_INFO = 2+4+16=22)
+        os_write_uint64(buf, 32, hIcon)      # hIcon
+        
+        # szTip (usually used for mouse hover)
+        os_write_string(buf, 40, str(title))
+        
+        # szInfo (message) offset 176
+        os_write_string(buf, 176, str(message))
+        # szInfoTitle (title) offset 440
+        os_write_string(buf, 440, str(title))
+        notify._write32(buf, 504, iconType)   # dwInfoFlags
+
+        # NIM_ADD = 0
+        os_call(NotifyFFI.shellNotifyIcon, "int", 0, buf)
+        # NIM_MODIFY = 1
+        os_call(NotifyFFI.shellNotifyIcon, "int", 1, buf)
+        
+        os_free(buf)
+    }
+}

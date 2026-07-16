@@ -1,0 +1,283 @@
+// ============================================================================
+// OS - Comprehensive System Utilities Library for EZ
+// Written 100% natively in pure EZ through FFI bindings using core structs
+// ============================================================================
+
+__k32 = os_load_lib("Kernel32.dll")
+__u32 = os_load_lib("User32.dll")
+__msv = os_load_lib("msvcrt.dll")
+__s32 = os_load_lib("shell32.dll")
+__adv = os_load_lib("Advapi32.dll")
+
+// OSFFI acts as the core registry for all foreign function interfaces used by OS
+model OSFFI {
+    // Kernel32
+    static getTickCount64 = os_get_func(__k32, "GetTickCount64")
+    static globalMemStatus = os_get_func(__k32, "GlobalMemoryStatusEx")
+    static setEnv = os_get_func(__k32, "SetEnvironmentVariableA")
+    static getCwd = os_get_func(__k32, "GetCurrentDirectoryA")
+    static setCwd = os_get_func(__k32, "SetCurrentDirectoryA")
+    static globalAlloc = os_get_func(__k32, "GlobalAlloc")
+    static globalLock = os_get_func(__k32, "GlobalLock")
+    static globalUnlock = os_get_func(__k32, "GlobalUnlock")
+    static sleep = os_get_func(__k32, "Sleep")
+    static getSystemInfo = os_get_func(__k32, "GetSystemInfo")
+    static getComputerName = os_get_func(__k32, "GetComputerNameA")
+    
+    // MSVCRT
+    static getEnv = os_get_func(__msv, "getenv")
+    static putEnv = os_get_func(__msv, "_putenv_s")
+    static system = os_get_func(__msv, "system")
+    static exitProc = os_get_func(__msv, "exit")
+    static popen = os_get_func(__msv, "_popen")
+    static pclose = os_get_func(__msv, "_pclose")
+    static fgets = os_get_func(__msv, "fgets")
+    static feof = os_get_func(__msv, "feof")
+    
+    // User32 (Clipboard CF_TEXT = 1)
+    static openClipboard = os_get_func(__u32, "OpenClipboard")
+    static closeClipboard = os_get_func(__u32, "CloseClipboard")
+    static emptyClipboard = os_get_func(__u32, "EmptyClipboard")
+    static getClipboardData = os_get_func(__u32, "GetClipboardData")
+    static setClipboardData = os_get_func(__u32, "SetClipboardData")
+    
+    // Shell32 (SW_SHOWNORMAL = 1)
+    static shellExec = os_get_func(__s32, "ShellExecuteA")
+    
+    // Advapi32
+    static getUserName = os_get_func(__adv, "GetUserNameA")
+}
+
+// Environment variable manipulation and management.
+model OSEnv {
+    // Gets the value of the environment variable specified by `key`.
+    // Returns the string value, or `nil` if it doesn't exist.
+    task get(key) { give os_call(OSFFI.getEnv, "string", key) }
+    
+    // Sets the environment variable `key` to `val`.
+    task set(key, val) { os_call(OSFFI.putEnv, "int", key, str(val)) }
+    
+    // Loads environment variables from a `.env` file into the current process.
+    // Defaults to `.env` in the current directory if `path` is not provided.
+    task load(path) {
+        when not path { path = ".env" }
+        when not fs_exists(path) { give false }
+        
+        content = readFile(path)
+        lines = split(content, "\n")
+        get line in lines {
+            when line != "" and substr(line, 0, 1) != "//" {
+                parts = split(line, "=")
+                when len(parts) >= 2 {
+                    k = parts[0]
+                    v = parts[1]
+                    
+                    when len(parts) > 2 {
+                        repeat i = 2 to len(parts) - 1 {
+                            v = v + "=" + parts[i]
+                        }
+                    }
+                    
+                    testV = split(v, "\r")
+                    when len(testV) > 0 { v = testV[0] }
+                    
+                    self.set(k, v)
+                }
+            }
+        }
+        give true
+    }
+}
+
+// Path manipulation utilities for the operating system.
+model OSPath {
+    // Joins two path segments together securely.
+    task join(p1, p2) { give p1 + "\\" + p2 }
+
+    // Returns `true` if the given path is an absolute path (e.g. `C:\`).
+    task isAbsolute(p) {
+        when len(p) >= 2 and substr(p, 1, 1) == ":" { give true }
+        give false
+    }
+    
+    // Returns the base file name from a path.
+    task basename(p) {
+        parts = split(p, "\\")
+        give parts[len(parts) - 1]
+    }
+    
+    // Returns the directory name from a path.
+    task dirname(p) {
+        parts = split(p, "\\")
+        when len(parts) <= 1 { give "" }
+        res = parts[0]
+        repeat i = 1 to len(parts) - 2 { res = res + "\\" + parts[i] }
+        give res
+    }
+}
+
+// Process execution and management.
+model OSProcess {
+    // Executes a shell command and returns its standard output as a string.
+    task exec(cmd) { 
+        filePtr = os_call(OSFFI.popen, "ptr", cmd, "r")
+        when filePtr == 0 { give "" }
+        buf = os_alloc(512)
+        res = ""
+        while os_call(OSFFI.feof, "int", filePtr) == 0 {
+            charPtr = os_call(OSFFI.fgets, "ptr", buf, 512, filePtr)
+            when charPtr != 0 { res = res + os_read_string_ptr(charPtr) }
+        }
+        os_call(OSFFI.pclose, "int", filePtr)
+        os_free(buf)
+        give res
+    }
+    
+    // Executes a shell command using the native system terminal.
+    // Returns the exit code of the executed command.
+    task system(cmd) { give os_call(OSFFI.system, "int", cmd) }
+
+    // Exits the current EZ process with the specified integer `code`.
+    task exit(code) { os_call(OSFFI.exitProc, "int", code) }
+}
+
+// Read and write to the Windows system clipboard natively.
+model OSClipboard {
+    // Reads the current text content of the clipboard.
+    // Returns the text as a string, or an empty string if it fails.
+    task read() { 
+        opened = os_call(OSFFI.openClipboard, "int", 0)
+        when opened == 0 { give "" }
+        hData = os_call(OSFFI.getClipboardData, "ptr", 1)  // CF_TEXT = 1
+        when hData == 0 {
+            os_call(OSFFI.closeClipboard, "int")
+            give ""
+        }
+        ptr = os_call(OSFFI.globalLock, "ptr", hData)
+        when ptr == 0 {
+            os_call(OSFFI.closeClipboard, "int")
+            give ""
+        }
+        text = os_read_string_ptr(ptr)
+        os_call(OSFFI.globalUnlock, "int", hData)
+        os_call(OSFFI.closeClipboard, "int")
+        give text
+    }
+    
+    // Writes the provided `text` to the system clipboard.
+    task write(text) { 
+        textStr = str(text)
+        l = len(textStr)
+        hMem = os_call(OSFFI.globalAlloc, "ptr", 2, l + 1) // GMEM_MOVEABLE = 2
+        when hMem == 0 { give false }
+        ptr = os_call(OSFFI.globalLock, "ptr", hMem)
+        when ptr == 0 { give false }
+        
+        os_write_string(ptr, 0, textStr)
+        os_call(OSFFI.globalUnlock, "int", hMem)
+        
+        opened = os_call(OSFFI.openClipboard, "int", 0)
+        when opened == 0 { give false }
+        
+        os_call(OSFFI.emptyClipboard, "int")
+        os_call(OSFFI.setClipboardData, "ptr", 1, hMem)
+        os_call(OSFFI.closeClipboard, "int")
+        give true
+    }
+    
+    // Clears the system clipboard.
+    task clear() { give self.write("") }
+}
+
+// Shell interaction utilities.
+model OSShell {
+    // Opens a file or URL using the default system handler (e.g. opens a URL in your default browser).
+    task open(path) { give os_call(OSFFI.shellExec, "int", 0, "open", path, 0, 0, 1) }
+}
+
+// The main OS interface containing all system utilities.
+export model OS {
+    init() {
+        self.env = OSEnv()
+        self.path = OSPath()
+        self.process = OSProcess()
+        self.clipboard = OSClipboard()
+        self.shell = OSShell()
+    }
+    
+    // Returns the current operating system platform (e.g. "windows").
+    task platform() { give "windows" }
+    
+    // Returns the system uptime in seconds.
+    task uptime() { give os_call(OSFFI.getTickCount64, "int") / 1000.0 }
+    
+    // Returns the total physical memory (RAM) installed on the system in bytes.
+    task totalMemory() { 
+        memInfo = os_alloc(64)
+        os_write_uint64(memInfo, 0, 64)
+        os_call(OSFFI.globalMemStatus, "int", memInfo)
+        total = os_read_uint64(memInfo, 8)
+        os_free(memInfo)
+        give total
+    }
+    
+    // Returns the available physical memory (RAM) on the system in bytes.
+    task freeMemory() { 
+        memInfo = os_alloc(64)
+        os_write_uint64(memInfo, 0, 64)
+        os_call(OSFFI.globalMemStatus, "int", memInfo)
+        avail = os_read_uint64(memInfo, 16)
+        os_free(memInfo)
+        give avail
+    }
+    
+    // Returns the current working directory of the EZ process.
+    task cwd() { 
+        buf = os_alloc(1024)
+        os_call(OSFFI.getCwd, "int", 1024, buf)
+        res = os_read_string_ptr(buf)
+        os_free(buf)
+        give res
+    }
+    
+    // Changes the current working directory to `path`.
+    task chdir(path) { give os_call(OSFFI.setCwd, "int", path) != 0 }
+    
+    // Halts the current thread execution for the specified milliseconds.
+    task sleep(ms) { os_call(OSFFI.sleep, "int", ms) }
+    
+    // Retrieves the number of CPU cores active on the system.
+    task cpuCores() {
+        sysInfo = os_alloc(64)
+        os_call(OSFFI.getSystemInfo, "void", sysInfo)
+        cores = os_read_uint32(sysInfo, 32) // dwNumberOfProcessors
+        os_free(sysInfo)
+        give cores
+    }
+    
+    // Retrieves the active username of the logged-in session.
+    task userName() {
+        buf = os_alloc(256)
+        sizeBuf = os_alloc(4)
+        os_write_uint32(sizeBuf, 0, 256)
+        os_call(OSFFI.getUserName, "int", buf, sizeBuf)
+        res = os_read_string_ptr(buf)
+        os_free(buf)
+        os_free(sizeBuf)
+        give res
+    }
+    
+    // Retrieves the network computer name.
+    task computerName() {
+        buf = os_alloc(256)
+        sizeBuf = os_alloc(4)
+        os_write_uint32(sizeBuf, 0, 256)
+        os_call(OSFFI.getComputerName, "int", buf, sizeBuf)
+        res = os_read_string_ptr(buf)
+        os_free(buf)
+        os_free(sizeBuf)
+        give res
+    }
+}
+
+export os = OS()

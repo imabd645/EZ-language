@@ -1,0 +1,73 @@
+# ============================================================================
+# EZ ORM — Column Definition
+# Defines column schema for model-to-table mapping
+# ============================================================================
+
+export model Column {
+    init(type, primaryKey=false, autoIncrement=false, unique=false, nullable=true, default=nil, foreignKey=nil) {
+        when primaryKey == nil { primaryKey = false }
+        when autoIncrement == nil { autoIncrement = false }
+        when unique == nil { unique = false }
+        when nullable == nil { nullable = true }
+        
+        self.type = type
+        self.primaryKey = primaryKey
+        self.autoIncrement = autoIncrement
+        self.unique = unique
+        self.nullable = nullable
+        self.default = default
+        self.foreignKey = foreignKey
+        self._isColumn = true
+    }
+
+    task toString() {
+        give "Column(" + self.type + ")"
+    }
+
+    task toSQL() {
+        t = self._mapType()
+        parts = [t]
+
+        when self.primaryKey {
+            push(parts, "PRIMARY KEY")
+        }
+        when self.autoIncrement {
+            push(parts, "AUTOINCREMENT")
+        }
+        when self.unique and not self.primaryKey {
+            push(parts, "UNIQUE")
+        }
+        when not self.nullable and not self.primaryKey {
+            push(parts, "NOT NULL")
+        }
+        when self.default != nil {
+            when type(self.default) == "string" {
+                push(parts, "DEFAULT '" + self.default + "'")
+            } other {
+                push(parts, "DEFAULT " + str(self.default))
+            }
+        }
+
+        give join(parts, " ")
+    }
+
+    task _mapType() {
+        t = lower(self.type)
+        when t == "integer" or t == "int" {
+            give "INTEGER"
+        }
+        when t == "string" or t == "text" or t == "str" {
+            give "TEXT"
+        }
+        when t == "float" or t == "real" or t == "double" or t == "number" {
+            give "REAL"
+        }
+        when t == "bool" or t == "boolean" {
+            give "INTEGER"
+        }
+        when t == "blob" or t == "bytes" {
+            give "BLOB"
+        }
+        give "TEXT"
+    }
+}

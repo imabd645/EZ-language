@@ -1,0 +1,66 @@
+# ============================================================================
+# EZ Unit Testing Library
+# Provides assertion primitives and test reporting
+# ============================================================================
+
+# Global state
+__test_passes = 0
+__test_fails = 0
+__test_failures = []
+
+task __internal_report(test_name, is_success, failure_msg) {
+    when is_success {
+        __test_passes = __test_passes + 1
+        out "  [PASS] " + test_name
+    } other {
+        __test_fails = __test_fails + 1
+        out "  [FAIL] " + test_name + ": " + failure_msg
+        push(__test_failures, test_name + ": " + failure_msg)
+    }
+}
+
+task describe(label, suite_fn) {
+    out "\nDescribe: " + label
+    suite_fn()
+}
+
+task it(test_label, test_fn) {
+    status_ok = true
+    error_info = ""
+    try {
+        test_fn()
+    } catch ex {
+        status_ok = false
+        # Using built-in 'str' function. 
+        # CAUTION: If the user overrides 'str' globally, this will fail.
+        error_info = str(ex)
+    }
+    # Call report OUTSIDE catch block
+    __internal_report(test_label, status_ok, error_info)
+}
+
+task assert(cond, msg) {
+    when not cond {
+        panic(msg)
+    }
+}
+
+task assertEquals(actual_val, expected_val, msg) {
+    when actual_val != expected_val {
+        full_msg = "Expected " + str(expected_val) + " but got " + str(actual_val)
+        when msg != "" { full_msg = msg + " (" + full_msg + ")" }
+        panic(full_msg)
+    }
+}
+
+task testSummary() {
+    out "\n========================================"
+    out "Test Summary:"
+    out "  Passes: " + str(__test_passes)
+    out "  Fails:  " + str(__test_fails)
+    out "========================================"
+    
+    when __test_fails > 0 {
+        exit(1)
+    }
+}

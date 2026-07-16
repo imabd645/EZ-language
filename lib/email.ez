@@ -1,0 +1,163 @@
+# SMTP Email Library (Pure EZ FFI)
+# Wraps libcurl-4.dll and msvcrt.dll for sending mail (e.g. Gmail App Passwords, custom SMTP)
+
+__curl = os_load_lib("libcurl-4.dll")
+when __curl == 0 or type(__curl) == "nil" {
+    throw "Error: libcurl-4.dll not found."
+}
+
+__msv = os_load_lib("msvcrt.dll")
+when __msv == 0 or type(__msv) == "nil" {
+    throw "Error: msvcrt.dll not found."
+}
+
+CurlFFI = {
+    "init": os_get_func(__curl, "curl_easy_init"),
+    "setopt": os_get_func(__curl, "curl_easy_setopt"),
+    "perform": os_get_func(__curl, "curl_easy_perform"),
+    "cleanup": os_get_func(__curl, "curl_easy_cleanup"),
+    "slist_append": os_get_func(__curl, "curl_slist_append"),
+    "slist_free_all": os_get_func(__curl, "curl_slist_free_all")
+}
+
+MsvcrtFFI = {
+    "fopen": os_get_func(__msv, "fopen"),
+    "fclose": os_get_func(__msv, "fclose")
+}
+
+# libcurl Option Constants
+CURLOPT_URL = 10002
+CURLOPT_USERNAME = 10173
+CURLOPT_PASSWORD = 10174
+CURLOPT_MAIL_FROM = 10186
+CURLOPT_MAIL_RCPT = 10187
+CURLOPT_READDATA = 10009
+CURLOPT_UPLOAD = 46
+CURLOPT_SSL_VERIFYPEER = 64
+CURLOPT_SSL_VERIFYHOST = 81
+CURLOPT_USE_SSL = 119
+CURLOPT_VERBOSE = 41
+
+model SmtpClient {
+    init(server, port, username, password) {
+        self.server = server
+        self.port = port
+        self.username = username
+        self.password = password
+        self.useSsl = true
+        self.verbose = false
+        self.isHtml = false
+        self.replyTo = ""
+        self.priority = ""  # e.g., "1" (High), "3" (Normal), "5" (Low)
+        self.customHeaders = {}
+    }
+
+    task send(fromEmail, toEmail, subject, body) {
+        curl = os_call(CurlFFI.init, "ptr")
+        when curl == 0 {
+            throw "Error: Failed to initialize curl handle."
+        }
+
+        # Set Server URL 
+        urlStr = ""
+        when self.port == 465 {
+            urlStr = "smtps://" + self.server + ":" + str(self.port)
+        } other {
+            urlStr = "smtp://" + self.server + ":" + str(self.port)
+        }
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_URL, urlStr)
+
+        # Authentication credentials
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_USERNAME, self.username)
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_PASSWORD, self.password)
+
+        # Set SMTP specific parameters
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_MAIL_FROM, "<" + fromEmail + ">")
+
+        # Recipients list
+        recipients = 0
+        recipients = os_call(CurlFFI.slist_append, "ptr", recipients, toEmail)
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_MAIL_RCPT, recipients)
+
+        # Force SSL/TLS on standard ports if requested
+        when self.useSsl {
+            os_call(CurlFFI.setopt, "int", curl, CURLOPT_USE_SSL, 3) # CURLUSESSL_ALL
+        }
+
+        # Disable cert validation for compatibility
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_SSL_VERIFYPEER, 0)
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_SSL_VERIFYHOST, 0)
+
+        # Verbose option for debugging connection issues
+        when self.verbose {
+            os_call(CurlFFI.setopt, "int", curl, CURLOPT_VERBOSE, 1)
+        }
+
+        # Set upload mode
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_UPLOAD, 1)
+
+        # Construct the email payload (SMTP Format: Headers -> Empty Line -> Body)
+        payload = "To: " + toEmail + "\r\n"
+        payload = payload + "From: " + fromEmail + "\r\n"
+        payload = payload + "Subject: " + subject + "\r\n"
+        
+        when len(self.replyTo) > 0 {
+            payload = payload + "Reply-To: " + self.replyTo + "\r\n"
+        }
+        
+        when len(self.priority) > 0 {
+            payload = payload + "X-Priority: " + self.priority + "\r\n"
+            when self.priority == "1" {
+                payload = payload + "Importance: High\r\n"
+            } other when self.priority == "5" {
+                payload = payload + "Importance: Low\r\n"
+            }
+        }
+        
+        # Add custom headers
+        chKeys = keys(self.customHeaders)
+        i_ch = 0
+        while i_ch < len(chKeys) {
+            k = chKeys[i_ch]
+            v = self.customHeaders[k]
+            payload = payload + k + ": " + str(v) + "\r\n"
+            i_ch = i_ch + 1
+        }
+        
+        when self.isHtml {
+            payload = payload + "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+        } other {
+            payload = payload + "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+        }
+        payload = payload + body + "\r\n"
+
+        # Write payload to a temporary file
+        tempFileName = "temp_email_payload.txt"
+        writeFile(tempFileName, payload)
+
+        # Open temp file using msvcrt fopen
+        fileHandle = os_call(MsvcrtFFI.fopen, "ptr", tempFileName, "rb")
+        when fileHandle == 0 {
+            os_call(CurlFFI.slist_free_all, "ptr", recipients)
+            os_call(CurlFFI.cleanup, "ptr", curl)
+            throw "Error: Failed to open temporary email payload file."
+        }
+
+        # Set read data source to file pointer
+        os_call(CurlFFI.setopt, "int", curl, CURLOPT_READDATA, fileHandle)
+
+        # Perform sending
+        res = os_call(CurlFFI.perform, "int", curl)
+
+        # Cleanup
+        os_call(MsvcrtFFI.fclose, "int", fileHandle)
+        os_call(CurlFFI.slist_free_all, "ptr", recipients)
+        os_call(CurlFFI.cleanup, "ptr", curl)
+
+        when res != 0 {
+            throw "Error: SMTP Mail send failed with curl code " + str(res)
+        }
+
+        give true
+    }
+}

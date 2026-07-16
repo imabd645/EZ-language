@@ -1,0 +1,209 @@
+# ============================================================================
+# EZ ORM — Session (Unit of Work)
+# Manages pending inserts, updates, deletes, and transactions
+# ============================================================================
+
+use "orm/query.ez"
+use "orm/errors.ez"
+
+export model Session {
+    init(engine) {
+        self.engine = engine
+        self._pending_adds = []
+        self._pending_deletes = []
+    }
+
+    ## Starts a new query for the given model class.
+    task query(modelClass) {
+        give Query(self, modelClass)
+    }
+
+    ## Stages an instance for INSERT or UPDATE.
+    task add(instance) {
+        push(self._pending_adds, instance)
+    }
+
+    ## Stages an instance for DELETE.
+    task delete(instance) {
+        push(self._pending_deletes, instance)
+    }
+
+    ## Begins an explicit transaction.
+    task begin() {
+        self.engine.driver.begin()
+    }
+
+    ## Commits all staged operations. Wraps in a transaction if not already in one.
+    task commit() {
+        self.engine.driver.begin()
+        try {
+            self._flush()
+            self.engine.driver.commit()
+        } catch e {
+            self.engine.driver.rollback()
+            self._clear()
+            throw e
+        }
+    }
+
+    ## Rolls back the current transaction and clears staged operations.
+    task rollback() {
+        self.engine.driver.rollback()
+        self._clear()
+    }
+
+    ## Closes the session (and underlying connection if applicable).
+    task close() {
+        self._clear()
+        # Session does not own the engine, so we don't close the engine here.
+    }
+
+    # ── Internal Helpers ──────────────────────────────────────────
+
+    task _clear() {
+        self._pending_adds = []
+        self._pending_deletes = []
+    }
+
+    task _flush() {
+        get inst in self._pending_adds {
+            self._saveInstance(inst)
+        }
+        get inst in self._pending_deletes {
+            self._deleteInstance(inst)
+        }
+        self._clear()
+    }
+
+    task _saveInstance(instance) {
+        meta = self.engine.getMeta(instance.__class__)
+        pkName = meta["pk"]
+        
+        # Check if the primary key is set and is NOT a Column definition object
+        isUpdate = false
+        pkValue = getattr(instance, pkName)
+        
+        when pkValue != nil and typeOf(pkValue) != "instance" {
+            isUpdate = true
+        } other when typeOf(pkValue) == "instance" {
+            # Try to see if it's a Column marker
+            isCol = false
+            try { isCol = getattr(pkValue, "_isColumn") } catch e {}
+            when not isCol {
+                # It's an actual instance value serving as PK (rare but possible)
+                isUpdate = true
+            }
+        }
+        
+        when isUpdate {
+            self._doUpdate(instance, meta)
+        } other {
+            self._doInsert(instance, meta)
+        }
+    }
+
+    task _doInsert(instance, meta) {
+        columns = meta["columns"]
+        tableName = meta["table"]
+        pkName = meta["pk"]
+        
+        cols = []
+        vals = []
+        placeholders = []
+        
+        get colInfo in columns {
+            colName = colInfo["name"]
+            val = getattr(instance, colName)
+            
+            # Skip if it's still a Column definition (meaning it wasn't set by the user)
+            isCol = false
+            when typeOf(val) == "instance" {
+                try { isCol = getattr(val, "_isColumn") } catch e {}
+            }
+            
+            # If it's a column definition, only skip if it's auto-incrementing or has a default
+            # If it's required (not nullable) and has no default, and the DB doesn't auto-gen it, this will fail at DB level.
+            when not isCol {
+                push(cols, colName)
+                push(vals, val)
+                push(placeholders, "?")
+            } other {
+                # Ensure we skip auto-increment primary keys
+                when not colInfo["autoIncrement"] and colInfo["default"] == nil and not colInfo["nullable"] {
+                    throw IntegrityError("Missing required value for column '" + colName + "' on insert.")
+                }
+            }
+        }
+        
+        sql = "INSERT INTO " + tableName + " (" + join(cols, ", ") + ") VALUES (" + join(placeholders, ", ") + ")"
+        self.engine.driver.execute(sql, vals)
+        
+        # Populate auto-increment primary key if we just inserted
+        pkValue = getattr(instance, pkName)
+        isCol = false
+        when typeOf(pkValue) == "instance" {
+            try { isCol = getattr(pkValue, "_isColumn") } catch e {}
+        }
+        
+        when isCol {
+            # Find the PK column info
+            get c in columns {
+                when c["name"] == pkName and c["autoIncrement"] {
+                    newId = self.engine.driver.lastInsertId()
+                    setattr(instance, pkName, newId)
+                }
+            }
+        }
+    }
+
+    task _doUpdate(instance, meta) {
+        columns = meta["columns"]
+        tableName = meta["table"]
+        pkName = meta["pk"]
+        pkValue = getattr(instance, pkName)
+        
+        setParts = []
+        vals = []
+        
+        get colInfo in columns {
+            colName = colInfo["name"]
+            when colName != pkName {
+                val = getattr(instance, colName)
+                isCol = false
+                when typeOf(val) == "instance" {
+                    try { isCol = getattr(val, "_isColumn") } catch e {}
+                }
+                
+                when not isCol {
+                    push(setParts, colName + " = ?")
+                    push(vals, val)
+                }
+            }
+        }
+        
+        when len(setParts) > 0 {
+            sql = "UPDATE " + tableName + " SET " + join(setParts, ", ") + " WHERE " + pkName + " = ?"
+            push(vals, pkValue)
+            self.engine.driver.execute(sql, vals)
+        }
+    }
+
+    task _deleteInstance(instance) {
+        meta = self.engine.getMeta(instance.__class__)
+        tableName = meta["table"]
+        pkName = meta["pk"]
+        pkValue = getattr(instance, pkName)
+        
+        when pkValue != nil {
+            isCol = false
+            when typeOf(pkValue) == "instance" {
+                try { isCol = getattr(pkValue, "_isColumn") } catch e {}
+            }
+            
+            when not isCol {
+                sql = "DELETE FROM " + tableName + " WHERE " + pkName + " = ?"
+                self.engine.driver.execute(sql, [pkValue])
+            }
+        }
+    }
+}

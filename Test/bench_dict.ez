@@ -14,11 +14,7 @@ out "=== Dict Read Benchmark ==="
 N = 1000
 READS = 20000
 
-# NOTE: seeded with a string-keyed entry on purpose. An empty `{}` literal
-# mis-infers its key type, so the type checker then rejects a computed string
-# index ("Dictionary index expected Any but got string") -- a separate
-# type-checker bug, unrelated to what this benchmark measures.
-d = {"seed": 0}
+d = {}
 repeat i = 0 to N - 1 {
     d["key" + str(i)] = i
 }

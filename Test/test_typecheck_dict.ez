@@ -1,0 +1,54 @@
+# Typechecker: an empty dict literal must accept any key.
+#
+# `{}` infers Dict[Any, Any]. The dictionary index rule compared raw baseType
+# STRINGS ("string" != "Any"), bypassing TypeInfo::operator==, which is Any-aware
+# on both sides. So every concrete index into an empty dict was rejected at
+# compile time:
+#
+#   d = {}
+#   d["k"] = 1     -> Type Error: Dictionary index expected Any but got string
+#
+# That made the natural "build a dict in a loop" pattern impossible without
+# seeding the literal first. Both the read and assign paths are fixed to use
+# operator!=.
+
+out "=== Typechecker: Dict Index ==="
+
+# --- assign into an empty dict with a literal key ---
+d = {}
+d["alpha"] = 1
+out "literal key      : " + str(d["alpha"])
+
+# --- assign with a COMPUTED string key, the case that motivated the fix ---
+counts = {}
+repeat i = 0 to 4 {
+    counts["key" + str(i)] = i * 10
+}
+out "computed key     : " + str(counts["key3"])
+
+# --- number-keyed empty dict ---
+byNum = {}
+byNum[42] = "answer"
+out "number key       : " + str(byNum[42])
+
+ok = true
+when d["alpha"] != 1        { ok = false }
+when counts["key3"] != 30   { ok = false }
+when byNum[42] != "answer"  { ok = false }
+
+when ok {
+    out "PASS: empty dict accepts literal, computed and numeric keys"
+} other {
+    out "FAIL: dict index results wrong"
+}
+
+# --- a dict with a known key type must STILL reject a bad index ---
+# The fix must not simply disable the check. `typed` infers Dict[string, number],
+# so a number index is a genuine error and must still be caught at compile time.
+# (Kept as a comment because it must fail COMPILATION, which would stop this
+# file from running at all -- verified separately by the harness.)
+#
+#   typed = {"a": 1}
+#   x = typed[42]        -> Type Error: Dictionary index expected string but got number
+
+out "=== Done ==="

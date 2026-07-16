@@ -51,7 +51,12 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
                 error(expr.value, "Type mismatch in array assignment. Expected " + objType.typeArgs[0].toString() + " but got " + valType.toString());
             }
         } else if (objType.baseType == "Dict" && objType.typeArgs.size() == 2) {
-            if (indexType.baseType != "Any" && indexType.baseType != objType.typeArgs[0].baseType) {
+            // Compare with operator!=, which is Any-aware on BOTH sides (and
+            // compares nested type args). The old code compared raw baseType
+            // strings, so it bypassed that Any logic: an empty `{}` infers
+            // Dict[Any, Any], and "string" != "Any" made `d["k"] = 1` fail with
+            // "Dictionary index expected Any but got string".
+            if (indexType != objType.typeArgs[0]) {
                 error(expr.index, "Dictionary index expected " + objType.typeArgs[0].toString() + " but got " + indexType.toString());
             }
             if (valType.baseType != "Any" && objType.typeArgs[1].baseType != "Any" && valType != objType.typeArgs[1]) {
@@ -478,7 +483,10 @@ TypeInfo TypeChecker::checkIndex(const IndexExpr& expr) {
         }
         return objType.typeArgs[0];
     } else if (objType.baseType == "Dict" && objType.typeArgs.size() == 2) {
-        if (indexType.baseType != "Any" && indexType.baseType != objType.typeArgs[0].baseType) {
+        // As in checkAssign: operator!= is Any-aware on both sides, unlike the
+        // raw baseType string compare this replaced (which made `d["k"]` on an
+        // empty `{}` fail with "expected Any but got string").
+        if (indexType != objType.typeArgs[0]) {
             error(expr.index, "Dictionary index expected " + objType.typeArgs[0].toString() + " but got " + indexType.toString());
         }
         return objType.typeArgs[1];

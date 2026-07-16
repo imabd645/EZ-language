@@ -1,0 +1,75 @@
+# Phase 13: tail-call optimization must actually reuse the frame.
+#
+# The compiler emitted TAIL_CALL correctly, but the VM only recognised a
+# self-tail-call when the callee was a raw EZFunction. A `task` compiles to a
+# CLOSURE (confirmed with `ez <file> --dump`), so the callee was an EZClosure,
+# isFunction() was false, the check never matched, and every "optimized" tail
+# call still pushed a frame -- piling up until it hit the 512-frame cap. TCO
+# had never worked despite being documented.
+#
+# These depths are far beyond FRAMES_MAX (512), so they can only pass if the
+# frame is genuinely reused.
+
+out "=== Tail Call Optimization ==="
+
+task countdown(n, acc) {
+    when (n == 0) { give acc }
+    give countdown(n - 1, acc + 1)
+}
+
+# 5,000 -- ~10x the frame cap
+r1 = countdown(5000, 0)
+out "countdown(5000)  = " + str(r1)
+when r1 == 5000 {
+    out "PASS: 5,000-deep tail recursion (10x the 512-frame cap)"
+} other {
+    out "FAIL: expected 5000, got " + str(r1)
+}
+
+# 100,000 -- ~200x the frame cap; impossible without real TCO
+r2 = countdown(100000, 0)
+out "countdown(100000) = " + str(r2)
+when r2 == 100000 {
+    out "PASS: 100,000-deep tail recursion (200x the frame cap)"
+} other {
+    out "FAIL: expected 100000, got " + str(r2)
+}
+
+# Accumulator arithmetic must stay correct across reused frames.
+task sumTo(n, acc) {
+    when (n == 0) { give acc }
+    give sumTo(n - 1, acc + n)
+}
+r3 = sumTo(10000, 0)
+out "sumTo(10000)     = " + str(r3) + "  (expect 50005000)"
+when r3 == 50005000 {
+    out "PASS: accumulator correct across reused frames"
+} other {
+    out "FAIL: expected 50005000, got " + str(r3)
+}
+
+# A non-tail recursive call must STILL be bounded by the frame cap -- the fix
+# must not accidentally turn ordinary recursion into frame reuse.
+task deepNonTail(n) {
+    when (n == 0) { give 0 }
+    give 1 + deepNonTail(n - 1)      # not a tail call: the add happens after
+}
+try {
+    bad = deepNonTail(5000)
+    out "FAIL: non-tail recursion should have hit the frame cap, got " + str(bad)
+} catch e {
+    out "PASS: non-tail recursion still correctly bounded -> " + str(e)
+}
+
+# Ordinary shallow recursion must still return the right answer.
+task fib(n) {
+    when n < 2 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+when fib(15) == 610 {
+    out "PASS: ordinary recursion still correct (fib(15)=610)"
+} other {
+    out "FAIL: ordinary recursion broke"
+}
+
+out "=== Done ==="

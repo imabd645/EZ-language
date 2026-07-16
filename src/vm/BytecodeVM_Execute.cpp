@@ -1369,10 +1369,27 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         uint8_t argCount = READ_BYTE();
                         Value callee = *(stackTop - argCount - 1);
-                        
-                        if (callee.isFunction()) {
+
+                        // Is this a tail call back into the function this frame is
+                        // already running? If so we can reuse the frame instead of
+                        // pushing a new one.
+                        //
+                        // This used to only test callee.isFunction(). But a `task`
+                        // compiles to a CLOSURE (see `ez <file> --dump`), so the
+                        // callee is normally an EZClosure and isFunction() is false
+                        // -- the check never matched, TCO never engaged, and tail
+                        // recursion piled up frames until it hit FRAMES_MAX.
+                        bool isSelfTailCall = false;
+                        const std::vector<std::shared_ptr<UpvalueObj>>* calleeUpvalues = nullptr;
+
+                        if (callee.isClosure()) {
+                            auto cl = callee.asClosure();
+                            if (cl && cl->function == frame->function) {
+                                isSelfTailCall = true;
+                                calleeUpvalues = &cl->upvalues;
+                            }
+                        } else if (callee.isFunction()) {
                             auto ezFunc = callee.asFunction();
-                            bool isSelfTailCall = false;
                             if (ezFunc) {
                                 std::shared_lock<std::shared_mutex> lk(globalEnv->registryMutex);
                                 auto it = globalEnv->compiledFunctionCache.find(ezFunc.get());
@@ -1380,25 +1397,37 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     isSelfTailCall = true;
                                 }
                             }
-                            if (isSelfTailCall) {
-                                Value* oldTop = stackTop;
-                                size_t localCount = frame->function->localCount;
-                                for (int i = 0; i < argCount; i++) {
-                                    frame->slots[i] = *(stackTop - argCount + i);
-                                }
-                                // Reset the reused frame's non-parameter locals to
-                                // NIL (fresh-call semantics) so values from the prior
-                                // iteration don't linger and root dead objects.
-                                clearStackSlots(frame->slots + argCount, frame->slots + localCount);
-                                stackTop = frame->slots + localCount;
-                                // Release the abandoned callee/args/temporaries that
-                                // sat above the reused frame.
-                                clearStackSlots(stackTop, oldTop);
-                                ip = frame->function->chunk.code.data();
-                                goto tail_call_restart;
-                            }
                         }
-                        
+
+                        if (isSelfTailCall) {
+                            Value* oldTop = stackTop;
+                            size_t localCount = frame->function->localCount;
+
+                            // Any closure created during THIS iteration captured our
+                            // locals by pointer. Close those upvalues before we reuse
+                            // the slots, or they would silently observe the next
+                            // iteration's values (or freed slots).
+                            closeUpvalues(frame->slots);
+
+                            // The callee may be a different closure instance over the
+                            // same function, so adopt its upvalues for the next round.
+                            if (calleeUpvalues) frameUpvalues.back().upvalues = *calleeUpvalues;
+
+                            for (int i = 0; i < argCount; i++) {
+                                frame->slots[i] = *(stackTop - argCount + i);
+                            }
+                            // Reset the reused frame's non-parameter locals to
+                            // NIL (fresh-call semantics) so values from the prior
+                            // iteration don't linger and root dead objects.
+                            clearStackSlots(frame->slots + argCount, frame->slots + localCount);
+                            stackTop = frame->slots + localCount;
+                            // Release the abandoned callee/args/temporaries that
+                            // sat above the reused frame.
+                            clearStackSlots(stackTop, oldTop);
+                            ip = frame->function->chunk.code.data();
+                            goto tail_call_restart;
+                        }
+
                         SYNC_IP();
                         this->stackTop = stackTop;
                         if (dispatchCall(callee, argCount)) {

@@ -77,10 +77,20 @@ TypeInfo TypeChecker::checkAssign(const AssignExpr& expr) {
     }
     
     if (!found) {
-        declareVariable(expr.name, valType);
+        // A variable first assigned `nil` means "declared now, real value later"
+        // -- the dominant idiom for something set inside a branch, loop, lambda,
+        // or by a helper. Typing it as the concrete `nil` froze it, so the very
+        // next `x = 5` or `x = Model()` failed with a bogus "type mismatch", and
+        // member access on the eventual value was rejected as "property on nil".
+        // Type it as Any instead, matching the dynamically-typed runtime.
+        declareVariable(expr.name, valType.baseType == "nil" ? TypeInfo("Any") : valType);
     } else {
         TypeInfo declaredType = resolveVariable(expr.name);
-        if (valType.baseType != "Any" && declaredType.baseType != "Any" && declaredType != valType) {
+        // `nil` is compatible with every type: assigning nil to a typed variable
+        // (nulling it out) and reassigning a variable that currently holds nil
+        // are both always allowed.
+        bool eitherNil = declaredType.baseType == "nil" || valType.baseType == "nil";
+        if (!eitherNil && valType.baseType != "Any" && declaredType.baseType != "Any" && declaredType != valType) {
             error(expr.value,
                   "Type mismatch in variable assignment.", "Expected " + declaredType.toString() + " but got " + valType.toString());
         }

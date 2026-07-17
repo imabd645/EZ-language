@@ -1,0 +1,76 @@
+# A variable first assigned `nil` must be freely reassignable to any type, and
+# member access on the eventual value must type-check. `x = nil` is the standard
+# way to declare a variable that a later branch, loop, lambda, or helper fills
+# in. The typechecker used to freeze it as the concrete type `nil`, so the next
+# `x = 5` failed with "type mismatch in variable assignment" and `x.method()`
+# with "property on nil" -- before the program ever ran.
+
+passes = 0
+fails = 0
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+out "=== nil-initialised variables reassign freely ==="
+
+# --- 1. nil -> int ----------------------------------------------------------
+a = nil
+a = 5
+check("nil then int", a, 5)
+
+# --- 2. nil -> string -------------------------------------------------------
+b = nil
+b = "hello"
+check("nil then string", b, "hello")
+
+# --- 3. nil -> model, then call a method ------------------------------------
+model Box { init(v) { self.v = v } task get() { give self.v } }
+c = nil
+c = Box(42)
+check("nil then model + method call", c.get(), 42)
+
+# --- 4. nil set inside a branch, used after --------------------------------
+d = nil
+when true { d = Box(7) }
+check("nil set in a branch", d.get(), 7)
+
+# --- 5. nil set inside a loop ----------------------------------------------
+e = nil
+i = 0
+while i < 3 { e = i * 10  i = i + 1 }
+check("nil set in a loop", e, 20)
+
+# --- 6. nil set by a lambda (closure), used after ---------------------------
+f = nil
+setter = || { f = Box(99) }
+setter()
+check("nil set by a lambda", f.get(), 99)
+
+# --- 7. nil set by a helper via a captured variable -------------------------
+g = nil
+task run(fn) { fn() }
+run(|| { g = "done" })
+check("nil set through a higher-order call", g, "done")
+
+# --- 8. assign nil back to a typed variable (nulling out) -------------------
+h = Box(1)
+h = nil
+check("typed var can be set back to nil", typeOf(h), "nil")
+
+# --- 9. nil -> different types in sequence ----------------------------------
+k = nil
+k = 1
+k = "two"
+k = Box(3)
+check("nil then several different types", k.get(), 3)
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

@@ -72,7 +72,7 @@ task e_nested() {
     } finally { push(log5, "outer") }
 }
 check("nested give returns", e_nested(), "E")
-check("nested finallys run innermost-first", str(log5), "[\"inner\",\"outer\"]")
+check("nested finallys run innermost-first", str(log5), "[\"inner\", \"outer\"]")
 
 # --- 6. the finally must not corrupt the returned value ----------------------
 task f_val() {

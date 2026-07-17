@@ -468,7 +468,27 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
                     // Emit TAIL_CALL with argument count
                     emitOp(OpCode::TAIL_CALL);
                     emitByte(static_cast<uint8_t>(call.arguments.size()));
-                    // TAIL_CALL handles its own return — we're done
+
+                    // Matching the callee by NAME is only a guess: the name may
+                    // resolve to something other than this function (a global
+                    // builtin it shadows, or a reassigned variable). The VM
+                    // verifies the callee's identity and only reuses the frame
+                    // when it really is a self-call; otherwise it performs an
+                    // ordinary call and falls through to here.
+                    //
+                    // So emit the RETURN that ordinary call needs. Previously
+                    // nothing was emitted ("TAIL_CALL handles its own return"),
+                    // and the non-self path fell into the function's implicit
+                    // trailing LOAD_NIL + RETURN -- silently discarding the
+                    // result and returning nil. That is why a task that
+                    // tail-called a builtin it shadowed, e.g.
+                    //     static task urlDecode(s) { give urlDecode(s) }
+                    // returned nil for every input.
+                    //
+                    // On the self-tail-call path the VM jumps back to the
+                    // function's first instruction, so this RETURN is never
+                    // reached and frame reuse is unaffected.
+                    emitOp(OpCode::RETURN);
                     isTailCall = true;
                 }
             }

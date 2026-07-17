@@ -1,0 +1,96 @@
+# Regression: `give f(...)` returned nil when f was NOT the enclosing function.
+#
+# compileGive emits TAIL_CALL whenever the callee is an identifier whose NAME
+# matches the enclosing function's name. That match is only a guess -- the name
+# can resolve to something else entirely, such as a global builtin the function
+# shadows. The VM checks the callee's real identity and only reuses the frame for
+# a genuine self-call; otherwise it performs an ordinary call and falls through.
+#
+# But the compiler emitted nothing after TAIL_CALL ("TAIL_CALL handles its own
+# return"), so that fall-through landed on the function's implicit trailing
+# LOAD_NIL + RETURN -- discarding the call's result and returning nil, with no
+# error. Only tail position was affected:
+#
+#   static task urlDecode(s) {
+#       b = urlDecode(s)     # fine -- ordinary CALL
+#       give urlDecode(s)    # nil!  -- TAIL_CALL fell through to LOAD_NIL
+#   }
+#
+# This silently broke C:/ezlib/web's WebUtils.urlDecode, which decoded every HTML
+# form field and URL query parameter to nil.
+
+out "=== tail call to a shadowed name ==="
+
+# A task whose name shadows the `urlDecode` builtin and tail-calls it.
+task urlDecode(s) {
+    give urlDecode(s)
+}
+r1 = urlDecode("a%20b")
+out "shadowed builtin, tail position : [" + str(r1) + "]"
+when r1 == "a b" {
+    out "PASS: tail call to a shadowed builtin returns its result"
+} other {
+    out "FAIL: expected 'a b', got [" + str(r1) + "]"
+}
+
+# Same shadowing, but NOT in tail position -- this always worked.
+task urlDecode2(s) {
+    v = urlDecode(s)
+    give v
+}
+when urlDecode2("a%20b") == "a b" {
+    out "PASS: non-tail call still correct"
+} other {
+    out "FAIL: non-tail call broke"
+}
+
+# A model static task shadowing a builtin -- the exact shape from ezlib/web.
+model WebUtils2 {
+    static task urlDecode(strVal) {
+        give urlDecode(str(strVal))
+    }
+}
+r3 = WebUtils2.urlDecode("hello%20world%21")
+out "static task shadowing builtin   : [" + str(r3) + "]"
+when r3 == "hello world!" {
+    out "PASS: static task tail-calling a shadowed builtin"
+} other {
+    out "FAIL: expected 'hello world!', got [" + str(r3) + "]"
+}
+
+# Tail call to a DIFFERENT, same-named local function value.
+task upper2(s) {
+    give upper(s)
+}
+when upper2("abc") == "ABC" {
+    out "PASS: tail call to another shadowed builtin (upper)"
+} other {
+    out "FAIL: upper tail call broke"
+}
+
+out "=== real TCO must still reuse frames ==="
+
+# Genuine self tail call: must still be optimized, not just correct. 100,000 deep
+# is ~200x the 512-frame cap, so this only passes if the frame is reused.
+task countdown(n, acc) {
+    when n == 0 { give acc }
+    give countdown(n - 1, acc + 1)
+}
+r5 = countdown(100000, 0)
+out "countdown(100000) = " + str(r5)
+when r5 == 100000 {
+    out "PASS: self tail call still reuses the frame (100,000 deep)"
+} other {
+    out "FAIL: TCO regressed, got " + str(r5)
+}
+
+# Mutual/non-self tail call to an ordinary EZ task must return its result too.
+task inner(x) { give x * 3 }
+task outerCall(x) { give inner(x) }
+when outerCall(5) == 15 {
+    out "PASS: tail call to an ordinary EZ task returns its result"
+} other {
+    out "FAIL: expected 15, got " + str(outerCall(5))
+}
+
+out "=== Done ==="

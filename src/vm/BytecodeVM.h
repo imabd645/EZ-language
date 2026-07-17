@@ -144,6 +144,23 @@ private:
     std::shared_ptr<UpvalueObj> captureUpvalue(Value* local);
     void                        closeUpvalues(Value* last);
 
+    // Run a doXXX helper and, if it raises a RuntimeError, catch it HERE -- in
+    // this plain function's frame, which has correct exception unwind info --
+    // rather than letting the C++ exception unwind through run()'s computed-goto
+    // dispatch, whose goto*-based control flow corrupts the landing-pad tables so
+    // the catch is skipped and the process crashes (fatally under the libuv event
+    // loop that drives every FFI callback and ezweb request handler). The fault
+    // becomes running=false + pendingException, which the dispatch checks.
+    //
+    // MUST NOT be inlined: the whole point is that the try/catch lives in a
+    // SEPARATE frame from run()'s computed-goto dispatch. If -O3/LTO inlined it
+    // into run(), the catch would move back into the region with the corrupt
+    // landing-pad tables and the fix would silently stop working.
+#if defined(__GNUC__)
+    __attribute__((noinline))
+#endif
+    void guardedHelper(void (BytecodeVM::*fn)());
+
     // ── Arithmetic ───────────────────────────────────────────────────────────
     void doAdd(); void doSubtract(); void doMultiply(); void doDivide();
     void doModulo(); void doPower(); void doNegate();

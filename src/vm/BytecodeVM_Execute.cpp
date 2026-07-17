@@ -125,7 +125,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
     // Tracing is off in every normal run, so mark the check cold: the compiler
     // keeps the cerr call out of line instead of inlining an I/O path into the
     // hottest loop in the interpreter. (--trace still works.)
+    // A helper (doIndexGet, doAdd, ...) that faulted set running=false via
+    // runtimeError and caught the C++ exception in its own simple frame, rather
+    // than letting it unwind through this computed-goto dispatch -- whose goto*-
+    // based control flow corrupts run()'s exception landing-pad tables, so a throw
+    // from deep in the dispatch skipped run()'s own catch and crashed the process
+    // (reliably, under the libuv event loop that drives every ezweb handler).
+    // Route the fault to the unwinder here, which is a plain goto -- no C++
+    // exception crosses the dispatch. running is set false ONLY on a fault, so
+    // this is a correct signal.
     #define DISPATCH() { \
+        if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
         if (__builtin_expect(traceExecution, 0)) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
     }
@@ -791,9 +801,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doNegate(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doNegate); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doNegate(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doNegate); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -829,9 +839,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doAdd(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doAdd); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doAdd(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doAdd); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -865,9 +875,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doSubtract(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doSubtract); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doSubtract(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doSubtract); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -902,9 +912,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doMultiply(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doMultiply); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doMultiply(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doMultiply); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -951,9 +961,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doDivide(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doDivide); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doDivide(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doDivide); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -970,18 +980,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop = Value(res);
                             stackTop++;
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doModulo(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doModulo); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
                 }
-                CASE_CODE(POW) { SYNC_IP(); this->stackTop = stackTop; doPower(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_AND)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseAnd(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_OR)     { SYNC_IP(); this->stackTop = stackTop; doBitwiseOr(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_XOR)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseXor(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(BIT_NOT)    { SYNC_IP(); this->stackTop = stackTop; doBitwiseNot(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(SHIFT_LEFT) { SYNC_IP(); this->stackTop = stackTop; doShiftLeft(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
-                CASE_CODE(SHIFT_RIGHT){ SYNC_IP(); this->stackTop = stackTop; doShiftRight(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(POW) { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doPower); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_AND)    { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doBitwiseAnd); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_OR)     { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doBitwiseOr); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_XOR)    { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doBitwiseXor); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(BIT_NOT)    { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doBitwiseNot); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_LEFT) { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doShiftLeft); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                CASE_CODE(SHIFT_RIGHT){ SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doShiftRight); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
 
                 CASE_CODE(EQUAL) {
                     {
@@ -1074,9 +1084,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doLess(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doLess); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doLess(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doLess); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -1110,9 +1120,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doLessEq); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doLessEq(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doLessEq); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -1146,9 +1156,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doGreater(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doGreater); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doGreater(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doGreater); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -1182,9 +1192,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 LOAD_FRAME();
                                 DISPATCH();
                             }
-                            SYNC_IP(); this->stackTop = stackTop; doGreaterEq(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doGreaterEq); stackTop = this->stackTop; LOAD_FRAME();
                         } else {
-                            SYNC_IP(); this->stackTop = stackTop; doGreaterEq(); stackTop = this->stackTop; LOAD_FRAME();
+                            SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doGreaterEq); stackTop = this->stackTop; LOAD_FRAME();
                         }
                     }
                     DISPATCH();
@@ -1568,8 +1578,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
 
-                CASE_CODE(INDEX_GET)  { SYNC_IP(); this->stackTop = stackTop; doIndexGet(); stackTop = this->stackTop; DISPATCH(); }
-                CASE_CODE(INDEX_SET)  { SYNC_IP(); this->stackTop = stackTop; doIndexSet(); stackTop = this->stackTop; DISPATCH(); }
+                CASE_CODE(INDEX_GET)  { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doIndexGet); stackTop = this->stackTop; DISPATCH(); }
+                CASE_CODE(INDEX_SET)  { SYNC_IP(); this->stackTop = stackTop; guardedHelper(&BytecodeVM::doIndexSet); stackTop = this->stackTop; DISPATCH(); }
 
                 CASE_CODE(ARRAY_APPEND) {
                     {
@@ -2237,6 +2247,44 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     DISPATCH();
                 }
 
+                // Reached (via a plain goto from DISPATCH) when a doXXX helper
+                // faulted: runtimeError set pendingException + running=false and
+                // the helper caught the C++ throw in its OWN simple frame, so no
+                // exception unwound through this computed-goto dispatch. Route it
+                // to the owning try exactly like OP_THROW -- but with a goto, not
+                // a C++ throw, because a throw from here loses run()'s landing pad
+                // and crashes (fatally under the libuv event loop that drives
+                // every ffi callback / ezweb handler).
+                handle_vm_fault: {
+                    Value exc = pendingException;
+                    if (exc.isNil()) { running = true; DISPATCH(); } // defensive
+                    if (ownsTryBlock()) {
+                        running = true;   // resume execution in the catch handler
+                        TryBlock tb = tryStack.back(); tryStack.pop_back();
+                        while (frames.size() > tb.frameIdx + 1) {
+                            closeUpvalues(frames.back().slots);
+                            frames.pop_back(); frameUpvalues.pop_back();
+                        }
+                        stackTop = tb.stackTop;
+                        LOAD_FRAME();
+                        ip = tb.catchIp;
+                        *stackTop++ = exc;
+                        pendingException = Value();
+                        DISPATCH();
+                    } else if (!tryStack.empty()) {
+                        // The owning handler is in a caller's frame. Leave the
+                        // fault in place (pendingException set, running=false) and
+                        // return; callFunction() re-raises it from ordinary code.
+                        SYNC_IP();
+                        return;
+                    } else {
+                        // Uncaught: runtimeError already printed. Return with the
+                        // fault recorded so the caller/driver can see it.
+                        SYNC_IP();
+                        return;
+                    }
+                }
+
                 CASE_CODE(END) {
                     running = false;
 #ifdef __GNUC__
@@ -2816,6 +2864,22 @@ void BytecodeVM::doShiftRight() {
         return;
     }
     runtimeError("'>>' operands must be numbers");
+}
+
+void BytecodeVM::guardedHelper(void (BytecodeVM::*fn)()) {
+    try {
+        (this->*fn)();
+    } catch (const RuntimeError& e) {
+        // runtimeError() already set running=false and pendingException before it
+        // threw; this catch just stops the exception from unwinding any further.
+        // The unwind from the helper into THIS frame is short and passes only
+        // through plain functions, so its landing pad is found reliably where
+        // run()'s (in the computed-goto dispatch) is not.
+        if (pendingException.isNil()) {
+            pendingException = e.value.isNil() ? Value(e.what()) : e.value;
+        }
+        running = false;
+    }
 }
 
 void BytecodeVM::doIndexGet() {

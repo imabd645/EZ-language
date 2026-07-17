@@ -288,6 +288,20 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     }
 
     running = false;
+
+    // faultMode is set while a doXXX helper runs (see guardedHelper). In that
+    // window we must NOT throw a C++ exception: the helper is deep inside run()'s
+    // computed-goto dispatch, and when that dispatch is itself running inside the
+    // libuv event-loop callback (every FFI callback / ezweb handler), a C++
+    // exception cannot unwind at all -- verified with gdb, it skips every catch
+    // on the stack (helper, run, callFunction, the uv callback) and jumps to a
+    // null handler, crashing the process. Instead the fault travels as
+    // running=false + pendingException, and the dispatch routes it to
+    // handle_vm_fault with a plain goto. This is how a handler that indexes nil
+    // now produces a catchable EZ error instead of taking the server down.
+    if (faultMode) {
+        return;
+    }
     throw RuntimeError(message, faultLine);
 }
 

@@ -2867,19 +2867,31 @@ void BytecodeVM::doShiftRight() {
 }
 
 void BytecodeVM::guardedHelper(void (BytecodeVM::*fn)()) {
+    // While the helper runs, runtimeError() records faults as running=false +
+    // pendingException and RETURNS instead of throwing (faultMode). A C++
+    // exception is never raised, so nothing has to unwind -- which is essential,
+    // because unwinding is broken when this dispatch runs inside the libuv
+    // event-loop callback (an FFI callback / ezweb handler): gdb showed a throw
+    // there skip every catch on the stack and crash. The fault is picked up by
+    // the DISPATCH macro's running check, which routes to handle_vm_fault.
+    //
+    // The try/catch remains only as a backstop for a C++ exception from some
+    // path that does NOT go through runtimeError (e.g. a std::bad_alloc); the
+    // normal fault path raises nothing to catch.
+    bool savedFaultMode = faultMode;
+    faultMode = true;
     try {
         (this->*fn)();
     } catch (const RuntimeError& e) {
-        // runtimeError() already set running=false and pendingException before it
-        // threw; this catch just stops the exception from unwinding any further.
-        // The unwind from the helper into THIS frame is short and passes only
-        // through plain functions, so its landing pad is found reliably where
-        // run()'s (in the computed-goto dispatch) is not.
         if (pendingException.isNil()) {
             pendingException = e.value.isNil() ? Value(e.what()) : e.value;
         }
         running = false;
+    } catch (const std::exception& e) {
+        if (pendingException.isNil()) pendingException = Value(std::string(e.what()));
+        running = false;
     }
+    faultMode = savedFaultMode;
 }
 
 void BytecodeVM::doIndexGet() {

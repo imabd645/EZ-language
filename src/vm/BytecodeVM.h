@@ -125,6 +125,13 @@ private:
     // Execution flag
     bool running;
 
+    // Set true only while a doXXX helper runs inside guardedHelper. In that
+    // window runtimeError() records the fault (running=false + pendingException)
+    // and returns instead of throwing a C++ exception, which cannot unwind when
+    // the dispatch is running inside the libuv event-loop callback. See
+    // runtimeError() and guardedHelper().
+    bool faultMode = false;
+
     // Global Slot Array moved to Environment for async task sharing
 
     // ── Shared registries moved to Environment ─────────────────────────

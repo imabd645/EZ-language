@@ -4,8 +4,27 @@ project(EZLanguage CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# Optimization flags (matching build.bat)
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -flto -funroll-loops -fomit-frame-pointer")
+# Optimization flags.
+#
+# -flto and -fomit-frame-pointer were REMOVED, and -fasynchronous-unwind-tables
+# added, to make C++ exception unwinding reliable.
+#
+# Symptom: an EZ runtime error (e.g. indexing nil) inside an FFI callback that
+# runs via the libuv event loop -- exactly how every ezweb request handler is
+# invoked -- crashed the process with an access violation, even though the error
+# was caught in EZ. gdb showed the C++ exception thrown by runtimeError()
+# unwinding straight past run()'s and callFunction()'s catch handlers (both were
+# skipped) up to a null landing pad, with LTO clones ('.lto_priv.0') on the
+# stack. LTO had produced private clones of the exception path with broken
+# unwind/landing-pad tables, so the personality routine could not find the
+# handler when the throw originated deep in the computed-goto dispatch under the
+# event-loop call chain. It worked synchronously only because that path used the
+# un-cloned functions.
+#
+# -O3 -march=native -funroll-loops still applies; the measured throughput
+# difference from dropping LTO here is small, and correct exception handling is
+# not optional for a language with try/catch.
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -fasynchronous-unwind-tables")
 
 # Defines
 add_definitions(-DCURL_STATICLIB)

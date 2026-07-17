@@ -1,10 +1,18 @@
 @echo off
+REM -flto and -fomit-frame-pointer were REMOVED and -fasynchronous-unwind-tables
+REM added so C++ exception unwinding is reliable. An EZ runtime error (e.g.
+REM indexing nil) inside an FFI callback dispatched through the libuv event loop
+REM -- exactly how every ezweb request handler runs -- crashed the process even
+REM though the error was caught in EZ: LTO produced private clones of the
+REM exception path ('.lto_priv.0' in the backtrace) with broken landing-pad
+REM tables, so the throw from runtimeError() unwound past run()'s and
+REM callFunction()'s catch handlers to a null landing pad. Do not re-add -flto
+REM without confirming that path stays crash-free.
 C:\msys64\mingw64\bin\g++.exe ^
     -O3 ^
     -march=native ^
-    -flto ^
     -funroll-loops ^
-    -fomit-frame-pointer ^
+    -fasynchronous-unwind-tables ^
     -o ez.exe ^
     -I C:\msys64\mingw64\include ^
     -I src ^

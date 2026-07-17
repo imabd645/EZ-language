@@ -1,9 +1,10 @@
-# A variable first assigned `nil` must be freely reassignable to any type, and
-# member access on the eventual value must type-check. `x = nil` is the standard
-# way to declare a variable that a later branch, loop, lambda, or helper fills
-# in. The typechecker used to freeze it as the concrete type `nil`, so the next
-# `x = 5` failed with "type mismatch in variable assignment" and `x.method()`
-# with "property on nil" -- before the program ever ran.
+# A variable introduced by a bare assignment (no type annotation) is dynamic: it
+# may hold any type and be reassigned to a different one, matching the runtime.
+# The typechecker used to FREEZE it to its first value's type, so `x = 123` then
+# `x = "abc"` was a compile error, and `x = nil  x = Model()  x.method()` failed
+# with "property on nil" -- before the program ever ran. Only variables given an
+# explicit type annotation are enforced. These cases cover both the plain
+# dynamic-reassignment case and the very common nil-then-fill-in idiom.
 
 passes = 0
 fails = 0
@@ -69,6 +70,28 @@ k = 1
 k = "two"
 k = Box(3)
 check("nil then several different types", k.get(), 3)
+
+# --- 10. a bare-inferred variable (no nil) reassigns to a different type -----
+# The plain dynamic case: with no annotation, no type is enforced, so a variable
+# can move between types exactly as it does at runtime.
+p = 123
+p = "Abdullah"
+check("int reassigned to string", p, "Abdullah")
+
+q = "hello"
+q = 42
+check("string reassigned to int", q, 42)
+
+r = 3.14
+r = Box(8)
+check("float reassigned to model then method call", r.get(), 8)
+
+# reassign several times in a row
+s = 1
+s = "two"
+s = [3, 4]
+s = Box(5)
+check("chain of differently-typed reassignments", s.get(), 5)
 
 out ""
 out "========================================"

@@ -1443,6 +1443,26 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         SYNC_IP();
                         Value* targetSlots = frame->slots;
                         closeUpvalues(targetSlots);
+
+                        // Drop any try blocks owned by the frame we are leaving.
+                        //
+                        // `give` from inside a try block jumps straight here and
+                        // never executes TRY_END, so without this the TryBlock
+                        // outlives its frame. The next throw then unwound into a
+                        // DEAD frame -- ip pointing into a returned function's
+                        // chunk, stackTop into abandoned slots -- which did not
+                        // merely crash: it swallowed the exception. A script
+                        // ending in an uncaught `throw` re-entered the dead
+                        // handler and exited 0, reporting success for a program
+                        // that had died.
+                        //
+                        // frames.size()-1 is the index of the frame being popped;
+                        // anything at or above it is going away with it.
+                        size_t returningFrame = frames.size() - 1;
+                        while (!tryStack.empty() && tryStack.back().frameIdx >= returningFrame) {
+                            tryStack.pop_back();
+                        }
+
                         frameUpvalues.pop_back();
                         frames.pop_back();
 

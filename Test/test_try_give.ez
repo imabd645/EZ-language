@@ -1,0 +1,148 @@
+# `give` from inside a try block: two separate defects, one root cause.
+#
+# 1. RETURN never ran the finally. A `give` jumped straight out, so
+#    `try { give x } finally { cleanup() }` skipped cleanup entirely -- and so
+#    did `catch (e) { give y } finally { ... }`. Only a try/catch that fell off
+#    its own end ever ran one, which made `finally` useless for the single job it
+#    exists for: releasing something on every exit path.
+#
+# 2. RETURN never popped the frame's TryBlock. `give` skips TRY_END, so the entry
+#    outlived its frame and the next throw unwound into a DEAD frame. That did
+#    not merely crash: it SWALLOWED the exception. A script ending in an uncaught
+#    `throw` re-entered the dead handler and exited 0 -- reporting success for a
+#    program that had died.
+
+passes = 0
+fails = 0
+
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+out "=== give inside try/catch/finally ==="
+
+# --- 1. finally runs when the try block gives -------------------------------
+log = []
+task a() {
+    try { give "A" } finally { push(log, "a-finally") }
+}
+r = a()
+check("give returns its value", r, "A")
+check("finally ran on give from try", str(log), "[\"a-finally\"]")
+
+# --- 2. finally runs when the CATCH block gives -----------------------------
+log2 = []
+task b() {
+    try { throw "x" } catch (e) { give "B" } finally { push(log2, "b-finally") }
+}
+check("give from catch returns", b(), "B")
+check("finally ran on give from catch", str(log2), "[\"b-finally\"]")
+
+# --- 3. finally still runs on the ordinary fall-through path -----------------
+log3 = []
+task c() {
+    r = "start"
+    try { r = "set" } finally { push(log3, "c-finally") }
+    give r
+}
+check("fall-through still returns", c(), "set")
+check("fall-through still runs finally", str(log3), "[\"c-finally\"]")
+
+# --- 4. finally still runs when an exception propagates ---------------------
+log4 = []
+task d() {
+    try { throw "inner" } finally { push(log4, "d-finally") }
+}
+caught = ""
+try { d() } catch (e) { caught = str(e) }
+check("exception still propagates", caught, "inner")
+check("finally ran on propagate", str(log4), "[\"d-finally\"]")
+
+# --- 5. nested: innermost finally first -------------------------------------
+log5 = []
+task e_nested() {
+    try {
+        try { give "E" } finally { push(log5, "inner") }
+    } finally { push(log5, "outer") }
+}
+check("nested give returns", e_nested(), "E")
+check("nested finallys run innermost-first", str(log5), "[\"inner\",\"outer\"]")
+
+# --- 6. the finally must not corrupt the returned value ----------------------
+task f_val() {
+    x = 10
+    try { give x * 5 } finally { y = 999  z = y + 1 }
+}
+check("return value survives the finally's locals", f_val(), 50)
+
+task g_val() {
+    try { give "keep" } finally { s = "clobber"  t = s + "?" }
+}
+check("string return survives", g_val(), "keep")
+
+# --- 7. a finally that itself gives wins ------------------------------------
+task h_over() {
+    try { give "from-try" } finally { give "from-finally" }
+}
+check("give inside finally overrides", h_over(), "from-finally")
+
+# --- 8. THE BIG ONE: a give inside try must not leave a stale TryBlock -------
+# Before the fix, calling this poisoned tryStack, and a later throw unwound into
+# its dead frame instead of being reported.
+task leaky() {
+    try { give 1 } catch (e) { out "  !! dead handler re-entered" }
+}
+check("leaky returns", leaky(), 1)
+check("leaky returns again", leaky(), 1)
+check("leaky returns a third time", leaky(), 1)
+
+# A throw AFTER those calls must reach this catch, not a retired one.
+landed = ""
+try {
+    throw "boom"
+} catch (e) {
+    landed = str(e)
+}
+check("throw after give-in-try lands correctly", landed, "boom")
+
+# ...and the same for a give from a catch block.
+task leaky2() {
+    try { throw "q" } catch (e) { give 2 }
+}
+check("leaky2 returns", leaky2(), 2)
+landed2 = ""
+try { throw "boom2" } catch (e) { landed2 = str(e) }
+check("throw after give-in-catch lands correctly", landed2, "boom2")
+
+# --- 9. give in a loop inside try -------------------------------------------
+log9 = []
+task i_loop() {
+    try {
+        i = 0
+        while i < 10 {
+            when i == 3 { give i }
+            i = i + 1
+        }
+        give -1
+    } finally { push(log9, "i-finally") }
+}
+check("give from inside a loop in try", i_loop(), 3)
+check("finally ran once for the loop give", str(log9), "[\"i-finally\"]")
+
+# --- 10. many calls must not grow tryStack ----------------------------------
+n = 0
+while n < 200 { leaky()  n = n + 1 }
+landed3 = ""
+try { throw "still-fine" } catch (e) { landed3 = str(e) }
+check("200 give-in-try calls leave the handler intact", landed3, "still-fine")
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

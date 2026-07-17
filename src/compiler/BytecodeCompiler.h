@@ -67,7 +67,17 @@ private:
 
         std::string currentClass;
         std::string currentParentClass;
-        
+
+        // try-with-finally blocks currently open in THIS function, innermost
+        // last. `give` has to run each one's body before it returns, so it needs
+        // to know which are pending -- see compileGive. Per-Compiler (rather
+        // than global) because a `give` can never cross a function boundary.
+        struct ActiveFinally {
+            StmtPtr body;     // the finally block to replay before returning
+            int retvalSlot;   // hidden local that parks the return value meanwhile
+        };
+        std::vector<ActiveFinally> activeFinallys;
+
         size_t maxLocals;
         int compilerId;
         

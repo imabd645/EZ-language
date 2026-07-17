@@ -451,8 +451,11 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
     // ---- Tail Call Optimization ----
     // If the return value is a direct call to the current function, and there are
     // no postconditions or caching side-effects, emit TAIL_CALL instead of CALL+RETURN.
+    // A pending finally rules out TCO: a tail call reuses the frame and jumps
+    // away, so the finally body emitted below would never run.
     bool isTailCall = false;
     if (stmt.value && current && !current->isCached
+        && current->activeFinallys.empty()
         && (!currentEnsuresClauses || currentEnsuresClauses->empty())) {
         if (auto* callPtr = std::get_if<CallExpr*>(&stmt.value->variant)) {
             const CallExpr& call = **callPtr;
@@ -529,6 +532,33 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
 
             emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
                       static_cast<uint8_t>(resultSlot));
+        }
+
+        // Replay any open finally blocks before actually leaving.
+        //
+        // The finally body is emitted INLINE here, in addition to the copy on the
+        // normal fall-through path. Without this a `give` jumped straight to
+        // RETURN and the finally never ran at all:
+        //
+        //     try { give x } finally { cleanup() }      # cleanup() skipped
+        //     try { ... } catch (e) { give y } finally { ... }   # also skipped
+        //
+        // Only a try/catch that fell off its own end ever ran one, which made
+        // `finally` useless for exactly the job it exists for -- releasing a
+        // handle on every exit path.
+        //
+        // Innermost first: `try { try { give 1 } finally { A } } finally { B }`
+        // must run A then B. Each block parks the return value in its own hidden
+        // local across its body, so the finally's own locals sit at the slot
+        // offsets the compiler assigned them.
+        for (auto it = current->activeFinallys.rbegin();
+             it != current->activeFinallys.rend(); ++it) {
+            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                      static_cast<uint8_t>(it->retvalSlot));
+            emitOp(OpCode::POP);
+            compileStmt(it->body);
+            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
+                      static_cast<uint8_t>(it->retvalSlot));
         }
 
         emitReturn();
@@ -1191,14 +1221,32 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     bool hasCatch = !stmt.catchBlocks.empty();
     
     int pendingSlot = -1;
+    int retvalSlot = -1;
     if (hasFinally) {
         beginScope(); // Scope for the hidden pending exception variable
         emitOp(OpCode::LOAD_NIL);
         pendingSlot = addLocal("__pendingExc__" + std::to_string(current->locals.size()));
         current->locals.back().isStackResident = true; // It is on the stack right now
         markInitialized();
+
+        // A second hidden local, to park a `give`'s return value while the
+        // finally body runs. The value cannot simply be left on the stack: the
+        // finally block opens a scope whose locals are addressed by slot index,
+        // and an extra temporary underneath them would shift every one.
+        emitOp(OpCode::LOAD_NIL);
+        retvalSlot = addLocal("__retval__" + std::to_string(current->locals.size()));
+        current->locals.back().isStackResident = true;
+        markInitialized();
     }
-    
+
+    // Register the finally for the try/catch bodies compiled below, so a `give`
+    // inside them replays it before returning. Deliberately NOT registered while
+    // the finally block itself is compiled further down -- a `give` inside a
+    // finally must not re-enter it.
+    if (hasFinally) {
+        current->activeFinallys.push_back(Compiler::ActiveFinally{stmt.finallyBlock, retvalSlot});
+    }
+
     // Emit TRY_START with a placeholder jump offset to the catch handler.
     size_t tryStart = emitJump(OpCode::TRY_START);
 
@@ -1293,9 +1341,13 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         patchJump(jump);
     }
     patchJump(afterCatch);
-    
+
     // Emit finally block if present
     if (hasFinally) {
+        // Out of scope from here on: this is the normal fall-through copy of the
+        // finally, and a `give` inside it must not replay the block it is in.
+        current->activeFinallys.pop_back();
+
         compileStmt(stmt.finallyBlock);
         
         // Load pending exception

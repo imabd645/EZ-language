@@ -2149,12 +2149,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             ip = tb.catchIp;
                             *stackTop++ = exc;
                         } else if (!tryStack.empty()) {
-                            // Handler belongs to a caller's frame; propagate.
+                            // Handler belongs to a caller's frame; hand it back
+                            // via pendingException and return, rather than
+                            // unwinding a C++ exception out of this dispatch (see
+                            // OP_THROW for why that is unsafe).
+                            pendingException = exc;
                             SYNC_IP();
-                            running = false;
-                            throw RuntimeError(exceptionMessage(exc),
-                                               frames.empty() ? 0 : frames.back().line,
-                                               exc);
+                            return;
                         } else {
                             SYNC_IP();
                             runtimeError("Uncaught exception: " + exceptionMessage(exc));
@@ -2205,16 +2206,21 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             // A handler exists, but it lives in a frame belonging
                             // to an OUTER run() -- we are inside a re-entrant call
                             // (a constructor, an FFI callback, a sort comparator).
-                            // Jumping to it from here would resume the caller's
-                            // bytecode inside THIS run, and then callFunction
-                            // would rewind the stack underneath it. Hand the
-                            // exception to our caller instead and let the run that
-                            // owns the handler do the unwinding.
+                            //
+                            // Do NOT jump to it (that resumes the caller's
+                            // bytecode inside THIS run, and callFunction then
+                            // rewinds the stack underneath it), and do NOT throw a
+                            // C++ exception out of here: unwinding out of run()'s
+                            // computed-goto dispatch corrupts the C++ unwinder and
+                            // crashed hard under the event loop (an FFI callback
+                            // whose body hit a runtime error took the process
+                            // down). Hand the exception back via pendingException
+                            // and RETURN; callFunction() re-raises it from
+                            // normal-function context so it reaches the dispatch
+                            // that owns the handler.
+                            pendingException = exc;
                             SYNC_IP();
-                            running = false;
-                            throw RuntimeError(exceptionMessage(exc),
-                                               frames.empty() ? 0 : frames.back().line,
-                                               exc);
+                            return;
                         } else {
                             SYNC_IP();
                             runtimeError("Uncaught exception: " + exceptionMessage(exc));
@@ -2261,18 +2267,23 @@ void BytecodeVM::run(size_t targetFrameCount) {
             goto dispatch_start;
         }
         if (!tryStack.empty()) {
-            // The handler belongs to a caller's frame -- see ownsTryBlock(). Let
-            // the exception out so the run() that owns it can unwind properly.
+            // The handler belongs to a caller's frame -- see ownsTryBlock().
+            // Do NOT rethrow the C++ exception out of this dispatch (it corrupts
+            // the unwinder under the event loop). Record it and return; the
+            // caller (callFunction) re-raises it toward the owning dispatch.
+            pendingException = e.value.isNil() ? Value(e.what()) : e.value;
             SYNC_IP();
-            throw;
+            return;
         }
         // Uncaught RuntimeError: already printed in runtimeError() (if not async task)
         pendingException = e.value.isNil() ? Value(e.what()) : e.value;
         SYNC_IP();
     } catch (const std::exception& e) {
         if (!tryStack.empty() && !ownsTryBlock()) {
+            // Handler belongs to a caller; hand back via pendingException.
+            pendingException = Value(e.what());
             SYNC_IP();
-            throw;
+            return;
         }
         if (!tryStack.empty()) {
             TryBlock tb = tryStack.back(); tryStack.pop_back();

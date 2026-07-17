@@ -198,6 +198,23 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     // resume, so this path deliberately leaves the state alone.
     if (isYielded) return Value();
 
+    // An uncaught exception now leaves run() via pendingException + return (it no
+    // longer unwinds a C++ exception out of the dispatch). Surface it as a thrown
+    // RuntimeError so the top-level driver reports a non-zero exit. Without this
+    // an uncaught `throw` printed its error but the process still exited 0 -- a
+    // dying script was indistinguishable from a successful one to any CI or shell.
+    // The message was already printed by runtimeError(); the driver just exits.
+    if (!pendingException.isNil()) {
+        Value exc = pendingException;
+        pendingException = Value();
+        restoreState();
+        throw RuntimeError(
+            exc.isDictionary() && exc.asDictionaryPtr()->has("message")
+                ? exc.asDictionaryPtr()->get("message").toString()
+                : exc.toString(),
+            0, exc);
+    }
+
     // Read the result before restoring, while stackTop still points at it.
     Value result = (stackTop > stack.data()) ? *(stackTop - 1) : Value();
 
@@ -517,6 +534,8 @@ Value BytecodeVM::callFunction(const Value& callee,
     };
 
     Value result;
+    bool propagate = false;
+    Value propagated;
     try {
         if (dispatchCall(callee, args.size())) {
             run(frames.size());
@@ -525,17 +544,37 @@ Value BytecodeVM::callFunction(const Value& callee,
             // for the resume, so this path deliberately skips the restore.
             if (isYielded) return Value();
 
-            if (stackTop > stack.data() + stackBefore) {
+            // run() hands an exception it does not own back through
+            // pendingException + return, rather than unwinding a C++ exception
+            // out of its computed-goto dispatch (which corrupts the unwinder,
+            // fatally so under the event loop). Pick it up here and re-raise it
+            // from THIS ordinary function, which unwinds safely into the caller's
+            // dispatch -- the run() that owns the handler catches it there.
+            if (!pendingException.isNil()) {
+                propagate = true;
+                propagated = pendingException;
+                pendingException = Value();
+            } else if (stackTop > stack.data() + stackBefore) {
                 result = *(stackTop - 1);
             }
         }
     } catch (...) {
+        // A genuinely re-entrant builtin (not the VM's own dispatch) can still
+        // throw a C++ exception directly; keep it moving.
         restoreState();
-        throw;   // hand it to the run() that owns the handler
+        throw;
     }
 
     // Always restore stack to exactly where it was before the call
     restoreState();
+
+    if (propagate) {
+        throw RuntimeError(
+            propagated.isDictionary() && propagated.asDictionaryPtr()->has("message")
+                ? propagated.asDictionaryPtr()->get("message").toString()
+                : propagated.toString(),
+            0, propagated);
+    }
 
     return result;
 }

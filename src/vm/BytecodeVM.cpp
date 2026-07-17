@@ -166,20 +166,47 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     frames.push_back(frame);
     frameUpvalues.push_back(ClosureState{});
 
-    run(frames.size());
+    // Putting the outer state back is NOT optional on the exception path.
+    //
+    // This run has an empty tryStack, so a `throw` inside the callee that no
+    // handler *here* catches reaches runtimeError(), which throws a C++
+    // RuntimeError. That C++ exception unwinds straight through this function.
+    // When the restore was written inline after run(), it was skipped, and
+    // savedFrames -- a local -- was destroyed on the way out, taking the caller's
+    // frames with it. The VM then kept executing on the CALLEE's frames: run()'s
+    // handler unwinds with a TryBlock.frameIdx that indexes the caller's frame
+    // numbering, so it restored a frame whose ip pointed into a different
+    // function's chunk. The catch block appeared to work, and the process
+    // segfaulted inside run() some time later.
+    //
+    // That is what made `model M { init() { throw "x" } }` crash: constructors
+    // reach the callee through instantiate() -> callFunction(). It applies to
+    // EVERY re-entrant call, though -- a builtin calling back into EZ (a sort
+    // comparator, an FFI callback) had the same hole.
+    auto restoreState = [&]() {
+        frames = std::move(savedFrames);
+        frameUpvalues = std::move(savedFrameUpvalues);
+        tryStack = std::move(savedTryStack);
+        stackTop = stack.data() + stackOffset;
+        running = savedRunning;
+        isExceptionPending = savedException;
+    };
 
+    try {
+        run(frames.size());
+    } catch (...) {
+        restoreState();
+        throw;   // let the caller's handler see it, with the VM intact
+    }
+
+    // A yielded coroutine has NOT finished: its frames must stay live for the
+    // resume, so this path deliberately leaves the state alone.
     if (isYielded) return Value();
 
-    // Result is the top value before we restore
+    // Read the result before restoring, while stackTop still points at it.
     Value result = (stackTop > stack.data()) ? *(stackTop - 1) : Value();
 
-    // Restore saved state
-    frames = std::move(savedFrames);
-    frameUpvalues = std::move(savedFrameUpvalues);
-    tryStack = std::move(savedTryStack);
-    stackTop = stack.data() + stackOffset;
-    running = savedRunning;
-    isExceptionPending = savedException;
+    restoreState();
 
     return result;
 }

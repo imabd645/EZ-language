@@ -1,0 +1,121 @@
+# An exception thrown out of a RE-ENTRANT call must leave the VM intact.
+#
+# callFunction() saves the caller's frames/tryStack, clears them for the nested
+# run, and restores them afterwards. That restore used to be plain inline code
+# after run(), so it was SKIPPED whenever the callee threw: the nested run has an
+# empty tryStack, so an uncaught throw reaches runtimeError(), which throws a C++
+# RuntimeError that unwound straight past the restore. savedFrames -- a local --
+# died with it, taking the caller's frames along.
+#
+# The VM then ran on the CALLEE's frames while unwinding with the CALLER's frame
+# indices, so it loaded a frame whose ip pointed into a different function's
+# chunk. The catch block still appeared to work; the process segfaulted inside
+# run() afterwards. That is why these tests all print an END marker and check
+# work done AFTER the catch -- the crash never happened at the throw itself.
+#
+# Constructors are the common way in (instantiate -> callFunction), but every
+# re-entrant call had the hole.
+
+passes = 0
+fails = 0
+
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+out "=== re-entrant throw / VM state restore ==="
+
+# --- 1. throw out of a model init() -----------------------------------------
+model Boom {
+    init() { throw "from init" }
+}
+
+caught = ""
+try { b = Boom() } catch (e) { caught = str(e) }
+check("throw from init is caught", caught, "from init")
+
+# The VM must still be able to run. Before the fix it was executing on the dead
+# constructor's frames by this point.
+x = 0
+i = 0
+while i < 10 { x = x + i  i = i + 1 }
+check("loop still runs after the throw", x, 45)
+
+task after_init_throw(a, b) { give a * b + 1 }
+check("calls still work after the throw", after_init_throw(6, 7), 43)
+
+# --- 2. a constructor that throws does not poison later construction ---------
+model Fine {
+    init(v) { self.v = v }
+    task get() { give self.v }
+}
+f = Fine(99)
+check("a good model still constructs", f.get(), 99)
+
+# Repeat: a second failure must be just as survivable as the first.
+try { Boom() } catch (e) { }
+try { Boom() } catch (e) { }
+check("repeated init throws survive", Fine(7).get(), 7)
+
+# --- 3. throw from a nested/inherited constructor ----------------------------
+model Base {
+    init() { throw "base boom" }
+}
+model Derived extends Base {
+}
+caught2 = ""
+try { Derived() } catch (e) { caught2 = str(e) }
+check("throw from an inherited init is caught", caught2, "base boom")
+check("VM alive after inherited init throw", Fine(1).get(), 1)
+
+# --- 4. throw out of a re-entrant builtin callback --------------------------
+# sort() calls back into EZ. A comparator that throws is the same re-entrancy
+# hole as a constructor, reached a different way.
+sorted_ok = true
+try {
+    arr = [3, 1, 2]
+    sort(arr, |a, b| { throw "cmp boom" })
+    sorted_ok = false
+} catch (e) { }
+check("VM alive after a throwing sort comparator", Fine(5).get(), 5)
+
+# --- 5. deep nesting: init -> task -> throw ---------------------------------
+task deep_thrower() { throw "deep" }
+model DeepBoom {
+    init() { deep_thrower() }
+}
+caught3 = ""
+try { DeepBoom() } catch (e) { caught3 = str(e) }
+check("throw through init's callee is caught", caught3, "deep")
+check("VM alive after deep init throw", Fine(2).get(), 2)
+
+# --- 6. the caught value is intact ------------------------------------------
+model DictBoom {
+    init() { throw {"code": 42, "message": "structured"} }
+}
+got = nil
+try { DictBoom() } catch (e) { got = e }
+check("a thrown dictionary survives", typeOf(got), "dictionary")
+check("its fields are intact", got["code"], 42)
+
+# --- 7. normal construction still returns the instance ----------------------
+# The restore must not fire on the SUCCESS path in a way that loses the result.
+model Counter {
+    init() { self.n = 0 }
+    task bump() { self.n = self.n + 1  give self.n }
+}
+c = Counter()
+c.bump()
+c.bump()
+check("construction still returns a usable instance", c.bump(), 3)
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

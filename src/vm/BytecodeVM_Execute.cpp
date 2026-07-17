@@ -2202,6 +2202,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             LOAD_FRAME();
                             ip = tb.catchIp;
                             *stackTop++ = exc;
+                            // The handler now owns the exception (it is on the
+                            // stack as the caught variable), so it is no longer
+                            // "propagating". Clear it: execute()/callFunction now
+                            // read a leftover pendingException as an unhandled
+                            // error, and a stale one from a CAUGHT throw made
+                            // every try/catch script exit 70.
+                            pendingException = Value();
                         } else if (!tryStack.empty()) {
                             // A handler exists, but it lives in a frame belonging
                             // to an OUTER run() -- we are inside a re-entrant call

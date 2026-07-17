@@ -1,0 +1,38 @@
+use "json" as json
+
+out "=== Testing JSON ==="
+
+out "--- 1. Testing Stringify ---"
+data = {
+    "string": "Hello, EZ!",
+    "number": 42.5,
+    "boolean": true,
+    "null_val": nil,
+    "array": [1, 2, 3, "four"],
+    "nested": {
+        "key": "value",
+        "escapes": "\"quotes\" and \n newlines"
+    }
+}
+
+jsonStr = json.stringify(data)
+out "Stringified JSON:"
+out jsonStr
+
+out ""
+out "--- 2. Testing Parse ---"
+parsedData = json.parse(jsonStr)
+
+out "Parsed string: " + str(parsedData["string"])
+out "Parsed number: " + str(parsedData["number"])
+out "Parsed boolean: " + str(parsedData["boolean"])
+out "Parsed array len: " + str(len(parsedData["array"]))
+out "Parsed nested key: " + str(parsedData["nested"]["key"])
+
+out ""
+out "--- 3. Testing File I/O ---"
+json.write("test_output.json", parsedData)
+fileData = json.read("test_output.json")
+out "Read from file, array[3]: " + str(fileData["array"][3])
+
+out "=== JSON Tests Complete ==="

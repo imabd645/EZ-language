@@ -1,0 +1,32 @@
+use "csv" as csv
+
+out "=== Testing CSV ==="
+
+csvStr = "id,name,description\n1,Alice,\"Loves code\"\n2,Bob,\"Said, \"\"Hello!\"\", then left.\"\n3,Charlie,\"Multi\nline\ntext\""
+
+out "--- 1. Testing Parse ---"
+data = csv.parse(csvStr)
+
+out "Row 1 Name: " + data[0]["name"]
+out "Row 1 Desc: " + data[0]["description"]
+
+out "Row 2 Name: " + data[1]["name"]
+out "Row 2 Desc: " + data[1]["description"]
+
+out "Row 3 Name: " + data[2]["name"]
+out "Row 3 Desc: " + data[2]["description"]
+
+out ""
+out "--- 2. Testing Stringify ---"
+newCsv = csv.stringify(data)
+out "Stringified CSV:"
+out newCsv
+
+out ""
+out "--- 3. Testing File I/O ---"
+csv.write("test_output.csv", data)
+readData = csv.read("test_output.csv")
+out "Read from file, row 2 name: " + readData[1]["name"]
+out "Read from file, row 2 desc: " + readData[1]["description"]
+
+out "=== CSV Tests Complete ==="

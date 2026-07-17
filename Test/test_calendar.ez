@@ -1,0 +1,8 @@
+use "calendar"
+
+out "=== Current Month ==="
+printCurrentMonth()
+
+out ""
+out "=== Specific Month (February 2024 - Leap Year) ==="
+printMonth(2024, 2)

@@ -1,0 +1,16 @@
+{
+  "array": [
+    1,
+    2,
+    3,
+    "four"
+  ],
+  "boolean": true,
+  "nested": {
+    "escapes": "\"quotes\" and n newlines",
+    "key": "value"
+  },
+  "null_val": "null",
+  "number": 42.500000,
+  "string": "Hello, EZ!"
+}

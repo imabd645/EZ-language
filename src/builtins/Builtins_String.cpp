@@ -9,6 +9,51 @@
 #include <regex>
 
 void registerStringBuiltins(RuntimeContext& interp) {
+    interp.defineGlobal("urlEncode", Value::makeNativeFunction("urlEncode", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("urlEncode() expects a string", 0, ""); return Value(); }
+            const std::string& str = args[0].asString();
+            std::string result;
+            const char* hex = "0123456789ABCDEF";
+            for (unsigned char c : str) {
+                if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                    result += c;
+                } else if (c == ' ') {
+                    result += '+';
+                } else {
+                    result += '%';
+                    result += hex[c >> 4];
+                    result += hex[c & 15];
+                }
+            }
+            return Value(result);
+        }));
+
+    interp.defineGlobal("urlDecode", Value::makeNativeFunction("urlDecode", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) { interp.runtimeError("urlDecode() expects a string", 0, ""); return Value(); }
+            const std::string& str = args[0].asString();
+            std::string result;
+            for (size_t i = 0; i < str.length(); ++i) {
+                if (str[i] == '+') {
+                    result += ' ';
+                } else if (str[i] == '%' && i + 2 < str.length()) {
+                    auto fromHex = [](char c) -> int {
+                        if (c >= '0' && c <= '9') return c - '0';
+                        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                        return 0;
+                    };
+                    int val = (fromHex(str[i+1]) << 4) | fromHex(str[i+2]);
+                    result += static_cast<char>(val);
+                    i += 2;
+                } else {
+                    result += str[i];
+                }
+            }
+            return Value(result);
+        }));
+
     interp.defineGlobal("substr", Value::makeNativeFunction("substr", 3,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.runtimeError("substr() expects string as first argument", 0, ""); return Value(); }

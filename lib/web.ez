@@ -60,31 +60,7 @@ model WebUtils {
     }
 
     static task urlDecode(strVal) {
-        res = ""
-        i = 0
-        t = str(strVal)
-        l = len(t)
-        
-        while i < l {
-            c = substr(t, i, 1)
-            when c == "+" {
-                res = res + " "
-                i = i + 1
-            } other when c == "%" {
-                when i + 2 < l {
-                    val = (WebUtils.hexVal(substr(t, i + 1, 1)) * 16) + WebUtils.hexVal(substr(t, i + 2, 1))
-                    res = res + chr(val)
-                    i = i + 3
-                } other {
-                    res = res + c
-                    i = i + 1
-                }
-            } other {
-                res = res + c
-                i = i + 1
-            }
-        }
-        give res
+        give urlDecode(str(strVal))
     }
 }
 
@@ -358,15 +334,18 @@ model WebApp {
         give attr != -1 and attr != 4294967295
     }
     
-    task use(handler) {
+    task use(handler = nil) {
+        when handler == nil { give |h| { push(self.middlewares, h); give h } }
         push(self.middlewares, handler)
     }
     
-    task on_404(handler) {
+    task on_404(handler = nil) {
+        when handler == nil { give |h| { self.errorHandlers["404"] = h; give h } }
         self.errorHandlers["404"] = handler
     }
     
-    task on_500(handler) {
+    task on_500(handler = nil) {
+        when handler == nil { give |h| { self.errorHandlers["500"] = h; give h } }
         self.errorHandlers["500"] = handler
     }
     
@@ -416,10 +395,22 @@ model WebApp {
         self.routes[method + "_" + pathPattern] = { "pattern": parts, "handler": handler }
     }
     
-    task get(path, handler) { self._addRoute("GET", path, handler) }
-    task post(path, handler) { self._addRoute("POST", path, handler) }
-    task put(path, handler) { self._addRoute("PUT", path, handler) }
-    task delete(path, handler) { self._addRoute("DELETE", path, handler) }
+    task get(path, handler = nil) {
+        when handler == nil { give |h| { self._addRoute("GET", path, h); give h } }
+        self._addRoute("GET", path, handler)
+    }
+    task post(path, handler = nil) {
+        when handler == nil { give |h| { self._addRoute("POST", path, h); give h } }
+        self._addRoute("POST", path, handler)
+    }
+    task put(path, handler = nil) {
+        when handler == nil { give |h| { self._addRoute("PUT", path, h); give h } }
+        self._addRoute("PUT", path, handler)
+    }
+    task delete(path, handler = nil) {
+        when handler == nil { give |h| { self._addRoute("DELETE", path, h); give h } }
+        self._addRoute("DELETE", path, handler)
+    }
     
     static task _handleClient(clientSocket, inst) {
         buf = os_alloc(8192)

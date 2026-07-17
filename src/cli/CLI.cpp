@@ -21,6 +21,7 @@
 #include <cstdint>
 
 bool g_disableContracts = false;
+bool g_disableTypeCheck = false;
 
 void signalHandler(int sig) {
     std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
@@ -76,9 +77,11 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
     
-    TypeChecker typeChecker;
-    if (!typeChecker.check(statements, builtins)) {
-        exit(65);
+    if (!g_disableTypeCheck) {
+        TypeChecker typeChecker;
+        if (!typeChecker.check(statements, builtins)) {
+            exit(65);
+        }
     }
     
     BytecodeCompiler compiler(arena);
@@ -470,6 +473,8 @@ int cli_main(int argc, char* argv[]) {
                     dumpToEzasm = true;
                 } else if (arg == "--no-contracts") {
                     g_disableContracts = true;
+                } else if (arg == "--no-typecheck") {
+                    g_disableTypeCheck = true;
                 }
             }
 
@@ -491,6 +496,8 @@ int cli_main(int argc, char* argv[]) {
             traceExecution = true;
         } else if (arg == "--no-contracts") {
             g_disableContracts = true;
+        } else if (arg == "--no-typecheck") {
+            g_disableTypeCheck = true;
         }
     }
     runRepl(traceExecution);

@@ -1,0 +1,127 @@
+# test_file_class.ez
+# Tests for the native File class (streaming I/O)
+
+out "=== Testing File Class ==="
+
+# ── Test 1: Write a file ────────────────────────────────────────────────────
+out ""
+out "--- Test 1: Write ---"
+f = File("_test_file_output.txt", "w")
+f.writeLine("Hello from EZ!")
+f.writeLine("Second line")
+f.writeLine("Third line")
+f.close()
+out "PASS: File written and closed"
+
+# ── Test 2: Read line-by-line (streaming) ───────────────────────────────────
+out ""
+out "--- Test 2: ReadLine (streaming) ---"
+f = File("_test_file_output.txt", "r")
+line = f.readLine()
+count = 0
+while line != nil {
+    out "  Line: " + line
+    count = count + 1
+    line = f.readLine()
+}
+f.close()
+out "PASS: Read " + str(count) + " lines"
+
+# ── Test 3: readAll ─────────────────────────────────────────────────────────
+out ""
+out "--- Test 3: ReadAll ---"
+f = File("_test_file_output.txt", "r")
+content = f.readAll()
+out "  Content length: " + str(len(content))
+f.close()
+out "PASS: readAll works"
+
+# ── Test 4: read(n) chunked ─────────────────────────────────────────────────
+out ""
+out "--- Test 4: Read(n) chunked ---"
+f = File("_test_file_output.txt", "r")
+chunk = f.read(5)
+out "  First 5 bytes: '" + chunk + "'"
+chunk2 = f.read(5)
+out "  Next 5 bytes: '" + chunk2 + "'"
+f.close()
+out "PASS: Chunked read works"
+
+# ── Test 5: tell() and seek() ──────────────────────────────────────────────
+out ""
+out "--- Test 5: Tell and Seek ---"
+f = File("_test_file_output.txt", "r")
+pos0 = f.tell()
+out "  Position at start: " + str(pos0)
+f.read(10)
+pos1 = f.tell()
+out "  Position after read(10): " + str(pos1)
+f.seek(0)
+pos2 = f.tell()
+out "  Position after seek(0): " + str(pos2)
+f.close()
+out "PASS: tell/seek work"
+
+# ── Test 6: isOpen() and eof() ─────────────────────────────────────────────
+out ""
+out "--- Test 6: isOpen and eof ---"
+f = File("_test_file_output.txt", "r")
+out "  isOpen after open: " + str(f.isOpen())
+f.readAll()
+out "  eof after readAll: " + str(f.eof())
+f.close()
+out "  isOpen after close: " + str(f.isOpen())
+out "PASS: isOpen/eof work"
+
+# ── Test 7: Append mode ────────────────────────────────────────────────────
+out ""
+out "--- Test 7: Append ---"
+f = File("_test_file_output.txt", "a")
+f.writeLine("Appended line")
+f.close()
+
+f = File("_test_file_output.txt", "r")
+count = 0
+line = f.readLine()
+while line != nil {
+    count = count + 1
+    line = f.readLine()
+}
+f.close()
+out "  Lines after append: " + str(count)
+out "PASS: Append mode works"
+
+# ── Test 8: Error handling — closed file ───────────────────────────────────
+out ""
+out "--- Test 8: Error on closed file ---"
+f = File("_test_file_output.txt", "r")
+f.close()
+try {
+    f.readLine()
+    out "FAIL: Should have thrown error"
+} catch e {
+    out "PASS: Correctly threw: " + str(e)
+}
+
+# ── Test 9: Error handling — bad path ──────────────────────────────────────
+out ""
+out "--- Test 9: Error on bad path ---"
+try {
+    f = File("__nonexistent_path_12345__/no.txt", "r")
+    out "FAIL: Should have thrown error"
+} catch e {
+    out "PASS: Correctly threw: " + str(e)
+}
+
+# ── Test 10: Error handling — bad mode ─────────────────────────────────────
+out ""
+out "--- Test 10: Error on bad mode ---"
+try {
+    f = File("_test_file_output.txt", "xyz")
+    out "FAIL: Should have thrown error"
+} catch e {
+    out "PASS: Correctly threw: " + str(e)
+}
+
+out ""
+out "=== All File Class Tests Complete ==="

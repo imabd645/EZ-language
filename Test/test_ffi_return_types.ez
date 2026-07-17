@@ -34,6 +34,7 @@ f_step      = os_get_func(lib, "sqlite3_step")
 f_finalize  = os_get_func(lib, "sqlite3_finalize")
 f_col_int   = os_get_func(lib, "sqlite3_column_int")     # returns 32-bit int
 f_col_int64 = os_get_func(lib, "sqlite3_column_int64")   # returns 64-bit int
+f_col_dbl   = os_get_func(lib, "sqlite3_column_double")  # returns a 64-bit double
 f_bind_i64  = os_get_func(lib, "sqlite3_bind_int64")     # takes a 64-bit int ARG
 f_close     = os_get_func(lib, "sqlite3_close_v2")
 
@@ -67,6 +68,25 @@ os_call(f_finalize, "int", st)
 st = prep("SELECT -2147483648")  # INT32_MIN
 os_call(f_step, "int", st)
 check("column_int(INT32_MIN) via i32", os_call(f_col_int, "i32", st, 0), -2147483648)
+os_call(f_finalize, "int", st)
+
+# --- "float" return means a 64-bit double (regression guard) ---------------
+# EZ's number type is a double, and every caller (e.g. lib/db.ez reading
+# sqlite3_column_double as "float") relies on "float" meaning 64-bit. Mapping it
+# to a 32-bit ffi_type made every REAL column read back 0.
+st = prep("SELECT 45000.50")
+os_call(f_step, "int", st)
+check("column_double via \"float\" (=double)", os_call(f_col_dbl, "float", st, 0), 45000.5)
+os_call(f_finalize, "int", st)
+
+st = prep("SELECT 3.141592653589793")
+os_call(f_step, "int", st)
+check("double keeps full precision", os_call(f_col_dbl, "double", st, 0), 3.141592653589793)
+os_call(f_finalize, "int", st)
+
+st = prep("SELECT -0.25")
+os_call(f_step, "int", st)
+check("negative double return", os_call(f_col_dbl, "f64", st, 0), -0.25)
 os_call(f_finalize, "int", st)
 
 # --- Bug 3: i64/u32/u64 return types must not come back nil ----------------

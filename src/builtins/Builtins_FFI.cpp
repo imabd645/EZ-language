@@ -241,8 +241,12 @@ static LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
 // defaults to 64-bit signed, which is what EZ integers are.
 static ffi_type* ffiReturnType(const std::string& t) {
     if (t == "void")                 return &ffi_type_void;
-    if (t == "float"  || t == "f32") return &ffi_type_float;
-    if (t == "double" || t == "f64") return &ffi_type_double;
+    // "float" means a 64-bit double here: EZ's number type IS a double, and the
+    // FFI convention (and every existing caller, e.g. lib/db.ez reading
+    // sqlite3_column_double as "float") has always treated it that way. Only the
+    // explicit "f32" is a 32-bit C float.
+    if (t == "f32")                  return &ffi_type_float;
+    if (t == "float" || t == "double" || t == "f64") return &ffi_type_double;
     if (t == "i8")                   return &ffi_type_sint8;
     if (t == "u8")                   return &ffi_type_uint8;
     if (t == "i16")                  return &ffi_type_sint16;
@@ -263,8 +267,9 @@ union FfiRet { intptr_t i; uint64_t u; double d; float f; };
 // Turn a completed FfiRet into an EZ Value according to the declared return type.
 static Value ffiReadReturn(const std::string& retType, const FfiRet& r) {
     if (retType == "void")   return Value();
-    if (retType == "float" || retType == "f32") return Value((double)r.f);
-    if (retType == "double" || retType == "f64") return Value(r.d);
+    // "f32" is a real 32-bit float; "float" (like "double"/"f64") is 64-bit.
+    if (retType == "f32")    return Value((double)r.f);
+    if (retType == "float" || retType == "double" || retType == "f64") return Value(r.d);
     if (retType == "string") {
         const char* s = reinterpret_cast<const char*>(r.i);
         return s ? Value(std::string(s)) : Value("");

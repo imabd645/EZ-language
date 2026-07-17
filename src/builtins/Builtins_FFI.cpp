@@ -230,6 +230,70 @@ static LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+// Map an EZ FFI type name to the libffi type used for a RETURN value.
+//
+// Getting this right is what lets libffi widen a sub-register return correctly.
+// A C function that returns a 32-bit int leaves the upper 32 bits of the return
+// register undefined, so reading the result as 64 bits gives garbage -- e.g. a
+// returned -7 read back as 4294967289. Told the true type (ffi_type_sint32),
+// libffi sign-extends it to the register width and the read is correct. Unsigned
+// types are zero-extended. Anything unrecognised (including "int" and "i64")
+// defaults to 64-bit signed, which is what EZ integers are.
+static ffi_type* ffiReturnType(const std::string& t) {
+    if (t == "void")                 return &ffi_type_void;
+    if (t == "float"  || t == "f32") return &ffi_type_float;
+    if (t == "double" || t == "f64") return &ffi_type_double;
+    if (t == "i8")                   return &ffi_type_sint8;
+    if (t == "u8")                   return &ffi_type_uint8;
+    if (t == "i16")                  return &ffi_type_sint16;
+    if (t == "u16")                  return &ffi_type_uint16;
+    if (t == "i32")                  return &ffi_type_sint32;
+    if (t == "u32")                  return &ffi_type_uint32;
+    if (t == "u64")                  return &ffi_type_uint64;
+    if (t == "ptr")                  return &ffi_type_pointer;
+    return &ffi_type_sint64; // "int", "i64", and the default
+}
+
+// The register-sized buffer a libffi call writes its return value into. libffi
+// widens every integer return to at least ffi_arg (8 bytes on x64) with the
+// correct sign/zero extension for the ffi_type, so the integer members read back
+// directly. float/double are stored at their own width.
+union FfiRet { intptr_t i; uint64_t u; double d; float f; };
+
+// Turn a completed FfiRet into an EZ Value according to the declared return type.
+static Value ffiReadReturn(const std::string& retType, const FfiRet& r) {
+    if (retType == "void")   return Value();
+    if (retType == "float" || retType == "f32") return Value((double)r.f);
+    if (retType == "double" || retType == "f64") return Value(r.d);
+    if (retType == "string") {
+        const char* s = reinterpret_cast<const char*>(r.i);
+        return s ? Value(std::string(s)) : Value("");
+    }
+    // Unsigned reads: libffi already zero-extended, so the low bits are the
+    // value; mask to be explicit. u64 above 2^63 cannot be represented in EZ's
+    // signed 64-bit integer and comes back negative -- a documented limit.
+    if (retType == "u8")  return Value((long long)(uint8_t)r.u);
+    if (retType == "u16") return Value((long long)(uint16_t)r.u);
+    if (retType == "u32") return Value((long long)(uint32_t)r.u);
+    if (retType == "u64") return Value((long long)r.u);
+    // Signed and pointer: libffi sign-extended smaller signed types already.
+    return Value((long long)r.i);
+}
+
+// Marshal one EZ Value into an integer/pointer-register argument slot. Integers
+// go through asInteger() -- NOT asNumber(), which is a double and silently loses
+// precision above 2^53 (an int64 argument would arrive mangled). Floats still
+// pass through here for os_call, which lacks per-argument typing; use os_call_sig
+// for a genuine floating-point parameter.
+static intptr_t ffiMarshalIntArg(const Value& v, std::string& tempStr) {
+    if (v.isInteger())      return (intptr_t)v.asInteger();
+    if (v.isFloat())        return (intptr_t)v.asFloat();
+    if (v.isString())     { tempStr = v.asString(); return reinterpret_cast<intptr_t>(tempStr.c_str()); }
+    if (v.isBuffer())       return reinterpret_cast<intptr_t>(v.asBuffer().data());
+    if (v.isBool())         return v.asBool() ? 1 : 0;
+    return 0;
+}
+
 static bool ffi_call_helper(void* funcPtr, size_t argc, ffi_type** argTypes, void** argValues, ffi_type* retType, void* retBuffer, RuntimeContext& interp) {
     ffi_cif cif;
     if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, (unsigned int)argc, retType, argTypes) == FFI_OK) {
@@ -795,42 +859,27 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             size_t argc = args.size() - 2;
             std::string retType = args[1].asString();
             
+            // Every argument occupies one integer/pointer register slot. os_call
+            // has no per-argument typing, so a real floating-point parameter must
+            // go through os_call_sig; here integers are marshalled EXACTLY (via
+            // asInteger(), not a lossy double).
             std::vector<ffi_type*> argTypes(argc, &ffi_type_pointer);
             std::vector<void*> argValues(argc);
             std::vector<intptr_t> cArgs(argc, 0);
             std::vector<std::string> tempStrings(argc);
-            
+
             for (size_t i = 0; i < argc; i++) {
-                size_t valIdx = i + 2;
-                if (args[valIdx].isNumber()) cArgs[i] = static_cast<intptr_t>(args[valIdx].asNumber());
-                else if (args[valIdx].isString()) {
-                    tempStrings[i] = args[valIdx].asString();
-                    cArgs[i] = reinterpret_cast<intptr_t>(tempStrings[i].c_str());
-                }
-                else if (args[valIdx].isBuffer()) cArgs[i] = reinterpret_cast<intptr_t>(args[valIdx].asBuffer().data());
-                else if (args[valIdx].isBool()) cArgs[i] = args[valIdx].asBool() ? 1 : 0;
-                
+                cArgs[i] = ffiMarshalIntArg(args[i + 2], tempStrings[i]);
                 argValues[i] = &cArgs[i];
             }
-            
-            ffi_type* rType = &ffi_type_pointer;
-            if (retType == "float" || retType == "double") rType = &ffi_type_double;
-            
-            union { intptr_t i; double f; } retBuffer;
-            retBuffer.i = 0;
+
+            ffi_type* rType = ffiReturnType(retType);
+            FfiRet retBuffer; retBuffer.i = 0;
 
             if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp)) {
                 return Value();
             }
-            
-            if (retType == "float" || retType == "double") return Value(retBuffer.f);
-            if (retType == "int" || retType == "ptr") return Value((long long)retBuffer.i);
-            if (retType == "string") {
-                const char* str = reinterpret_cast<const char*>(retBuffer.i);
-                if (str) return Value(std::string(str));
-                return Value("");
-            }
-            return Value();
+            return ffiReadReturn(retType, retBuffer);
 #else
             return Value();
 #endif
@@ -859,46 +908,31 @@ void registerFFIBuiltins(RuntimeContext& interp) {
             for (size_t i = 0; i < argc; i++) {
                 size_t valIdx = i + 3;
                 if (valIdx >= args.size()) break;
-                
+
                 std::string type = sigArray[i].isString() ? sigArray[i].asString() : "ptr";
-                
+
                 if (type == "float" || type == "double" || type == "f32" || type == "f64") {
+                    // A double parameter must land in an XMM register: give it the
+                    // real floating type, not a reinterpreted integer.
                     argTypes[i] = &ffi_type_double;
-                    if (args[valIdx].isNumber()) fArgs[i] = args[valIdx].asNumber();
+                    if (args[valIdx].isInteger())    fArgs[i] = (double)args[valIdx].asInteger();
+                    else if (args[valIdx].isNumber()) fArgs[i] = args[valIdx].asFloat();
                     argValues[i] = &fArgs[i];
                 } else {
+                    // Integers marshalled exactly (asInteger(), not a lossy double).
                     argTypes[i] = &ffi_type_pointer;
-                    if (args[valIdx].isNumber()) iArgs[i] = (intptr_t)args[valIdx].asNumber();
-                    else if (args[valIdx].isString()) {
-                        tempStrings[i] = args[valIdx].asString();
-                        iArgs[i] = reinterpret_cast<intptr_t>(tempStrings[i].c_str());
-                    } else if (args[valIdx].isBuffer()) {
-                        iArgs[i] = reinterpret_cast<intptr_t>(args[valIdx].asBuffer().data());
-                    } else if (args[valIdx].isBool()) {
-                        iArgs[i] = args[valIdx].asBool() ? 1 : 0;
-                    }
+                    iArgs[i] = ffiMarshalIntArg(args[valIdx], tempStrings[i]);
                     argValues[i] = &iArgs[i];
                 }
             }
-            
-            ffi_type* rType = &ffi_type_pointer;
-            if (retType == "float" || retType == "double" || retType == "f32" || retType == "f64") rType = &ffi_type_double;
-            
-            union { intptr_t i; double f; } retBuffer;
-            retBuffer.i = 0;
-            
+
+            ffi_type* rType = ffiReturnType(retType);
+            FfiRet retBuffer; retBuffer.i = 0;
+
             if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp)) {
                 return Value();
             }
-            
-            if (retType == "float" || retType == "double" || retType == "f32" || retType == "f64") return Value(retBuffer.f);
-            if (retType == "int" || retType == "ptr" || retType == "i32" || retType == "i64" || retType == "u32" || retType == "u64") return Value((long long)retBuffer.i);
-            if (retType == "string") {
-                const char* str = reinterpret_cast<const char*>(retBuffer.i);
-                if (str) return Value(std::string(str));
-                return Value("");
-            }
-            return Value();
+            return ffiReadReturn(retType, retBuffer);
 #else
             return Value();
 #endif

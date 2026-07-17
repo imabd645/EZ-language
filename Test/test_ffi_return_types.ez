@@ -1,0 +1,114 @@
+# FFI return-type and argument marshalling.
+#
+# Three defects in os_call / os_call_sig, all exercised here against the SQLite
+# C API in winsqlite3.dll (present on every modern Windows):
+#
+#  * os_call returned nil for i64/i32/u32/u64 return types (only int/ptr/string
+#    were mapped).
+#  * a 32-bit int return was read as 64 bits, so its undefined upper half made a
+#    returned -7 come back as 4294967289. The return ffi_type is now the real
+#    width, so libffi sign/zero-extends correctly.
+#  * integer ARGUMENTS were converted through a double (asNumber), rounding any
+#    value above 2^53 in transit. Integers now marshal via asInteger(), exactly.
+
+passes = 0
+fails = 0
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+out "=== FFI return types & argument marshalling ==="
+
+lib = os_load_lib("winsqlite3.dll")
+check("winsqlite3.dll loads", lib != 0, true)
+
+f_open      = os_get_func(lib, "sqlite3_open_v2")
+f_prepare   = os_get_func(lib, "sqlite3_prepare_v2")
+f_step      = os_get_func(lib, "sqlite3_step")
+f_finalize  = os_get_func(lib, "sqlite3_finalize")
+f_col_int   = os_get_func(lib, "sqlite3_column_int")     # returns 32-bit int
+f_col_int64 = os_get_func(lib, "sqlite3_column_int64")   # returns 64-bit int
+f_bind_i64  = os_get_func(lib, "sqlite3_bind_int64")     # takes a 64-bit int ARG
+f_close     = os_get_func(lib, "sqlite3_close_v2")
+
+ppDb = os_alloc(8)
+os_call(f_open, "int", ":memory:", ppDb, 6, 0)
+db = os_read_uint64(ppDb, 0)
+os_free(ppDb)
+check("opened in-memory db", db != 0, true)
+
+# Prepare a helper that runs one SQL statement and hands back the stmt.
+task prep(sql) {
+    pp = os_alloc(8)
+    os_call(f_prepare, "int", db, sql, -1, pp, 0)
+    st = os_read_uint64(pp, 0)
+    os_free(pp)
+    give st
+}
+
+# --- Bug 4: a 32-bit int return must sign-extend --------------------------
+st = prep("SELECT -7")
+os_call(f_step, "int", st)
+check("column_int(-7) via i32 return", os_call(f_col_int, "i32", st, 0), -7)
+check("column_int(-7) is NOT 4294967289", os_call(f_col_int, "i32", st, 0) != 4294967289, true)
+os_call(f_finalize, "int", st)
+
+st = prep("SELECT 2147483647")   # INT32_MAX
+os_call(f_step, "int", st)
+check("column_int(INT32_MAX) via i32", os_call(f_col_int, "i32", st, 0), 2147483647)
+os_call(f_finalize, "int", st)
+
+st = prep("SELECT -2147483648")  # INT32_MIN
+os_call(f_step, "int", st)
+check("column_int(INT32_MIN) via i32", os_call(f_col_int, "i32", st, 0), -2147483648)
+os_call(f_finalize, "int", st)
+
+# --- Bug 3: i64/u32/u64 return types must not come back nil ----------------
+st = prep("SELECT 42")
+os_call(f_step, "int", st)
+check("i64 return type works (not nil)", os_call(f_col_int64, "i64", st, 0), 42)
+check("u32 return type works (not nil)", os_call(f_col_int, "u32", st, 0), 42)
+check("u64 return type works (not nil)", os_call(f_col_int64, "u64", st, 0), 42)
+# "int" still reads the full 64 bits (long-standing behaviour libraries rely on).
+check("int return still 64-bit", os_call(f_col_int64, "int", st, 0), 42)
+os_call(f_finalize, "int", st)
+
+# A negative i64 return.
+st = prep("SELECT -1234567890123")
+os_call(f_step, "int", st)
+check("negative i64 return", os_call(f_col_int64, "i64", st, 0), -1234567890123)
+os_call(f_finalize, "int", st)
+
+# --- Bug 5: a large integer ARGUMENT must pass without precision loss -------
+# Bind 2^53 + 1 as an int64 parameter, then read it straight back. If the arg
+# were routed through a double it would arrive as 2^53 (…992).
+st = prep("SELECT ?")
+os_call(f_bind_i64, "int", st, 1, 9007199254740993)   # 2^53 + 1
+os_call(f_step, "int", st)
+check("2^53+1 survives as an FFI int64 argument", os_call(f_col_int64, "i64", st, 0), 9007199254740993)
+os_call(f_finalize, "int", st)
+
+st = prep("SELECT ?")
+os_call(f_bind_i64, "int", st, 1, 9223372036854775807)   # INT64_MAX
+os_call(f_step, "int", st)
+check("INT64_MAX survives as an FFI int64 argument", os_call(f_col_int64, "i64", st, 0), 9223372036854775807)
+os_call(f_finalize, "int", st)
+
+# --- os_call_sig parity: same fixes on the typed-signature path ------------
+st = prep("SELECT -7")
+os_call_sig(f_step, "int", ["ptr"], st)
+check("os_call_sig i32 sign-extends", os_call_sig(f_col_int, "i32", ["ptr", "ptr"], st, 0), -7)
+os_call_sig(f_finalize, "int", ["ptr"], st)
+
+os_call(f_close, "int", db)
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

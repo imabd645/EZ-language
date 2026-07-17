@@ -1,5 +1,6 @@
 #include "cli/CLI.h"
 extern bool g_disableContracts;
+extern bool g_disableTypeCheck;
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -79,8 +80,12 @@ void runRepl(bool traceExecution) {
                 std::vector<std::string> builtins;
                 for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
                 
-                TypeChecker typeChecker;
-                if (typeChecker.check(statements, builtins)) {
+                bool typeCheckOk = true;
+                if (!g_disableTypeCheck) {
+                    TypeChecker typeChecker;
+                    typeCheckOk = typeChecker.check(statements, builtins);
+                }
+                if (typeCheckOk) {
                     try {
                         CompileResult result = compiler.compile(statements);
                         if (result.success) {

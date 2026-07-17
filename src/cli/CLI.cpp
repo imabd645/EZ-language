@@ -329,6 +329,10 @@ void showHelp() {
     std::cout << "  ez bundle <file.ez> [out.exe] [--gui] [--icon app.ico]  Create a standalone executable" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  --trace           Trace bytecode execution" << std::endl;
+    std::cout << "  --no-typecheck    Disable the static type checker" << std::endl;
+    std::cout << "  --no-contracts    Disable contract enforcement" << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
     std::cout << "  out \"text\"        Print to console" << std::endl;
     std::cout << "  in                Read input from user" << std::endl;

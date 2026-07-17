@@ -168,21 +168,16 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
 
     // Putting the outer state back is NOT optional on the exception path.
     //
-    // This run has an empty tryStack, so a `throw` inside the callee that no
-    // handler *here* catches reaches runtimeError(), which throws a C++
-    // RuntimeError. That C++ exception unwinds straight through this function.
-    // When the restore was written inline after run(), it was skipped, and
-    // savedFrames -- a local -- was destroyed on the way out, taking the caller's
-    // frames with it. The VM then kept executing on the CALLEE's frames: run()'s
-    // handler unwinds with a TryBlock.frameIdx that indexes the caller's frame
-    // numbering, so it restored a frame whose ip pointed into a different
-    // function's chunk. The catch block appeared to work, and the process
-    // segfaulted inside run() some time later.
+    // This run has an empty tryStack, so a throw the callee does not handle
+    // reaches runtimeError(), which throws a C++ RuntimeError, and run() rethrows
+    // anything whose handler it does not own. Either way the exception unwinds
+    // through here. With the restore written inline after run() it was skipped,
+    // and savedFrames -- a local -- was destroyed on the way out, taking the
+    // caller's frames with it.
     //
-    // That is what made `model M { init() { throw "x" } }` crash: constructors
-    // reach the callee through instantiate() -> callFunction(). It applies to
-    // EVERY re-entrant call, though -- a builtin calling back into EZ (a sort
-    // comparator, an FFI callback) had the same hole.
+    // (This is the top-level entry point. The re-entrant path that constructors
+    // and FFI callbacks take is callFunction(), which had the same hole plus a
+    // tryStack-ownership bug of its own.)
     auto restoreState = [&]() {
         frames = std::move(savedFrames);
         frameUpvalues = std::move(savedFrameUpvalues);
@@ -499,21 +494,48 @@ Value BytecodeVM::callFunction(const Value& callee,
         push(arg);
     }
 
-    Value result;
-    if (dispatchCall(callee, args.size())) {
-        run(frames.size());
-        
-        if (isYielded) return Value();
+    // Restoring the stack/frames is not optional on the exception path.
+    //
+    // The nested run() below now propagates a C++ RuntimeError when the callee
+    // throws and the only handler lives in one of OUR caller's frames (see
+    // ownsTryBlock() in run()). Before that, the callee's throw unwound straight
+    // into the caller's handler from INSIDE the nested run: the caller's
+    // bytecode resumed there, and then the rewind below ran anyway and pulled
+    // the stack out from under it. The outer run() then carried on with a stale
+    // value sitting where a callee should be:
+    //
+    //     model Boom { init() { throw "b" } }
+    //     try { Boom() } catch (e) { }   # prints fine
+    //     Fine(3)                        # -> "Value is not callable: string"
+    //
+    // Constructors arrive here via instantiate(); FFI callbacks, sort
+    // comparators and any other builtin that calls back into EZ do too.
+    auto restoreState = [&]() {
+        stackTop = stack.data() + stackBefore;
+        frames.resize(framesBefore);
+        running = savedRunning;
+    };
 
-        if (stackTop > stack.data() + stackBefore) {
-            result = *(stackTop - 1);
+    Value result;
+    try {
+        if (dispatchCall(callee, args.size())) {
+            run(frames.size());
+
+            // A yielded coroutine has NOT finished: its frames must stay live
+            // for the resume, so this path deliberately skips the restore.
+            if (isYielded) return Value();
+
+            if (stackTop > stack.data() + stackBefore) {
+                result = *(stackTop - 1);
+            }
         }
+    } catch (...) {
+        restoreState();
+        throw;   // hand it to the run() that owns the handler
     }
-    
+
     // Always restore stack to exactly where it was before the call
-    stackTop = stack.data() + stackBefore;
-    frames.resize(framesBefore);
-    running = savedRunning;
+    restoreState();
 
     return result;
 }

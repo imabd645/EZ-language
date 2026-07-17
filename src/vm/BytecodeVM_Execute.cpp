@@ -34,7 +34,33 @@ void BytecodeVM::run(size_t targetFrameCount) {
     CallFrame* frame = &frames.back();
     const uint8_t* ip = frame->ip;
     Value* stackTop = this->stackTop;
-    
+
+    // Does the innermost try block belong to a frame THIS run() invocation owns?
+    //
+    // run(N) owns frames [N-1 .. back]. A TryBlock below that was registered by a
+    // CALLER's frame, and this run must not jump into it: re-entrant calls
+    // (constructors via instantiate(), FFI callbacks, sort comparators) push
+    // their frames onto the same vector and then call run() again, but the
+    // caller's tryStack is still visible. Unwinding into it from here resumed the
+    // caller's bytecode inside the NESTED run, and callFunction() then rewound
+    // the stack underneath it -- leaving the outer run to carry on with a
+    // clobbered stack (a stale value sitting where a callee should be).
+    //
+    // When the handler is not ours, the exception is rethrown so it lands on the
+    // dispatch level that owns the handler.
+    auto ownsTryBlock = [&]() -> bool {
+        return !tryStack.empty() && tryStack.back().frameIdx + 1 >= startingFrameCount;
+    };
+
+    // The human-readable text of a thrown value, preferring a dictionary's
+    // "message" field.
+    auto exceptionMessage = [](const Value& exc) -> std::string {
+        if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
+            return exc.asDictionaryPtr()->get("message").toString();
+        }
+        return exc.toString();
+    };
+
 #define SYNC_IP() { if (!frames.empty()) frame->ip = ip; this->stackTop = stackTop; }
 #define LOAD_FRAME() { frame = &frames.back(); ip = frame->ip; stackTop = this->stackTop; }
 #define REFRESH_FRAME() { frame = &frames.back(); }
@@ -2111,8 +2137,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     if (!pendingException.isNil()) {
                         Value exc = pendingException;
                         pendingException = Value(); // Clear it
-                        
-                        if (!tryStack.empty()) {
+
+                        if (ownsTryBlock()) {
                             TryBlock tb = tryStack.back(); tryStack.pop_back();
                             while (frames.size() > tb.frameIdx + 1) {
                                 closeUpvalues(frames.back().slots);
@@ -2122,13 +2148,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             LOAD_FRAME();
                             ip = tb.catchIp;
                             *stackTop++ = exc;
+                        } else if (!tryStack.empty()) {
+                            // Handler belongs to a caller's frame; propagate.
+                            SYNC_IP();
+                            running = false;
+                            throw RuntimeError(exceptionMessage(exc),
+                                               frames.empty() ? 0 : frames.back().line,
+                                               exc);
                         } else {
                             SYNC_IP();
-                            if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
-                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->get("message").toString());
-                            } else {
-                                runtimeError("Uncaught exception: " + exc.toString());
-                            }
+                            runtimeError("Uncaught exception: " + exceptionMessage(exc));
                             return;
                         }
                     }
@@ -2162,7 +2191,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
                         
                         pendingException = exc;
-                        if (!tryStack.empty()) {
+                        if (ownsTryBlock()) {
                             TryBlock tb = tryStack.back(); tryStack.pop_back();
                             while (frames.size() > tb.frameIdx + 1) {
                                 closeUpvalues(frames.back().slots);
@@ -2172,13 +2201,23 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             LOAD_FRAME();
                             ip = tb.catchIp;
                             *stackTop++ = exc;
+                        } else if (!tryStack.empty()) {
+                            // A handler exists, but it lives in a frame belonging
+                            // to an OUTER run() -- we are inside a re-entrant call
+                            // (a constructor, an FFI callback, a sort comparator).
+                            // Jumping to it from here would resume the caller's
+                            // bytecode inside THIS run, and then callFunction
+                            // would rewind the stack underneath it. Hand the
+                            // exception to our caller instead and let the run that
+                            // owns the handler do the unwinding.
+                            SYNC_IP();
+                            running = false;
+                            throw RuntimeError(exceptionMessage(exc),
+                                               frames.empty() ? 0 : frames.back().line,
+                                               exc);
                         } else {
                             SYNC_IP();
-                            if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
-                                runtimeError("Uncaught exception: " + exc.asDictionaryPtr()->get("message").toString());
-                            } else {
-                                runtimeError("Uncaught exception: " + exc.toString());
-                            }
+                            runtimeError("Uncaught exception: " + exceptionMessage(exc));
                             return;
                         }
                     }
@@ -2205,7 +2244,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #endif
 
     } catch (const RuntimeError& e) {
-        if (!tryStack.empty()) {
+        if (ownsTryBlock()) {
             TryBlock tb = tryStack.back(); tryStack.pop_back();
             while (frames.size() > tb.frameIdx + 1) {
                 closeUpvalues(frames.back().slots);
@@ -2221,10 +2260,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
             // this->stackTop is restored to the exact level it was at the start of the 'try' block.
             goto dispatch_start;
         }
+        if (!tryStack.empty()) {
+            // The handler belongs to a caller's frame -- see ownsTryBlock(). Let
+            // the exception out so the run() that owns it can unwind properly.
+            SYNC_IP();
+            throw;
+        }
         // Uncaught RuntimeError: already printed in runtimeError() (if not async task)
         pendingException = e.value.isNil() ? Value(e.what()) : e.value;
         SYNC_IP();
     } catch (const std::exception& e) {
+        if (!tryStack.empty() && !ownsTryBlock()) {
+            SYNC_IP();
+            throw;
+        }
         if (!tryStack.empty()) {
             TryBlock tb = tryStack.back(); tryStack.pop_back();
             while (frames.size() > tb.frameIdx + 1) {

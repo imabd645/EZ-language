@@ -53,15 +53,41 @@ check("calls still work after the throw", after_init_throw(6, 7), 43)
 # --- 2. a constructor that throws does not poison later construction ---------
 model Fine {
     init(v) { self.v = v }
-    task get() { give self.v }
+    task val() { give self.v }
 }
 f = Fine(99)
-check("a good model still constructs", f.get(), 99)
+check("a good model still constructs", f.val(), 99)
 
 # Repeat: a second failure must be just as survivable as the first.
 try { Boom() } catch (e) { }
 try { Boom() } catch (e) { }
-check("repeated init throws survive", Fine(7).get(), 7)
+check("repeated init throws survive", Fine(7).val(), 7)
+
+# The stack must be clean enough to CALL things afterwards. The first attempt at
+# this fix left a stale value in the callee slot, so the next call invoked
+# whatever happened to be sitting there:
+#     "Value is not callable: string"          (the exception itself)
+#     "'plain_boom' expected at most 0 args but got 1"  (an unrelated function)
+task plain_boom() { throw "p" }
+task adder(a, b) { give a + b }
+
+try { plain_boom() } catch (e) { }
+check("call works after a plain throw", adder(2, 3), 5)
+
+try { Boom() } catch (e) { }
+check("call works after an init throw", adder(4, 5), 9)
+check("construction works after an init throw", Fine(11).val(), 11)
+
+# Interleave the two throw paths: a plain throw and a re-entrant one must not
+# corrupt each other's view of the stack.
+i = 0
+while i < 20 {
+    try { Boom() } catch (e) { }
+    try { plain_boom() } catch (e) { }
+    i = i + 1
+}
+check("interleaved throws leave calls working", adder(20, 22), 42)
+check("interleaved throws leave construction working", Fine(13).val(), 13)
 
 # --- 3. throw from a nested/inherited constructor ----------------------------
 model Base {
@@ -72,7 +98,7 @@ model Derived extends Base {
 caught2 = ""
 try { Derived() } catch (e) { caught2 = str(e) }
 check("throw from an inherited init is caught", caught2, "base boom")
-check("VM alive after inherited init throw", Fine(1).get(), 1)
+check("VM alive after inherited init throw", Fine(1).val(), 1)
 
 # --- 4. throw out of a re-entrant builtin callback --------------------------
 # sort() calls back into EZ. A comparator that throws is the same re-entrancy
@@ -83,7 +109,7 @@ try {
     sort(arr, |a, b| { throw "cmp boom" })
     sorted_ok = false
 } catch (e) { }
-check("VM alive after a throwing sort comparator", Fine(5).get(), 5)
+check("VM alive after a throwing sort comparator", Fine(5).val(), 5)
 
 # --- 5. deep nesting: init -> task -> throw ---------------------------------
 task deep_thrower() { throw "deep" }
@@ -93,7 +119,7 @@ model DeepBoom {
 caught3 = ""
 try { DeepBoom() } catch (e) { caught3 = str(e) }
 check("throw through init's callee is caught", caught3, "deep")
-check("VM alive after deep init throw", Fine(2).get(), 2)
+check("VM alive after deep init throw", Fine(2).val(), 2)
 
 # --- 6. the caught value is intact ------------------------------------------
 model DictBoom {

@@ -14,4 +14,5 @@ void registerBuiltins(RuntimeContext& interp) {
     registerBufferBuiltins(interp);
     registerConcurrencyBuiltins(interp);
     registerHttpBuiltins(interp);
+    registerTimeDateBuiltins(interp);
 }

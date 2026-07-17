@@ -49,6 +49,7 @@ set(SOURCES
     src/builtins/Builtins_Math.cpp
     src/builtins/Builtins_Net.cpp
     src/builtins/Builtins_String.cpp
+    src/builtins/Builtins_TimeDate.cpp
     src/bytecode/Bytecode.cpp
     src/bytecode/serializer/BytecodeSerializer.cpp
     src/cli/CLI.cpp

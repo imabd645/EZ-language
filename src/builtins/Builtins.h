@@ -18,5 +18,6 @@ void registerFFIBuiltins(RuntimeContext& interp);
 void registerBufferBuiltins(RuntimeContext& interp);
 void registerConcurrencyBuiltins(RuntimeContext& interp);
 void registerHttpBuiltins(RuntimeContext& interp);
+void registerTimeDateBuiltins(RuntimeContext& interp);
 
 #endif // BUILTINS_H

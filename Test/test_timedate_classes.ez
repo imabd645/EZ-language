@@ -1,0 +1,66 @@
+# test_timedate_classes.ez
+# Tests for DateTime and Timer classes
+
+out "=== Testing DateTime and Timer ==="
+
+# ── Test 1: DateTime (now) ──────────────────────────────────────────────────
+out ""
+out "--- Test 1: DateTime (now) ---"
+now = DateTime()
+out "  Year: " + str(now.year())
+out "  Month: " + str(now.month())
+out "  Day: " + str(now.day())
+out "  Timestamp: " + str(now.timestamp())
+out "  Format: " + now.format("%Y-%m-%d %H:%M:%S")
+out "PASS: DateTime(now) works"
+
+# ── Test 2: DateTime (specific date) ────────────────────────────────────────
+out ""
+out "--- Test 2: DateTime (specific) ---"
+d1 = DateTime(2026, 7, 17)
+out "  Date 1: " + d1.format("%Y-%m-%d")
+d2 = DateTime(2026, 7, 17, 14, 30, 0)
+out "  Date 2: " + d2.format("%Y-%m-%d %H:%M:%S")
+out "PASS: DateTime(specific) works"
+
+# ── Test 3: DateTime math ───────────────────────────────────────────────────
+out ""
+out "--- Test 3: DateTime math ---"
+d3 = d2.addDays(5)
+out "  +5 days: " + d3.format("%Y-%m-%d %H:%M:%S")
+diff = d3.diff(d2)
+out "  Diff (ms): " + str(diff)
+out "PASS: DateTime math works"
+
+# ── Test 4: Timer (one-shot) ────────────────────────────────────────────────
+out ""
+out "--- Test 4: Timer (one-shot) ---"
+t1 = Timer(500)
+t1.onTick(|| {
+    out "  Timer 1 fired!"
+})
+t1.start()
+out "  Timer 1 started"
+out "  isRunning: " + str(t1.isRunning())
+wait(800)
+out "  isRunning after wait: " + str(t1.isRunning())
+out "PASS: Timer (one-shot) works"
+
+# ── Test 5: Timer (repeating) ───────────────────────────────────────────────
+out ""
+out "--- Test 5: Timer (repeating) ---"
+ticks = 0
+t2 = Timer(300, true)
+t2.onTick(|| {
+    ticks = ticks + 1
+    out "  Tick " + str(ticks)
+})
+t2.start()
+wait(1000)
+t2.stop()
+out "  isRunning after stop: " + str(t2.isRunning())
+out "  Total ticks: " + str(ticks)
+out "PASS: Timer (repeating) works"
+
+out ""
+out "=== All DateTime and Timer Tests Complete ==="

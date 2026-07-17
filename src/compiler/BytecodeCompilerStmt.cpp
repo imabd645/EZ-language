@@ -551,15 +551,27 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         // must run A then B. Each block parks the return value in its own hidden
         // local across its body, so the finally's own locals sit at the slot
         // offsets the compiler assigned them.
-        for (auto it = current->activeFinallys.rbegin();
-             it != current->activeFinallys.rend(); ++it) {
+        //
+        // While block i's body is compiled, blocks i..end are taken OFF the
+        // active list. A `give` inside a finally must not replay the block it is
+        // standing in -- that recursed forever right here in the compiler and
+        // killed the process with no output at all:
+        //
+        //     try { give "a" } finally { give "b" }
+        //
+        // Dropping them is also the correct semantics: such a `give` should still
+        // run the finallys OUTSIDE it, and those are exactly what remains.
+        auto pending = current->activeFinallys;
+        for (size_t i = pending.size(); i-- > 0; ) {
+            current->activeFinallys.resize(i);
             emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(it->retvalSlot));
+                      static_cast<uint8_t>(pending[i].retvalSlot));
             emitOp(OpCode::POP);
-            compileStmt(it->body);
+            compileStmt(pending[i].body);
             emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                      static_cast<uint8_t>(it->retvalSlot));
+                      static_cast<uint8_t>(pending[i].retvalSlot));
         }
+        current->activeFinallys = pending;
 
         emitReturn();
     }

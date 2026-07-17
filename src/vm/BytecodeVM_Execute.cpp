@@ -329,24 +329,39 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             // 3. Slow path
                             else {
                                 CHECK_VISIBILITY(inst->klass, propName);
+                                // A FIELD takes precedence over a method of the
+                                // same name, and getProperty() resolves it that
+                                // way. Decide field-vs-method up front, because a
+                                // function stored in a FIELD is a plain value and
+                                // must NOT bind self -- only a declared method
+                                // does. Binding a field-held function passed the
+                                // instance as a hidden first argument, so calling
+                                // it failed with "expected at most N args but got
+                                // N+1", and it was mis-cached as a method so the
+                                // fast path repeated the mistake.
+                                bool isField = inst->hasProperty(propName);
                                 Value val = inst->getProperty(propName);
-                                if (val.isNil() && !inst->hasProperty(propName)) {
+                                if (val.isNil() && !isField) {
                                     SYNC_IP();
                                     runtimeError("Property or method '" + propName + "' does not exist on instance of '" + inst->klass->name + "'");
                                     return;
                                 }
 
-                                // Populate cache
-                                if (val.isFunction() || val.isClosure() || val.isNativeFunction()) {
-                                    ic.klass = inst->klass.get();
-                                    ic.methodValue = val;
-                                    *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
-                                } else {
+                                if (isField) {
+                                    // Cache as a shape (property) IC and return the
+                                    // value untouched, function or not.
                                     size_t offset;
                                     if (inst->shape->getOffset(propName, offset)) {
                                         ic.shape = inst->shape;
                                         ic.offset = offset;
                                     }
+                                    *stackTop++ = val;
+                                } else if (val.isFunction() || val.isClosure() || val.isNativeFunction()) {
+                                    // A genuine method: bind self, cache as class IC.
+                                    ic.klass = inst->klass.get();
+                                    ic.methodValue = val;
+                                    *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, val));
+                                } else {
                                     *stackTop++ = val;
                                 }
                             }

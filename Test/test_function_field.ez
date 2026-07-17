@@ -1,0 +1,86 @@
+# A function stored in an INSTANCE FIELD is a plain value and must NOT bind self
+# when read or called. Only a declared method (task) binds self.
+#
+# The property-access opcode used to wrap ANY function-valued property in a bound
+# method, so a field holding a function passed the instance as a hidden first
+# argument -- `self.fn(x)` and even `f = self.fn  f(x)` died with "expected at
+# most 1 args but got 2" -- and it mis-cached the field as a method so every
+# later read repeated it. Storing callbacks in models (event handlers, user
+# loaders, strategies) was impossible without a dictionary workaround.
+
+passes = 0
+fails = 0
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+out "=== function stored in an instance field ==="
+
+model Holder {
+    init() { self.fn = nil  self.n = 100 }
+    task setfn(f) { self.fn = f }
+    task callDirect(x) { give self.fn(x) }             # self.fn(x)
+    task callViaLocal(x) { f = self.fn  give f(x) }    # copy to local first
+    # A real method alongside, to prove methods still bind self.
+    task method(x) { give self.n + x }
+}
+
+h = Holder()
+h.setfn(|v| { give "got:" + str(v) })
+
+# --- 1. a 1-arg field function called with 1 arg ----------------------------
+check("call via self.fn(x)", h.callDirect(7), "got:7")
+check("call via a local copy", h.callViaLocal(8), "got:8")
+
+# --- 2. reading the field yields the plain function, not a bound method ------
+g = h.fn
+check("read field is callable directly", g(9), "got:9")
+
+# --- 3. repeated reads stay unbound (the mis-cache is gone) ------------------
+check("second call still works", h.callDirect(1), "got:1")
+check("third call still works", h.callDirect(2), "got:2")
+
+# --- 4. a real method STILL binds self --------------------------------------
+check("declared method still binds self", h.method(5), 105)
+
+# --- 5. a field holding a 2-arg function ------------------------------------
+model Calc {
+    init() { self.op = nil }
+    task setop(f) { self.op = f }
+    task run(a, b) { give self.op(a, b) }
+}
+c = Calc()
+c.setop(|a, b| { give a * b })
+check("2-arg field function", c.run(6, 7), 42)
+
+# --- 6. a field function that takes zero args -------------------------------
+model Zero {
+    init() { self.make = nil }
+    task setmake(f) { self.make = f }
+    task build() { give self.make() }
+}
+z = Zero()
+z.setmake(|| { give "made" })
+check("0-arg field function", z.build(), "made")
+
+# --- 7. a field function reassigned to a different function -----------------
+h.setfn(|v| { give "NEW:" + str(v) })
+check("reassigned field function", h.callDirect(3), "NEW:3")
+
+# --- 8. field function that closes over its defining scope ------------------
+task makeAdder(base) { give |x| { give base + x } }
+model Box { init() { self.f = nil } task setf(fn) { self.f = fn } task use(x) { give self.f(x) } }
+bx = Box()
+bx.setf(makeAdder(1000))
+check("field closure keeps its captured value", bx.use(23), 1023)
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

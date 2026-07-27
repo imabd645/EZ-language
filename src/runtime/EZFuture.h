@@ -4,8 +4,9 @@
 // Windows-native future replacement for MinGW.
 // std::promise/std::future cross-thread synchronization crashes when
 // statically linking libstdc++ + libpthread on MinGW.
-// This uses a Windows Event object which is rock-solid on all Windows versions.
+// This uses a Windows Event object on Windows, and std::condition_variable on non-Windows.
 
+#ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -13,6 +14,10 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+#include <condition_variable>
+#endif
+
 #include <mutex>
 #include <memory>
 #include <functional>
@@ -25,14 +30,20 @@ struct Value;
 
 // Not copyable or movable — always use via pointer/shared_ptr
 struct EZFuture {
+#ifdef _WIN32
     HANDLE   hEvent;
-    std::mutex mtx;
+#else
+    std::condition_variable cv;
+    bool     ready;
+#endif
+    mutable std::mutex mtx;
     Value*   result;  // heap-allocated copy of the result
     bool     hasError;
     std::string errorMsg;
     std::vector<std::function<void()>> onReady;
 
     EZFuture()
+#ifdef _WIN32
         // manual-reset, initially non-signaled
         : hEvent(CreateEvent(nullptr, 1, 0, nullptr))
         , result(nullptr)
@@ -42,6 +53,12 @@ struct EZFuture {
             throw std::runtime_error("CreateEvent failed for EZFuture");
         }
     }
+#else
+        : ready(false)
+        , result(nullptr)
+        , hasError(false)
+    {}
+#endif
 
     ~EZFuture();
 
@@ -62,17 +79,35 @@ struct EZFuture {
     Value get();
 
     // Block until ready.
-    void wait() { WaitForSingleObject(hEvent, INFINITE); }
+    void wait() {
+#ifdef _WIN32
+        WaitForSingleObject(hEvent, INFINITE);
+#else
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [this]{ return ready; });
+#endif
+    }
 
     // Non-blocking poll.
-    bool isReady() const { return WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0; }
+    bool isReady() const {
+#ifdef _WIN32
+        return WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0;
+#else
+        std::lock_guard<std::mutex> lock(mtx);
+        return ready;
+#endif
+    }
 
     // Register a callback to be executed when the future is ready.
     void then(std::function<void()> callback) {
         bool executeNow = false;
         {
             std::lock_guard<std::mutex> lock(mtx);
+#ifdef _WIN32
             if (result || hasError) executeNow = true;
+#else
+            if (ready) executeNow = true;
+#endif
             else onReady.push_back(std::move(callback));
         }
         if (executeNow) callback();
@@ -85,7 +120,9 @@ struct EZFuture {
 #include "runtime/Value.h"  // provides full Value definition
 
 EZFuture::~EZFuture() {
+#ifdef _WIN32
     if (hEvent) CloseHandle(hEvent);
+#endif
     delete result;
 }
 
@@ -93,11 +130,20 @@ void EZFuture::set(const Value& val) {
     std::vector<std::function<void()>> callbacks;
     {
         std::lock_guard<std::mutex> lock(mtx);
-        if (!result && !hasError) result = new Value(val);
+        if (!result && !hasError) {
+            result = new Value(val);
+#ifndef _WIN32
+            ready = true;
+#endif
+        }
         callbacks = std::move(onReady);
         onReady.clear();
     }
+#ifdef _WIN32
     SetEvent(hEvent);
+#else
+    cv.notify_all();
+#endif
     for (auto& cb : callbacks) if (cb) cb();
 }
 
@@ -108,16 +154,23 @@ void EZFuture::setError(const std::string& msg) {
         if (!result && !hasError) {
             hasError = true;
             errorMsg = msg;
+#ifndef _WIN32
+            ready = true;
+#endif
         }
         callbacks = std::move(onReady);
         onReady.clear();
     }
+#ifdef _WIN32
     SetEvent(hEvent);
+#else
+    cv.notify_all();
+#endif
     for (auto& cb : callbacks) if (cb) cb();
 }
 
 Value EZFuture::get() {
-    WaitForSingleObject(hEvent, INFINITE);
+    wait();
     std::lock_guard<std::mutex> lock(mtx);
     if (hasError) throw std::runtime_error(errorMsg);
     if (result) return *result;
@@ -126,3 +179,4 @@ Value EZFuture::get() {
 #endif // EZFUTURE_IMPL
 
 #endif // EZFUTURE_H
+

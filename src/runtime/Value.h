@@ -84,10 +84,7 @@ struct ShortString {
     
     bool operator==(const ShortString& other) const {
         if (length != other.length) return false;
-        for (size_t i = 0; i < length; i++) {
-            if (data[i] != other.data[i]) return false;
-        }
-        return true;
+        return std::memcmp(data, other.data, length) == 0;
     }
 };
 

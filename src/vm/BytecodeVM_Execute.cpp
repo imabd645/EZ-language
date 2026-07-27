@@ -182,7 +182,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(LOAD_UPVALUE) {
                     uint8_t slot = READ_BYTE();
                     const ClosureState& cs = frameUpvalues.back();
-                    if (slot < cs.upvalues.size() && cs.upvalues[slot]) {
+                    if (__builtin_expect(slot < cs.upvalues.size() && cs.upvalues[slot] != nullptr, 1)) {
                         Value* loc = cs.upvalues[slot]->location.load();
                         if (loc) {
                             *stackTop++ = *loc;
@@ -197,7 +197,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(STORE_UPVALUE) {
                     uint8_t slot = READ_BYTE();
                     ClosureState& cs = frameUpvalues.back();
-                    if (slot < cs.upvalues.size() && cs.upvalues[slot]) {
+                    if (__builtin_expect(slot < cs.upvalues.size() && cs.upvalues[slot] != nullptr, 1)) {
                         Value* loc = cs.upvalues[slot]->location.load();
                         if (loc) {
                             *loc = *(stackTop - 1);
@@ -773,10 +773,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(INC_LOCAL) {
                     Value& v = frame->slots[READ_BYTE()];
-                    if (v.isInteger()) { // INTEGER
-                        v = Value(v.asInteger() + 1LL);
+                    if (__builtin_expect(v.isInteger(), 1)) { // INTEGER fast path
+                        v = Value(v.asIntegerUnsafe() + 1LL);
                     } else if (v.isFloat()) { // NUMBER (double)
-                        v = Value(v.asFloat() + 1.0);
+                        v = Value(v.asFloatUnsafe() + 1.0);
                     } else {
                         v = Value(v.asNumber() + 1.0);
                     }
@@ -784,10 +784,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
                 CASE_CODE(DEC_LOCAL) {
                     Value& v = frame->slots[READ_BYTE()];
-                    if (v.isInteger()) { // INTEGER
-                        v = Value(v.asInteger() - 1LL);
+                    if (__builtin_expect(v.isInteger(), 1)) { // INTEGER fast path
+                        v = Value(v.asIntegerUnsafe() - 1LL);
                     } else if (v.isFloat()) { // NUMBER (double)
-                        v = Value(v.asFloat() - 1.0);
+                        v = Value(v.asFloatUnsafe() - 1.0);
                     } else {
                         v = Value(v.asNumber() - 1.0);
                     }

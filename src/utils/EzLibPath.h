@@ -25,7 +25,21 @@ inline std::string ezLibBase() {
 #ifdef _WIN32
         base = "C:/ezlib";
 #else
-        base = "/usr/local/lib/ezlib";
+        // POSIX fallback resolution order
+        static const char* searchPaths[] = {
+            "/usr/local/lib/ezlib",
+            "/usr/lib/ezlib",
+            "./lib/ezlib",
+            "./ezlib"
+        };
+        base = searchPaths[0];
+        for (const char* path : searchPaths) {
+            if (FILE* f = fopen(path, "r")) {
+                fclose(f);
+                base = path;
+                break;
+            }
+        }
 #endif
     }
     if (!base.empty() && base.back() != '/' && base.back() != '\\') {

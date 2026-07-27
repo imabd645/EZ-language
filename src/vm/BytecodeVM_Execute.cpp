@@ -1576,10 +1576,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value* oldTop = stackTop;
                         Value dict = Value::makeDictionary();
                         auto dictPtr = dict.asDictionaryPtr();
-                        // Fix 1.1: use modifyMap so entries are actually written into the dict object
-                        // (original code wrote to a getMapCopy() local — changes were discarded)
-                        // Pop order: stack is LIFO so val is on top, then key, for each pair
                         dictPtr->modifyMap([&](auto& m) {
+                            m.reserve(m.size() + pairs);
                             for (int i = 0; i < pairs; i++) {
                                 Value val = *(--stackTop);
                                 Value key = *(--stackTop);
@@ -1614,15 +1612,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (arr.isArray() && iter.isArray()) {
                             auto& src = iter.asArray();
                             auto& dst = arr.asArray();
-                            for (const Value& v : src.getElementsCopy()) {
-                                dst.push_back(v);
-                            }
+                            auto srcCopy = src.getElementsCopy();
+                            dst.modifyElements([&](auto& e) {
+                                e.reserve(e.size() + srcCopy.size());
+                                e.insert(e.end(), srcCopy.begin(), srcCopy.end());
+                            });
                         } else if (arr.isArray() && iter.isString()) {
                             auto& dst = arr.asArray();
                             std::string s = iter.asString();
-                            for (char c : s) {
-                                dst.push_back(Value(std::string(1, c)));
-                            }
+                            dst.modifyElements([&](auto& e) {
+                                e.reserve(e.size() + s.size());
+                                for (char c : s) {
+                                    e.push_back(Value(std::string(1, c)));
+                                }
+                            });
                         } else {
                             SYNC_IP();
                             runtimeError("Cannot spread non-iterable value");

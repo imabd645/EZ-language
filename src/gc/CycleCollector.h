@@ -110,17 +110,19 @@ private:
     // Phase 2: snapshot live candidates and compute adjusted reference counts.
     //   adjusted[i] = use_count(i) - (number of references TO i FROM other candidates)
     void phase2_buildCandidates(
-        const std::vector<TrackedObject>& candidates,
+        const std::vector<TrackedObject>&   candidates,
         std::vector<std::shared_ptr<void>>& live,
         std::vector<ValueType>&             types,
-        std::vector<int>&                   adjustedRC);
+        std::vector<int>&                   adjustedRC,
+        std::unordered_map<void*, size_t>&  ptrToIdx);
 
     // Phase 3: flood-fill from externally-reachable candidates (adjustedRC > 0)
     //   to find the full live set within candidates. Unmarked == cyclic garbage.
     std::vector<size_t> phase3_findGarbage(
         const std::vector<std::shared_ptr<void>>& live,
         const std::vector<ValueType>&             types,
-        std::vector<int>&                         adjustedRC);
+        std::vector<int>&                         adjustedRC,
+        const std::unordered_map<void*, size_t>&  ptrToIdx);
 
     // Phase 4: break outgoing references on garbage objects, letting
     //   shared_ptr destructors fire normally once our local copies drop.

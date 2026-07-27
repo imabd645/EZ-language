@@ -162,7 +162,8 @@ void CycleCollector::phase2_buildCandidates(
     const std::vector<TrackedObject>&   candidates,
     std::vector<std::shared_ptr<void>>& live,
     std::vector<ValueType>&             types,
-    std::vector<int>&                   adjustedRC)
+    std::vector<int>&                   adjustedRC,
+    std::unordered_map<void*, size_t>&  ptrToIdx)
 {
     live.reserve(candidates.size());
     types.reserve(candidates.size());
@@ -183,7 +184,6 @@ void CycleCollector::phase2_buildCandidates(
     }
 
     // Build pointer → index map for O(1) lookup during traversal.
-    std::unordered_map<void*, size_t> ptrToIdx;
     ptrToIdx.reserve(live.size());
     for (size_t i = 0; i < live.size(); i++) {
         ptrToIdx[live[i].get()] = i;
@@ -213,20 +213,14 @@ void CycleCollector::phase2_buildCandidates(
 std::vector<size_t> CycleCollector::phase3_findGarbage(
     const std::vector<std::shared_ptr<void>>& live,
     const std::vector<ValueType>&             types,
-    std::vector<int>&                         adjustedRC)
+    std::vector<int>&                         adjustedRC,
+    const std::unordered_map<void*, size_t>&  ptrToIdx)
 {
     std::vector<bool> liveFlag(live.size(), false);
 
     // Seed: any candidate with adjustedRC > 0 is reachable from outside.
     for (size_t i = 0; i < live.size(); i++) {
         if (adjustedRC[i] > 0) liveFlag[i] = true;
-    }
-
-    // Build ptr → index map.
-    std::unordered_map<void*, size_t> ptrToIdx;
-    ptrToIdx.reserve(live.size());
-    for (size_t i = 0; i < live.size(); i++) {
-        ptrToIdx[live[i].get()] = i;
     }
 
     // Flood-fill: everything reachable from a live candidate is also live.
@@ -251,6 +245,7 @@ std::vector<size_t> CycleCollector::phase3_findGarbage(
 
     // Collect garbage indices.
     std::vector<size_t> garbage;
+    garbage.reserve(live.size());
     for (size_t i = 0; i < live.size(); i++) {
         if (!liveFlag[i]) garbage.push_back(i);
     }
@@ -283,9 +278,10 @@ void CycleCollector::collect_internal(std::vector<TrackedObject>& candidates, bo
     std::vector<std::shared_ptr<void>> live;
     std::vector<ValueType>             types;
     std::vector<int>                   adjustedRC;
+    std::unordered_map<void*, size_t>  ptrToIdx;
 
-    phase2_buildCandidates(candidates, live, types, adjustedRC);
-    auto garbage = phase3_findGarbage(live, types, adjustedRC);
+    phase2_buildCandidates(candidates, live, types, adjustedRC, ptrToIdx);
+    auto garbage = phase3_findGarbage(live, types, adjustedRC, ptrToIdx);
     phase4_breakCycles(live, types, garbage);
     
     // Purge the expired entries resulting from phase4 broken cycles
@@ -295,9 +291,11 @@ void CycleCollector::collect_internal(std::vector<TrackedObject>& candidates, bo
 void CycleCollector::collect_minor() {
     collect_internal(young_tracked_, false);
     // Promote survivors to old generation
+    old_tracked_.reserve(old_tracked_.size() + young_tracked_.size());
     old_tracked_.insert(old_tracked_.end(), young_tracked_.begin(), young_tracked_.end());
     young_tracked_.clear();
 }
+
 
 void CycleCollector::collect_major() {
     // Combine old and young

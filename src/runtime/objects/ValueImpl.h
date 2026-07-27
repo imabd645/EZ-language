@@ -229,6 +229,9 @@ inline bool Value::equals(const Value& other) const {
     }
     if (isString() && other.isString()) {
         if (stringLength() != other.stringLength()) return false;
+        if (index() == 4 && other.index() == 4) { // SHORT_STRING fast path
+            return std::get<ShortString>(m_data) == std::get<ShortString>(other.m_data);
+        }
         return asString() == other.asString();
     }
     if (type() != other.type()) return false;

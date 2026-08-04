@@ -180,6 +180,33 @@ private:
     void doNot();
     void doIndexGet(); void doIndexSet();
 
+    // ── Attribute hooks (__getattr__ / __setattr__) ──────────────────────────
+    //
+    // A class may intercept property access it would otherwise fail on:
+    //
+    //   task __getattr__(name)         -- called when a property is NOT found
+    //   task __setattr__(name, value)  -- called on every property write
+    //
+    // __getattr__ sits on the inline-cache MISS path only, so an ordinary hit
+    // still goes through the shape/class IC and costs nothing. __setattr__ has
+    // to see every write to be useful (it exists so an object can know what
+    // changed), so it is checked before the store fast path.
+    //
+    // The raw, un-hooked accessors are the getattr()/setattr() builtins: they
+    // call EZInstance::getProperty/setProperty directly rather than going
+    // through these opcodes. That is the escape hatch a hook body needs in order
+    // to actually read or write without re-entering itself.
+    //
+    // These only LOOK the hook up; the call itself is issued inline at each use
+    // site with dispatchCall(), the same way an overloaded operator is invoked.
+    // That pushes a frame for the main loop to run instead of re-entering run(),
+    // so a throw inside a hook unwinds through ordinary bytecode rather than
+    // through a nested C++ interpreter activation.
+    //
+    // Returns a nil Value when the class defines no hook.
+    Value findGetattrHook(const Value& obj, const std::string& name);
+    Value findSetattrHook(const Value& obj, const std::string& name);
+
     // ── Utility ──────────────────────────────────────────────────────────────
     void               initBuiltins();
     BytecodeFunctionPtr compileEZFunction(EZFunction* func);

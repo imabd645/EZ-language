@@ -494,6 +494,50 @@ BytecodeFunctionPtr BytecodeVM::compileEZFunction(EZFunction* func) {
 // callFunction (from native / external code)
 // ============================================================================
 
+// ============================================================================
+// Attribute hooks: __getattr__ / __setattr__
+// ============================================================================
+
+// A hook body will normally touch the very object it was called for. There is
+// no re-entrancy guard, deliberately -- the same contract as Lua's __index and
+// __newindex:
+//
+//   * inside __setattr__, write with setattr(self, name, value)
+//   * inside __getattr__, read with getattr(self, name)
+//
+// Those builtins go straight to EZInstance::setProperty/getProperty rather than
+// through these opcodes, so they do not re-enter the hook. Writing `self.x = v`
+// inside __setattr__ recurses, which is a programming error and surfaces as an
+// ordinary call-depth error rather than a crash.
+//
+// The dunder names themselves are excluded so that looking up "__getattr__" on a
+// class that has none is a plain miss rather than a self-call.
+
+Value BytecodeVM::findGetattrHook(const Value& obj, const std::string& name) {
+    if (name == "__getattr__" || name == "__setattr__") return Value();
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        if (!inst->klass) return Value();
+        return inst->klass->findMethod("__getattr__");
+    }
+    if (obj.isClass()) {
+        // A class-level miss looks for a STATIC __getattr__(cls, name), so that
+        // Model.column can resolve without an instance -- what an ORM needs in
+        // order to hand out column handles for query building.
+        return obj.asClass()->findStaticMember("__getattr__");
+    }
+    return Value();
+}
+
+Value BytecodeVM::findSetattrHook(const Value& obj, const std::string& name) {
+    if (name == "__getattr__" || name == "__setattr__") return Value();
+    if (!obj.isInstance()) return Value();
+    auto inst = obj.asInstance();
+    if (!inst->klass) return Value();
+    return inst->klass->findMethod("__setattr__");
+}
+
 Value BytecodeVM::callFunction(const Value& callee,
                                 const std::vector<Value>& args,
                                 int line,

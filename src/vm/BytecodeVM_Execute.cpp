@@ -342,6 +342,26 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 bool isField = inst->hasProperty(propName);
                                 Value val = inst->getProperty(propName);
                                 if (val.isNil() && !isField) {
+                                    // Last chance before failing: a __getattr__
+                                    // on the class. Deliberately on the IC MISS
+                                    // path -- a property that exists is served
+                                    // by the shape/class cache above and never
+                                    // reaches here, so the hook costs nothing
+                                    // until an access would have failed anyway.
+                                    Value hook = findGetattrHook(obj, propName);
+                                    if (hook.isCallable()) {
+                                        // Same shape as an overloaded operator:
+                                        // lay out [callee, arg] and let the main
+                                        // loop run the frame, so the hook's
+                                        // RETURN lands its result exactly where
+                                        // this property read should leave it.
+                                        *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, hook));
+                                        *stackTop++ = Value(propName);
+                                        SYNC_IP();
+                                        if (!dispatchCall(stackTop[-2], 1)) return;
+                                        LOAD_FRAME();
+                                        DISPATCH();
+                                    }
                                     SYNC_IP();
                                     runtimeError("Property or method '" + propName + "' does not exist on instance of '" + inst->klass->name + "'");
                                     return;
@@ -435,6 +455,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
                                 else if (propName == "name") *stackTop++ = Value(klass->name);
                                 else {
+                                    // A STATIC __getattr__(cls, name) gets the
+                                    // last word, so a class can answer for names
+                                    // it never declared -- e.g. exposing a column
+                                    // handle as Model.column for query building,
+                                    // which otherwise needs an instance.
+                                    Value hook = findGetattrHook(obj, propName);
+                                    if (hook.isCallable()) {
+                                        // Static: no self to bind, so the class
+                                        // is passed explicitly as the first
+                                        // argument. Layout is [callee, cls, name].
+                                        *stackTop++ = hook;
+                                        *stackTop++ = obj;
+                                        *stackTop++ = Value(propName);
+                                        SYNC_IP();
+                                        if (!dispatchCall(stackTop[-3], 2)) return;
+                                        LOAD_FRAME();
+                                        DISPATCH();
+                                    }
                                     SYNC_IP();
                                     runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");
                                     return;
@@ -496,6 +534,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         stackTop[1] = Value();
                         if (obj.isInstance()) {
                             auto inst = obj.asInstance();
+                            // __setattr__ has to be consulted BEFORE the IC fast
+                            // path: it exists so an object can observe what
+                            // changed, which is worthless if a cached write can
+                            // slip past it.
+                            {
+                                Value hook = findSetattrHook(obj, propName);
+                                if (hook.isCallable()) {
+                                    *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, hook));
+                                    *stackTop++ = Value(propName);
+                                    *stackTop++ = value;
+                                    SYNC_IP();
+                                    if (!dispatchCall(stackTop[-3], 2)) return;
+                                    LOAD_FRAME();
+                                    DISPATCH();
+                                }
+                            }
                             ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
                             if (ic.shape && ic.shape == inst->shape) {
                                 std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
@@ -555,6 +609,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             auto inst  = obj.asInstance();
                             auto klass = inst->klass;
+
+                            // This is the opcode the compiler actually emits for
+                            // `obj.prop = value`, so the hook must be here as
+                            // well as in STORE_PROPERTY -- and ahead of the
+                            // no-behaviours fast path below, which would
+                            // otherwise bypass it for every ordinary class.
+                            {
+                                Value hook = findSetattrHook(obj, propName);
+                                if (hook.isCallable()) {
+                                    *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, hook));
+                                    *stackTop++ = Value(propName);
+                                    *stackTop++ = value;
+                                    SYNC_IP();
+                                    if (!dispatchCall(stackTop[-3], 2)) return;
+                                    LOAD_FRAME();
+                                    DISPATCH();
+                                }
+                            }
 
                             if (!klass->behaviors.any()) {
                                 CHECK_VISIBILITY(klass, propName);

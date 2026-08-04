@@ -64,6 +64,31 @@ struct EZClass {
         return methods.count(name) > 0;
     }
 
+    // Method lookup that walks the inheritance chain, unlike getMethod() which
+    // only looks at this class. Used for the __getattr__/__setattr__ hooks: a
+    // base class defining one must serve every subclass, or the hook would have
+    // to be repeated in each of them.
+    Value findMethod(const std::string& name) const {
+        const EZClass* c = this;
+        while (c) {
+            Value v = c->getMethod(name);
+            if (!v.isNil()) return v;
+            c = c->parent.get();
+        }
+        return Value();
+    }
+
+    // Same, for statics.
+    Value findStaticMember(const std::string& name) const {
+        const EZClass* c = this;
+        while (c) {
+            Value v = c->getStaticMember(name);
+            if (!v.isNil()) return v;
+            c = c->parent.get();
+        }
+        return Value();
+    }
+
     bool hasStaticMember(const std::string& name) const {
         std::shared_lock<std::shared_mutex> lk(class_mutex);
         return staticMembers.count(name) > 0;

@@ -1,0 +1,10 @@
+// The type checker's arithmetic rule was "same type, and that type is number or
+// string", which rejected a lot the VM performs: string concatenation with a
+// non-string operand (the ordinary way to build a message), array + array, and
+// string * number repetition.
+print("n=" + 5)
+print(5 + "x")
+print("a" + true)
+print(str([1] + [2]))
+print("ab" * 3)
+print("s" + [1, 2])

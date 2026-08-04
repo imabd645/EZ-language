@@ -1,0 +1,5 @@
+// EXPECT: compile-error
+// Widening the arithmetic rule must not make it accept what the VM throws on:
+// array - array has no meaning.
+a = [1] - [2]
+print(a)

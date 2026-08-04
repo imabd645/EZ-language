@@ -252,6 +252,20 @@ void Lexer::scanToken() {
             addToken(TokenType::NEWLINE);
             break;
         }
+        case ';':
+            // ';' is an OPTIONAL statement terminator. SYNTAX.md has documented
+            // it since the beginning, but the lexer had no case for it, so it
+            // fell through to the default branch and every use was rejected with
+            // "Unexpected character: ;".
+            //
+            // The parser separates statements on NEWLINE, so emitting a NEWLINE
+            // here IS the semantics: `a = 1; b = 2` becomes indistinguishable
+            // from the same two statements on separate lines. Emitted directly
+            // rather than falling into the '\n' case, which suppresses the token
+            // after a trailing operator for implicit line continuation -- a
+            // semicolon is explicit and should never be swallowed.
+            addToken(TokenType::NEWLINE);
+            break;
         case ' ':
         case '\r':
         case '\t':

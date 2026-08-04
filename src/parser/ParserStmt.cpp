@@ -742,9 +742,61 @@ StmtPtr Parser::structStatement() {
     }
     
     consume(TokenType::RBRACE, "Expected '}' after struct body");
-    
-    auto stmt = makeStructStmt(arena, line, column, length, nameToken.filename, name, fields, types, defaults);
-    std::get<StructStmt*>(stmt->variant)->typeParams = typeParams;
+
+    // Lower the struct to a model.
+    //
+    // StructStmt was parsed and then thrown away: BytecodeCompiler::compileStmt
+    // has no StructStmt branch, and std::visit on a variant with no matching
+    // handler simply does nothing. A struct therefore emitted ZERO bytecode, the
+    // name was never bound, and `new POINT()` failed with "'POINT' is not a
+    // model" -- while the parser happily accepted the declaration, so the
+    // feature looked supported right up until it was used.
+    //
+    // Lowering here rather than adding a compiler branch means the typechecker
+    // sees a model too, so `new POINT()` type-checks instead of being an unknown
+    // name. A struct is a model with no methods and a generated constructor:
+    //
+    //     struct POINT { x: int  y: int }
+    //  => model POINT { init(x = 0, y = 0) { self.x = x  self.y = y } }
+    //
+    // Fields keep their declared order, so positional construction
+    // (`new POINT(1920, 1080)`) works the way a POD type should.
+    std::vector<StmtPtr> initBody;
+    std::vector<ExprPtr> initDefaults;
+    for (size_t i = 0; i < fields.size(); i++) {
+        // self.<field> = <field>
+        ExprPtr selfRef = makeSelfExpr(arena, line, column, length, nameToken.filename);
+        ExprPtr paramRef = makeIdentifierExpr(arena, line, column, length, nameToken.filename, fields[i]);
+        ExprPtr assign = makeSetExpr(arena, line, column, length, nameToken.filename,
+                                     selfRef, fields[i], paramRef);
+        initBody.push_back(makeExpressionStmt(arena, line, column, length, nameToken.filename, assign));
+
+        // An omitted field gets a zero of its declared type rather than nil, so
+        // `new POINT()` yields a usable zero value the way a C struct does.
+        if (defaults[i]) {
+            initDefaults.push_back(defaults[i]);
+        } else {
+            const std::string t = types[i] ? types[i]->baseType : std::string("Any");
+            if (t == "int" || t == "int64" || t == "byte" || t == "number") {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, (long long)0));
+            } else if (t == "float" || t == "double") {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, 0.0));
+            } else if (t == "ptr") {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, (long long)0));
+            } else if (t == "string" || t == "str") {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, std::string("")));
+            } else if (t == "bool") {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, false));
+            } else {
+                initDefaults.push_back(makeLiteralExpr(arena, line, column, length, nameToken.filename, nullptr));
+            }
+        }
+    }
+
+    auto stmt = makeModelStmt(arena, line, column, length, nameToken.filename,
+                              name, "", {},
+                              fields, types, initDefaults, initBody, {});
+    std::get<ModelStmt*>(stmt->variant)->typeParams = typeParams;
     return stmt;
 }
 

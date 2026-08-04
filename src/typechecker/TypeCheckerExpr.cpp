@@ -133,20 +133,55 @@ TypeInfo TypeChecker::checkBinary(const BinaryExpr& expr) {
     TypeInfo right = checkExpr(expr.right);
     
     if (expr.op == TokenType::PLUS || expr.op == TokenType::MINUS || expr.op == TokenType::STAR || expr.op == TokenType::SLASH) {
-        if (left.baseType != "Any" && right.baseType != "Any") {
-            // A model instance on the left may overload the operator. The VM
-            // looks the method up by name on the left-hand instance (README,
-            // "Operator Overloading": `task +(other)` etc.) before falling back
-            // to built-in behaviour, so defer those to the runtime. Without this
-            // the type checker rejected `v1 + v2` for any model and the
-            // documented feature was unusable.
-            if (!isModelType(left) &&
-                (left.baseType != right.baseType || (left.baseType != "number" && left.baseType != "string"))) {
+        // The rule used to be "same type, and that type is number or string",
+        // which rejected a great deal the VM performs perfectly well. Most
+        // visibly it rejected `"n=" + 5` -- the ordinary way to build a string --
+        // so every call site in the language had to wrap operands in str(), and
+        // `[1] + [2]` was refused even though the VM concatenates arrays.
+        //
+        // These branches mirror what BytecodeVM actually does:
+        //
+        //   +   number+number arithmetic; string on EITHER side concatenates;
+        //       array+array concatenates; anything else throws
+        //   *   number*number arithmetic; string*number repeats ("ab" * 3)
+        //   - / number only
+        //
+        // A model on either side is deferred to the runtime: the VM looks up an
+        // overload (`task +(other)`) on the left-hand instance, and a model on
+        // the right may still be stringified by a string on the left.
+        const bool anyUnknown = left.baseType == "Any" || right.baseType == "Any";
+        const bool anyModel = isModelType(left) || isModelType(right);
+
+        if (!anyUnknown && !anyModel) {
+            const bool lNum = left.baseType == "number";
+            const bool rNum = right.baseType == "number";
+            const bool lStr = left.baseType == "string";
+            const bool rStr = right.baseType == "string";
+            const bool lArr = left.baseType == "Array";
+            const bool rArr = right.baseType == "Array";
+
+            bool ok = false;
+            if (expr.op == TokenType::PLUS) {
+                ok = (lNum && rNum) || lStr || rStr || (lArr && rArr);
+            } else if (expr.op == TokenType::STAR) {
+                ok = (lNum && rNum) || (lStr && rNum);
+            } else {
+                ok = (lNum && rNum);
+            }
+
+            if (!ok) {
                 error(expr.left, "Invalid operand types for arithmetic operator.", "Got " + left.toString() + " and " + right.toString());
             }
         }
+
+        // Result type. A string operand makes the result a string (concatenation
+        // or repetition); otherwise the known side wins. Reporting the left type
+        // unconditionally mistyped `5 + "x"` as a number.
+        if (expr.op == TokenType::PLUS || expr.op == TokenType::STAR) {
+            if (left.baseType == "string" || right.baseType == "string") return TypeInfo("string");
+        }
         return left.baseType == "Any" ? right : left;
-    } else if (expr.op == TokenType::EQUAL_EQUAL || expr.op == TokenType::BANG_EQUAL || 
+    } else if (expr.op == TokenType::EQUAL_EQUAL || expr.op == TokenType::BANG_EQUAL ||
                expr.op == TokenType::LESS || expr.op == TokenType::LESS_EQUAL ||
                expr.op == TokenType::GREATER || expr.op == TokenType::GREATER_EQUAL) {
         return TypeInfo("bool");

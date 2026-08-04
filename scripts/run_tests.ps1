@@ -148,6 +148,17 @@ foreach ($t in $tests) {
     $status  = 'PASS'
     $reason  = ''
 
+    # A test may declare that it is SUPPOSED to be rejected at compile time, with
+    #     # EXPECT: compile-error
+    # on any of its first few lines. Some behaviour is only observable as a
+    # compile error -- an out-of-scope variable, say -- because the type checker
+    # rejects the program before anything can run, so a try/catch around it never
+    # executes. Those tests previously looked like failures while actually
+    # demonstrating that the checker works.
+    $expectCompileError = $false
+    $head = Get-Content $t.FullName -TotalCount 5 -ErrorAction SilentlyContinue
+    if ($head -match '^\s*(#|//)\s*EXPECT:\s*compile-error') { $expectCompileError = $true }
+
     try {
         $proc = Start-Process -FilePath $ez -ArgumentList $t.FullName `
                               -NoNewWindow -PassThru `
@@ -164,7 +175,17 @@ foreach ($t in $tests) {
             if (Test-Path $outFile) { $output += (Get-Content $outFile -Raw -ErrorAction SilentlyContinue) }
             if (Test-Path $errFile) { $output += (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
 
-            if ($proc.ExitCode -ne 0) {
+            if ($expectCompileError) {
+                # 65 is the compile/type-error exit. Anything else means the
+                # program was accepted (or died some other way), which is the
+                # failure this test exists to catch.
+                if ($proc.ExitCode -eq 65) {
+                    $status = 'PASS'
+                } else {
+                    $status = 'FAIL'; $reason = "expected a compile error (exit 65), got exit $($proc.ExitCode)"
+                }
+            }
+            elseif ($proc.ExitCode -ne 0) {
                 $status = 'FAIL'; $reason = "exit code $($proc.ExitCode)"
             }
             elseif ($output -match $failurePattern) {

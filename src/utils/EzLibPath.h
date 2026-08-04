@@ -3,6 +3,9 @@
 
 #include <string>
 #include <cstdlib>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 // Resolve the standard-library base directory.
 //
@@ -25,7 +28,15 @@ inline std::string ezLibBase() {
 #ifdef _WIN32
         base = "C:/ezlib";
 #else
-        // POSIX fallback resolution order
+        // POSIX fallback resolution order: first entry that exists as a
+        // directory wins. If none do, keep the first so diagnostics name the
+        // canonical install location rather than a relative path.
+        //
+        // stat() rather than fopen(): fopen() on a directory SUCCEEDS on Linux
+        // and macOS (open(O_RDONLY) on a directory is permitted), so it cannot
+        // tell "ezlib is installed here" from "something with that name
+        // exists", and its behaviour on directories is not portable across
+        // libc implementations anyway.
         static const char* searchPaths[] = {
             "/usr/local/lib/ezlib",
             "/usr/lib/ezlib",
@@ -34,8 +45,8 @@ inline std::string ezLibBase() {
         };
         base = searchPaths[0];
         for (const char* path : searchPaths) {
-            if (FILE* f = fopen(path, "r")) {
-                fclose(f);
+            struct stat st;
+            if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
                 base = path;
                 break;
             }

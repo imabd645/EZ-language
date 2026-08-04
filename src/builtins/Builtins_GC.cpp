@@ -12,6 +12,9 @@
 #include <future>
 #include <vector>
 #include <string>
+#include <memory>
+#include <mutex>
+#include <condition_variable>
 
 void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gc_disable", Value::makeNativeFunction("gc_disable", 0,
@@ -233,22 +236,58 @@ void registerGCBuiltins(RuntimeContext& interp) {
             if (!args[0].isArray()) { interp.runtimeError("awaitAny() expects array of futures", 0, ""); return Value(); }
             auto& arr = args[0].asArray();
             if (arr.empty()) { interp.runtimeError("awaitAny() cannot accept empty array", 0, ""); return Value(); }
-            
-            // For awaitAny, we check if any are ready.
-            // If none are ready, we could wait on multiple events via WaitForMultipleObjects,
-            // but since futures hold handles, we can collect them.
-            std::vector<HANDLE> handles;
-            for (auto& v : arr.getElementsCopy()) {
+
+            // Snapshot once. The index identifying the winning future refers to
+            // the sequence the wait was set up over, so indexing back into the
+            // live array afterwards would pick the wrong future if another
+            // thread mutated it in the meantime.
+            std::vector<Value> futures = arr.getElementsCopy();
+            for (auto& v : futures) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
+            }
+
+#ifdef _WIN32
+            std::vector<HANDLE> handles;
+            handles.reserve(futures.size());
+            for (auto& v : futures) {
                 handles.push_back(v.asFuture()->hEvent);
             }
-            
-            DWORD result = WaitForMultipleObjects(handles.size(), handles.data(), false, INFINITE);
+
+            // Plain `false`, not FALSE: the Win32 TRUE/FALSE macros are #undef'd
+            // project-wide because they collide with TokenKind::TRUE/FALSE.
+            DWORD result = WaitForMultipleObjects((DWORD)handles.size(), handles.data(), false, INFINITE);
             if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
                 size_t index = result - WAIT_OBJECT_0;
-                return arr[index].asFuture()->get();
+                return futures[index].asFuture()->get();
             }
-            
+#else
+            // No WaitForMultipleObjects off Windows, and each EZFuture owns its
+            // own condition variable, so there is no single object to wait on.
+            // Register a completion callback on every future that signals one
+            // shared condvar instead -- this blocks rather than polls. then()
+            // runs the callback immediately when that future has already
+            // resolved, so a future that finished before we got here is picked
+            // up without waiting. The captured shared_ptrs keep the shared state
+            // alive for callbacks that never fire.
+            auto mtx   = std::make_shared<std::mutex>();
+            auto cv    = std::make_shared<std::condition_variable>();
+            auto fired = std::make_shared<bool>(false);
+
+            for (auto& v : futures) {
+                v.asFuture()->then([mtx, cv, fired]() {
+                    { std::lock_guard<std::mutex> lk(*mtx); *fired = true; }
+                    cv->notify_all();
+                });
+            }
+            {
+                std::unique_lock<std::mutex> lk(*mtx);
+                cv->wait(lk, [&fired] { return *fired; });
+            }
+            for (auto& v : futures) {
+                if (v.asFuture()->isReady()) return v.asFuture()->get();
+            }
+#endif
+
             interp.runtimeError("awaitAny() failed to wait", 0, "");
             return Value();
         }));

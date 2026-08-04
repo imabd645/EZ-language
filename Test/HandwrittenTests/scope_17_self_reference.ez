@@ -1,1 +1,5 @@
-try { a = a + 1 } catch (e) {}
+// EXPECT: compile-error
+// `a` is read on the right-hand side of its own first assignment, before it is
+// defined; the type checker rejects it.
+a = a + 1
+print(a)

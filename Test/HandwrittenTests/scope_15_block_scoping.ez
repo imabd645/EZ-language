@@ -1,2 +1,5 @@
+// EXPECT: compile-error
+// `a` is confined to the when-block, so referring to it afterwards is rejected
+// at compile time rather than surfacing as a runtime error.
 when true { a = 5 }
-try { print(a) } catch (e) { print("out of scope") }
+print(a)

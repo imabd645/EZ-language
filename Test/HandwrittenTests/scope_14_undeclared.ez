@@ -1,1 +1,5 @@
+// EXPECT: compile-error
+// Reading an undeclared variable is caught by the type checker, so the program
+// never runs and the try/catch below is unreachable. Being rejected outright IS
+// the behaviour under test.
 try { print(undeclared_var) } catch (e) { print("caught") }

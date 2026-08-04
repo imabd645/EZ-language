@@ -1,2 +1,6 @@
+// Calling through a variable defers the arity check to the VM: a direct call is
+// rejected by the type checker before the program runs, so the try/catch could
+// never execute. This exercises the runtime check that still has to be right.
 task foo(a, b) { give a }
-try { foo(1) } catch (e) {}
+f = foo
+try { f(1)  print("FAIL: no error") } catch (e) { print("caught") }

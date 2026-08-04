@@ -1,4 +1,4 @@
-model Base { foo() { give 1 } }
+model Base { task foo() { give 1 } }
 model Child extends Base {}
-c = Child()
+c = new Child()
 print(c.foo())

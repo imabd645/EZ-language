@@ -1,4 +1,3 @@
-
-class Foo {}
-f = Foo()
-try { print(f.bar) } catch (e) {}
+model Foo {}
+f = new Foo()
+try { print(f.bar) } catch (e) { print("caught") }

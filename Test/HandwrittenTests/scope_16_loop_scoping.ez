@@ -1,4 +1,6 @@
+// EXPECT: compile-error
+// Same as scope_15, for a loop body: `j` does not outlive the while block.
 i = 0
 while i < 1 { j = 10
  i = i + 1 }
-try { print(j) } catch (e) {}
+print(j)

@@ -1,2 +1,4 @@
+// See func_23: indirect call so the arity check happens at runtime.
 task foo(a) { give a }
-try { foo(1, 2) } catch (e) {}
+f = foo
+try { f(1, 2)  print("FAIL: no error") } catch (e) { print("caught") }

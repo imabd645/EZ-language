@@ -1,0 +1,19 @@
+// Field defaults, and type-appropriate zeros for fields with no default.
+struct Config {
+    name: string = "default"
+    retries: int = 3
+    ratio: float
+    flag: bool
+    handle: ptr
+}
+
+c = new Config()
+print(c.name)
+print(c.retries)
+print(c.ratio)
+print(c.flag)
+print(c.handle)
+
+d = new Config("custom", 9)
+print(d.name)
+print(d.retries)

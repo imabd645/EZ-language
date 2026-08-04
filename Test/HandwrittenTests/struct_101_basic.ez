@@ -1,0 +1,19 @@
+// struct used to parse and then vanish: the compiler had no StructStmt branch,
+// so the declaration emitted no bytecode and `new POINT()` failed with
+// "'POINT' is not a model". Structs now lower to a model with a generated
+// constructor.
+struct POINT {
+    x: int
+    y: int
+}
+
+p = new POINT()
+print(p.x)
+print(p.y)
+
+q = new POINT(1920, 1080)
+print(q.x)
+print(q.y)
+
+q.x = 5
+print(q.x)

@@ -518,23 +518,28 @@ Value BytecodeVM::findGetattrHook(const Value& obj, const std::string& name) {
 
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
-        if (!inst->klass) return Value();
+        if (!inst->klass || !inst->klass->hasGetattrHook) return Value();
         return inst->klass->findMethod("__getattr__");
     }
     if (obj.isClass()) {
         // A class-level miss looks for a STATIC __getattr__(cls, name), so that
         // Model.column can resolve without an instance -- what an ORM needs in
         // order to hand out column handles for query building.
-        return obj.asClass()->findStaticMember("__getattr__");
+        auto klass = obj.asClass();
+        if (!klass->hasGetattrHook) return Value();
+        return klass->findStaticMember("__getattr__");
     }
     return Value();
 }
 
 Value BytecodeVM::findSetattrHook(const Value& obj, const std::string& name) {
-    if (name == "__getattr__" || name == "__setattr__") return Value();
+    // Ordered so the common case -- an ordinary class with no hook -- costs one
+    // predictable branch on a bool and nothing else. This runs on every property
+    // write, so the string comparisons below must not be reached by default.
     if (!obj.isInstance()) return Value();
     auto inst = obj.asInstance();
-    if (!inst->klass) return Value();
+    if (!inst->klass || !inst->klass->hasSetattrHook) return Value();
+    if (name == "__getattr__" || name == "__setattr__") return Value();
     return inst->klass->findMethod("__setattr__");
 }
 

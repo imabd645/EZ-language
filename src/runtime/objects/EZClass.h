@@ -19,6 +19,20 @@ struct EZClass {
     std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool>  visibility;
 
+    // ── Attribute-hook presence, cached ──────────────────────────────────────
+    //
+    // __setattr__ is consulted on EVERY property write. Resolving it through the
+    // methods map each time costs a shared_lock plus a hash lookup per store --
+    // paid by every class, while essentially none define the hook. These flags
+    // reduce that to a single bool test on the hot path; the map is only
+    // consulted once a flag says there is something to find.
+    //
+    // Recomputed whenever the method tables change, and at the end of class
+    // construction (which is also when a parent's methods have been flattened
+    // in, so an inherited hook is already visible here).
+    bool hasGetattrHook = false;
+    bool hasSetattrHook = false;
+
     // ── Decorator metadata ────────────────────────────────────────────────────
     BehaviorFlags behaviors = {false,false,false,false,false};
     std::string persistPath;
@@ -50,13 +64,40 @@ struct EZClass {
     }
     
     void setMethod(const std::string& name, const Value& val) {
-        std::unique_lock<std::shared_mutex> lk(class_mutex);
-        methods[name] = val;
+        {
+            std::unique_lock<std::shared_mutex> lk(class_mutex);
+            methods[name] = val;
+        }
+        if (name == "__getattr__") hasGetattrHook = true;
+        if (name == "__setattr__") hasSetattrHook = true;
     }
 
     void setStaticMember(const std::string& name, const Value& val) {
-        std::unique_lock<std::shared_mutex> lk(class_mutex);
-        staticMembers[name] = val;
+        {
+            std::unique_lock<std::shared_mutex> lk(class_mutex);
+            staticMembers[name] = val;
+        }
+        if (name == "__getattr__") hasGetattrHook = true;
+    }
+
+    // Recompute the cached hook flags from the current tables. Call after
+    // populating a class directly (the VM builds the maps in place rather than
+    // going through setMethod for every member).
+    void refreshAttrHookFlags() {
+        bool g = false, s = false;
+        {
+            std::shared_lock<std::shared_mutex> lk(class_mutex);
+            g = methods.count("__getattr__") > 0 || staticMembers.count("__getattr__") > 0;
+            s = methods.count("__setattr__") > 0;
+        }
+        // Statics are not flattened into a subclass the way methods are, so an
+        // inherited static __getattr__ has to be picked up from the parent.
+        if (parent) {
+            g = g || parent->hasGetattrHook;
+            s = s || parent->hasSetattrHook;
+        }
+        hasGetattrHook = g;
+        hasSetattrHook = s;
     }
 
     bool hasMethod(const std::string& name) const {

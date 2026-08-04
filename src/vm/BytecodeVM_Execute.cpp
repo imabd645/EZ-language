@@ -538,7 +538,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             // path: it exists so an object can observe what
                             // changed, which is worthless if a cached write can
                             // slip past it.
-                            {
+                            //
+                            // The flag is tested inline so a class without a hook
+                            // -- almost every class -- pays one predictable
+                            // branch here and never makes the call.
+                            if (__builtin_expect(inst->klass && inst->klass->hasSetattrHook, 0)) {
                                 Value hook = findSetattrHook(obj, propName);
                                 if (hook.isCallable()) {
                                     *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, hook));
@@ -615,7 +619,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             // well as in STORE_PROPERTY -- and ahead of the
                             // no-behaviours fast path below, which would
                             // otherwise bypass it for every ordinary class.
-                            {
+                            // Flag tested inline; see STORE_PROPERTY.
+                            if (__builtin_expect(klass && klass->hasSetattrHook, 0)) {
                                 Value hook = findSetattrHook(obj, propName);
                                 if (hook.isCallable()) {
                                     *stackTop++ = Value(std::make_shared<EZBoundMethod>(obj, hook));
@@ -2148,6 +2153,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
                             }
                         }
+
+                        // Members and any inherited methods are in place now, so
+                        // this is the point at which the attribute-hook flags can
+                        // be settled. Doing it once here is what keeps the
+                        // per-write cost on the property store path to one bool.
+                        klass->refreshAttrHookFlags();
 
                         // Validate interfaces
                         for (const auto& iface : interfaces) {

@@ -71,7 +71,15 @@ void registerIOBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "readFile() expects string path", 0, ""); return Value(); }
             std::string path = args[0].asString();
-            std::ifstream file(path);
+            // std::ios::binary: without it Windows opens in TEXT mode and
+            // collapses every CRLF to LF on the way in, which silently corrupts
+            // every non-text file. The matching writeFile() expanded LF back to
+            // CRLF, so a read/write round-trip of a PNG grew by one byte per
+            // 0x0A in the image and produced a file no decoder would accept.
+            // Whole-file I/O must be byte-exact; the line-oriented calls below
+            // (readLines/writeLine/appendLine) stay in text mode, where newline
+            // translation is exactly what is wanted.
+            std::ifstream file(path, std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "'", 0, ""); return Value(); }
             std::stringstream buffer;
             buffer << file.rdbuf();
@@ -85,12 +93,15 @@ void registerIOBuiltins(RuntimeContext& interp) {
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
-            std::ofstream file(path);
+            // Binary, to match readFile() -- see the note there. In text mode
+            // every LF in `content` was written as CRLF, so saving an uploaded
+            // image corrupted it.
+            std::ofstream file(path, std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for writing", 0, ""); return Value(); }
             file << content;
             return Value(true);
         }));
-    
+
     interp.defineGlobal("appendFile", Value::makeNativeFunction("appendFile", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "appendFile() expects string path", 0, ""); return Value(); }
@@ -98,12 +109,12 @@ void registerIOBuiltins(RuntimeContext& interp) {
             std::string path = args[0].asString();
             std::string content = args[1].asString();
             
-            std::ofstream file(path, std::ios::app);
+            std::ofstream file(path, std::ios::app | std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for appending", 0, ""); return Value(); }
             file << content;
             return Value(true);
         }));
-    
+
     interp.defineGlobal("readLines", Value::makeNativeFunction("readLines", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "readLines() expects string path", 0, ""); return Value(); }

@@ -413,9 +413,21 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
 }
 
 void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
-    // 1. Load user-defined decorators from innermost to outermost
-    for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
-        compileExpr(*it);
+    // 1. Load the decorators, OUTERMOST first, so the innermost ends up nearest
+    //    the closure on the stack and is therefore applied first.
+    //
+    //    The loop used to run in reverse, which inverted the whole thing: for
+    //
+    //        @app.get("/dash")
+    //        @auth.login_required
+    //        task dash(req) { ... }
+    //
+    //    it produced login_required(app.get(...)(dash)) -- app.get ran FIRST and
+    //    registered the undecorated handler, so the auth guard was applied to a
+    //    function nothing would ever call and the route was silently public.
+    //    Every language with decorators applies them bottom-up; so do we now.
+    for (const auto& dec : stmt.userDecorators) {
+        compileExpr(dec);
     }
 
     emitClosure(stmt);
@@ -946,9 +958,10 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
 }
 
 void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
-    // 0. Load user-defined decorators from innermost to outermost
-    for (auto it = stmt.userDecorators.rbegin(); it != stmt.userDecorators.rend(); ++it) {
-        compileExpr(*it);
+    // 0. Outermost first, so the innermost decorator is applied first -- same
+    //    ordering fix as compileTask(); see the note there.
+    for (const auto& dec : stmt.userDecorators) {
+        compileExpr(dec);
     }
 
     // Save previous class context

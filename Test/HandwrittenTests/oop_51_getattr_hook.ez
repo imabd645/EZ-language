@@ -1,0 +1,30 @@
+// __getattr__ is consulted only when a property genuinely does not exist, so
+// real properties and methods keep going through the inline caches untouched.
+model Lazy {
+    init() { self.real = "actual" }
+    task method() { give "method-result" }
+    task __getattr__(name) { give "computed:" + name }
+}
+
+l = new Lazy()
+print(l.real)          // real field wins
+print(l.method())      // real method wins
+print(l.missing)       // hook
+print(l.other)         // hook again
+
+// Inheritance: a base class hook serves the subclass.
+model Base {
+    init() { self.b = 1 }
+    task __getattr__(name) { give "base-hook:" + name }
+}
+model Derived extends Base {
+    init() { super.init()  self.d = 2 }
+}
+dv = new Derived()
+print(dv.d)
+print(dv.nothere)
+
+// A class WITHOUT the hook must still fail loudly.
+model Plain { init() { self.x = 1 } }
+p = new Plain()
+try { print(p.nope)  print("FAIL: no error") } catch (e) { print("plain still errors") }

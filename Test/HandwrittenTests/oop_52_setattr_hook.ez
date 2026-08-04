@@ -1,0 +1,32 @@
+// __setattr__ sees every write, which is what makes change-tracking possible.
+// It must use setattr() to actually store, since a plain `self.x = v` would
+// re-enter the hook.
+model Tracked {
+    init() {
+        setattr(self, "_changes", [])
+        setattr(self, "x", 0)
+    }
+    task __setattr__(name, value) {
+        setattr(self, "_changes", self._changes + [name])
+        setattr(self, name, value)
+    }
+}
+
+t = new Tracked()
+print(len(t._changes))     // init used setattr(), so nothing recorded
+t.x = 5
+t.y = 9
+t.x = 6
+print(t.x)
+print(t.y)
+print(str(t._changes))
+
+// setattr() itself must NOT trigger the hook (it is the raw escape hatch).
+setattr(t, "z", 1)
+print(str(t._changes))
+
+// A class without the hook is unaffected.
+model Untracked { init() { self.a = 1 } }
+u = new Untracked()
+u.a = 42
+print(u.a)

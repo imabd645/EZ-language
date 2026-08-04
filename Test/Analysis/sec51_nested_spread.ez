@@ -1,0 +1,6 @@
+out "--- Section 51: Nested Spread Operators ---"
+
+arr = [3, 4]
+nested = [...[1, 2], ...arr, ...[...[5]]]
+out "Nested Spread size: " + str(len(nested))
+out "Elements: " + str(nested[0]) + ", " + str(nested[1]) + ", " + str(nested[2]) + ", " + str(nested[3]) + ", " + str(nested[4])

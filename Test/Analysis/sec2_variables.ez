@@ -1,0 +1,24 @@
+out "--- Section 2: Variables & Scoping ---"
+globalVar = "global"
+
+// Test block scoping
+{
+    localVar = "local"
+    globalVar = "global modified"
+    out "Inside block - globalVar: " + globalVar
+    out "Inside block - localVar: " + localVar
+}
+
+// Check if localVar leaked or is invisible
+// Commented out because it is caught as a Type Error at compile-time:
+// out "Outside block - localVar: " + localVar
+
+out "Outside block - globalVar: " + globalVar
+
+// Variable shadowing
+shadow = "outer"
+{
+    shadow = "inner"
+    out "Inside nested block - shadow: " + shadow
+}
+out "Outside block - shadow: " + shadow

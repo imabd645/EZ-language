@@ -1,0 +1,15 @@
+out "--- Section 49: Mutex Reentrancy & Recursive Lock ---"
+
+m = mutex()
+
+try {
+    lock(m, || {
+        out "  First lock acquired"
+        lock(m, || {
+            out "  Second recursive lock acquired successfully"
+        })
+    })
+    out "PASS: Recursive locking did not deadlock"
+} catch (e) {
+    out "FAIL: Recursive locking threw: " + str(e)
+}

@@ -1,0 +1,29 @@
+out "--- Section 16: Buffer Engine ---"
+
+// Allocate buffer
+buf = buffer(8)
+out "Buffer size: " + str(buf_size(buf))
+
+// Set/Get bytes
+buf[0] = 72  // 'H'
+buf[1] = 101 // 'e'
+buf[2] = 108 // 'l'
+buf[3] = 108 // 'l'
+buf[4] = 111 // 'o'
+buf[5] = 0
+
+out "Bytes: " + str(buf[0]) + ", " + str(buf[1]) + ", " + str(buf[4])
+
+// Convert to string
+strVal = buf_to_str(buf)
+out "buf_to_str: " + strVal
+
+// String to buffer
+strBuf = buffer("EZ-Language")
+out "String buffer size: " + str(buf_size(strBuf))
+
+// Copy
+destBuf = buffer(12)
+buf_fill(destBuf, 63) // fill with '?'
+buf_copy(strBuf, destBuf, 1)
+out "After copy: " + buf_to_str(destBuf)

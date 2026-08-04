@@ -1,0 +1,15 @@
+out "--- Section 56: Unicode Regex Matching ---"
+
+// Try matching multibyte characters using . (dot)
+out "reMatch('🚀', r'.'): " + str(reMatch("🚀", r".")) 
+out "reMatch('🚀', r'....'): " + str(reMatch("🚀", r"....")) // UTF-8 emoji is 4 bytes
+out "reMatch('中文', r'..'): " + str(reMatch("中文", r".."))
+out "reMatch('中文', r'......'): " + str(reMatch("中文", r"......")) // Two UTF-8 Chinese characters = 6 bytes
+
+// Try search group capture with unicode
+groups = reSearch("User: 🦙, ID: 777", r"User: (.*), ID: (\d+)")
+out "Groups count: " + str(len(groups))
+when len(groups) >= 3 {
+    out "  User: " + groups[1]
+    out "  ID: " + groups[2]
+}

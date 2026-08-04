@@ -1,0 +1,32 @@
+out "--- Section 17: Integer Semantics & Shifts ---"
+
+MAXI = 9223372036854775807 // LLONG_MAX
+
+// Overflow wrapping
+sum = MAXI + 1
+out "MAXI + 1 = " + str(sum)
+
+prod = MAXI * 2
+out "MAXI * 2 = " + str(prod)
+
+// Shifts
+out "1 << 10 = " + str(1 << 10)
+out "1024 >> 10 = " + str(1024 >> 10)
+
+// Invalid shift range handling
+try {
+    x = 1 << 64
+    out "1 << 64 = " + str(x)
+} catch (e) {
+    out "Caught out-of-bounds shift: " + str(e)
+}
+
+// Invalid index check
+arr = [100, 200]
+task getDynIndex(k) { give k }
+
+try {
+    val = arr[getDynIndex("invalid")]
+} catch (e) {
+    out "Caught invalid index type: " + str(e)
+}

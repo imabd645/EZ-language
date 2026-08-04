@@ -1,0 +1,13 @@
+out "--- Section 48: Nested Throws in Catch and Finally ---"
+
+try {
+    try {
+        throw "first"
+    } catch (e1) {
+        throw "second"
+    } finally {
+        throw "third" // should override both first and second
+    }
+} catch (e2) {
+    out "Caught exception: " + str(e2)
+}

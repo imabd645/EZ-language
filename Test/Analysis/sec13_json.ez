@@ -1,0 +1,38 @@
+out "--- Section 13: JSON Serialization ---"
+
+use "json" as json
+
+data = {
+    "title": "EZ Testing",
+    "version": 2.0,
+    "stable": true,
+    "tags": ["compiler", "vm", "typechecker"]
+}
+
+// Test stringify
+jsonStr = json.stringify(data)
+out "Stringified JSON:"
+out "  " + jsonStr
+
+// Test parse
+parsed = json.parse(jsonStr)
+out "Parsed values:"
+out "  title: " + str(parsed["title"])
+out "  version: " + str(parsed["version"])
+out "  stable: " + str(parsed["stable"])
+out "  tags len: " + str(len(parsed["tags"]))
+
+// Write and read from file
+filename = "temp_sec13_test.json"
+json.write(filename, parsed)
+fileData = json.read(filename)
+out "Read from file, stable value: " + str(fileData["stable"])
+
+// Cleanup
+use "fs" as fs
+try {
+    fs.remove(filename)
+    out "Cleaned up temporary JSON file"
+} catch (e) {
+    out "Failed to clean up file: " + str(e)
+}

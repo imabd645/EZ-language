@@ -1,0 +1,9 @@
+out "--- Section 40: Cyclic Inheritance ---"
+
+try {
+    model A extends B {}
+    model B extends A {}
+    out "Cyclic inheritance definition compiles successfully!"
+} catch (e) {
+    out "Caught cyclic inheritance load error: " + str(e)
+}

@@ -1,0 +1,14 @@
+out "--- Section 22: Mutual Recursion ---"
+
+task isEven(n) {
+    when n == 0 { give true }
+    give isOdd(n - 1)
+}
+
+task isOdd(n) {
+    when n == 0 { give false }
+    give isEven(n - 1)
+}
+
+out "isEven(10): " + str(isEven(10))
+out "isOdd(10): " + str(isOdd(10))

@@ -1,0 +1,19 @@
+out "--- Section 24: Lambda Arity Mismatch ---"
+
+lambda = |a, b| {
+    give a + b
+}
+
+// Test missing argument
+try {
+    lambda(10)
+} catch (e) {
+    out "Caught missing lambda arg error: " + str(e)
+}
+
+// Test extra argument
+try {
+    lambda(10, 20, 30)
+} catch (e) {
+    out "Caught extra lambda arg error: " + str(e)
+}

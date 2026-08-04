@@ -1,0 +1,35 @@
+out "--- Section 6: Exception Handling ---"
+
+// Try/catch/finally basic
+try {
+    out "In try block"
+    throw "Intentional Error"
+} catch (e) {
+    out "Caught exception: " + str(e)
+} finally {
+    out "In finally block"
+}
+
+// Exception throwing custom values
+model MyException {
+    init(msg) {
+        self.message = msg
+    }
+    task toString() {
+        give "MyException: " + self.message
+    }
+}
+
+try {
+    throw MyException("Something went wrong")
+} catch (e) {
+    out "Caught custom exception: " + e.toString()
+}
+
+// Standard runtime exception check
+try {
+    x = nil
+    x.someProp = 10 // Should throw nil access error
+} catch (e) {
+    out "Caught runtime nil access: " + str(e)
+}

@@ -1,0 +1,17 @@
+out "--- Section 30: Method Overriding and Super ---"
+
+model BasePrinter {
+    task printMsg(msg) {
+        give "[" + msg + "]"
+    }
+}
+
+model CustomPrinter extends BasePrinter {
+    task printMsg(msg) {
+        val = super.printMsg(msg)
+        give "*** " + val + " ***"
+    }
+}
+
+p = CustomPrinter()
+out "p.printMsg('test'): " + p.printMsg("test")

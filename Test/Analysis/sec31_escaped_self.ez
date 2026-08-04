@@ -1,0 +1,20 @@
+out "--- Section 31: Escaped Self Binding ---"
+
+model Greeter {
+    init(name) {
+        self.name = name
+    }
+    task greet() {
+        give "Hello, " + self.name
+    }
+}
+
+g = Greeter("Bob")
+fn = g.greet
+
+try {
+    res = fn()
+    out "Calling escaped method reference: " + str(res)
+} catch (e) {
+    out "Caught escaped self reference error: " + str(e)
+}

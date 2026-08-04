@@ -1,0 +1,13 @@
+out "--- Section 39: FFI Invalid Function ---"
+
+try {
+    hK32 = os_load_lib("Kernel32.dll")
+    when hK32 != 0 {
+        fn = os_get_func(hK32, "NonExistentFunction12345")
+        when fn == 0 or typeOf(fn) == "nil" {
+            throw "Failed to map function"
+        }
+    }
+} catch (e) {
+    out "Caught expected FFI function mapping error: " + str(e)
+}

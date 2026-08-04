@@ -1,0 +1,20 @@
+out "--- Section 45: Deep Async Exception Propagation ---"
+
+task asyncTask() {
+    // Wait asynchronously for 10ms using waitAsync
+    fut = waitAsync(10)
+    await fut
+    
+    // Throw from inside the task
+    throw "Exception from deep within spawn!"
+}
+
+f = spawn(asyncTask)
+
+try {
+    out "Awaiting async future..."
+    await f
+    out "Awaiting did not throw (unexpected!)"
+} catch (e) {
+    out "Caught async exception: " + str(e)
+}

@@ -1,0 +1,17 @@
+out "--- Section 34: Division by Zero ---"
+
+// Floating point div by zero
+try {
+    f = 1.0 / 0.0
+    out "1.0 / 0.0 = " + str(f)
+} catch (e) {
+    out "Caught float division by zero: " + str(e)
+}
+
+// Integer div by zero
+try {
+    i = 10 / 0
+    out "10 / 0 = " + str(i)
+} catch (e) {
+    out "Caught integer division by zero: " + str(e)
+}

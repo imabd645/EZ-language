@@ -1,0 +1,7 @@
+out "--- Section 36: Regex Invalid Pattern ---"
+
+try {
+    reMatch("test", r"[a-z")
+} catch (e) {
+    out "Caught invalid regex error: " + str(e)
+}

@@ -1,0 +1,20 @@
+out "--- Section 54: Match Arm Variable Scope ---"
+
+val = 10
+
+// Satisfy typechecker
+_ = nil
+
+try {
+    match val {
+        10 => {
+            localInArm = "arm-variable"
+            out "  Inside arm, variable value: " + localInArm
+        }
+        other => {
+            out "  Inside other arm"
+        }
+    }
+} catch (e) {
+    out "Caught match error: " + str(e)
+}

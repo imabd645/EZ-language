@@ -1,0 +1,19 @@
+out "--- Section 32: Array Bounds Checking ---"
+
+arr = [1, 2, 3]
+
+// Excess bounds
+try {
+    val = arr[5]
+    out "arr[5] value: " + str(val)
+} catch (e) {
+    out "Caught index 5 error: " + str(e)
+}
+
+// Negative bounds
+try {
+    val = arr[-1]
+    out "arr[-1] value: " + str(val)
+} catch (e) {
+    out "Caught index -1 error: " + str(e)
+}

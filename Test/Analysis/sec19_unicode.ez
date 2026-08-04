@@ -1,0 +1,9 @@
+out "--- Section 19: Unicode Strings ---"
+
+s = "EZ-🚀-Language"
+out "String: " + s
+out "Length: " + str(len(s)) // check if length is bytes or code points
+
+// Substring
+sub = substr(s, 3, 4) // should extract the rocket emoji or bytes
+out "Sub 3-7: " + sub

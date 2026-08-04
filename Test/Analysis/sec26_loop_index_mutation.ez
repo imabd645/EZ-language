@@ -1,0 +1,11 @@
+out "--- Section 26: Loop Index Mutation ---"
+
+// repeat loop index mutation check
+out "repeat loop (altering index):"
+repeat i = 1 to 5 {
+    out "  i = " + str(i)
+    when i == 3 {
+        // Can we modify loop variable 'i'?
+        i = 5
+    }
+}

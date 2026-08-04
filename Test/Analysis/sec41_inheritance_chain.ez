@@ -1,0 +1,23 @@
+out "--- Section 41: Deep Inheritance Chain ---"
+
+model Base {
+    task action() {
+        give "Base"
+    }
+}
+
+model Mid extends Base {
+    task action() {
+        give "Mid -> " + super.action()
+    }
+}
+
+model Top extends Mid {
+    task action() {
+        give "Top -> " + super.action()
+    }
+}
+
+t = Top()
+out "Top.action() result: " + t.action()
+// expected: "Top -> Mid -> Base"

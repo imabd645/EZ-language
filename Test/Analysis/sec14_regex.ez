@@ -1,0 +1,23 @@
+out "--- Section 14: Regex Engine ---"
+
+// Match test
+text = "user_12345"
+pattern = r"user_\d+"
+out "reMatch('user_12345', r'user_\d+'): " + str(reMatch(text, pattern))
+out "reMatch('user_abc', r'user_\d+'): " + str(reMatch("user_abc", pattern))
+
+// Search/Groups test
+searchText = "ID: 42, Value: 3.1415"
+searchPattern = r"ID: (\d+), Value: ([\d\.]+)"
+groups = reSearch(searchText, searchPattern)
+out "reSearch groups count: " + str(len(groups))
+when len(groups) >= 3 {
+    out "  Full Match: " + groups[0]
+    out "  Group 1 (ID): " + groups[1]
+    out "  Group 2 (Value): " + groups[2]
+}
+
+// Replace test
+orig = "hello 123 world 456"
+replaced = reReplace(orig, r"\d+", "[NUM]")
+out "reReplace('\\d+', '[NUM]'): " + replaced

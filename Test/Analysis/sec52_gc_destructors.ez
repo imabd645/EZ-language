@@ -1,0 +1,30 @@
+out "--- Section 52: GC Instance Deallocation ---"
+
+model Resource {
+    init(name) {
+        self.name = name
+        out "  Resource " + self.name + " initialized"
+    }
+}
+
+task allocateResource() {
+    r = Resource("A")
+    give nil // Resource goes out of scope and drops reference count
+}
+
+gc_collect()
+before = gc_tracked()
+
+allocateResource()
+
+// Trigger GC - count should revert back
+gc_collect()
+after = gc_tracked()
+
+out "Tracked count before: " + str(before)
+out "Tracked count after: " + str(after)
+when after <= before {
+    out "PASS: Out-of-scope class instance correctly cleaned up from tracker"
+} other {
+    out "FAIL: Memory leak in class tracking"
+}

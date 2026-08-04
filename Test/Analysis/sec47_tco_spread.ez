@@ -1,0 +1,15 @@
+out "--- Section 47: TCO with Spread Arguments ---"
+
+task variadicCountdown(n, ...args) {
+    when n <= 0 { give len(args) }
+    // Tail call passing spread args
+    give variadicCountdown(n - 1, ...args)
+}
+
+try {
+    params = [1, 2, 3]
+    res = variadicCountdown(600, ...params) // Exceeds stack depth of 512
+    out "TCO variadic result: " + str(res)
+} catch (e) {
+    out "Caught TCO variadic overflow: " + str(e)
+}

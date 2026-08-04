@@ -1,0 +1,10 @@
+out "--- Section 38: FFI Invalid Library ---"
+
+try {
+    lib = os_load_lib("NonExistentLibrary12345.dll")
+    when lib == 0 or typeOf(lib) == "nil" {
+        throw "Failed to load"
+    }
+} catch (e) {
+    out "Caught expected FFI library load error: " + str(e)
+}

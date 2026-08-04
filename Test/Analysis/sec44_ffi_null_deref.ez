@@ -1,0 +1,25 @@
+out "--- Section 44: FFI Null Pointer Access safety ---"
+
+// Attempt null pointer read
+try {
+    val = os_read_int64(0, 0)
+    out "Null pointer read returned: " + str(val)
+} catch (e) {
+    out "Caught expected null pointer read exception: " + str(e)
+}
+
+// Attempt null pointer write
+try {
+    os_write_int64(0, 0, 12345)
+    out "Null pointer write did not throw"
+} catch (e) {
+    out "Caught expected null pointer write exception: " + str(e)
+}
+
+// Attempt write to arbitrary unmanaged invalid address
+try {
+    os_write_int64(99999999, 0, 12345)
+    out "Arbitrary address write did not throw"
+} catch (e) {
+    out "Caught expected arbitrary address write exception: " + str(e)
+}

@@ -1,0 +1,16 @@
+out "--- Section 25: Closure Upvalue Mutation ---"
+
+task makeTracker() {
+    val = 100
+    getVal = || { give val }
+    setVal = |x| { val = x }
+    give [getVal, setVal]
+}
+
+tracker = makeTracker()
+getVal = tracker[0]
+setVal = tracker[1]
+
+out "Initial value: " + str(getVal())
+setVal(500)
+out "Value after setter: " + str(getVal())

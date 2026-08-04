@@ -1,0 +1,10 @@
+out "--- Section 33: Dict Missing Key ---"
+
+d = {"x": 10}
+
+try {
+    val = d["y"]
+    out "d['y']: " + str(val)
+} catch (e) {
+    out "Caught missing key error: " + str(e)
+}

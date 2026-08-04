@@ -1,0 +1,26 @@
+out "--- Section 55: JSON Edge Cases ---"
+
+use "json" as json
+
+// Test empty string parse
+try {
+    json.parse("")
+} catch (e) {
+    out "Caught empty JSON parse: " + str(e)
+}
+
+// Test null value parse
+try {
+    res = json.parse("null")
+    out "Parsed 'null' successfully: " + str(res)
+} catch (e) {
+    out "Caught parse 'null' error: " + str(e)
+}
+
+// Test stringify empty array/dict
+try {
+    out "Stringify empty array: " + json.stringify([])
+    out "Stringify empty dict: " + json.stringify({})
+} catch (e) {
+    out "Caught stringify empty error: " + str(e)
+}

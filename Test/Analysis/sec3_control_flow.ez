@@ -1,0 +1,53 @@
+out "--- Section 3: Control Flow ---"
+
+// Satisfy typechecker for match patterns
+_ = nil
+Number = nil
+
+// Conditionals
+x = 10
+when x > 15 {
+    out "x is greater than 15"
+} other when x > 5 {
+    out "x is greater than 5"
+} other {
+    out "x is 5 or less"
+}
+
+// While loop and escape
+i = 0
+out "while loop:"
+while i < 5 {
+    out "  i = " + str(i)
+    when i == 3 {
+        out "  escaping at 3"
+        escape
+    }
+    i = i + 1
+}
+
+// Repeat loop
+out "repeat loop:"
+repeat j = 1 to 3 {
+    out "  j = " + str(j)
+}
+
+// Match statement
+val = "test"
+out "match pattern:"
+match val {
+    "hello" => out "  matched hello"
+    "test"  => out "  matched test"
+    other   => out "  matched default"
+}
+
+// Match on Type Pattern
+try {
+    numVal = 42
+    match numVal {
+        Number => out "  matched type Number"
+        other  => out "  matched type default"
+    }
+} catch (e) {
+    out "  Type match error: " + str(e)
+}

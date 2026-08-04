@@ -1,0 +1,16 @@
+out "--- Section 46: Deep Closure Upvalues ---"
+
+task level1(x) {
+    task level2(y) {
+        task level3(z) {
+            give x + y + z
+        }
+        give level3
+    }
+    give level2
+}
+
+closure2 = level1(10)      // Frame 1 exits. x=10 captured.
+closure3 = closure2(20)    // Frame 2 exits. y=20 captured.
+res = closure3(30)         // z=30.
+out "Closure result (10+20+30): " + str(res)

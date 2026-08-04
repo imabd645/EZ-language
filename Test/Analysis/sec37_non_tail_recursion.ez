@@ -1,0 +1,12 @@
+out "--- Section 37: Stack Frame limit & Non-Tail Recursion ---"
+
+task nonTail(n) {
+    when n <= 0 { give 0 }
+    give 1 + nonTail(n - 1) // not a tail call (+ 1 is pending after return)
+}
+
+try {
+    nonTail(600) // exceeds stack limit of 512
+} catch (e) {
+    out "Caught expected stack overflow: " + str(e)
+}

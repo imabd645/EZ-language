@@ -1,0 +1,14 @@
+out "--- Section 10: Structs ---"
+
+struct Point {
+    x = 0
+    y = 0
+}
+
+try {
+    out "Struct declared at top level"
+    p = Point(1,3)
+    out "Instantiated Point struct: " + str(p)
+} catch (e) {
+    out "Caught struct execution error: " + str(e)
+}

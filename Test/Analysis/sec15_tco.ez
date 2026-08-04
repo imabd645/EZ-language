@@ -1,0 +1,19 @@
+out "--- Section 15: Tail Call Optimization ---"
+
+// Deep recursion countdown
+task count(n, acc) {
+    when n <= 0 { give acc }
+    give count(n - 1, acc + 1)
+}
+
+// Without TCO, this would blow the 512-frame limit.
+depth = 1000
+out "Starting recursion to depth: " + str(depth)
+res = count(depth, 0)
+out "Result: " + str(res)
+
+when res == depth {
+    out "TCO Test PASS: Depth of " + str(depth) + " reached successfully!"
+} other {
+    out "TCO Test FAIL: Incorrect result " + str(res)
+}

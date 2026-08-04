@@ -1,0 +1,35 @@
+out "--- Section 43: Self-Referential Closure Cycle ---"
+
+task buildClosureCycle() {
+    arr = []
+    
+    // Create a closure that encloses the list and mutates it
+    c = || {
+        push(arr, "mutation")
+    }
+    
+    // Put the closure inside the list itself
+    push(arr, c)
+    
+    out "  Cycle created: Array -> Closure -> Upvalue -> Array"
+    give nil
+}
+
+gc_set_thresholds(1000000, 1000000)
+
+gc_collect()
+before = gc_cycles_collected()
+
+buildClosureCycle()
+
+// Collect again - the cycle should be fully collected
+gc_collect()
+after = gc_cycles_collected()
+
+reclaimed = after - before
+out "Cycles collected: " + str(reclaimed)
+when reclaimed > 0 {
+    out "PASS: Self-referential closure cycle reclaimed successfully!"
+} other {
+    out "FAIL: Self-referential closure cycle leaked"
+}

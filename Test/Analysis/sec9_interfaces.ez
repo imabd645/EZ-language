@@ -1,0 +1,28 @@
+out "--- Section 9: Interfaces ---"
+
+interface Drivable {
+    task drive(speed)
+}
+
+model Car implements Drivable {
+    init(make) {
+        self.make = make
+    }
+    task drive(speed) {
+        out self.make + " driving at " + str(speed) + " mph"
+    }
+}
+
+c = Car("Toyota")
+c.drive(60)
+
+// Test runtime interface violation error
+try {
+    model Bike implements Drivable {
+        init() {}
+        // missing drive method
+    }
+    out "Bike created without drive (unexpected!)"
+} catch (e) {
+    out "Caught interface violation error: " + str(e)
+}

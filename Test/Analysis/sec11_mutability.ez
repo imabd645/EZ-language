@@ -1,0 +1,25 @@
+out "--- Section 11: Collections & Mutability ---"
+
+// Array pass-by-reference check
+task modifyArray(arr) {
+    push(arr, 99)
+}
+
+myArr = [1, 2, 3]
+modifyArray(myArr)
+out "Array after function call (len): " + str(len(myArr))
+out "Array elements: " + str(myArr[0]) + ", " + str(myArr[1]) + ", " + str(myArr[2]) + ", " + str(myArr[3])
+
+// Dictionary pass-by-reference check
+task modifyDict(dict) {
+    dict["modified"] = true
+}
+
+myDict = {"x": 10}
+modifyDict(myDict)
+out "Dict after function call: " + str(myDict["modified"])
+
+// Nested arrays/dicts
+nested = {"arr": [10, 20]}
+nested["arr"][0] = 99
+out "Nested mutation: " + str(nested["arr"][0])

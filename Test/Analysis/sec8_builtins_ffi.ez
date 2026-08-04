@@ -1,0 +1,21 @@
+out "--- Section 8: Built-in Modules & FFI ---"
+
+// Load fs from stdlib and check existence
+use "fs" as fs
+out "fs loaded. Exists test: " + str(fs.exists("c:\\"))
+
+// FFI check
+try {
+    hK32 = os_load_lib("Kernel32.dll")
+    when hK32 != 0 {
+        out "Loaded Kernel32.dll successfully"
+        sleepFunc = os_get_func(hK32, "Sleep")
+        when sleepFunc != 0 {
+            out "Got Sleep function pointer. Sleeping for 100ms..."
+            os_call(sleepFunc, "void", 100)
+            out "Awake!"
+        }
+    }
+} catch (e) {
+    out "FFI check failed: " + str(e)
+}

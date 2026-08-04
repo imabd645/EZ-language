@@ -1,0 +1,19 @@
+out "--- Section 23: Task Arity Mismatch ---"
+
+task greet(first, last) {
+    give "Hello " + first + " " + last
+}
+
+// Test missing argument
+try {
+    greet("John")
+} catch (e) {
+    out "Caught missing arg error: " + str(e)
+}
+
+// Test extra argument
+try {
+    greet("John", "Doe", "Extra")
+} catch (e) {
+    out "Caught extra arg error: " + str(e)
+}

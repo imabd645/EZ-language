@@ -1,0 +1,15 @@
+out "--- Section 50: FFI Type Mismatch ---"
+
+try {
+    hK32 = os_load_lib("Kernel32.dll")
+    when hK32 != 0 {
+        sleepFunc = os_get_func(hK32, "Sleep")
+        when sleepFunc != 0 {
+            // Sleep expects integer. Pass a string or dictionary to test FFI type coercion or safety
+            os_call(sleepFunc, "void", "ten-seconds") 
+            out "FFI mismatch call completed without throw"
+        }
+    }
+} catch (e) {
+    out "Caught expected FFI type mismatch error: " + str(e)
+}

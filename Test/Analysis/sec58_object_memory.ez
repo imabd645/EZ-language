@@ -1,0 +1,76 @@
+out "--- Section 58: Collection & Closure Memory Tracking ---"
+
+// 1. Establish baseline
+gc_set_thresholds(100000, 100000)
+gc_collect()
+gc_collect() // second run to clean up everything completely
+
+baselineTracked = gc_tracked()
+baselineCycles = gc_cycles_collected()
+out "Baseline tracked: " + str(baselineTracked)
+
+// 2. Test Array tracking
+task testArrayTracking() {
+    arr = [1, 2, 3]
+    out "  Tracked inside array scope: " + str(gc_tracked())
+}
+testArrayTracking()
+gc_collect()
+gc_collect()
+out "  Tracked after array deallocation: " + str(gc_tracked())
+
+// 3. Test Tuple tracking
+task testTupleTracking() {
+    tup = (1, 2, 3)
+    out "  Tracked inside tuple scope: " + str(gc_tracked())
+}
+testTupleTracking()
+gc_collect()
+gc_collect()
+out "  Tracked after tuple deallocation: " + str(gc_tracked())
+
+// 4. Test Dictionary tracking
+task testDictTracking() {
+    dict = {"a": 1}
+    out "  Tracked inside dict scope: " + str(gc_tracked())
+}
+testDictTracking()
+gc_collect()
+gc_collect()
+out "  Tracked after dict deallocation: " + str(gc_tracked())
+
+// 5. Test Closure tracking
+task testClosureTracking() {
+    val = 100
+    clos = || { give val }
+    out "  Tracked inside closure scope: " + str(gc_tracked())
+}
+testClosureTracking()
+gc_collect()
+gc_collect()
+out "  Tracked after closure deallocation: " + str(gc_tracked())
+
+// 6. Test Array-to-self circular reference reclamation
+task createArraySelfCycle() {
+    arr = []
+    push(arr, arr) // Circular reference
+    out "  Array cycle created"
+}
+createArraySelfCycle()
+gc_collect()
+gc_collect()
+out "  Tracked after Array cycle GC: " + str(gc_tracked())
+out "  Cycles collected count: " + str(gc_cycles_collected() - baselineCycles)
+
+// 7. Test Dict-to-self circular reference reclamation
+baselineCycles2 = gc_cycles_collected()
+task createDictSelfCycle() {
+    dict = {}
+    dict["self"] = dict // Circular reference
+    out "  Dict cycle created"
+}
+createDictSelfCycle()
+gc_collect()
+gc_collect()
+out "  Tracked after Dict cycle GC: " + str(gc_tracked())
+out "  Cycles collected count: " + str(gc_cycles_collected() - baselineCycles2)

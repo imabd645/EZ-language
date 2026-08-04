@@ -1,0 +1,9 @@
+out "--- Section 35: JSON Parsing Invalid Input ---"
+
+use "json" as json
+
+try {
+    json.parse("{invalid-json}")
+} catch (e) {
+    out "Caught invalid JSON parse: " + str(e)
+}

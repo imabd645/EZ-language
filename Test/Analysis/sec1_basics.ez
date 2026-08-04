@@ -1,0 +1,33 @@
+out "--- Section 1: Basics ---"
+// Numbers
+a = 10
+b = 3
+out "10 + 3 = " + str(a + b)
+out "10 - 3 = " + str(a - b)
+out "10 * 3 = " + str(a * b)
+out "10 / 3 = " + str(a / b)
+
+// Operator Precedence
+prec = 2 + 3 * 4
+out "2 + 3 * 4 = " + str(prec)
+
+prec2 = (2 + 3) * 4
+out "(2 + 3) * 4 = " + str(prec2)
+
+// String Operations
+str1 = "Hello "
+str2 = "World"
+out "Concatenation: " + (str1 + str2)
+
+// Comparison and Logic
+out "10 > 3 is " + str(10 > 3)
+out "10 == 3 is " + str(10 == 3)
+out "true and false is " + str(true and false)
+out "true or false is " + str(true or false)
+out "not true is " + str(not true)
+
+// Typeof check
+out "typeOf(10) is " + typeOf(10)
+out "typeOf(\"str\") is " + typeOf("str")
+out "typeOf(true) is " + typeOf(true)
+out "typeOf(nil) is " + typeOf(nil)

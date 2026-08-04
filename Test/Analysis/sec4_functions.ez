@@ -1,0 +1,38 @@
+out "--- Section 4: Functions & Closures ---"
+
+// Basic task
+task add(x, y) {
+    give x + y
+}
+out "add(5, 7) = " + str(add(5, 7))
+
+// Recursion
+task fib(n) {
+    when n <= 1 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+out "fib(6) = " + str(fib(6))
+
+// Anonymous lambdas & First-class functions
+double = || {
+    give "empty lambda"
+}
+out "double(): " + double()
+
+lambdaWithArgs = |x, y| {
+    give x * y
+}
+out "lambdaWithArgs(4, 5) = " + str(lambdaWithArgs(4, 5))
+
+// Closures
+task makeCounter() {
+    count = 0
+    give || {
+        count = count + 1
+        give count
+    }
+}
+
+counter = makeCounter()
+out "counter() call 1: " + str(counter())
+out "counter() call 2: " + str(counter())

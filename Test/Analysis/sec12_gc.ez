@@ -1,0 +1,37 @@
+out "--- Section 12: Garbage Collection ---"
+
+model CycleNode {
+    init(name) {
+        self.name = name
+        self.peer = nil
+    }
+}
+
+task createCycle() {
+    a = CycleNode("A")
+    b = CycleNode("B")
+    a.peer = b
+    b.peer = a // Cyclic reference
+    out "  Cycle created: A <-> B"
+    give nil
+}
+
+// Enable thresholds so we control collections
+gc_set_thresholds(1000000, 1000000)
+
+gc_collect()
+before = gc_cycles_collected()
+
+createCycle()
+
+// Collect again - should reclaim the cyclic garbage
+gc_collect()
+after = gc_cycles_collected()
+
+reclaimed = after - before
+out "Cycles collected: " + str(reclaimed)
+when reclaimed > 0 {
+    out "GC Cycle Test PASS: Cyclic garbage reclaimed successfully!"
+} other {
+    out "GC Cycle Test FAIL: Cycles not reclaimed"
+}

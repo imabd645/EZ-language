@@ -1,0 +1,19 @@
+wout "--- Section 53: Array Expansion Capacity ---"
+
+arr = []
+size = 2000
+
+// Push a large number of elements to trigger multiple internal reallocations
+repeat i = 1 to size {
+    push(arr, i)
+}
+
+out "Array length after push: " + str(len(arr))
+out "First element: " + str(arr[0])
+out "Last element: " + str(arr[size - 1])
+
+when len(arr) == size and arr[0] == 1 and arr[size - 1] == size {
+    out "PASS: Array reallocated and expanded correctly without data loss"
+} other {
+    out "FAIL: Array data corrupted during expansion"
+}

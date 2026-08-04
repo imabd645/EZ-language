@@ -1,0 +1,21 @@
+out "--- Section 42: Mutex & Shared State Concurrency ---"
+
+m = mutex()
+sharedArray = []
+
+task appendItem(item) {
+    lock(m, || {
+        // Protect shared resource
+        push(sharedArray, item)
+    })
+}
+
+// Spawn concurrent tasks
+f1 = spawn(|| { appendItem("First") })
+f2 = spawn(|| { appendItem("Second") })
+
+await f1
+await f2
+
+out "Shared array length: " + str(len(sharedArray))
+out "Elements: " + str(sharedArray[0]) + ", " + str(sharedArray[1])

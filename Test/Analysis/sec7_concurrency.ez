@@ -1,0 +1,22 @@
+out "--- Section 7: Concurrency & Async ---"
+
+// Basic spawn
+fut = spawn(|| {
+    out "  Asynchronous task running..."
+    give 42
+})
+
+out "Waiting for future..."
+val = await fut
+out "Future resolved to: " + str(val)
+
+// Atomic shared state or Mutex if present
+// Let's see if Atomic class is registered
+try {
+    atom = Atomic(10)
+    out "Atomic value: " + str(atom.get())
+    atom.add(5)
+    out "Atomic value after add: " + str(atom.get())
+} catch (e) {
+    out "Atomic check failed: " + str(e)
+}

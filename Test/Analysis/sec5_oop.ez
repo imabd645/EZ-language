@@ -1,0 +1,35 @@
+out "--- Section 5: Object-Oriented Programming ---"
+
+model Animal {
+    init(name) {
+        self.name = name
+    }
+    
+    task speak() {
+        give self.name + " makes a sound"
+    }
+}
+
+model Dog extends Animal {
+    init(name, breed) {
+        super.init(name)
+        self.breed = breed
+    }
+    
+    task speak() {
+        give self.name + " barks"
+    }
+}
+
+d = Dog("Buddy", "Golden Retriever")
+out "Dog name: " + d.name
+out "Dog breed: " + d.breed
+out "Dog speak: " + d.speak()
+
+// Static method
+model Helper {
+    static task greet(name) {
+        give "Hello, " + name
+    }
+}
+out "Helper.greet('Alice'): " + Helper.greet("Alice")

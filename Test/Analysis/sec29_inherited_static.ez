@@ -1,0 +1,16 @@
+out "--- Section 29: Inherited Static Methods ---"
+
+model Parent {
+    static task parentStatic() {
+        give "parent-static-value"
+    }
+}
+
+model Child extends Parent {}
+
+try {
+    val = Child.parentStatic()
+    out "Child.parentStatic() resolved to: " + str(val)
+} catch (e) {
+    out "Caught static inheritance error: " + str(e)
+}

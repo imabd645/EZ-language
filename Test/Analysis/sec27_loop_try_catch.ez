@@ -1,0 +1,12 @@
+out "--- Section 27: Try-Catch inside Loop ---"
+
+repeat i = 1 to 5 {
+    try {
+        when i == 3 {
+            throw "Error at 3"
+        }
+        out "  Iteration " + str(i) + " succeeded"
+    } catch (e) {
+        out "  Iteration " + str(i) + " caught: " + str(e)
+    }
+}

@@ -1,0 +1,12 @@
+out "--- Section 20: Dict Non-String Keys ---"
+
+try {
+    d = {}
+    d[10] = "integer-key"
+    d[true] = "boolean-key"
+    
+    out "d[10]: " + str(d[10])
+    out "d[true]: " + str(d[true])
+} catch (e) {
+    out "Caught non-string key error: " + str(e)
+}

@@ -1,0 +1,13 @@
+out "--- Section 21: Logical Precedence ---"
+
+x = 10
+y = 20
+a = true
+b = false
+
+// expected evaluation order: comparisons first, then 'not', then 'and', then 'or'
+res = not x == y and a or b
+out "not x == y and a or b: " + str(res) // expected true: (not false) and true or false => true and true or false => true
+
+res2 = a or b and not x == 10
+out "a or b and not x == 10: " + str(res2) // expected true: true or (false and not true) => true or false => true

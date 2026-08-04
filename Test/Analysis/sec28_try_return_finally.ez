@@ -1,0 +1,16 @@
+out "--- Section 28: Return from Catch and Finally execution ---"
+
+task testTry() {
+    try {
+        throw "error"
+    } catch (e) {
+        out "  In catch"
+        give "catch-value"
+    } finally {
+        out "  In finally"
+    }
+    give "default-value"
+}
+
+res = testTry()
+out "Returned: " + res

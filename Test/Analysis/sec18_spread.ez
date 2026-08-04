@@ -1,0 +1,25 @@
+out "--- Section 18: Spread & Rest Operators ---"
+
+// Array spread
+arr1 = [1, 2]
+arr2 = [3, 4]
+merged = [...arr1, ...arr2, 5]
+out "Merged array elements: " + str(merged[0]) + ", " + str(merged[1]) + ", " + str(merged[2]) + ", " + str(merged[3]) + ", " + str(merged[4])
+
+// Rest params in tasks
+task sumAll(...numbers) {
+    total = 0
+    get n in numbers { total = total + n }
+    give total
+}
+out "sumAll(1, 2, 3, 4) = " + str(sumAll(1, 2, 3, 4))
+out "sumAll(...merged) = " + str(sumAll(...merged))
+
+// Rest params in lambdas
+scaleAll = |scale, ...numbers| {
+    res = []
+    get n in numbers { push(res, n * scale) }
+    give res
+}
+scaled = scaleAll(10, 1, 2, 3)
+out "Scaled elements: " + str(scaled[0]) + ", " + str(scaled[1]) + ", " + str(scaled[2])

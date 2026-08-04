@@ -1,0 +1,78 @@
+out "--- Section 57: Model Memory Tracking & Reclamation ---"
+
+model SimpleModel {
+    init(val) {
+        self.val = val
+    }
+}
+
+// 1. Establish GC Baseline
+gc_set_thresholds(100000, 100000)
+gc_collect()
+
+baselineTracked = gc_tracked()
+baselineCycles = gc_cycles_collected()
+out "GC Baseline Tracked: " + str(baselineTracked)
+
+// 2. Instantiate and observe tracking count
+task testInstantiation() {
+    tempList = []
+    repeat i = 1 to 5 {
+        push(tempList, SimpleModel(i))
+    }
+    
+    // Within this scope, tempList holds 5 instances + the list itself (which is also tracked)
+    currentTracked = gc_tracked()
+    out "Tracked after instantiating 5 models + 1 array: " + str(currentTracked)
+    
+    when currentTracked == baselineTracked + 6 {
+        out "PASS: Instantiated models and array correctly tracked"
+    } other {
+        out "FAIL: Tracked count mismatch -> " + str(currentTracked)
+    }
+}
+
+testInstantiation()
+
+// 3. Collect and verify natural deallocation (ref count drops to 0)
+gc_collect()
+postDeallocTracked = gc_tracked()
+out "Tracked after scope exit & gc_collect: " + str(postDeallocTracked)
+when postDeallocTracked == baselineTracked {
+    out "PASS: Natural ref-counting cleaned up all instances"
+} other {
+    out "FAIL: Instances leaked -> " + str(postDeallocTracked)
+}
+
+// 4. Create cyclic circular reference between model instances
+task createModelCycle() {
+    x = SimpleModel("X")
+    y = SimpleModel("Y")
+    x.link = y
+    y.link = x // Cycle: X <-> Y
+    
+    out "  Cycle created inside task"
+    give nil
+}
+
+createModelCycle()
+
+// First collection: detects and breaks cycles, but the objects are kept alive in GC 'live' buffer
+// until the end of the collection function.
+gc_collect()
+
+// Second collection: purges the now-expired weak pointers from the tracked vector
+gc_collect()
+
+afterCycleTracked = gc_tracked()
+afterCyclesCollected = gc_cycles_collected()
+reclaimed = afterCyclesCollected - baselineCycles
+
+out "Tracked after cycle GC: " + str(afterCycleTracked)
+out "Cycles collected count: " + str(reclaimed)
+
+when reclaimed >= 2 and afterCycleTracked == baselineTracked {
+    out "PASS: Cyclic model instances successfully broken and collected!"
+} other {
+    out "FAIL: Cyclic model instances leaked"
+}

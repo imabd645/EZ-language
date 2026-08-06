@@ -14,11 +14,30 @@ inline std::vector<uint8_t>& Value::asBuffer() { try{return std::get<BufferPtr>(
 inline std::vector<uint8_t>& Value::asBuffer() const { try{return std::get<BufferPtr>(m_data)->data;}catch(...){std::cerr<<"[Value] inline asBuffer const fail, index="<<index()<<"\n";throw;} }
 
 // --- Value String Implementations ---
+//
+// Strings of 14 characters or more are interned so repeated occurrences share
+// one allocation. The pool is thread_local, which is only sound while the
+// pooled strings do not outlive the thread that made them -- and they do: a
+// worker's result, and its error message, are handed to whoever awaits it.
+//
+// When such a worker exited, mingw's TLS teardown destroyed this map from
+// LdrShutdownThread and faulted inside ~unordered_map, taking the process with
+// it. A single spawned task that threw crashed roughly one run in three; twelve
+// of them crashed almost always.
+//
+// So worker threads do not intern at all: they allocate the string directly and
+// leave no pool behind to tear down. Only the main thread, whose pool is
+// destroyed at process exit like any other global, keeps the fast path.
+// Interning is a memory optimisation, never an identity guarantee -- nothing
+// compares strings by pointer -- so skipping it changes no behaviour.
 extern thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
+extern thread_local bool g_stringInternEnabled;
 
 inline Value::Value(const std::string& val) {
     if (val.length() < 14) {
         m_data = ShortString(val.c_str(), val.length());
+    } else if (!g_stringInternEnabled) {
+        m_data = std::make_shared<std::string>(val);
     } else {
         auto it = globalStringPool.find(val);
         if (it != globalStringPool.end() && !it->second.expired()) {
@@ -38,6 +57,8 @@ inline Value::Value(const char* val) {
     size_t len = std::strlen(val);
     if (len < 14) {
         m_data = ShortString(val, len);
+    } else if (!g_stringInternEnabled) {
+        m_data = std::make_shared<std::string>(val, len);
     } else {
         std::string sval(val, len);
         auto it = globalStringPool.find(sval);

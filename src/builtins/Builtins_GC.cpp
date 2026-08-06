@@ -177,38 +177,73 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 // worker so the cycle collector defers collection while we run
                 // (it can't safely collect the shared object graph we mutate).
                 // RAII ensures we unregister on every exit path.
-                struct MutatorScope {
-                    MutatorScope()  { CycleCollector::instance().beginMutatorThread(); }
-                    ~MutatorScope() { CycleCollector::instance().endMutatorThread(); }
-                } mutatorScope;
-                try {
-                    auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
-                    threadVM->traceExecution = false;
+                // Signalling the future is what releases whoever is blocked in
+                // await(), and that thread may then finish the program. So the
+                // worker must be COMPLETELY done -- VM destroyed, exception
+                // object destroyed, mutator scope ended -- before it signals.
+                // Setting the future from inside those scopes let main return
+                // and tear down the CycleCollector while this thread was still
+                // unwinding through it, which faulted at a garbage address,
+                // intermittently and often after the program's last line.
+                // Do not intern long strings on this thread. The pool is
+                // thread_local but the strings it hands out escape to whoever
+                // awaits us, so tearing the pool down at thread exit crashed
+                // the process. See ValueImpl.h.
+                g_stringInternEnabled = false;
 
-                    threadVM->taskFuture = ezFut;
-                    // The failure is carried by the future for whoever awaits
-                    // it, so the worker should not also dump a traceback to
-                    // stderr. Without this, code that handles failures as data
-                    // -- allSettled over a batch, a retry loop -- prints a full
-                    // traceback for every expected failure. This is the same
-                    // choice the `async task` path already makes.
-                    threadVM->isAsyncTask = true;
-                    Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
+                bool   signalResult = false;
+                bool   failed       = false;
+                Value  result;
+                std::string errorText;
 
-                    if (!threadVM->isYielded) {
-                        ezFut->set(result);
+                {
+                    struct MutatorScope {
+                        MutatorScope()  { CycleCollector::instance().beginMutatorThread(); }
+                        ~MutatorScope() { CycleCollector::instance().endMutatorThread(); }
+                    } mutatorScope;
+
+                    try {
+                        auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
+                        threadVM->traceExecution = false;
+
+                        threadVM->taskFuture = ezFut;
+                        // NOTE: deliberately NOT setting isAsyncTask here.
+                        // It looks attractive -- it suppresses the traceback the
+                        // worker prints for a failure that the future already
+                        // carries -- but it also changes WHICH exception the VM
+                        // throws: the isAsyncTask path throws a RuntimeError
+                        // carrying a live exception INSTANCE, and moving that
+                        // GC-tracked object across the worker's catch and
+                        // teardown faulted roughly one run in three, on
+                        // addresses that decoded to native method names
+                        // ("size", "init", "remove") -- a corrupted class table.
+                        // Quieter output is not worth an intermittent crash.
+                        result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
+
+                        // A yielded VM is resumed by the event loop, which
+                        // settles the future itself; settling it here too would
+                        // publish a half-finished result.
+                        signalResult = !threadVM->isYielded;
+                    } catch(std::exception& e) {
+                        // Record the failure ON THE FUTURE. This used to call
+                        // set(Value()), completing the future SUCCESSFULLY with
+                        // nil -- so await() returned nil and the caller had no
+                        // way to learn the task had thrown. Anything built on
+                        // "await rethrows" (allSettled, retry, timeouts) could
+                        // not work. setError() makes get() rethrow, the same
+                        // path cancel() already uses.
+                        failed = true;
+                        errorText = e.what();
                     }
-                } catch(std::exception& e) {
-                    // Record the failure ON THE FUTURE. This used to call
-                    // set(Value()), which completes the future SUCCESSFULLY with
-                    // nil -- so await() returned nil and the caller had no way to
-                    // learn the task had thrown at all. Anything built on
-                    // "await rethrows" (allSettled, retry, timeouts) was
-                    // therefore unable to work. setError() makes get() rethrow,
-                    // which is the same path cancel() already relies on.
-                    ezFut->setError(e.what());
                 }
+
                 EventLoop::instance().release();
+
+                if (failed) {
+                    ezFut->setError(errorText);
+                } else if (signalResult) {
+                    ezFut->set(result);
+                }
             }).detach();
 
             return Value::makeFuture(ezFut);

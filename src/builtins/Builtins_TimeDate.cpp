@@ -391,6 +391,12 @@ void registerTimeDateBuiltins(RuntimeContext& interp) {
             auto globalEnv = interp.getGlobalEnv();
 
             std::thread([stateWeak, cb, ms, repeat, globalEnv]() {
+                // Same reason as the spawn() worker: the string intern pool is
+                // thread_local, the strings this callback produces outlive the
+                // thread, and destroying the pool at thread exit crashes the
+                // process. See ValueImpl.h.
+                g_stringInternEnabled = false;
+
                 while (true) {
                     // Sleep for the interval
                     std::this_thread::sleep_for(std::chrono::milliseconds(ms));

@@ -8,7 +8,11 @@
 #include "runtime/objects/EZShape.h"
 
 // ── Thread-local string interning pool ───────────────────────────────────────
+// Only the main thread interns. Worker threads set g_stringInternEnabled to
+// false so they never populate this map, because destroying it during thread
+// teardown crashed the process -- see the note in ValueImpl.h.
 thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
+thread_local bool g_stringInternEnabled = true;
 
 // ── EZFunction::traverse() ───────────────────────────────────────────────────
 // Declared in Value.h; defined here because Environment is not yet complete

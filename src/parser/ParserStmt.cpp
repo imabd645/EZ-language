@@ -972,9 +972,29 @@ StmtPtr Parser::modelStatement() {
             std::vector<std::string> params;
             std::vector<TypeASTPtr> paramTypes;
             std::vector<ExprPtr> defaultValues;
+            bool isVariadic = false;
             if (!check(TokenType::RPAREN)) {
                 bool hadDefault = false;
                 do {
+                    if (match(TokenType::ELLIPSIS)) {
+                        isVariadic = true;
+                        Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name after '...'");
+                        params.push_back(paramToken.lexeme);
+                        
+                        TypeASTPtr pType = nullptr;
+                        if (match(TokenType::COLON)) {
+                            pType = parseType();
+                        } else {
+                            pType = arena.allocate<TypeAST>("Any");
+                        }
+                        paramTypes.push_back(pType);
+                        defaultValues.push_back(nullptr);
+                        if (check(TokenType::COMMA)) {
+                            throw ParseError("Rest parameter must be the last parameter", peek().line);
+                        }
+                        break;
+                    }
+
                     Token paramToken = advance();
                     if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
                         throw ParseError("Expected parameter name", paramToken.line);
@@ -1025,6 +1045,7 @@ StmtPtr Parser::modelStatement() {
             member.isMethod = true;
             member.isAsync = isAsync;
             member.isCached = methodCached;
+            member.isVariadic = isVariadic;
             member.name = methodName.lexeme;
             member.typeParams = typeParams;
             member.params = params;

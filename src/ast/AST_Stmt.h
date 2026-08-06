@@ -155,6 +155,7 @@ struct ModelMember {
     bool isMethod;
     bool isAsync = false;
     bool isCached = false;   // @cached decorator on methods
+    bool isVariadic = false; // Variadic method (...args)
     std::string name;
     std::vector<std::string> typeParams; // For generic methods
     TypeASTPtr typeHint; // For properties and methods (return type)

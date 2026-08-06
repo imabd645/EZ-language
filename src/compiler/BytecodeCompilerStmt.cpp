@@ -1038,7 +1038,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             }
             params.insert(params.end(), member.params.begin(), member.params.end());
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
-            TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), arena.allocate<TypeAST>("Any")), defaults, nullptr, member.body, false, member.isAsync);
+            TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), arena.allocate<TypeAST>("Any")), defaults, nullptr, member.body, member.isVariadic, member.isAsync);
             methodTask.isCached = member.isCached;
             emitClosure(methodTask, true); // Pushes closure
         } else {

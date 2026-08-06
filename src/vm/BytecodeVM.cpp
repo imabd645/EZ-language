@@ -198,15 +198,27 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     // resume, so this path deliberately leaves the state alone.
     if (isYielded) return Value();
 
-    // NOTE: an uncaught top-level exception leaves run() via pendingException +
-    // return now (it no longer unwinds a C++ exception out of the dispatch). The
-    // error was already printed by runtimeError(); we return normally here, which
-    // preserves the long-standing behaviour that the process still exits 0.
+    // An uncaught top-level exception leaves run() via pendingException + return
+    // rather than unwinding a C++ exception out of the dispatch loop. Turn that
+    // back into a RuntimeError here so the process reports failure.
     //
-    // That exit-0-on-uncaught-error is itself a bug (a dying script looks
-    // successful to CI), but fixing it changes the exit code of every existing
-    // test that deliberately ends on an uncaught error as a demonstration, so it
-    // is left as a separate, deliberate change rather than bundled in here.
+    // Returning normally used to mean a script killed by an uncaught error still
+    // exited 0. Nothing downstream could tell a crash from success: the test
+    // runner passed anything that died, and test_builtin.ez -- which threw on
+    // its first line and never ran another statement -- sat green for as long as
+    // it existed. verify_static.ez did the same while its feature was outright
+    // broken.
+    //
+    // The error text was already printed by runtimeError(), so callers that just
+    // want the exit status (CLI -> exit 70) need print nothing more. The REPL
+    // catches std::exception and keeps the session alive, and a module that dies
+    // while loading now fails the load instead of yielding a half-built module.
+    if (isExceptionPending || !pendingException.isNil()) {
+        std::string detail = pendingException.isNil() ? std::string("uncaught error")
+                                                      : pendingException.toString();
+        restoreState();
+        throw RuntimeError("uncaught: " + detail);
+    }
 
     // Read the result before restoring, while stackTop still points at it.
     Value result = (stackTop > stack.data()) ? *(stackTop - 1) : Value();

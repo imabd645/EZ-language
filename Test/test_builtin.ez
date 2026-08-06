@@ -1,1 +1,16 @@
-out len(5)
+// len() rejects a non-collection. Previously this file was a bare `out len(5)`,
+// which threw on line 1 and killed the script -- and because an uncaught error
+// still exits 0, the runner reported it as passing while nothing in it ran.
+caught = false
+try {
+    out len(5)
+} catch e {
+    caught = true
+    out "len(5) correctly rejected: " + str(e)
+}
+when not caught { out "FAIL: len(5) should have been rejected" }
+
+out "len(\"hello\") = " + str(len("hello"))
+out "len([1,2,3]) = " + str(len([1, 2, 3]))
+out "len([]) = " + str(len([]))
+out "len(\"\") = " + str(len(""))

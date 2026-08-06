@@ -137,6 +137,17 @@ Write-Host ''
 # those as expected output.
 $failurePattern = '(?m)(^|\s)(FAIL\b|!!! TEST FAILED|Fails:\s*[1-9]|\[FATAL\])'
 
+# A script killed by an uncaught error still exits 0 -- the VM prints the error
+# and returns normally (BytecodeVM::execute documents this as a known bug it
+# deliberately did not change). So the exit code cannot tell us a test died, and
+# without this a test that crashed on its FIRST line was reported as passing:
+# test_builtin.ez did exactly that, and nothing in it had run for a long time.
+#
+# The traceback banner is only printed for an UNCAUGHT error -- a try/catch
+# handles the error and prints nothing -- so it is a reliable signal, unlike a
+# bare "Error:" which error-handling tests legitimately print as expected output.
+$crashPattern = '(?m)^Traceback \(most recent call last\)'
+
 $pass = 0; $fail = 0; $knownFail = 0; $fixed = 0
 $failedNames = @()
 $fixedNames  = @()
@@ -203,6 +214,14 @@ foreach ($t in $tests) {
             }
             elseif ($output -match $failurePattern) {
                 $status = 'FAIL'; $reason = "failure marker: $($Matches[0].Trim())"
+            }
+            elseif (($output -match $crashPattern) -and ($output -notmatch '\[spawn-thread\]')) {
+                # The spawn-thread exclusion: a task that throws inside spawn()
+                # prints its own traceback from the worker even when the caller
+                # handles the exception through await(). That is the interpreter
+                # being noisy, not the script dying, so it must not be read as a
+                # crash -- async_86_async_throw.ez deliberately does exactly this.
+                $status = 'FAIL'; $reason = "died on an uncaught error (exit code was $($proc.ExitCode); see details below)"
             }
         }
     }

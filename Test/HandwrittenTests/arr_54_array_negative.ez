@@ -1,2 +1,9 @@
 a = [1, 2, 3]
-print(a[-1])
+caught = false
+try {
+    print(a[-1])
+} catch e {
+    caught = true
+    print("negative index rejected")
+}
+when not caught { print("FAIL: a[-1] should have been rejected") }

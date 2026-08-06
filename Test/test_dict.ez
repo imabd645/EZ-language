@@ -9,7 +9,9 @@ val = dict["c"]
 out "Value: " + str(val)
 
 out "\n3. Accessing missing property .d:"
-prop = dict.d
+// Reading a missing property throws; catch it so the rest of the file still runs.
+prop = nil
+try { prop = dict.d } catch e { out "missing property .d correctly threw" }
 out "Property: " + str(prop)
 
 out "\n4. Testing native methods:"

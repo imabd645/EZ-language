@@ -6,7 +6,73 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <regex>
+
+// ── Regex helpers ─────────────────────────────────────────────────────────────
+// Shared by the re_* builtins below.
+
+// Compiles `pattern` under a flag string ("i" case-insensitive, "m" multiline).
+// Returns false having thrown RegexError if the pattern does not compile, so a
+// typo surfaces as an error rather than as "no match".
+static bool buildRegex(RuntimeContext& interp, const std::string& pattern,
+                       const std::string& flags, std::regex& out) {
+    auto opts = std::regex_constants::ECMAScript;
+    for (char f : flags) {
+        switch (f) {
+            case 'i': opts |= std::regex_constants::icase; break;
+            case 'm': opts |= std::regex_constants::multiline; break;
+            case ' ': break;
+            default:
+                interp.throwException("RegexError",
+                    std::string("Unknown regex flag '") + f + "'. Supported: 'i' (ignore case), "
+                    "'m' (multiline).", 0, "");
+                return false;
+        }
+    }
+    try {
+        out.assign(pattern, opts);
+    } catch (const std::regex_error& e) {
+        interp.throwException("RegexError",
+            "Invalid pattern '" + pattern + "': " + e.what(), 0, "");
+        return false;
+    }
+    return true;
+}
+
+// Pulls (text, pattern, flags) off the argument list, with flags optional.
+static bool regexArgs(RuntimeContext& interp, const std::vector<Value>& args,
+                      const char* fname, std::string& text, std::string& pattern,
+                      std::string& flags, size_t required) {
+    if (args.size() < required || !args[0].isString() || !args[1].isString()) {
+        interp.throwException("TypeError",
+            std::string(fname) + "() expects (text, pattern[, flags])", 0, "");
+        return false;
+    }
+    text = args[0].asString();
+    pattern = args[1].asString();
+    flags = (args.size() >= 3 && args[2].isString()) ? args[2].asString() : "";
+    return true;
+}
+
+// Builds {"text", "start", "end", "groups"} for one match. `base` is the offset
+// the search started from, so positions are absolute in the original string.
+// An unmatched optional group is nil rather than "", which is the only way to
+// tell `(a)?` that matched empty from one that did not participate.
+static Value makeMatchValue(const std::smatch& m, size_t base) {
+    Value dict = Value::makeDictionary();
+    size_t start = base + static_cast<size_t>(m.position(0));
+    dict.asDictionary().set("text", Value(m.str(0)));
+    dict.asDictionary().set("start", Value(static_cast<long long>(start)));
+    dict.asDictionary().set("end", Value(static_cast<long long>(start + m.length(0))));
+
+    std::vector<Value> groups;
+    for (size_t i = 1; i < m.size(); ++i) {
+        groups.push_back(m[i].matched ? Value(m[i].str()) : Value());
+    }
+    dict.asDictionary().set("groups", Value::makeArray(groups));
+    return dict;
+}
 
 void registerStringBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("urlEncode", Value::makeNativeFunction("urlEncode", 1,

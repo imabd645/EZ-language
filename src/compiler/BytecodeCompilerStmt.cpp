@@ -879,6 +879,37 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     addLocal("");
     markInitialized();
 
+    // Declare every top-level task before compiling any body, so that one can
+    // call another regardless of the order they appear in.
+    //
+    // Without this, a reference to a task declared further down the file found
+    // no local and fell back to a GLOBAL read, while the declaration itself
+    // stored a module LOCAL (scopeDepth is forced to 1 above). The two never
+    // met, and the call produced "Value is not callable: nil".
+    //
+    // It only showed up in a module imported BY another module. Imported at top
+    // level the module's symbols are unpacked into globals, so the global read
+    // happened to find one; nested a level deeper they are unpacked into the
+    // importer's locals and the global stayed empty. sqlite hit this in
+    // migrate.ez, where migrate() calls _sort_by_version() declared below it.
+    //
+    // Pre-declaring also makes mutual recursion between top-level tasks work.
+    for (const auto& s : statements) {
+        if (!s) continue;
+        const Stmt* target = s;
+        if (std::holds_alternative<ExportStmt*>(target->variant)) {
+            target = std::get<ExportStmt*>(target->variant)->inner;
+            if (!target) continue;
+        }
+        if (std::holds_alternative<TaskStmt*>(target->variant)) {
+            const std::string& tname = std::get<TaskStmt*>(target->variant)->name;
+            if (!tname.empty() && resolveLocal(tname) == -1) {
+                addLocal(tname);
+                markInitialized();
+            }
+        }
+    }
+
     // Compile module body
     for (const auto& s : statements) {
         compileStmt(s);

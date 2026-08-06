@@ -63,6 +63,7 @@ get person in people {
   - [Arrays & Dictionaries](#arrays--dictionaries)
 - [Optional Static Type Checker](#-optional-static-type-checker)
 - [Object-Oriented Programming](#-object-oriented-programming)
+  - [Enums](#enums)
   - [Operator Overloading](#operator-overloading)
 - [Error Handling](#error-handling)
 - [Modules (`use`)](#modules-use)
@@ -95,7 +96,7 @@ EZ is designed to be extremely lightweight and blazingly fast.
 | C++17 compiler (MinGW-w64 / MSVC) | Building the interpreter |
 | CMake 3.10+ | Build system |
 | libcurl | HTTP client (`http_get`, `http_post`, `fetch`) |
-| libsqlite3 | Linked by CMake,  |
+| libsqlite3 | Linked by CMake. There are no `db_*` builtins — it backs `@persist` and is available to `ezlib` packages via FFI |
 | Win32 SDK (`dwmapi`, `uxtheme`) | GUI dark-mode/theme APIs |
 
 ### Build with CMake
@@ -110,8 +111,6 @@ cmake --build .
 ```
 
 This produces `ez.exe` and links against `sqlite3 curl ws2_32 pthread` (plus `dwmapi uxtheme` on Windows), per `CMakeLists.txt`.
-
-> **Note:** `CMakeLists.txt`'s `SOURCES` list currently does **not** include `runtime/Builtins_Buffer.cpp` or `runtime/Builtins_Concurrency.cpp`, and references a `runtime/Builtins_DB.cpp` that does not exist in the tree. A manual `g++` invocation listing every file under `src/` and `src/runtime/` (as below) is the reliable way to get a complete build with buffer/concurrency/FFI support.
 
 ### Build directly with batch script (Windows)
 
@@ -717,6 +716,56 @@ struct User {
 }
 ```
 
+### Enums
+
+`enum` declares a set of named integer constants. Members are read as
+`Name.MEMBER`.
+
+```ez
+enum Color { RED, GREEN, BLUE }          # 0, 1, 2
+
+out str(Color.GREEN)                     # 1
+```
+
+Numbering starts at 0 and increments. An explicit value re-seeds the counter
+rather than restarting it, so members after one keep counting from there:
+
+```ez
+enum Status {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+enum Seeded { A = 5, B, C }              # 5, 6, 7
+```
+
+Commas are optional — members may be separated by commas, newlines, or both, and
+a trailing comma is fine:
+
+```ez
+enum Direction {
+    NORTH,
+    EAST,
+    SOUTH,
+    WEST,
+}
+```
+
+Members are ordinary numbers, so they compare, do arithmetic, and live in arrays
+and dictionaries like any other value:
+
+```ez
+when code == Status.NOT_FOUND { out "missing" }
+palette = [Color.RED, Color.GREEN]
+```
+
+An enum desugars to a model whose members are all static, which is why the access
+syntax matches [static members](#static-members). Two mistakes are rejected at
+parse time: a **duplicate member name** (it would silently shadow the earlier one,
+leaving no way to tell which value you were getting) and an **empty enum body**
+(almost always an unfinished edit).
+
 ### Operator Overloading
 
 The parser allows **any token** to be used as a function name inside a `model` body — this is what enables operator overloading. The bytecode VM checks for a matching method on a model instance before falling back to the built-in numeric/structural behavior.
@@ -733,9 +782,9 @@ The parser allows **any token** to be used as a function name inside a `model` b
 | `<` | `task <(other)` | |
 | `>` | `task >(other)` | |
 | `>=` | `task >=(other)` | |
+| `<=` | `task <=(other)` | |
+| `!=` | `task !=(other)` | |
 | `-` (unary negation) | `task neg()` | invoked for `-v` |
-
-**Not overloadable** — `<=` and `!=` always fall back to the default numeric/structural comparison (`doLessEq` / `doNotEqual`) regardless of whether the instance defines `<=` or `!=` methods. If you need consistent `<=`/`!=` behaviour for a custom type, define `<` and `==` and compose them at the call site, or expose a named helper method like `lte()`.
 
 ```ez
 model Vector {
@@ -954,6 +1003,51 @@ Everything in this section is registered directly as a native function in the C+
 | `writeLine(path, line)` | Write a single line |
 | `appendLine(path, line)` | Append a single line |
 
+#### The `File` class
+
+For anything beyond read-it-all / write-it-all — streaming, appending over time,
+seeking, or managing files on disk — use the `File` class.
+
+```ez
+f = File("app.log", "a")     # "r" "w" "a", or "rb" "wb" "ab", or "rw"
+f.write("a line\n")
+f.flush()                    # push to disk without closing
+f.close()
+```
+
+`File()` **throws** `FileNotFoundError` if the path cannot be opened — it never
+returns a closed handle, so wrap it in `try` rather than testing the result:
+
+```ez
+try {
+    f = File("missing/dir/x.txt", "a")
+} catch (e) {
+    out "could not open: " + str(e)
+}
+```
+
+| Method | Description |
+|---|---|
+| `readLine()` | One line without its newline; `nil` at EOF |
+| `read(n)` | Up to `n` bytes; `""` at EOF |
+| `readAll()` | Everything remaining |
+| `write(s)` / `writeLine(s)` | Write, optionally with a trailing newline |
+| `flush()` | Push buffered writes to the OS — without it, recent writes sit in the stream buffer and are lost if the process dies |
+| `seek(offset)` / `tell()` | Move / report the file position |
+| `size()` | Size in bytes; restores the position, so it is safe mid-write |
+| `isOpen()` / `eof()` | State checks |
+| `close()` | Close the handle |
+
+Path-level operations are **static** — they act on a path, not an open handle:
+
+| Static | Description |
+|---|---|
+| `File.exists(path)` | Does it exist? |
+| `File.size(path)` | Size in bytes |
+| `File.rename(from, to)` | Rename, replacing the destination if present |
+| `File.remove(path)` | Delete. Returns `false` if it was already absent, so cleanup needs no guard; throws only on a real failure (e.g. permissions) |
+| `File.delete(path)` | Alias for `File.remove` |
+
 ### HTTP Client (via libcurl)
 
 | Function | Description |
@@ -967,11 +1061,55 @@ Everything in this section is registered directly as a native function in the C+
 
 ### Regular Expressions
 
+The engine is `std::regex` in ECMAScript mode. It has **no dotall and no named
+groups**, so neither is offered.
+
+The `re_*` family reports match **positions**, which the older `re*` functions do
+not. That matters: without offsets there is no correct way to walk a string —
+locating a match by searching for its own text finds the first *literal*
+occurrence instead (`\bcat\b` against `"concat cat"` lands on index 3, not 7),
+and a zero-width match never advances.
+
 | Function | Description |
 |---|---|
-| `reMatch(text, pattern)` | Test if `text` matches `pattern` |
-| `reSearch(text, pattern)` | Find first match, return captured groups |
-| `reReplace(text, pattern, repl)` | Replace first match |
+| `re_test(text, pattern[, flags])` | Does the pattern occur anywhere? |
+| `re_full_match(text, pattern[, flags])` | Does it match the whole string? |
+| `re_find(text, pattern[, flags, start])` | First match at or after `start`, else `nil` |
+| `re_find_all(text, pattern[, flags, limit])` | Every non-overlapping match |
+| `re_replace(text, pattern, repl[, flags, limit])` | Replace; `limit` 0 = all. `$1`–`$9` and `$&` work in `repl` |
+| `re_split(text, pattern[, flags, limit])` | Split on the pattern |
+| `re_escape(text)` | Escape metacharacters to match text literally |
+| `re_valid(pattern)` | Does the pattern compile? |
+
+`re_find` / `re_find_all` return dictionaries shaped
+`{"text", "start", "end", "groups"}`. A capture group that did not participate is
+`nil`, not `""` — the only way to tell `(a)?` that failed to match from one that
+matched empty.
+
+An invalid pattern throws `RegexError` rather than reporting "no match", which is
+the worst failure mode a validator can have. Zero-width matches advance by one
+character, so `a*` terminates.
+
+Flags are a string and combine: `"i"` case-insensitive, `"m"` multiline
+(`^`/`$` also match at line breaks). An unknown flag is an error.
+
+```ez
+m = re_find("2026-08-07", "([0-9]{4})-([0-9]{2})")
+m["text"]        # "2026-08"
+m["start"]       # 0
+m["groups"][0]   # "2026"
+
+re_replace("John Smith", "(\\w+) (\\w+)", "$2, $1")   # "Smith, John"
+```
+
+The original three remain for compatibility; they return matched strings only,
+with no positions and no flags:
+
+| Function | Description |
+|---|---|
+| `reMatch(text, pattern)` | Test if `text` matches `pattern` entirely |
+| `reSearch(text, pattern)` | First match, as an array of `[whole, group1, …]` |
+| `reReplace(text, pattern, repl)` | Replace all matches |
 
 ### Math Functions
 
@@ -1003,13 +1141,93 @@ Everything in this section is registered directly as a native function in the C+
 
 | Function | Description |
 |---|---|
-| `spawn(fn, ...args)` | Start a detached OS thread running `fn(...args)` |
+| `spawn(fn, ...args)` | Start a detached OS thread running `fn(...args)` → `Future` |
 | `await expr` / `sync expr` | Block until a `Future` resolves (`sync` is an alias for `await` as a function call) |
+| `awaitAll(futures)` | Block until every future resolves; results in input order |
+| `awaitAny(futures)` | Block until the **first** future settles, and return it |
+| `isDone(future)` | Has it finished? Non-blocking — for progress reporting |
+| `cancel(future)` | Cancel a future; awaiting it then throws |
 | `waitAsync(ms)` | Non-blocking delay (yields to the event loop) |
 | `wait(ms)` / `stop(ms)` | Blocking sleep for `ms` milliseconds |
 | `mutex()` | Create a `Mutex` value |
-| `lock(mu, fn)` | Acquire mutex, run `fn`, release |
-| `Atomic(initial)` | Create an atomic integer value |
+| `lock(mu, fn)` | Acquire mutex, run `fn`, release (RAII — releases even if `fn` throws) |
+| `Atomic(initial)` | Atomic integer: `get()`, `set(v)`, `add(n)`, `sub(n)` |
+| `Channel()` | Blocking queue — see below |
+
+If a spawned task throws, the failure is recorded **on its future**: awaiting it
+re-raises the error, so it can be caught at the call site.
+
+```ez
+try {
+    await(spawn(mightFail))
+} catch (e) {
+    out "task failed: " + str(e.message)
+}
+```
+
+An error that crosses a future boundary arrives as an exception **instance** — read
+`e.message` for the text, since `str()` on an instance gives `<instance>`. A local
+`throw "text"` is caught as a plain string.
+
+#### `Channel` — blocking queue
+
+A real mutex plus condition variable, for handing values between threads without
+polling.
+
+| Method | Description |
+|---|---|
+| `send(value)` | Append a value and wake one receiver |
+| `receive()` | Block until a value is available; `nil` if the channel is closed and drained |
+| `receiveTimeout(ms)` | Block up to `ms`; `nil` on timeout |
+| `tryReceive()` | Take a value only if one is queued; never blocks |
+| `size()` | Values currently queued |
+| `close()` / `isClosed()` | Close, waking every receiver |
+
+Since a queued `nil` is indistinguishable from "empty", send a token value rather
+than `nil` when using a channel to signal.
+
+### Date & Time
+
+`clock()` gives raw epoch milliseconds. For calendar work use `DateTime`.
+
+```ez
+d = DateTime()                              # now
+d.format("%Y-%m-%d %H:%M:%S")               # "2026-08-07 01:32:51"
+d.timestamp()                               # epoch milliseconds
+
+birthday = DateTime(1998, 6, 12)            # y, m, d
+launch   = DateTime(2026, 8, 7, 9, 30, 0)   # y, m, d, h, min, s
+```
+
+| Method | Description |
+|---|---|
+| `year()` `month()` `day()` | Date parts |
+| `hour()` `minute()` `second()` | Time parts |
+| `weekday()` | Day of week |
+| `timestamp()` | Epoch milliseconds |
+| `format(fmt)` | `strftime` pattern, rendered in local time |
+| `diff(other)` | Milliseconds between two `DateTime`s |
+| `addMs(n)` / `addSeconds(n)` / `addDays(n)` | Shifted copy |
+| `toString()` | Readable form |
+
+`DateTime()` accepts 0, 3, or 6 arguments; anything else is a `TypeError`, and an
+impossible date is a `ValueError`.
+
+`Timer` runs a callback on a background thread:
+
+```ez
+t = Timer(1000, true)          # every second, repeating
+t.onTick(| | { out "tick" })
+t.start()
+# ...
+t.stop()
+```
+
+| Method | Description |
+|---|---|
+| `onTick(fn)` | Set the callback (chainable) |
+| `start()` / `stop()` | Start / stop the background thread |
+| `isRunning()` | State check |
 
 ### Metaprogramming
 
@@ -1233,14 +1451,14 @@ A summary of places where this repository's source diverges from commonly-circul
 - **No `**` power operator** — the lexer does not produce a power token; use `pow(base, exp)`.
 - **No `0b...` binary literals** — only decimal and `0x...` hex literals are lexed.
 - **String interpolation uses `` `text {expr}` ``**, not `` `text ${expr}` ``.
-- **`<=` and `!=` cannot be operator-overloaded** on model instances, unlike `+ - * / == < > >= neg`.
-- **`CMakeLists.txt`'s source list is incomplete** — it omits `Builtins_Buffer.cpp` and `Builtins_Concurrency.cpp`, and references a non-existent `Builtins_DB.cpp`. Use the manual `g++` command above for a complete build.
 - **No `db_*` (SQLite) or `pdf_*` builtins exist in C++** despite `sqlite3` being linked by CMake — any database or PDF functionality must come from an `ezlib` package.
-- **No `md5`, `sha256`, `base64_encode/decode`, or `hmac_sha256` builtins exist in C++** — cryptographic helpers, if available, are `ezlib`-side.
-- **No `deleteFile`, `listDir`, `fs_exists`, `getenv`, `setenv`, or `exec` builtins exist in C++** — only `readFile`/`writeFile`/`appendFile`/`readLines`/`writeLine`/`appendLine`.
+- **No `md5`, `sha256`, or `hmac_sha256` builtins exist in C++** — general hashing lives in the `ezlib` `crypto` package. Base64 is partly covered: `b64url_encode`/`b64url_decode` (URL-safe alphabet) and `hex_to_bytes` are builtins, but standard-alphabet `base64_encode`/`base64_decode` are not.
+- **No `listDir`, `getenv`, `setenv`, or `exec` builtins exist in C++.** File deletion, renaming and existence checks are available as statics on the `File` class (`File.remove`, `File.rename`, `File.exists`, `File.size`) rather than as free functions; directory listing and process control must come from an `ezlib` package or the FFI.
 - **No `http_put`, `http_delete`, or `startServer`** C++ builtins — only `http_get`, `http_post`, and `fetch`.
 - **Windows-only** — the code directly includes `<windows.h>` and Win32-specific structures (PE header patching, icon resources, `HMODULE`/`FARPROC` FFI), so it cannot be built on Linux/macOS as-is.
 - **`match` arms support only equality comparison** against literal/expression patterns plus an `other` default — no ranges, guards, or destructuring.
+- **Hard limits.** Call depth is capped at **4096** frames; exceeding it raises a catchable "maximum call depth exceeded" rather than crashing. A function may hold up to **65535** locals and capture up to **255** distinct outer variables. EZ frames live in a heap vector rather than on the C stack, so deep recursion does not consume native stack.
+- **Interned strings are per-thread.** Strings of 14+ characters are deduplicated on the main thread only; worker threads allocate directly. This is a memory optimisation with no observable behavioural difference.
 - **`other when` is the only valid else-if chain syntax** — consecutive bare `when` blocks are independent statements, not an if/else-if/else chain.
 
 ---

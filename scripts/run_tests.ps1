@@ -140,6 +140,13 @@ $failurePattern = '(?m)(^|\s)(FAIL\b|!!! TEST FAILED|Fails:\s*[1-9]|\[FATAL\])'
 $pass = 0; $fail = 0; $knownFail = 0; $fixed = 0
 $failedNames = @()
 $fixedNames  = @()
+# name -> everything the test printed, for the failure report at the end.
+$failureOutput = @{}
+
+# GitHub renders ::group:: as a collapsible section and ::error:: as an
+# annotation on the job summary and the PR diff. Outside Actions these would be
+# noise, so they are only emitted when actually running there.
+$inActions = [bool]$env:GITHUB_ACTIONS
 
 foreach ($t in $tests) {
     $name = $t.Name
@@ -159,6 +166,10 @@ foreach ($t in $tests) {
     $head = Get-Content $t.FullName -TotalCount 5 -ErrorAction SilentlyContinue
     if ($head -match '^\s*(#|//)\s*EXPECT:\s*compile-error') { $expectCompileError = $true }
 
+    # Whatever the test printed. Kept even on the timeout path, because the
+    # output up to the point it wedged is usually what identifies where.
+    $output = ''
+
     try {
         $proc = Start-Process -FilePath $ez -ArgumentList $t.FullName `
                               -NoNewWindow -PassThru `
@@ -169,9 +180,11 @@ foreach ($t in $tests) {
         if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
             try { $proc.Kill() } catch {}
             $status = 'FAIL'; $reason = "timed out after ${TimeoutSec}s"
+            Start-Sleep -Milliseconds 100   # let the killed process flush
+            if (Test-Path $outFile) { $output += (Get-Content $outFile -Raw -ErrorAction SilentlyContinue) }
+            if (Test-Path $errFile) { $output += (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
         }
         else {
-            $output = ''
             if (Test-Path $outFile) { $output += (Get-Content $outFile -Raw -ErrorAction SilentlyContinue) }
             if (Test-Path $errFile) { $output += (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) }
 
@@ -219,6 +232,16 @@ foreach ($t in $tests) {
     else {
         $fail++; $failedNames += $name
         Write-Host ('  [FAIL]       {0}  ({1})' -f $name, $reason) -ForegroundColor Red
+
+        # Show what the test actually printed.
+        #
+        # The reason alone is frequently useless: a test that wraps its whole
+        # body in one try/catch reports "failure marker: !!! TEST FAILED" and
+        # nothing else, so the exception text -- the one line that says which
+        # assertion broke -- was captured, then deleted with the temp files.
+        # Diagnosing meant re-running by hand, which is no help at all when the
+        # failure happened on a CI runner.
+        $failureOutput[$name] = $output
     }
 }
 
@@ -237,6 +260,40 @@ if ($fail) {
     Write-Host ''
     Write-Host '  Failing tests:' -ForegroundColor Red
     $failedNames | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+
+    # Full output for each failure, so a CI log is enough to diagnose from
+    # without reproducing locally.
+    Write-Host ''
+    Write-Host '========================================' -ForegroundColor Red
+    Write-Host ' Failure details' -ForegroundColor Red
+    Write-Host '========================================' -ForegroundColor Red
+
+    foreach ($n in $failedNames) {
+        $body = $failureOutput[$n]
+        if ([string]::IsNullOrWhiteSpace($body)) {
+            $body = '(the test produced no output -- it most likely died before printing anything)'
+        }
+        $body = $body.TrimEnd()
+
+        if ($inActions) { Write-Host "::group::FAILED $n" }
+        Write-Host ''
+        Write-Host ("--- $n " + ('-' * [Math]::Max(0, 56 - $n.Length))) -ForegroundColor Red
+        $body -split "`r?`n" | ForEach-Object { Write-Host "  $_" }
+        if ($inActions) { Write-Host '::endgroup::' }
+
+        if ($inActions) {
+            # One annotation per failure, pinned to the file so it shows up in
+            # the PR diff. Newlines have to be encoded or Actions truncates the
+            # message at the first one.
+            $firstError = ($body -split "`r?`n" |
+                           Where-Object { $_ -match 'Error|FAIL|Exception|Traceback' } |
+                           Select-Object -First 1)
+            if (-not $firstError) { $firstError = $body -split "`r?`n" | Select-Object -Last 1 }
+            $encoded = ($body -replace '%', '%25' -replace "`r", '' -replace "`n", '%0A')
+            $rel = "Test/$n"
+            Write-Host "::error file=$rel,title=$n::$firstError%0A%0A$encoded"
+        }
+    }
 }
 Write-Host ''
 

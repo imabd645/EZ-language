@@ -192,8 +192,14 @@ void registerGCBuiltins(RuntimeContext& interp) {
                         ezFut->set(result);
                     }
                 } catch(std::exception& e) {
-                    std::cerr << "[spawn-thread] uncaught: " << e.what() << std::endl;
-                    ezFut->set(Value());
+                    // Record the failure ON THE FUTURE. This used to call
+                    // set(Value()), which completes the future SUCCESSFULLY with
+                    // nil -- so await() returned nil and the caller had no way to
+                    // learn the task had thrown at all. Anything built on
+                    // "await rethrows" (allSettled, retry, timeouts) was
+                    // therefore unable to work. setError() makes get() rethrow,
+                    // which is the same path cancel() already relies on.
+                    ezFut->setError(e.what());
                 }
                 EventLoop::instance().release();
             }).detach();

@@ -1,3 +1,0 @@
-export task pkgSubDir() { give "sub" }
-export pkgConst = 7
-task pkgPrivate() { give "private" }

@@ -157,6 +157,105 @@ appendLine("log.txt", "Another entry")
 
 **Source**: `src/builtins/Builtins_IO.cpp`
 
+### File (class)
+
+**Signature**: `File(path: string, mode: string) -> File`
+
+**Return**: An open file handle
+
+**Tier**: Confirmed
+
+**Notes**: Modes are `"r"`, `"w"`, `"a"`, the binary variants `"rb"`, `"wb"`, `"ab"`, and `"rw"`. **`File()` throws `FileNotFoundError` when the path cannot be opened — it never returns a closed handle**, so wrap the call in `try` rather than testing the result. An invalid mode throws `ValueError`.
+
+**Instance methods**:
+
+| Method | Signature | Notes |
+|---|---|---|
+| `readLine()` | `-> string\|nil` | Without the trailing newline; `nil` at EOF |
+| `read(n)` | `(integer) -> string` | Up to `n` bytes; `""` at EOF |
+| `readAll()` | `-> string` | Everything remaining |
+| `write(s)` | `(string) -> bool` | |
+| `writeLine(s)` | `(string) -> bool` | Appends a newline |
+| `flush()` | `-> bool` | Pushes buffered writes to the OS. Without it recent writes stay in the stream buffer and are lost if the process dies |
+| `seek(offset)` | `(integer) -> bool` | |
+| `tell()` | `-> integer` | |
+| `size()` | `-> integer` | Bytes on disk; restores position, safe mid-write |
+| `isOpen()` | `-> bool` | |
+| `eof()` | `-> bool` | A closed file reports true |
+| `close()` | `-> bool` | |
+
+**Static methods** (act on a path, not a handle):
+
+| Static | Signature | Notes |
+|---|---|---|
+| `File.exists(path)` | `(string) -> bool` | |
+| `File.size(path)` | `(string) -> integer` | Throws `IOError` if missing |
+| `File.rename(from, to)` | `(string, string) -> bool` | Replaces the destination if present |
+| `File.remove(path)` | `(string) -> bool` | **Returns `false` when the path was already absent** so cleanup needs no guard; throws `IOError` on a real failure |
+| `File.delete(path)` | `(string) -> bool` | Alias for `File.remove` |
+
+**Example**:
+```ez
+f = File("app.log", "a")
+f.write("a line\n")
+f.flush()
+f.close()
+
+when File.exists("app.log") {
+    File.remove("app.log")
+}
+```
+
+**Source**: `src/builtins/Builtins_IO.cpp`
+
+---
+
+## Date/Time Builtins
+
+### DateTime (class)
+
+**Signature**: `DateTime()` | `DateTime(y, m, d)` | `DateTime(y, m, d, h, min, s) -> DateTime`
+
+**Return**: A point in time; no arguments means now
+
+**Tier**: Confirmed
+
+**Notes**: Only 0, 3, or 6 arguments are accepted — anything else throws `TypeError`, and an impossible date throws `ValueError`. `format()` renders in **local** time.
+
+**Methods**: `year()` `month()` `day()` `hour()` `minute()` `second()` `weekday()` `timestamp()` (epoch ms) `format(fmt)` (strftime) `diff(other)` (ms) `addMs(n)` `addSeconds(n)` `addDays(n)` `toString()`
+
+**Example**:
+```ez
+d = DateTime()
+d.format("%Y-%m-%d %H:%M:%S")     # "2026-08-07 01:32:51"
+d.timestamp()                     # epoch milliseconds
+
+launch = DateTime(2026, 8, 7, 9, 30, 0)
+launch.hour()                     # 9
+```
+
+**Source**: `src/builtins/Builtins_TimeDate.cpp`
+
+### Timer (class)
+
+**Signature**: `Timer(intervalMs: number, repeat: bool = false) -> Timer`
+
+**Return**: A timer that runs a callback on a background thread
+
+**Tier**: Inferred
+
+**Methods**: `onTick(fn)` (chainable) `start()` `stop()` `isRunning()`
+
+**Example**:
+```ez
+t = Timer(1000, true)
+t.onTick(| | { out "tick" })
+t.start()
+t.stop()
+```
+
+**Source**: `src/builtins/Builtins_TimeDate.cpp`
+
 ---
 
 ## Math Builtins
@@ -627,6 +726,147 @@ encoded = b64url_encode("hello")
 **Example**:
 ```ez
 decoded = b64url_decode(encoded)
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_test
+
+**Signature**: `re_test(text: string, pattern: string, flags: string = "") -> bool`
+
+**Return**: true if the pattern occurs anywhere in `text`
+
+**Tier**: Confirmed
+
+**Notes**: `flags` is a string — `"i"` case-insensitive, `"m"` multiline; they combine (`"im"`). An invalid pattern throws `RegexError`; an unknown flag throws. The engine is ECMAScript: no dotall, no named groups.
+
+**Example**:
+```ez
+re_test("abc123", "[0-9]+")           # true
+re_test("HELLO", "hello", "i")        # true
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_full_match
+
+**Signature**: `re_full_match(text: string, pattern: string, flags: string = "") -> bool`
+
+**Return**: true only if the pattern matches the entire string
+
+**Tier**: Confirmed
+
+**Example**:
+```ez
+re_full_match("123", "[0-9]+")        # true
+re_full_match("abc123", "[0-9]+")     # false
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_find
+
+**Signature**: `re_find(text: string, pattern: string, flags: string = "", start: integer = 0) -> dict|nil`
+
+**Return**: `{"text", "start", "end", "groups"}` for the first match at or after `start`, else `nil`
+
+**Tier**: Confirmed
+
+**Notes**: `groups` holds capture groups 1..n (the whole match is `text`). A group that did not participate is `nil`, not `""` — the only way to distinguish `(a)?` that failed to match from one that matched empty. Positions are reported by the engine, so they are correct even when the matched text also appears earlier as a literal.
+
+**Example**:
+```ez
+m = re_find("2026-08-07", "([0-9]{4})-([0-9]{2})")
+m["text"]         # "2026-08"
+m["start"]        # 0
+m["groups"][0]    # "2026"
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_find_all
+
+**Signature**: `re_find_all(text: string, pattern: string, flags: string = "", limit: integer = 0) -> array`
+
+**Return**: Array of match dicts (same shape as `re_find`); `limit` 0 means all
+
+**Tier**: Confirmed
+
+**Notes**: Zero-width matches advance by one character, so `a*` terminates.
+
+**Example**:
+```ez
+ms = re_find_all("a1 b22", "[0-9]+")
+len(ms)              # 2
+ms[1]["start"]       # 4
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_replace
+
+**Signature**: `re_replace(text: string, pattern: string, replacement: string, flags: string = "", limit: integer = 0) -> string`
+
+**Return**: String with matches replaced; `limit` 0 replaces all, 1 replaces the first
+
+**Tier**: Confirmed
+
+**Notes**: `$1`–`$9` refer to capture groups and `$&` to the whole match.
+
+**Example**:
+```ez
+re_replace("John Smith", "(\\w+) (\\w+)", "$2, $1")   # "Smith, John"
+re_replace("a1b2", "[0-9]", "#", "", 1)               # "a#b2"
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_split
+
+**Signature**: `re_split(text: string, pattern: string, flags: string = "", limit: integer = 0) -> array`
+
+**Return**: Array of pieces; `limit` > 0 caps the count, leaving the remainder in the last
+
+**Tier**: Confirmed
+
+**Example**:
+```ez
+re_split("a1b22c", "[0-9]+")          # ["a", "b", "c"]
+re_split("a1b1c", "[0-9]", "", 2)     # ["a", "b1c"]
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_escape
+
+**Signature**: `re_escape(text: string) -> string`
+
+**Return**: `text` with regex metacharacters escaped, so it matches literally
+
+**Tier**: Confirmed
+
+**Example**:
+```ez
+re_test("a.b", re_escape("a.b"))      # true
+re_test("axb", re_escape("a.b"))      # false
+```
+
+**Source**: `src/builtins/Builtins_String.cpp`
+
+### re_valid
+
+**Signature**: `re_valid(pattern: string) -> bool`
+
+**Return**: true if the pattern compiles
+
+**Tier**: Confirmed
+
+**Notes**: Use before accepting a pattern from a user, rather than catching `RegexError` at every call site.
+
+**Example**:
+```ez
+re_valid("^a+$")      # true
+re_valid("((")        # false
 ```
 
 **Source**: `src/builtins/Builtins_String.cpp`
@@ -1735,9 +1975,11 @@ results = awaitAll([fut1, fut2, fut3])
 
 **Signature**: `awaitAny(futures: array) -> any`
 
-**Return**: First completed future result
+**Return**: Result of the first future to **settle**
 
 **Tier**: Inferred
+
+**Notes**: Settle, not succeed — if the first to finish threw, `awaitAny` throws. An empty array is an error. For "first one that worked", use `any()` from the `thread` package.
 
 **Example**:
 ```ez
@@ -1745,6 +1987,41 @@ result = awaitAny([fut1, fut2, fut3])
 ```
 
 **Source**: `src/builtins/Builtins_GC.cpp`
+
+### isDone
+
+**Signature**: `isDone(future: Future) -> bool`
+
+**Return**: Whether the future has finished, without blocking
+
+**Tier**: Confirmed
+
+**Notes**: For progress reporting and for waiting with a deadline without committing to a blocking `await`.
+
+**Example**:
+```ez
+f = spawn(work)
+when not isDone(f) { out "still running" }
+```
+
+**Source**: `src/builtins/Builtins_GC.cpp`
+
+### Futures and errors
+
+If a spawned task throws, the failure is recorded **on its future**: awaiting it
+re-raises the error, so it is catchable at the call site.
+
+```ez
+try {
+    await(spawn(mightFail))
+} catch (e) {
+    out "failed: " + str(e.message)
+}
+```
+
+An error that crossed a future boundary arrives as an exception **instance** —
+read `e.message`, since `str()` on an instance yields `<instance>`. A local
+`throw "text"` is caught as a plain string.
 
 ### Atomic Class
 
@@ -1769,20 +2046,30 @@ out a.get()  // Returns 1
 
 ### Channel Class
 
-**Methods**:
-- `init()` - Initialize channel
-- `send(value: any) -> bool` - Send value
-- `receive() -> any` - Receive value (blocks)
-- `close() -> bool` - Close channel
+A blocking queue backed by a real mutex and condition variable — receivers sleep
+in the OS rather than polling.
 
-**Tier**: Inferred
+**Methods**:
+- `send(value: any) -> bool` - Append a value and wake one receiver
+- `receive() -> any` - Block until a value is available; `nil` if closed and drained
+- `receiveTimeout(ms: number) -> any` - Block up to `ms`; `nil` on timeout
+- `tryReceive() -> any` - Take a value only if one is queued; never blocks
+- `size() -> integer` - Values currently queued
+- `isClosed() -> bool` - Whether the channel is closed
+- `close() -> bool` - Close, waking every receiver
+
+**Tier**: Confirmed
+
+**Notes**: `Channel()` is already constructed — do **not** call `ch.init()` afterwards, as that replaces the underlying queue. A queued `nil` cannot be told apart from "empty" by `tryReceive`/`receiveTimeout`, so send a token value rather than `nil` when signalling.
 
 **Example**:
 ```ez
 ch = Channel()
-ch.init()
 ch.send("hello")
-msg = ch.receive()
+msg = ch.receive()            # "hello"
+
+ch.tryReceive()               # nil — nothing queued
+ch.receiveTimeout(100)        # nil after 100ms
 ch.close()
 ```
 
@@ -2210,8 +2497,6 @@ No discrepancies found between Tier 1 (confirmed) and Tier 2 (inferred) syntax d
 
 ## Statistics
 
-- **Total Builtins Documented**: 120+
-- **Tier 1 (Confirmed)**: 8
-- **Tier 2 (Inferred)**: 112+
-- **Subsystems**: 12 (Core, IO, Math, String, Data, FFI, Concurrency, Buffer, GC, Console, Net, HTTP)
-- **Classes**: 3 (Atomic, Channel, Exception)
+- **Total Builtins Documented**: 135+
+- **Subsystems**: 13 (Core, IO, Date/Time, Math, String, Data, FFI, Concurrency, Buffer, GC, Console, Net, HTTP)
+- **Classes**: 6 (Atomic, Channel, DateTime, Exception, File, Timer)

@@ -93,7 +93,40 @@ model MathUtil {
 out MathUtil.calculateHypotenuse(3, 4) // 5
 ```
 
-## 5. Edge Cases & Pitfalls
+## 5. Enums
+
+`enum` declares a set of named integer constants, read as `Name.MEMBER`.
+
+```ez
+enum Color { RED, GREEN, BLUE }        // 0, 1, 2
+
+out str(Color.GREEN)                   // 1
+```
+
+Numbering starts at 0. An explicit value re-seeds the counter rather than
+restarting it, so members after one keep counting from there:
+
+```ez
+enum Status { OK = 200, NOT_FOUND = 404 }
+enum Seeded { A = 5, B, C }            // 5, 6, 7
+```
+
+Separators are flexible — commas, newlines, or both, and a trailing comma is
+allowed. Members are ordinary numbers, so they compare, do arithmetic, and sit
+in arrays and dictionaries like any other value.
+
+An enum desugars to a model whose members are all static, which is why access
+looks like a static member read. Two mistakes are rejected at parse time: a
+**duplicate member name** (it would silently shadow the earlier one) and an
+**empty body**.
+
+## 6. Decorators
+
+`@cached`, `@audited`, `@snapshot` and `@persist("f.db")` attach behaviour to a
+model, and you can write your own with the `decorator` keyword. See
+[Decorators](10_Decorators.md).
+
+## 7. Edge Cases & Pitfalls
 - **Missing `super()` Call**: If a parent model has an `init` method, the child model's `init` **must** call `super()`. Failing to do so will result in an uninitialized instance and crash the VM.
 - **Double `super()` Call**: Calling `super()` twice in the same constructor throws an exception.
 - **Hidden Inheritance Visibility**: Properties marked `hidden` in a parent model are completely inaccessible to the child model. The child cannot directly read or overwrite a parent's hidden properties.

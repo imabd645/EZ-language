@@ -20,10 +20,44 @@ clear()   // Clear screen
 gotoxy(10, 5) // Move cursor to X:10, Y:5
 getch()   // Pause and wait for single keystroke
 
-// File I/O
+// File I/O -- whole-file helpers
 writeFile("test.txt", "Hello File System!")
 content = readFile("test.txt")
 out content
+appendFile("log.txt", "one more line\n")
+lines = readLines("test.txt")
+```
+
+For streaming, appending over time, seeking, or managing files on disk, use the
+`File` class:
+
+```ez
+f = File("app.log", "a")     // "r" "w" "a", binary "rb" "wb" "ab", or "rw"
+f.write("a line\n")
+f.flush()                    // without this, recent writes sit in the buffer
+out str(f.size())            // bytes on disk; position is preserved
+f.close()
+```
+
+`File()` **throws** when the path cannot be opened — it never hands back a closed
+handle, so test it with `try`, not by checking the return value:
+
+```ez
+try {
+    f = File("missing/dir/x.txt", "a")
+} catch (e) {
+    out "could not open: " + str(e)
+}
+```
+
+Path-level operations are statics:
+
+```ez
+File.exists(path)            // bool
+File.size(path)              // bytes
+File.rename(from, to)        // replaces the destination
+File.remove(path)            // false if already absent, so no guard needed
+File.delete(path)            // alias for remove
 ```
 
 ## 2. System & Process
@@ -75,18 +109,50 @@ out join(arr, " | ")                    // "apple | banana | cherry"
 ```
 
 ### Regular Expressions (C++ `std::regex` wrapper)
+
+Every regex builtin takes the **subject first, the pattern second**.
+
 ```ez
 text = "Contact us at support@example.com"
-when reMatch("[\\w.-]+@[\\w.-]+", text) {
-    out "Contains email!"
+email = "[\\w.-]+@[\\w.-]+"
+
+// re_test = "does it occur anywhere?"
+when re_test(text, email) {
+    out "Contains an email!"
 }
 
-// reSearch returns an array of matched substrings
-emails = reSearch("[\\w.-]+@[\\w.-]+", text)
+// reMatch is a FULL match -- the whole string must match
+reMatch(text, email)          // false
+reMatch("a@b.com", email)     // true
 
-// Replace matches
-censored = reReplace("[\\w.-]+@[\\w.-]+", "[REDACTED]", text)
+// reSearch returns [whole, group1, ...] for the first match
+reSearch(text, email)         // ["support@example.com"]
+
+// reReplace replaces every match
+reReplace(text, email, "[REDACTED]")   // "Contact us at [REDACTED]"
 ```
+
+The `re_*` family adds match **positions**, capture groups, flags and split —
+none of which the three functions above provide:
+
+```ez
+m = re_find("2026-08-07", "([0-9]{4})-([0-9]{2})")
+m["text"]        // "2026-08"
+m["start"]       // 0
+m["groups"][0]   // "2026"
+
+re_find_all(text, email)               // every match, with offsets
+re_split("a1b22c", "[0-9]+")           // ["a", "b", "c"]
+re_replace("John Smith", "(\\w+) (\\w+)", "$2, $1")   // "Smith, John"
+re_test("HELLO", "hello", "i")         // true -- "i" and "m" flags
+re_escape("a.b")                       // match punctuation literally
+re_valid("((")                         // false
+```
+
+An invalid pattern throws `RegexError` rather than quietly reporting "no match".
+A capture group that did not participate is `nil`, not `""`.
+
+Full reference: [BUILTINS.md](../BUILTINS.md#re_find).
 
 ## 5. Networking (libcurl Integration)
 EZ provides a zero-setup networking library capable of handling SSL and complex HTTP requests.

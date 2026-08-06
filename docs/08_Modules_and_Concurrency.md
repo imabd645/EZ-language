@@ -37,16 +37,66 @@ futureWork = spawn(heavyMathWork, 50)
 out "Work is running in the background..."
 ```
 
-### `await` vs `sync`
-Once a task is spawned, you must wait for its result. EZ provides two distinct keywords for this:
-- **`await`**: Yields the current task's execution back to the VM event loop until the future completes. This is absolutely critical in GUI applications to ensure the window doesn't freeze!
-- **`sync`**: Blocks the underlying OS thread completely. Use this only in CLI tools where event loop responsiveness doesn't matter.
+### `await` and `sync`
+Once a task is spawned, you wait for its result with `await`:
 
 ```ez
-// Non-blocking wait
 finalResult = await(futureWork)
-out "Math result: " + finalResult
+out "Math result: " + str(finalResult)
 ```
+
+`sync` is an **alias for `await`** — both names are registered to the same
+function in `Builtins_GC.cpp`, so they behave identically. There is no
+"blocking" variant to choose between.
+
+### Waiting on many futures
+
+| Builtin | Behaviour |
+|---|---|
+| `awaitAll(futures)` | Waits for all; results in input order. Throws on the first failure |
+| `awaitAny(futures)` | Waits for the **first to settle** — if that one failed, this fails |
+| `isDone(future)` | Has it finished? Non-blocking |
+| `cancel(future)` | Cancels; awaiting it afterwards throws |
+
+```ez
+results = awaitAll([f1, f2, f3])       // ["...", "...", "..."]
+
+when not isDone(f1) { out "still running" }
+```
+
+For richer patterns — first *success* rather than first *settled*, per-future
+outcomes that never throw, timeouts, retries, bounded worker pools — use the
+`thread` package (`allSettled`, `any`, `withTimeout`, `retry`, `WorkerPool`).
+
+### Errors cross the future
+
+If a spawned task throws, the failure is recorded on its future. Awaiting
+re-raises it, so it is catchable where you wait:
+
+```ez
+try {
+    await(spawn(mightFail))
+} catch (e) {
+    out "task failed: " + str(e.message)
+}
+```
+
+An error that crossed a future boundary arrives as an exception **instance** —
+read `e.message`. `str()` on an instance gives `<instance>`. A local
+`throw "text"` is caught as a plain string.
+
+### `Channel` — passing values between threads
+
+```ez
+ch = Channel()
+spawn(| | { ch.send("done") })
+ch.receive()                  // blocks until a value arrives
+ch.receiveTimeout(500)        // or nil after 500ms
+ch.tryReceive()               // nil if nothing queued; never blocks
+```
+
+Backed by a real mutex and condition variable, so receivers sleep in the OS
+rather than polling.
 
 ### Concurrent Fetch Example
 ```ez
@@ -70,7 +120,6 @@ out "All downloads finished."
 ```
 
 ## 3. Edge Cases & Pitfalls
-- **Global Variable Race Conditions**: Since spawned threads share the exact same VM environment and global memory state, multiple threads modifying the *same* global array or dictionary simultaneously will cause a race condition, potentially crashing the VM garbage collector. Always limit background tasks to local scope manipulations or ensure thread safety via mutexes (if implemented by your native bindings).
-- **Deadlocking via `sync`**: Calling `sync` on the main thread for a future that requires the main thread's event loop to resolve will cause an unbreakable deadlock. Always use `await` unless you have a specific reason not to.
+- **Global Variable Race Conditions**: Spawned threads share the same VM environment and global memory, so several threads mutating the *same* global array or dictionary at once will race. Keep background work to local scope, or guard shared state with the built-in `mutex()` / `lock(m, fn)` (a real `std::mutex` released even if the body throws), `Atomic(n)` for counters, or a `Channel` to hand values across instead of sharing them.
 - **Circular Imports**: If File A `use`s File B, and File B `use`s File A, the VM will enter an infinite import loop until it crashes via Stack Overflow. Carefully architect your dependency trees to avoid circular references.
 - **Multiple `await` Calls**: Calling `await` on the *same* `EZFuture` multiple times is perfectly safe. It will return the cached result immediately on the second call.

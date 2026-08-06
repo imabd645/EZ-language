@@ -75,6 +75,7 @@ All keywords are reserved and cannot be used as identifiers.
 | `static` | Static member |
 | `interface` | Interface definition |
 | `implements` | Interface implementation |
+| `enum` | Named integer constants (`enum Color { RED, GREEN }`), read as `Color.RED` |
 
 ### Contracts
 
@@ -87,7 +88,19 @@ All keywords are reserved and cannot be used as identifiers.
 
 | Keyword | Description |
 |---------|-------------|
-| `decorator` | Decorator keyword |
+| `decorator` | Declares a user-defined decorator: `decorator name(fn) { give ... }` |
+
+Applied with `@name` directly above a `task` or `model`. Five are built in:
+
+| Decorator | Applies to | Effect |
+|---------|-------------|--------|
+| `@cached` | task / model method | Caches the result until the instance changes |
+| `@audited` | model | Records every property change; read with `audit(obj)` |
+| `@snapshot` | model | Enables `snapshot()`, `rollback()`, `snapshot_diff()` |
+| `@persist("f.db")` | model | Saves property writes to SQLite; adds `Model.load()` |
+| `@ratelimit(n, "period")` | task | Caps calls per `"second"`/`"minute"`/`"hour"`/`"day"` |
+
+Full reference: [docs/10_Decorators.md](docs/10_Decorators.md).
 
 ## Operators
 

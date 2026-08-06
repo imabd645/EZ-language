@@ -217,7 +217,20 @@ void registerGCBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
-    interp.defineGlobal("awaitAll", Value::makeNativeFunction("awaitAll", 1, 
+    // isDone(future) -> bool
+    // Has it finished, without blocking? Reporting progress over a batch of
+    // futures otherwise means racing a watcher thread against a zero-length
+    // timeout, which answers "not yet" for work that already finished.
+    interp.defineGlobal("isDone", Value::makeNativeFunction("isDone", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isFuture()) {
+                interp.runtimeError("isDone() expects a future", 0, "");
+                return Value();
+            }
+            return Value(args[0].asFuture()->isReady());
+        }));
+
+    interp.defineGlobal("awaitAll", Value::makeNativeFunction("awaitAll", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isArray()) { interp.runtimeError("awaitAll() expects array of futures", 0, ""); return Value(); }
             auto& arr = args[0].asArray();

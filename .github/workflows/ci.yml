@@ -9,16 +9,24 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+    # A hung test used to be able to burn the whole 6-hour default. The suite
+    # takes a couple of minutes; anything beyond this is stuck, not slow.
+    timeout-minutes: 30
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
-        update: true
+        # `update: true` re-syncs the whole package database on every run and is
+        # a common source of flaky, slow CI. The pinned toolchain below is
+        # enough to build.
+        update: false
+        # Caches the installed packages between runs.
+        cache: true
         install: >-
           mingw-w64-x86_64-gcc
           mingw-w64-x86_64-cmake
@@ -27,28 +35,55 @@ jobs:
           mingw-w64-x86_64-libuv
           mingw-w64-x86_64-curl
           mingw-w64-x86_64-sqlite3
-          
-    - name: Configure and Build (CMake)
+          mingw-w64-x86_64-zlib
+
+    - name: Configure and build
       shell: msys2 {0}
       run: |
+        set -e
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . -j4
-        
-    - name: Run All Tests
-      shell: bash
-      run: |
-        FAILURES=0
-        for file in Test/test_*.ez Test/Analysis/*.ez Test/HandwrittenTests/*.ez; do
-          if [ -f "$file" ]; then
-            echo "Running $file..."
-            ./build/ez.exe "$file" || FAILURES=$((FAILURES + 1))
-          fi
-        done
-        if [ "$FAILURES" -gt 0 ]; then
-          echo "$FAILURES test(s) failed!"
-          exit 1
-        fi
-        
 
+    # ez.exe links libstdc++ and libwinpthread dynamically, so it only starts
+    # when MinGW's bin directory is reachable. The test runner below is
+    # PowerShell, which does not inherit the msys2 shell's PATH -- without this
+    # every test dies with 0xC0000135 (STATUS_DLL_NOT_FOUND) and the job reports
+    # "N tests failed" while saying nothing about the real cause.
+    #
+    # Copying the two DLLs next to the binary makes it self-contained, which
+    # also matters for the artifact uploaded at the end.
+    - name: Bundle runtime DLLs
+      shell: msys2 {0}
+      run: |
+        set -e
+        cp /mingw64/bin/libstdc++-6.dll build/
+        cp /mingw64/bin/libwinpthread-1.dll build/
+        ls -l build/*.exe build/*.dll
+
+    - name: Smoke test
+      shell: pwsh
+      run: |
+        "out ""hello from CI""" | Set-Content smoke.ez
+        .\build\ez.exe smoke.ez
+        if ($LASTEXITCODE -ne 0) { throw "interpreter failed to run" }
+
+    # Uses the repository's own runner rather than a shell loop over *.ez.
+    # It already handles the things a glob cannot: a per-test timeout, the
+    # exclusion list for tests that open a window or bind a socket, tests that
+    # are expected to fail compilation, and tests that print FAIL while still
+    # exiting 0.
+    - name: Run test suite
+      shell: pwsh
+      run: .\scripts\run_tests.ps1 -IncludeHandwritten -TimeoutSec 60
+
+    - name: Upload interpreter
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ez-windows-x64
+        path: |
+          build/ez.exe
+          build/*.dll
+        retention-days: 14

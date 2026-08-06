@@ -1,2 +1,1 @@
-use "math" as math
-print(math.sqrt(16))
+print(sqrt(16))

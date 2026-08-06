@@ -1,2 +1,1 @@
-use "math"
 print(pow(2, 3))

@@ -1,0 +1,54 @@
+name: Build and Test EZ Language
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-make
+          mingw-w64-x86_64-libffi
+          mingw-w64-x86_64-libuv
+          mingw-w64-x86_64-curl
+          mingw-w64-x86_64-sqlite3
+          
+    - name: Configure and Build (CMake)
+      shell: msys2 {0}
+      run: |
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake --build . -j4
+        
+    - name: Run All Tests
+      shell: bash
+      run: |
+        FAILURES=0
+        for file in Test/test_*.ez Test/Analysis/*.ez Test/HandwrittenTests/*.ez; do
+          if [ -f "$file" ]; then
+            echo "Running $file..."
+            ./build/ez.exe "$file" || FAILURES=$((FAILURES + 1))
+          fi
+        done
+        if [ "$FAILURES" -gt 0 ]; then
+          echo "$FAILURES test(s) failed!"
+          exit 1
+        fi
+        
+

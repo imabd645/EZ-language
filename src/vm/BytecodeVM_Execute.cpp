@@ -719,7 +719,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 if (klass->behaviors.hasCached && inst->getCacheStore()) {
                                     inst->modifyCacheStore([&](auto& cache) {
                                         for (auto& [methodName, cr] : cache) {
-                                            if (cr.deps.count(propName)) cr.dirty = true;
+                                            // `cr.deps` is read here but never populated anywhere in
+                                            // the codebase, so this condition was always false and a
+                                            // @cached result was frozen for the life of the instance:
+                                            // a cart's total() kept reporting the price it was first
+                                            // called with, no matter how the price changed. Until
+                                            // reads are actually tracked, invalidate every cached
+                                            // result on the instance when any property changes --
+                                            // conservative (it can recompute more than strictly
+                                            // needed) but never stale, which is the right way round
+                                            // for a cache the caller cannot see.
+                                            (void)propName;
+                                            cr.dirty = true;
                                         }
                                     });
                                 }

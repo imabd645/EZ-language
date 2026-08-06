@@ -202,5 +202,69 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             return Value(true);
         }));
 
+    // Channel.tryReceive() -> value | nil
+    // Takes a value only if one is already queued. Returns nil rather than
+    // blocking, which is what a non-blocking acquire needs: without it a
+    // semaphore has to poll, and polling a shared counter is exactly the
+    // check-then-act race that makes such a semaphore grant too many permits.
+    // A queued nil is indistinguishable from "empty" -- send a token, not nil.
+    channelClass->setMethod("tryReceive", Value::makeNativeFunction("tryReceive", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            std::lock_guard<std::mutex> guard(chan->mtx);
+            if (chan->q.empty()) return Value();
+            Value v = chan->q.front();
+            chan->q.pop();
+            return v;
+        }));
+
+    // Channel.receiveTimeout(ms) -> value | nil
+    // Blocks up to `ms` milliseconds. Returns nil on timeout, so a bounded wait
+    // needs no polling loop.
+    channelClass->setMethod("receiveTimeout", Value::makeNativeFunction("receiveTimeout", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            if (args.size() < 2 || (!args[1].isNumber() && !args[1].isInteger())) {
+                interp.runtimeError("receiveTimeout() expects milliseconds (number)", 0, "");
+                return Value();
+            }
+            long long ms = args[1].isInteger()
+                ? static_cast<long long>(args[1].asInteger())
+                : static_cast<long long>(args[1].asFloat());
+            if (ms < 0) ms = 0;
+
+            std::unique_lock<std::mutex> lock(chan->mtx);
+            bool ready = chan->cv.wait_for(lock, std::chrono::milliseconds(ms), [&]() {
+                return !chan->q.empty() || chan->closed;
+            });
+            if (!ready) return Value();          // timed out
+            if (!chan->q.empty()) {
+                Value v = chan->q.front();
+                chan->q.pop();
+                return v;
+            }
+            return Value();                      // closed and drained
+        }));
+
+    // Channel.size() -> integer   (values currently queued)
+    channelClass->setMethod("size", Value::makeNativeFunction("size", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            std::lock_guard<std::mutex> guard(chan->mtx);
+            return Value(static_cast<long long>(chan->q.size()));
+        }));
+
+    // Channel.isClosed() -> bool
+    channelClass->setMethod("isClosed", Value::makeNativeFunction("isClosed", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto chan = instance->getProperty("_channel").asChannelPtr();
+            std::lock_guard<std::mutex> guard(chan->mtx);
+            return Value(chan->closed);
+        }));
+
     interp.defineGlobal("Channel", Value(channelClass));
 }

@@ -299,6 +299,12 @@ Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ("  Passed      : {0}" -f $pass)      -ForegroundColor Green
 Write-Host ("  Failed      : {0}" -f $fail)      -ForegroundColor ($(if ($fail) { 'Red' } else { 'Green' }))
 Write-Host ("  Known-fail  : {0}" -f $knownFail) -ForegroundColor DarkYellow
+if ($skipped) {
+    # Loud on purpose. A skipped test is not a passing test, and a run with
+    # skips should never read as an unqualified green.
+    Write-Host ("  SKIPPED     : {0}  <- NOT run: {1}" -f $skipped, $SkipReason) -ForegroundColor DarkCyan
+    $skippedNames | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkCyan }
+}
 if ($fixed) {
     Write-Host ("  Fixed       : {0}  (remove from `$KnownFailures)" -f $fixed) -ForegroundColor Magenta
     $fixedNames | ForEach-Object { Write-Host "      $_" -ForegroundColor Magenta }

@@ -58,9 +58,22 @@ jobs:
       shell: msys2 {0}
       run: |
         set -e
-        cp /mingw64/bin/libstdc++-6.dll build/
-        cp /mingw64/bin/libwinpthread-1.dll build/
-        ls -l build/*.exe build/*.dll
+        # Resolved from the binary rather than hardcoded, and followed
+        # transitively: ez.exe imports only libstdc++-6 and libwinpthread-1, but
+        # libstdc++ itself pulls in libgcc_s_seh-1, and missing that one fails
+        # exactly like missing the others.
+        copy_deps() {
+          objdump -p "$1" 2>/dev/null \
+            | grep "DLL Name:" | sed 's/.*DLL Name: *//' \
+            | while read -r dll; do
+                if [ -f "/mingw64/bin/$dll" ] && [ ! -f "build/$dll" ]; then
+                  cp "/mingw64/bin/$dll" build/
+                  copy_deps "build/$dll"
+                fi
+              done
+        }
+        copy_deps build/ez.exe
+        ls -l build/ez.exe build/*.dll
 
     - name: Smoke test
       shell: pwsh

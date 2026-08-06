@@ -207,17 +207,15 @@ void registerGCBuiltins(RuntimeContext& interp) {
                         threadVM->traceExecution = false;
 
                         threadVM->taskFuture = ezFut;
-                        // NOTE: deliberately NOT setting isAsyncTask here.
-                        // It looks attractive -- it suppresses the traceback the
-                        // worker prints for a failure that the future already
-                        // carries -- but it also changes WHICH exception the VM
-                        // throws: the isAsyncTask path throws a RuntimeError
-                        // carrying a live exception INSTANCE, and moving that
-                        // GC-tracked object across the worker's catch and
-                        // teardown faulted roughly one run in three, on
-                        // addresses that decoded to native method names
-                        // ("size", "init", "remove") -- a corrupted class table.
-                        // Quieter output is not worth an intermittent crash.
+                        // The failure is carried by the future for whoever
+                        // awaits it, so the worker must not ALSO dump a
+                        // traceback to stderr. Without this, handling failures
+                        // as data -- allSettled over a batch, a retry loop --
+                        // prints a full traceback per expected failure, and
+                        // even `try { await(f) } catch (e) {}` reports a crash
+                        // it already handled. Same choice the `async task`
+                        // path makes.
+                        threadVM->isAsyncTask = true;
                         result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
 
                         // A yielded VM is resumed by the event loop, which

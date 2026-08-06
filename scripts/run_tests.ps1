@@ -50,7 +50,17 @@ param(
     [switch] $IncludeHandwritten,
     [int]    $TimeoutSec = 60,
     [string] $Interpreter = '',
-    [switch] $IgnoreKnown
+    [switch] $IgnoreKnown,
+
+    # Tests to report as SKIPPED rather than run, as a comma-separated list of
+    # file names. Also read from $env:EZ_SKIP_TESTS so CI can decide at runtime
+    # -- e.g. when a platform's sqlite FFI is unusable, the database tests are
+    # skipped instead of failing the build over an environment problem.
+    #
+    # Skips are counted and printed separately and never turn the run green by
+    # stealth: a skipped test is reported as skipped, not as a pass.
+    [string] $Skip = '',
+    [string] $SkipReason = 'skipped by request'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -148,9 +158,19 @@ $failurePattern = '(?m)(^|\s)(FAIL\b|!!! TEST FAILED|Fails:\s*[1-9]|\[FATAL\])'
 # bare "Error:" which error-handling tests legitimately print as expected output.
 $crashPattern = '(?m)^Traceback \(most recent call last\)'
 
-$pass = 0; $fail = 0; $knownFail = 0; $fixed = 0
+# Names to skip: the -Skip parameter plus anything CI put in EZ_SKIP_TESTS.
+$skipNames = @()
+foreach ($src in @($Skip, $env:EZ_SKIP_TESTS)) {
+    if ($src) {
+        $skipNames += ($src -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
+}
+if ($env:EZ_SKIP_REASON) { $SkipReason = $env:EZ_SKIP_REASON }
+
+$pass = 0; $fail = 0; $knownFail = 0; $fixed = 0; $skipped = 0
 $failedNames = @()
 $fixedNames  = @()
+$skippedNames = @()
 # name -> everything the test printed, for the failure report at the end.
 $failureOutput = @{}
 
@@ -161,6 +181,14 @@ $inActions = [bool]$env:GITHUB_ACTIONS
 
 foreach ($t in $tests) {
     $name = $t.Name
+
+    if ($skipNames -contains $name) {
+        $skipped++; $skippedNames += $name
+        Write-Host ('  [SKIP]       {0}  ({1})' -f $name, $SkipReason) -ForegroundColor DarkCyan
+        if ($inActions) { Write-Host "::warning title=Skipped $name::$SkipReason" }
+        continue
+    }
+
     $outFile = [System.IO.Path]::GetTempFileName()
     $errFile = [System.IO.Path]::GetTempFileName()
     $status  = 'PASS'

@@ -4,6 +4,8 @@
 #include "gc/CycleCollector.h"
 #include <iostream>
 #include <fstream>
+#include <filesystem>
+#include <system_error>
 #include <sstream>
 #include <vector>
 #include <string>
@@ -371,6 +373,127 @@ void registerIOBuiltins(RuntimeContext& interp) {
                 return Value(true); // Closed file is at EOF
             }
             return Value(fs->eof());
+        }));
+
+    // File.flush() -> true
+    // Pushes buffered writes to the OS. Without this a long-lived writer (a log
+    // file, say) keeps its most recent lines in the C++ stream buffer, so they
+    // are missing from the file until it is closed -- and lost entirely if the
+    // process dies.
+    fileClass->setMethod("flush", Value::makeNativeFunction("flush", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto fs = getStream(instance.get());
+            if (!fs || !fs->is_open()) {
+                interp.throwException("ValueError", "flush() called on a closed File", 0, "");
+                return Value();
+            }
+            fs->flush();
+            return Value(true);
+        }));
+
+    // File.size() -> integer
+    // Size in bytes of the open file. The read/write positions are restored, so
+    // this is safe to call in the middle of writing (log rotation checks it on
+    // every line).
+    fileClass->setMethod("size", Value::makeNativeFunction("size", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            auto instance = args[0].asInstance();
+            auto fs = getStream(instance.get());
+            if (!fs || !fs->is_open()) {
+                interp.throwException("ValueError", "size() called on a closed File", 0, "");
+                return Value();
+            }
+            // Appending streams keep the put pointer at the end but the get
+            // pointer at 0, so measure on disk rather than trusting either.
+            fs->flush();
+            std::error_code ec;
+            auto sz = std::filesystem::file_size(
+                std::filesystem::u8path(instance->getProperty("_path").asString()), ec);
+            if (ec) {
+                interp.throwException("IOError",
+                    "Could not determine size of '" + instance->getProperty("_path").asString() +
+                    "': " + ec.message(), 0, "");
+                return Value();
+            }
+            return Value(static_cast<long long>(sz));
+        }));
+
+    // ── Path-level operations ──────────────────────────────────────────────
+    // Static, because they act on a path rather than an open handle. Log
+    // rotation needs all three: check the file exists, rename it aside, drop
+    // the oldest generation.
+
+    // File.exists(path) -> bool
+    fileClass->setStaticMember("exists", Value::makeNativeFunction("exists", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isString()) {
+                interp.throwException("TypeError", "File.exists() expects a string path", 0, "");
+                return Value();
+            }
+            std::error_code ec;
+            return Value(std::filesystem::exists(std::filesystem::u8path(args[0].asString()), ec));
+        }));
+
+    // File.remove(path) -> bool   (alias: File.delete)
+    // Returns false when the path was already absent, so cleanup code does not
+    // have to guard the call. A permission failure still throws.
+    auto removeFn = Value::makeNativeFunction("remove", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isString()) {
+                interp.throwException("TypeError", "File.remove() expects a string path", 0, "");
+                return Value();
+            }
+            const std::string path = args[0].asString();
+            std::error_code ec;
+            bool removed = std::filesystem::remove(std::filesystem::u8path(path), ec);
+            if (ec) {
+                interp.throwException("IOError",
+                    "Could not delete '" + path + "': " + ec.message(), 0, "");
+                return Value();
+            }
+            return Value(removed);
+        });
+    fileClass->setStaticMember("remove", removeFn);
+    fileClass->setStaticMember("delete", removeFn);
+
+    // File.rename(from, to) -> true
+    // Replaces `to` if it already exists, which is what rotation wants.
+    fileClass->setStaticMember("rename", Value::makeNativeFunction("rename", 2,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() < 2 || !args[0].isString() || !args[1].isString()) {
+                interp.throwException("TypeError", "File.rename() expects two string paths", 0, "");
+                return Value();
+            }
+            const std::string from = args[0].asString();
+            const std::string to   = args[1].asString();
+            std::error_code ec;
+            std::filesystem::rename(std::filesystem::u8path(from),
+                                    std::filesystem::u8path(to), ec);
+            if (ec) {
+                interp.throwException("IOError",
+                    "Could not rename '" + from + "' to '" + to + "': " + ec.message(), 0, "");
+                return Value();
+            }
+            return Value(true);
+        }));
+
+    // File.size(path) -> integer
+    fileClass->setStaticMember("size", Value::makeNativeFunction("size", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isString()) {
+                interp.throwException("TypeError", "File.size() expects a string path", 0, "");
+                return Value();
+            }
+            const std::string path = args[0].asString();
+            std::error_code ec;
+            auto sz = std::filesystem::file_size(std::filesystem::u8path(path), ec);
+            if (ec) {
+                interp.throwException("IOError",
+                    "Could not determine size of '" + path + "': " + ec.message(), 0, "");
+                return Value();
+            }
+            return Value(static_cast<long long>(sz));
         }));
 
     interp.defineGlobal("File", Value(fileClass));

@@ -186,6 +186,13 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     threadVM->traceExecution = false;
 
                     threadVM->taskFuture = ezFut;
+                    // The failure is carried by the future for whoever awaits
+                    // it, so the worker should not also dump a traceback to
+                    // stderr. Without this, code that handles failures as data
+                    // -- allSettled over a batch, a retry loop -- prints a full
+                    // traceback for every expected failure. This is the same
+                    // choice the `async task` path already makes.
+                    threadVM->isAsyncTask = true;
                     Value result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
 
                     if (!threadVM->isYielded) {

@@ -681,10 +681,28 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
 
     // Compile the inner declaration normally
     size_t localsBefore = current->locals.size();
+
+    // A declaration does not always introduce a NEW local. Top-level tasks in a
+    // module are pre-declared so they can call each other regardless of the
+    // order they appear in, so `export task f()` reuses that existing slot and
+    // the range check below would mark nothing -- leaving f unexported and nil
+    // to anyone importing the package. Remember the declared name and mark it
+    // explicitly as well.
+    std::string declName;
+    if (std::holds_alternative<TaskStmt*>(stmt.inner->variant)) {
+        declName = std::get<TaskStmt*>(stmt.inner->variant)->name;
+    } else if (std::holds_alternative<ModelStmt*>(stmt.inner->variant)) {
+        declName = std::get<ModelStmt*>(stmt.inner->variant)->name;
+    }
+
     compileStmt(stmt.inner);
     // Mark all newly introduced locals as exported
     for (size_t i = localsBefore; i < current->locals.size(); i++) {
         current->locals[i].exported = true;
+    }
+    if (!declName.empty()) {
+        int slot = resolveLocal(declName);
+        if (slot != -1) current->locals[slot].exported = true;
     }
 }
 

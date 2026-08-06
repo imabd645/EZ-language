@@ -1,0 +1,54 @@
+// `static` inside a task keeps its value between calls.
+//
+// This was broken outright: the initializer stored the mangled global BY SLOT
+// while the read (LOAD_GLOBAL) and the once-only guard (HAS_GLOBAL) both look
+// the name up in the name-keyed map. Globals live in two places, so the value
+// landed where neither could see it and the first use died with
+//     Undefined variable '__static_2_inc_x'
+//
+// It went unnoticed because a script killed by an uncaught error still exited 0,
+// so verify_static.ez -- whose only job is to check this -- reported PASS.
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        print("ok " + name)
+    } other {
+        print("FAIL " + name + " expected " + str(expected) + " got " + str(actual))
+    }
+}
+
+task inc() {
+    static x = 0
+    x += 1
+    give x
+}
+check("first call", inc(), 1)
+check("value persists", inc(), 2)
+check("and again", inc(), 3)
+
+// A second static in a different task must not share storage with the first.
+task counter2() {
+    static x = 100
+    x += 1
+    give x
+}
+check("separate task, separate storage", counter2(), 101)
+check("still independent", inc(), 4)
+
+// Plain assignment, not just compound.
+task setter() {
+    static v = 5
+    v = v * 2
+    give v
+}
+check("plain assignment to a static", setter(), 10)
+check("...persists too", setter(), 20)
+
+// The initializer must run once, not on every call.
+task once() {
+    static calls = 0
+    calls += 1
+    give calls
+}
+once()
+once()
+check("initializer runs only once", once(), 3)

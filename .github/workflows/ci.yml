@@ -87,6 +87,12 @@ jobs:
     # exclusion list for tests that open a window or bind a socket, tests that
     # are expected to fail compilation, and tests that print FAIL while still
     # exiting 0.
+    # On failure the runner prints each failing test's full output -- the
+    # exception text and traceback -- as a collapsible group, plus a GitHub
+    # annotation pinned to the file. Previously it reported only a one-line
+    # reason ("failure marker: !!! TEST FAILED") and deleted the captured
+    # output, so a red CI run told you which test failed but never why, and the
+    # only way to find out was to reproduce it locally.
     - name: Run test suite
       shell: pwsh
       run: .\scripts\run_tests.ps1 -IncludeHandwritten -TimeoutSec 60

@@ -86,6 +86,22 @@ model DbStatement {
     }
 }
 
+// Resolve an exported symbol, or say which one is missing.
+//
+// os_get_func() returns 0 for a symbol it cannot find, and os_call(0, ...)
+// faults inside the FFI with "Access violation or fatal memory fault inside
+// external DLL" -- naming neither the symbol nor the library. On a machine
+// where a DIFFERENT sqlite3.dll is first on PATH (a CI runner, say), every one
+// of the 23 lookups below silently produced 0 and the first call crashed the
+// process with nothing to go on.
+task _dbsym(lib, name) {
+    fn = os_get_func(lib, name)
+    when fn == 0 or type(fn) == "nil" {
+        throw "Error: the loaded sqlite library does not export '" + str(name) + "'. It is probably not SQLite, or is a build without that symbol."
+    }
+    give fn
+}
+
 model Database {
     init(path) {
         self.lib = os_load_lib("sqlite3.dll")
@@ -100,35 +116,35 @@ model Database {
         }
 
         // --- Core API ---
-        self.openApi       = os_get_func(self.lib, "sqlite3_open")
-        self.prepare       = os_get_func(self.lib, "sqlite3_prepare_v2")
-        self.stepApi       = os_get_func(self.lib, "sqlite3_step")
-        self.finalizeApi   = os_get_func(self.lib, "sqlite3_finalize")
-        self.resetApi      = os_get_func(self.lib, "sqlite3_reset")
-        self.clearBindings = os_get_func(self.lib, "sqlite3_clear_bindings")
-        self.closeApi      = os_get_func(self.lib, "sqlite3_close")
-        self.errmsg        = os_get_func(self.lib, "sqlite3_errmsg")
+        self.openApi       = _dbsym(self.lib, "sqlite3_open")
+        self.prepare       = _dbsym(self.lib, "sqlite3_prepare_v2")
+        self.stepApi       = _dbsym(self.lib, "sqlite3_step")
+        self.finalizeApi   = _dbsym(self.lib, "sqlite3_finalize")
+        self.resetApi      = _dbsym(self.lib, "sqlite3_reset")
+        self.clearBindings = _dbsym(self.lib, "sqlite3_clear_bindings")
+        self.closeApi      = _dbsym(self.lib, "sqlite3_close")
+        self.errmsg        = _dbsym(self.lib, "sqlite3_errmsg")
 
         // --- Binding API ---
-        self.bindText      = os_get_func(self.lib, "sqlite3_bind_text")
-        self.bindInt       = os_get_func(self.lib, "sqlite3_bind_int64")
-        self.bindDouble    = os_get_func(self.lib, "sqlite3_bind_double")
-        self.bindBlob      = os_get_func(self.lib, "sqlite3_bind_blob")
-        self.bindNull      = os_get_func(self.lib, "sqlite3_bind_null")
+        self.bindText      = _dbsym(self.lib, "sqlite3_bind_text")
+        self.bindInt       = _dbsym(self.lib, "sqlite3_bind_int64")
+        self.bindDouble    = _dbsym(self.lib, "sqlite3_bind_double")
+        self.bindBlob      = _dbsym(self.lib, "sqlite3_bind_blob")
+        self.bindNull      = _dbsym(self.lib, "sqlite3_bind_null")
 
         // --- Column API ---
-        self.columnCount   = os_get_func(self.lib, "sqlite3_column_count")
-        self.columnName    = os_get_func(self.lib, "sqlite3_column_name")
-        self.columnType    = os_get_func(self.lib, "sqlite3_column_type")
-        self.columnText    = os_get_func(self.lib, "sqlite3_column_text")
-        self.columnInt     = os_get_func(self.lib, "sqlite3_column_int64")
-        self.columnDouble  = os_get_func(self.lib, "sqlite3_column_double")
-        self.columnBlob    = os_get_func(self.lib, "sqlite3_column_blob")
-        self.columnBytes   = os_get_func(self.lib, "sqlite3_column_bytes")
+        self.columnCount   = _dbsym(self.lib, "sqlite3_column_count")
+        self.columnName    = _dbsym(self.lib, "sqlite3_column_name")
+        self.columnType    = _dbsym(self.lib, "sqlite3_column_type")
+        self.columnText    = _dbsym(self.lib, "sqlite3_column_text")
+        self.columnInt     = _dbsym(self.lib, "sqlite3_column_int64")
+        self.columnDouble  = _dbsym(self.lib, "sqlite3_column_double")
+        self.columnBlob    = _dbsym(self.lib, "sqlite3_column_blob")
+        self.columnBytes   = _dbsym(self.lib, "sqlite3_column_bytes")
 
         // --- Metadata API ---
-        self.lastInsertId  = os_get_func(self.lib, "sqlite3_last_insert_rowid")
-        self.changesApi    = os_get_func(self.lib, "sqlite3_changes")
+        self.lastInsertId  = _dbsym(self.lib, "sqlite3_last_insert_rowid")
+        self.changesApi    = _dbsym(self.lib, "sqlite3_changes")
 
         // Open Database
         outPtr = os_alloc(8)

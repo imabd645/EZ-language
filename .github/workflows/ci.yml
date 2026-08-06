@@ -75,12 +75,40 @@ jobs:
         copy_deps build/ez.exe
         ls -l build/ez.exe build/*.dll
 
+    # Put MinGW's bin on PATH for every later step.
+    #
+    # The bundling step above walks ez.exe's IMPORT table, which by definition
+    # cannot see libraries the language opens at runtime through os_load_lib --
+    # sqlite3, curl and friends. lib/db.ez asks for "sqlite3.dll" first, so
+    # without this the runner resolved whatever happened to be on its PATH,
+    # os_get_func returned 0 for every sqlite symbol, and the first os_call
+    # faulted with "Access violation inside external DLL" -- taking out
+    # test_db_advanced, test_ffi_db and test_sqlite_ffi together.
+    - name: Add MinGW to PATH
+      shell: msys2 {0}
+      run: cygpath -w /mingw64/bin >> "$GITHUB_PATH"
+
     - name: Smoke test
       shell: pwsh
       run: |
         "out ""hello from CI""" | Set-Content smoke.ez
         .\build\ez.exe smoke.ez
         if ($LASTEXITCODE -ne 0) { throw "interpreter failed to run" }
+
+    # Prove the FFI can actually reach sqlite before running the suite, so a
+    # missing DLL is reported here rather than as three unrelated test failures.
+    - name: Check sqlite FFI is reachable
+      shell: pwsh
+      run: |
+        @'
+        use "lib/db.ez" as *
+        d = Database(":memory:")
+        d.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)", nil)
+        d.close()
+        out "sqlite FFI OK"
+        '@ | Set-Content sqlite_check.ez
+        .\build\ez.exe sqlite_check.ez
+        if ($LASTEXITCODE -ne 0) { throw "sqlite FFI is not usable on this runner" }
 
     # Uses the repository's own runner rather than a shell loop over *.ez.
     # It already handles the things a glob cannot: a per-test timeout, the

@@ -3,7 +3,7 @@ use "pdf"
 out "Testing PDF Fluent API (Method Chaining)..."
 
 # Create invoice using the new static init and chaining
-invoice = PDF.init("invoice_chained.pdf")
+invoice = PDF("invoice_chained.pdf")
        .addPage()
        .header("INVOICE #2024-001")
        .text(50, 750, "Company Name", 14)

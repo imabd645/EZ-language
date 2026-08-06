@@ -637,6 +637,20 @@ void BytecodeCompiler::compileSkip(const SkipStmt& /*stmt*/) {
 }
 
 void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
+    // If it's an export of an existing variable (e.g. `export alloc`),
+    // find the local variable by name and mark it as exported.
+    if (std::holds_alternative<ExpressionStmt*>(stmt.inner->variant)) {
+        auto exprStmt = std::get<ExpressionStmt*>(stmt.inner->variant);
+        if (std::holds_alternative<IdentifierExpr*>(exprStmt->expr->variant)) {
+            auto idExpr = std::get<IdentifierExpr*>(exprStmt->expr->variant);
+            int slot = resolveLocal(idExpr->name);
+            if (slot != -1) {
+                current->locals[slot].exported = true;
+                return; // We don't need to evaluate and pop it
+            }
+        }
+    }
+
     // Compile the inner declaration normally
     size_t localsBefore = current->locals.size();
     compileStmt(stmt.inner);

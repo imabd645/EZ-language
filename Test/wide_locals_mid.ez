@@ -1,0 +1,14 @@
+# Helper module for test_wide_locals.ez -- not a test on its own.
+# This module imports 300 symbols, so its own module-level scope holds 300
+# locals. Tasks declared here capture those locals as upvalues, and the capture
+# index used to be a single byte: capturing local 300 captured local 44, and
+# probe() ended up calling itself instead of fn0().
+use "Test/wide_locals_base.ez"
+
+export task probe() {
+    give fn0() + fn100() + fn255() + fn256() + fn299()
+}
+
+export task probe_last() {
+    give fn299()
+}

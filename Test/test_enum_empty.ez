@@ -1,0 +1,7 @@
+# EXPECT: compile-error
+# An enum with no members is almost certainly an unfinished edit rather than
+# something anyone meant to write.
+
+enum Nothing { }
+
+out "unreachable: empty enum was accepted"

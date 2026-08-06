@@ -2257,7 +2257,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         auto closure = std::make_shared<EZClosure>(func);
                         for (int i = 0; i < (int)func->upvalues.size(); i++) {
                             uint8_t isLocal = READ_BYTE();
-                            uint8_t index = READ_BYTE();
+                            // 16-bit: the index addresses a slot in the
+                            // enclosing frame, which can now exceed 255.
+                            uint16_t index = READ_SHORT();
                             if (isLocal) {
                                 closure->upvalues.push_back(captureUpvalue(frame->slots + index));
                             } else {

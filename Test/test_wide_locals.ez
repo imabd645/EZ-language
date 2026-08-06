@@ -1,0 +1,61 @@
+# More than 256 local slots in one scope, plus closures capturing slots past
+# 255. Both used to be single-byte operands:
+#
+#   * LOAD_LOCAL/STORE_LOCAL take a byte, so the compiler refused past 256
+#     locals outright -- ezsqlite's connection.ez hit that just by importing.
+#   * The CLOSURE upvalue descriptor also took a byte, so capturing local 300
+#     wrapped to local 44 and the closure quietly bound to the wrong variable.
+#     probe() below called itself instead of fn0() and blew the call stack.
+#
+# wide_locals_mid.ez imports 300 symbols, so its module scope holds 300 locals
+# and its tasks capture them as upvalues.
+use "Test/wide_locals_mid.ez"
+
+fails = 0
+
+task check(label, actual, expected) {
+    when (actual == expected) {
+        out "  ok   " + label + " = " + str(actual)
+    } other {
+        out "  BAD  " + label + " = " + str(actual) + " (expected " + str(expected) + ")"
+        fails = fails + 1
+    }
+}
+
+out "-- capture across a 300-local module scope --"
+check("probe()", probe(), 910)
+check("probe_last()", probe_last(), 299)
+
+out ""
+
+# Deep recursion: the call-depth cap used to be 512, low enough to hit doing
+# ordinary work. EZ frames live in a heap vector rather than on the C stack,
+# so depth is cheap.
+task countdown(n) {
+    when (n <= 0) { give 0 }
+    give 1 + countdown(n - 1)
+}
+
+out "-- call depth beyond the old 512 limit --"
+check("countdown(600)", countdown(600), 600)
+check("countdown(3000)", countdown(3000), 3000)
+
+# The cap still exists; it just sits much higher, and overflowing it is a
+# catchable error rather than a crash.
+out ""
+out "-- the raised cap is still enforced --"
+overflowed = false
+try {
+    countdown(100000)
+} catch (e) {
+    overflowed = true
+}
+check("countdown(100000) overflows cleanly", overflowed, true)
+
+out ""
+when (fails == 0) {
+    out "ALL WIDE-LOCAL TESTS PASSED"
+} other {
+    out "!!! TEST FAILED: " + str(fails) + " wide-local check(s) failed"
+    exit(1)
+}

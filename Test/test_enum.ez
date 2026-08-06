@@ -1,0 +1,82 @@
+# Enums. `enum` desugars to a model whose members are all static, so a member
+# is read as Name.MEMBER just like any other static.
+
+enum Color { RED, GREEN, BLUE }
+
+# Auto-numbering starts at 0 and increments.
+enum Status {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+# An explicit integer re-seeds the counter rather than restarting it, so B is 6.
+enum Seeded { A = 5, B, C }
+
+# Trailing comma and one-per-line layout both parse.
+enum Direction {
+    NORTH,
+    EAST,
+    SOUTH,
+    WEST,
+}
+
+fails = 0
+
+task check(label, actual, expected) {
+    when (actual == expected) {
+        out "  ok   " + label + " = " + str(actual)
+    } other {
+        out "  BAD  " + label + " = " + str(actual) + " (expected " + str(expected) + ")"
+        fails = fails + 1
+    }
+}
+
+out "-- auto-numbering from 0 --"
+check("Color.RED", Color.RED, 0)
+check("Color.GREEN", Color.GREEN, 1)
+check("Color.BLUE", Color.BLUE, 2)
+
+out "-- explicit values --"
+check("Status.OK", Status.OK, 200)
+check("Status.NOT_FOUND", Status.NOT_FOUND, 404)
+check("Status.SERVER_ERROR", Status.SERVER_ERROR, 500)
+
+out "-- counter continues after an explicit value --"
+check("Seeded.A", Seeded.A, 5)
+check("Seeded.B", Seeded.B, 6)
+check("Seeded.C", Seeded.C, 7)
+
+out "-- multi-line body with trailing comma --"
+check("Direction.NORTH", Direction.NORTH, 0)
+check("Direction.WEST", Direction.WEST, 3)
+
+out "-- enums work as ordinary values --"
+
+task describe(c) {
+    when (c == Color.RED) { give "red" }
+    when (c == Color.GREEN) { give "green" }
+    give "blue"
+}
+
+check("describe(Color.GREEN)", describe(Color.GREEN), "green")
+check("describe(Color.BLUE)", describe(Color.BLUE), "blue")
+
+# Members are plain numbers, so arithmetic and comparison work.
+check("Status.NOT_FOUND > Status.OK", Status.NOT_FOUND > Status.OK, true)
+check("Color.BLUE + 1", Color.BLUE + 1, 3)
+
+# They survive a round trip through a collection.
+palette = [Color.RED, Color.GREEN, Color.BLUE]
+check("palette[1]", palette[1], Color.GREEN)
+
+byName = {"ok": Status.OK, "missing": Status.NOT_FOUND}
+check("byName['missing']", byName["missing"], 404)
+
+out ""
+when (fails == 0) {
+    out "ALL ENUM TESTS PASSED"
+} other {
+    out "!!! TEST FAILED: " + str(fails) + " enum check(s) failed"
+    exit(1)
+}

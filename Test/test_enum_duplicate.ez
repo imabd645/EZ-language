@@ -1,0 +1,7 @@
+# EXPECT: compile-error
+# A repeated member would silently shadow the earlier one and the reader would
+# have no way to tell which value they were getting, so the parser rejects it.
+
+enum Color { RED, GREEN, RED }
+
+out "unreachable: duplicate enum member was accepted"

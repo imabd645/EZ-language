@@ -126,6 +126,8 @@ static const char* opcodeName(OpCode op) {
     switch (op) {
         case OpCode::LOAD_CONST: return "LOAD_CONST";
         case OpCode::LOAD_LOCAL: return "LOAD_LOCAL";
+        case OpCode::LOAD_LOCAL_W: return "LOAD_LOCAL_W";
+        case OpCode::STORE_LOCAL_W: return "STORE_LOCAL_W";
         case OpCode::STORE_LOCAL: return "STORE_LOCAL";
         case OpCode::LOAD_UPVALUE: return "LOAD_UPVALUE";
         case OpCode::STORE_UPVALUE: return "STORE_UPVALUE";
@@ -273,6 +275,15 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
     std::cout << std::setw(16) << opcodeName(op) << " ";
     
     switch (op) {
+        case OpCode::LOAD_LOCAL_W:
+        case OpCode::STORE_LOCAL_W: {
+            // 16-bit slot, so this is 3 bytes wide rather than the 2 the narrow
+            // local ops below occupy.
+            uint16_t slot = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            std::cout << std::setw(4) << (int)slot << " ";
+            std::cout << std::endl;
+            return offset + 3;
+        }
         case OpCode::LOAD_LOCAL:
         case OpCode::STORE_LOCAL:
         case OpCode::LOAD_UPVALUE:

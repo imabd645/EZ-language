@@ -69,6 +69,7 @@ private:
     StmtPtr modelStatement();
     StmtPtr interfaceStatement();
     StmtPtr structStatement();
+    StmtPtr enumStatement();
     StmtPtr useStatement();
     StmtPtr tryStatement();
     StmtPtr throwStatement();

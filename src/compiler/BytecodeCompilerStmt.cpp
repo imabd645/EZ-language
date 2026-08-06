@@ -91,8 +91,7 @@ void BytecodeCompiler::compileVarDecl(const VarDeclStmt& stmt) {
     } else {
         size_t localIdx = addLocal(stmt.name);
         markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(localIdx));
+        emitStoreLocal(localIdx);
         // Local variables stay on stack (no POP)
     }
 }
@@ -146,15 +145,13 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
     size_t loopVar = addLocal(stmt.variable);
     compileExpr(stmt.start);
     markInitialized();
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-              static_cast<uint8_t>(loopVar));
+    emitStoreLocal(loopVar);
 
     // End value cached in a hidden local (slot N+1)
     size_t endVar = addLocal("<repeat-end>");
     compileExpr(stmt.end);
     markInitialized();
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-              static_cast<uint8_t>(endVar));
+    emitStoreLocal(endVar);
 
     if (!stmt.step) {
         startLoop();
@@ -180,15 +177,39 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
         size_t incPoint = currentChunk().code.size();
         loopStack.back().start = incPoint;
-        emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
 
-        patchJump(skipFirstInc);
+        // INC_LOCAL and LOOP_LESS_EQ_LOCAL are the fused fast path, and both
+        // carry single-byte slots. Past slot 255 they would silently truncate
+        // and drive the wrong local, so a loop that far into a large function
+        // falls back to the generic sequence through the wide-aware helpers.
+        const bool narrowSlots = (loopVar <= 0xFF && endVar <= 0xFF);
 
-        emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
-        emitByte(static_cast<uint8_t>(loopVar));
-        emitByte(static_cast<uint8_t>(endVar));
-        emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
-        size_t exitJump = currentChunk().code.size() - 4;
+        size_t exitJump = 0;
+        if (narrowSlots) {
+            emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
+            patchJump(skipFirstInc);
+
+            emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
+            emitByte(static_cast<uint8_t>(loopVar));
+            emitByte(static_cast<uint8_t>(endVar));
+            emitByte(0xFF); emitByte(0xFF); emitByte(0xFF); emitByte(0xFF);
+            exitJump = currentChunk().code.size() - 4;
+        } else {
+            // loopVar = loopVar + 1
+            emitLoadLocal(loopVar);
+            emitOp(OpCode::LOAD_ONE);
+            emitOp(OpCode::ADD);
+            emitStoreLocal(loopVar);
+            emitOp(OpCode::POP);
+
+            patchJump(skipFirstInc);
+
+            // while endVar >= loopVar
+            emitLoadLocal(endVar);
+            emitLoadLocal(loopVar);
+            emitOp(OpCode::GREATER_EQ);
+            exitJump = emitJump(OpCode::JUMP_IF_FALSE);
+        }
 
         compileStmt(stmt.body);
 
@@ -201,10 +222,10 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         size_t stepVar = addLocal("<repeat-step>");
         compileExpr(stmt.step);
         markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(stepVar));
+        emitStoreLocal(stepVar);
         
         // --- Runtime check: step != 0 ---
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitLoadLocal(stepVar);
         emitOp(OpCode::LOAD_ZERO);
         emitOp(OpCode::EQUAL);
         size_t stepZeroJump = emitJump(OpCode::JUMP_IF_FALSE);
@@ -225,31 +246,31 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
         size_t incPoint = currentChunk().code.size();
         loopStack.back().start = incPoint;
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitLoadLocal(loopVar);
+        emitLoadLocal(stepVar);
         emitOp(OpCode::ADD);
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
+        emitStoreLocal(loopVar);
         emitOp(OpCode::POP);
 
         patchJump(skipFirstStep);
 
         // Condition: (step > 0) ? (loopVar <= endVar) : (loopVar >= endVar)
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitLoadLocal(stepVar);
         emitOp(OpCode::LOAD_ZERO);
         emitOp(OpCode::GREATER);
         size_t stepJump = emitJump(OpCode::JUMP_IF_FALSE);
 
         // Positive step: endVar >= loopVar
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(endVar));
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
+        emitLoadLocal(endVar);
+        emitLoadLocal(loopVar);
         emitOp(OpCode::GREATER_EQ); 
         size_t endStepJump = emitJump(OpCode::JUMP);
 
         patchJump(stepJump);
 
         // Negative step: loopVar >= endVar
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(endVar));
+        emitLoadLocal(loopVar);
+        emitLoadLocal(endVar);
         emitOp(OpCode::GREATER_EQ); 
 
         patchJump(endStepJump);
@@ -284,8 +305,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     current->locals.back().isStackResident = false;
     markInitialized();
     // GET_ITER leaves the iterator on the stack; store it into iterVar slot.
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-              static_cast<uint8_t>(iterVar));
+    emitStoreLocal(iterVar);
     emitOp(OpCode::POP);
 
     // Loop variable that receives each element (or key)
@@ -293,8 +313,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     current->locals.back().isStackResident = false;
     markInitialized();
     emitOp(OpCode::LOAD_NIL);
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-              static_cast<uint8_t>(loopVar));
+    emitStoreLocal(loopVar);
     emitOp(OpCode::POP);
     
     // Optional second variable for value in dict iteration
@@ -304,8 +323,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
         current->locals.back().isStackResident = false;
         markInitialized();
         emitOp(OpCode::LOAD_NIL);
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(loopValueVar));
+        emitStoreLocal(loopValueVar);
         emitOp(OpCode::POP);
     }
 
@@ -313,8 +331,7 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     size_t loopStart = currentChunk().code.size();
     loopStack.back().start = loopStart;
 
-    emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-              static_cast<uint8_t>(iterVar));
+    emitLoadLocal(iterVar);
     size_t exitJump = emitJump(OpCode::ITER_NEXT);
 
     if (!stmt.valueVariable.empty()) {
@@ -324,18 +341,17 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
         // key = array[0]
         emitOp(OpCode::LOAD_ZERO);
         emitOp(OpCode::INDEX_GET); // [array, key]
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
+        emitStoreLocal(loopVar);
         emitOp(OpCode::POP); // [array]
         
         // value = array[1]
         emitOp(OpCode::LOAD_ONE);
         emitOp(OpCode::INDEX_GET); // [value]
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopValueVar));
+        emitStoreLocal(loopValueVar);
         emitOp(OpCode::POP); // []
     } else {
         // Store the value that ITER_NEXT left on the stack into loopVar
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(loopVar));
+        emitStoreLocal(loopVar);
         emitOp(OpCode::POP);
     }
 
@@ -469,14 +485,12 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
     // Store into variable (local or global)
     int local = resolveLocal(stmt.name);
     if (local != -1) {
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(local));
+        emitStoreLocal(local);
     } else if (current->scopeDepth > 0) {
         // In namespaced modules (depth 1) or nested functions, tasks are locals
         size_t slot = addLocal(stmt.name);
         markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(slot));
+        emitStoreLocal(slot);
     } else {
         // Global task — allocate a slot
         uint16_t slot = globalSlotFor(stmt.name);
@@ -556,22 +570,18 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         if (!disableContracts && currentEnsuresClauses && !currentEnsuresClauses->empty()) {
             size_t resultSlot = addLocal("__result__");
             markInitialized();
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(resultSlot));
+            emitStoreLocal(resultSlot);
             emitOp(OpCode::POP);
 
             size_t resultAliasSlot = addLocal("result");
             markInitialized();
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                      static_cast<uint8_t>(resultSlot));
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(resultAliasSlot));
+            emitLoadLocal(resultSlot);
+            emitStoreLocal(resultAliasSlot);
             emitOp(OpCode::POP);
 
             compileContractChecks(*currentEnsuresClauses, false);
 
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                      static_cast<uint8_t>(resultSlot));
+            emitLoadLocal(resultSlot);
         }
 
         // Replay any open finally blocks before actually leaving.
@@ -604,12 +614,10 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         auto pending = current->activeFinallys;
         for (size_t i = pending.size(); i-- > 0; ) {
             current->activeFinallys.resize(i);
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(pending[i].retvalSlot));
+            emitStoreLocal(pending[i].retvalSlot);
             emitOp(OpCode::POP);
             compileStmt(pending[i].body);
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                      static_cast<uint8_t>(pending[i].retvalSlot));
+            emitLoadLocal(pending[i].retvalSlot);
         }
         current->activeFinallys = pending;
 
@@ -950,10 +958,11 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 // DUP dict, load local, store property
                 emitOp(OpCode::DUP);
                 
-                // Find where the local is (using resolveLocal to be safe)
+                // Find where the local is (using resolveLocal to be safe).
+                // This is the module-export harvest, which is precisely where a
+                // slot past 255 shows up, so it must use the wide-aware helper.
                 int slot = resolveLocal(local.name);
-                emitOp(OpCode::LOAD_LOCAL);
-                emitByte(static_cast<uint8_t>(slot));
+                emitLoadLocal(slot);
                 
                 emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
                 size_t propIdx = identifierConstant(local.name);
@@ -1068,8 +1077,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                         // travels onward, so a file inclusion's private helpers
                         // still stay private.
                         current->locals[slot].exported = local.exported;
-                        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                                  static_cast<uint8_t>(slot));
+                        emitStoreLocal(slot);
                         emitOp(OpCode::POP);
                     } else {
                         uint16_t aliasSlot = globalSlotFor(local.name);
@@ -1086,8 +1094,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             if (current->scopeDepth > 0) {
                 size_t slot = addLocal(alias);
                 markInitialized();
-                emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                          static_cast<uint8_t>(slot));
+                emitStoreLocal(slot);
                 emitOp(OpCode::POP);
             } else {
                 uint16_t aliasSlot = globalSlotFor(alias);
@@ -1316,8 +1323,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     if (current->scopeDepth > 0) {
         size_t slot = addLocal(stmt.name);
         markInitialized();
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                  static_cast<uint8_t>(slot));
+        emitStoreLocal(slot);
         // Do NOT emit POP! The local variable MUST remain on the stack.
     } else {
         uint16_t slot = globalSlotFor(stmt.name);
@@ -1460,8 +1466,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                     int slot = addLocal(cb.varName);
                     current->locals.back().isStackResident = false;
                     markInitialized();
-                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                              static_cast<uint8_t>(slot));
+                    emitStoreLocal(slot);
                     emitOp(OpCode::POP);
                 } else {
                     emitOp(OpCode::POP); // No variable bound, discard exception
@@ -1479,8 +1484,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                     int slot = addLocal(cb.varName);
                     current->locals.back().isStackResident = false;
                     markInitialized();
-                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                              static_cast<uint8_t>(slot));
+                    emitStoreLocal(slot);
                     emitOp(OpCode::POP);
                 } else {
                     emitOp(OpCode::POP); // No variable bound, discard exception
@@ -1498,7 +1502,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         if (hasFinally) {
             // Save exception as pending and jump to finally
             // The exception is still on the stack from the catch dispatch
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(pendingSlot));
+            emitStoreLocal(pendingSlot);
             emitOp(OpCode::POP);
             
             // Jump to finally
@@ -1511,7 +1515,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     } else {
         // try-finally without catch: exception is on stack from TRY_START catch handler
         // Save exception as pending and fall through to finally
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(pendingSlot));
+        emitStoreLocal(pendingSlot);
         emitOp(OpCode::POP);
     }
 
@@ -1530,7 +1534,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         compileStmt(stmt.finallyBlock);
         
         // Load pending exception
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(pendingSlot));
+        emitLoadLocal(pendingSlot);
         
         // We want to throw it if it's not nil.
         // DUP pushes a copy.
@@ -1606,8 +1610,12 @@ size_t BytecodeCompiler::addLocal(const std::string& name, bool isConst) {
     local.localVarInfoIdx = current->function->localVars.size() - 1;
     
     current->locals.push_back(local);
-    if (current->locals.size() > 256) {
-        errorAt("Too many local variables in function (max 256)", currentLine);
+    // The ceiling is now the 16-bit slot that LOAD_LOCAL_W/STORE_LOCAL_W carry,
+    // not the single byte the narrow opcodes use. 256 was reachable in ordinary
+    // code -- a module accumulates one local per imported symbol, and ezsqlite's
+    // connection.ez exceeded it just by importing its own siblings.
+    if (current->locals.size() > 65535) {
+        errorAt("Too many local variables in function (max 65535)", currentLine);
     }
     
     if (current->locals.size() > current->maxLocals) {
@@ -1723,6 +1731,30 @@ void BytecodeCompiler::emitConstant(const Value& value) {
     if (value.isFloat())        { emitConstant(Constant(value.asFloat()));  return; }
     if (value.isString())       { emitConstant(Constant(value.asString())); return; }
     emitOp(OpCode::LOAD_NIL);
+}
+
+// Local access, narrow when it fits in a byte and wide when it does not.
+//
+// The single-byte operand is why a function was capped at 256 locals. Rather
+// than widen every local access -- which would cost a byte on the hottest
+// opcodes in the language for the sake of a case almost nobody hits -- the wide
+// form is emitted only for slots past 255.
+void BytecodeCompiler::emitLoadLocal(size_t slot) {
+    if (slot <= 0xFF) {
+        emitLoadLocal(slot);
+    } else {
+        emitOp(OpCode::LOAD_LOCAL_W);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF), static_cast<uint8_t>(slot & 0xFF));
+    }
+}
+
+void BytecodeCompiler::emitStoreLocal(size_t slot) {
+    if (slot <= 0xFF) {
+        emitStoreLocal(slot);
+    } else {
+        emitOp(OpCode::STORE_LOCAL_W);
+        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF), static_cast<uint8_t>(slot & 0xFF));
+    }
 }
 
 size_t BytecodeCompiler::emitJump(OpCode jumpOp) {

@@ -37,6 +37,7 @@ std::unordered_map<std::string, TokenType> Lexer::keywords = {
     {"shown", TokenType::SHOWN},
     {"extends", TokenType::EXTENDS},
     {"struct", TokenType::STRUCT},
+    {"enum", TokenType::ENUM},
     {"new", TokenType::NEW},
     {"super", TokenType::SUPER},
     {"static", TokenType::STATIC},

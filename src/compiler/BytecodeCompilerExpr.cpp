@@ -94,8 +94,7 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
 
     int local = resolveLocal(expr.name);
     if (local != -1) {
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                  static_cast<uint8_t>(local));
+        emitLoadLocal(local);
         return;
     }
 
@@ -272,8 +271,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
                                            std::to_string(expr.arguments[0]->column);
                 auto it = oldCaptures.find(key);
                 if (it != oldCaptures.end()) {
-                    emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                              static_cast<uint8_t>(it->second));
+                    emitLoadLocal(it->second);
                     return;
                 }
             }
@@ -440,8 +438,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
 
         int local = resolveLocal(expr.name);
         if (local != -1) {
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(local));
+            emitStoreLocal(local);
         } else {
             int upvalue = resolveUpvalue(expr.name);
             if (upvalue != -1) {
@@ -458,8 +455,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 local = addLocal(expr.name);
                 current->locals.back().isStackResident = false; // Assignment creation doesn't stay on stack
                 markInitialized();
-                emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                          static_cast<uint8_t>(local));
+                emitStoreLocal(local);
             } else {
                 // Default to global — allocate a slot
                 uint16_t slot = globalSlotFor(expr.name);
@@ -480,7 +476,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
     size_t tempVar = addLocal("<destructure-val>");
     current->locals.back().isStackResident = false;
     markInitialized();
-    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(tempVar));
+    emitStoreLocal(tempVar);
     
     // 3. For each target target_i at index i:
     for (size_t i = 0; i < expr.targets.size(); ++i) {
@@ -492,7 +488,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
         if (std::holds_alternative<IdentifierExpr*>(target->variant)) {
             // Target is an identifier: var
             // Load tempVar
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            emitLoadLocal(tempVar);
             // Load index constant i
             int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
             emitOp(OpCode::LOAD_CONST);
@@ -512,8 +508,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             } else {
                 int local = resolveLocal(name);
                 if (local != -1) {
-                    emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                              static_cast<uint8_t>(local));
+                    emitStoreLocal(local);
                 } else {
                     int upvalue = resolveUpvalue(name);
                     if (upvalue != -1) {
@@ -528,8 +523,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
                         local = addLocal(name);
                         current->locals.back().isStackResident = false;
                         markInitialized();
-                        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                                  static_cast<uint8_t>(local));
+                        emitStoreLocal(local);
                     } else {
                         uint16_t slot = globalSlotFor(name);
                         emitOp(OpCode::STORE_GLOBAL_SLOT);
@@ -548,7 +542,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             compileExpr(indexExpr->index);
             
             // Load element from tempVar
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            emitLoadLocal(tempVar);
             int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
             emitOp(OpCode::LOAD_CONST);
             emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
@@ -564,7 +558,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             compileExpr(propExpr->object);
             
             // Load element from tempVar
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(tempVar));
+            emitLoadLocal(tempVar);
             int constIdx = (int)makeConstant(Constant(static_cast<long long>(i)));
             emitOp(OpCode::LOAD_CONST);
             emitBytes(static_cast<uint8_t>((constIdx >> 8) & 0xFF), static_cast<uint8_t>(constIdx & 0xFF));
@@ -701,7 +695,7 @@ void BytecodeCompiler::compileSuper(const SuperExpr& /*expr*/) {
 void BytecodeCompiler::emitLoadSelf() {
     int local = resolveLocal("self");
     if (local != -1) {
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(local));
+        emitLoadLocal(local);
         return;
     }
 

@@ -180,6 +180,12 @@ private:
     void emitOp(OpCode op);
     void emitConstant(const Constant& constant);
     void emitConstant(const Value& value);
+    // Local access that picks the narrow or wide opcode by slot number, so no
+    // call site has to remember the 256-slot boundary. Everything that touches a
+    // local goes through these.
+    void emitLoadLocal(size_t slot);
+    void emitStoreLocal(size_t slot);
+
     size_t emitJump(OpCode jumpOp);
     void patchJump(size_t offset);
     void emitLoop(size_t loopStart);

@@ -156,15 +156,13 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
         const auto& defaultValue = task.defaultValues[i];
         if (defaultValue != nullptr) {
             // if (param == nil) { param = defaultValue }
-            emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL),
-                      static_cast<uint8_t>(i));
+            emitLoadLocal(i);
             emitOp(OpCode::LOAD_NIL);
             emitOp(OpCode::EQUAL);
             size_t jump = emitJump(OpCode::JUMP_IF_FALSE);
 
             compileExpr(defaultValue);
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(i));
+            emitStoreLocal(i);
             emitOp(OpCode::POP); // pop result of STORE_LOCAL (peek design)
 
             patchJump(jump);
@@ -220,8 +218,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
                             compileExpr(c.arguments[0]);
                             size_t slot = addLocal("__old_" + key + "__");
                             markInitialized();
-                            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                                      static_cast<uint8_t>(slot));
+                            emitStoreLocal(slot);
                             emitOp(OpCode::POP);
                             oldCaptures[key] = slot;
                         }

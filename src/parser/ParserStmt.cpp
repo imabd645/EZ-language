@@ -1,5 +1,6 @@
 #include "Parser.h"
 #include <iostream>
+#include <unordered_set>
 std::vector<StmtPtr> Parser::parse() {
     std::vector<StmtPtr> statements;
     
@@ -177,6 +178,7 @@ StmtPtr Parser::statement() {
     if (match(TokenType::SKIP)) return skipStatement();
     if (match(TokenType::LBRACE)) return blockStatement();
     if (match(TokenType::STRUCT)) return structStatement();
+    if (match(TokenType::ENUM)) return enumStatement();
     if (match(TokenType::USE)) return useStatement();
     if (match(TokenType::TRY)) return tryStatement();
     if (match(TokenType::THROW)) return throwStatement();
@@ -690,6 +692,85 @@ StmtPtr Parser::expressionStatement() {
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
     // Otherwise, treat as regular assignment statement
     return makeExpressionStmt(arena, line, column, length, peek().filename, expr);
+}
+
+// enum Color { RED, GREEN, BLUE }
+// enum Status { OK = 200, NOT_FOUND = 404 }
+//
+// Lowered to a model whose members are statics, so `Color.RED` is an ordinary
+// static read and needs no new runtime machinery:
+//
+//     model Color { static RED = 0  static GREEN = 1  static BLUE = 2 }
+//
+// Members without an explicit value continue from the previous one, starting at
+// 0 -- the rule every C-family enum uses. A member may also carry a string, for
+// the common case of an enum whose values are names.
+StmtPtr Parser::enumStatement() {
+    int line = previous().line;
+    int column = previous().column;
+    int length = previous().lexeme.length();
+    Token nameToken = consume(TokenType::IDENTIFIER, "Expected enum name");
+    std::string name = nameToken.lexeme;
+
+    skipNewlines();
+    consume(TokenType::LBRACE, "Expected '{' before enum body");
+    skipNewlines();
+
+    std::vector<ModelMember> members;
+    long long nextValue = 0;
+    std::unordered_set<std::string> seen;
+
+    while (!check(TokenType::RBRACE) && !isAtEnd()) {
+        Token memberTok = consume(TokenType::IDENTIFIER, "Expected enum member name");
+        const std::string memberName = memberTok.lexeme;
+
+        // A duplicated name would silently shadow the earlier one, and the
+        // reader would have no way to tell which value they were getting.
+        if (!seen.insert(memberName).second) {
+            throw ParseError("Duplicate enum member '" + memberName + "' in enum '" + name + "'", memberTok.line);
+        }
+
+        ExprPtr valueExpr = nullptr;
+        if (match(TokenType::EQUAL)) {
+            valueExpr = expression();
+            // Keep auto-numbering in step with an explicit integer, so
+            // `enum E { A = 5, B }` yields B = 6 rather than restarting.
+            if (std::holds_alternative<LiteralExpr*>(valueExpr->variant)) {
+                auto lit = std::get<LiteralExpr*>(valueExpr->variant);
+                if (std::holds_alternative<long long>(lit->value)) {
+                    nextValue = std::get<long long>(lit->value) + 1;
+                }
+            }
+        } else {
+            valueExpr = makeLiteralExpr(arena, memberTok.line, memberTok.column,
+                                        (int)memberName.length(), memberTok.filename, nextValue);
+            nextValue++;
+        }
+
+        ModelMember m;
+        m.visibility = MemberVisibility::PUBLIC;
+        m.isStatic = true;
+        m.isMethod = false;
+        m.name = memberName;
+        m.typeHint = nullptr;
+        m.initializer = valueExpr;
+        members.push_back(m);
+
+        if (match(TokenType::COMMA)) {
+            skipNewlines();
+        } else {
+            skipNewlines();
+        }
+    }
+
+    consume(TokenType::RBRACE, "Expected '}' after enum body");
+
+    if (members.empty()) {
+        throw ParseError("Enum '" + name + "' has no members", line);
+    }
+
+    return makeModelStmt(arena, line, column, length, nameToken.filename,
+                         name, "", {}, {}, {}, {}, {}, members);
 }
 
 StmtPtr Parser::structStatement() {

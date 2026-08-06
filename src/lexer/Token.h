@@ -66,6 +66,7 @@ enum class TokenKind {
     SHOWN,
     EXTENDS,
     STRUCT,
+    ENUM,
     NEW,
     SUPER,
     STATIC,
@@ -196,6 +197,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::DECORATOR_KW: return "DECORATOR_KW";
         case TokenType::AT: return "AT";
         case TokenType::STRUCT: return "STRUCT";
+        case TokenType::ENUM: return "ENUM";
         case TokenType::NEW: return "NEW";
         case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";

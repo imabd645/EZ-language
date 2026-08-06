@@ -150,6 +150,20 @@ enum class OpCode : uint8_t {
     GET_CACHED_RESULT,          // name_idx(2): push cached value (or nil if dirty)
     STORE_CACHED_RESULT,        // name_idx(2): store TOS into method cache, mark clean
 
+    // Wide local access, for functions with more than 256 locals.
+    //
+    // LOAD_LOCAL/STORE_LOCAL carry a single-byte slot, which capped a function
+    // at 256 locals -- a limit real code reaches: a module that imports several
+    // others accumulates one local per imported symbol, and ezsqlite's
+    // connection.ez blew straight past it. The compiler emits these only when a
+    // slot does not fit in a byte, so the common path stays one byte wide.
+    //
+    // Appended at the END of the enum on purpose: opcode numbers are baked into
+    // serialised .ezc files, so inserting in the middle would silently
+    // misinterpret every previously compiled bytecode file.
+    LOAD_LOCAL_W,               // slot(2): load local, 16-bit slot
+    STORE_LOCAL_W,              // slot(2): store to local, 16-bit slot
+
     END            // End of chunk marker
 };
 

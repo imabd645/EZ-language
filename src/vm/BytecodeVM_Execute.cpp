@@ -120,6 +120,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_RATELIMIT_CHECK,
         &&handle_GET_CACHED_RESULT,
         &&handle_STORE_CACHED_RESULT,
+        // Must stay in the same order as the OpCode enum: this table is indexed
+        // by the raw opcode byte, so an entry out of position dispatches the
+        // wrong handler.
+        &&handle_LOAD_LOCAL_W,
+        &&handle_STORE_LOCAL_W,
         &&handle_END
     };
     // Tracing is off in every normal run, so mark the check cold: the compiler
@@ -175,6 +180,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
                 CASE_CODE(STORE_LOCAL) {
                     uint8_t slot = READ_BYTE();
+                    frame->slots[slot] = *(stackTop - 1);
+                    DISPATCH();
+                }
+
+                // Wide forms, for functions with more than 256 locals. The
+                // compiler emits these only when the slot will not fit in a
+                // byte, so the narrow cases above stay the hot path.
+                CASE_CODE(LOAD_LOCAL_W) {
+                    uint16_t slot = READ_SHORT();
+                    *stackTop++ = frame->slots[slot];
+                    DISPATCH();
+                }
+                CASE_CODE(STORE_LOCAL_W) {
+                    uint16_t slot = READ_SHORT();
                     frame->slots[slot] = *(stackTop - 1);
                     DISPATCH();
                 }

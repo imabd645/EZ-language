@@ -1010,7 +1010,10 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         // Emit upvalue info for the closure (it might capture from outer scope!)
         for (const auto& uv : moduleFunc->upvalues) {
             emitByte(uv.type == Upvalue::Type::LOCAL ? 1 : 0);
-            emitByte(static_cast<uint8_t>(uv.index));
+            // 16-bit: uv.index is a slot in the enclosing function, which can
+            // hold more than 256 locals. See the CLOSURE emit above.
+            emitBytes(static_cast<uint8_t>((uv.index >> 8) & 0xFF),
+                      static_cast<uint8_t>(uv.index & 0xFF));
         }
 
         emitOp(OpCode::CALL);

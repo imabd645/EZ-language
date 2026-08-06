@@ -452,7 +452,14 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
               static_cast<uint8_t>(nestedIdx & 0xFF));
     for (const auto& uv : func->upvalues) {
         emitByte(uv.type == Upvalue::Type::LOCAL ? 1 : 0);
-        emitByte(static_cast<uint8_t>(uv.index));
+        // 16-bit capture index. This is the slot of the captured variable in
+        // the ENCLOSING function, so once a function can hold more than 256
+        // locals the old single byte silently wrapped: capturing local 300
+        // captured local 44 instead, and a closure quietly bound to the wrong
+        // variable -- in practice a task that called itself instead of the
+        // function it meant to.
+        emitBytes(static_cast<uint8_t>((uv.index >> 8) & 0xFF),
+                  static_cast<uint8_t>(uv.index & 0xFF));
     }
 }
 
@@ -1678,6 +1685,13 @@ int BytecodeCompiler::addUpvalue(size_t index, Upvalue::Type type) {
         }
     }
 
+    // LOAD_UPVALUE/STORE_UPVALUE address the closure's upvalue list with a
+    // single byte, so stop at 255 rather than let the index wrap and bind the
+    // closure to the wrong captured variable.
+    if (current->upvalues.size() >= 255) {
+        errorAt("Too many captured variables in one function (max 255)", currentLine);
+    }
+
     Upvalue uv;
     uv.index = index;
     uv.type  = type;
@@ -1741,7 +1755,8 @@ void BytecodeCompiler::emitConstant(const Value& value) {
 // form is emitted only for slots past 255.
 void BytecodeCompiler::emitLoadLocal(size_t slot) {
     if (slot <= 0xFF) {
-        emitLoadLocal(slot);
+        // Raw emit, NOT emitLoadLocal() -- this is the function that decides.
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(slot));
     } else {
         emitOp(OpCode::LOAD_LOCAL_W);
         emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF), static_cast<uint8_t>(slot & 0xFF));
@@ -1750,7 +1765,8 @@ void BytecodeCompiler::emitLoadLocal(size_t slot) {
 
 void BytecodeCompiler::emitStoreLocal(size_t slot) {
     if (slot <= 0xFF) {
-        emitStoreLocal(slot);
+        // Raw emit, NOT emitStoreLocal() -- this is the function that decides.
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(slot));
     } else {
         emitOp(OpCode::STORE_LOCAL_W);
         emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF), static_cast<uint8_t>(slot & 0xFF));

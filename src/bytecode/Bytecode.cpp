@@ -303,13 +303,15 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
             std::cout << std::setw(4) << (int)idx << std::endl;
             size_t newOffset = offset + 3;
-            // The compiler emits 2 bytes for every upvalue captured by the closure.
+            // The compiler emits 3 bytes for every upvalue captured by the
+            // closure: a flag byte, then a 16-bit slot in the enclosing frame.
             // We need to look up the function to know how many upvalues to skip.
             if (nestedFunctions && idx < nestedFunctions->size()) {
                 size_t upvalueCount = (*nestedFunctions)[idx]->upvalues.size();
                 for (size_t i = 0; i < upvalueCount; ++i) {
                     uint8_t isLocal = code[newOffset++];
-                    uint8_t uvIndex = code[newOffset++];
+                    uint16_t uvIndex = (uint16_t)((code[newOffset] << 8) | code[newOffset + 1]);
+                    newOffset += 2;
                     std::cout << std::setw(4) << offset << "   |             " 
                               << (isLocal ? "upval local " : "upval upval ") 
                               << (int)uvIndex << std::endl;

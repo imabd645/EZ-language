@@ -42,7 +42,9 @@ namespace {
 
 void BytecodeSerializer::serialize(const std::shared_ptr<BytecodeFunction>& func, const std::vector<std::string>& globalSlotNames, std::ostream& out) {
     // Magic header
-    out.write("EZC1", 4);
+    // EZC2: the CLOSURE upvalue descriptor grew from 2 bytes to 3 (the capture
+    // index is now 16-bit), so an EZC1 file cannot be decoded by this VM.
+    out.write("EZC2", 4);
     
     // Global slot names
     uint32_t slotCount = globalSlotNames.size();
@@ -57,7 +59,12 @@ void BytecodeSerializer::serialize(const std::shared_ptr<BytecodeFunction>& func
 std::shared_ptr<BytecodeFunction> BytecodeSerializer::deserialize(std::istream& in, std::vector<std::string>& outGlobalSlotNames) {
     char magic[4];
     in.read(magic, 4);
-    if (in.gcount() != 4 || std::string(magic, 4) != "EZC1") {
+    if (in.gcount() == 4 && std::string(magic, 4) == "EZC1") {
+        throw std::runtime_error(
+            "This .ezc was produced by an older interpreter (format EZC1) and "
+            "cannot be run by this one. Recompile it from the .ez source.");
+    }
+    if (in.gcount() != 4 || std::string(magic, 4) != "EZC2") {
         throw std::runtime_error("Invalid EZC file format");
     }
     

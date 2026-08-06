@@ -129,6 +129,11 @@ jobs:
           "usable=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "::warning title=sqlite FFI unusable::sqlite3_open faults on this runner; the database tests will be SKIPPED, not run."
         }
+        # This step only ever REPORTS. Actions' pwsh shell ends the step with
+        # $LASTEXITCODE, so the probe's own failure (ez.exe exits 70 on an
+        # uncaught error) would fail the job here and the suite would never run
+        # -- which is the opposite of what probing is for.
+        exit 0
 
     # Uses the repository's own runner rather than a shell loop over *.ez.
     # It already handles the things a glob cannot: a per-test timeout, the

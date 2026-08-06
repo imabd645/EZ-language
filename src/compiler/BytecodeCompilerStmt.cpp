@@ -824,49 +824,29 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::string execFlag = "__module_cache_" + std::to_string(std::hash<std::string>{}(absolutePath));
     size_t flagIdx = identifierConstant(execFlag);
 
-    if (alias == "*") {
-        // Global import: splash all statements into current function if not executed
-        emitOp(OpCode::HAS_GLOBAL);
-        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
-        size_t skipExec = emitJump(OpCode::JUMP_IF_TRUE);
-        
-        size_t trueIdx = current->function->chunk.addConstant(Constant(true));
-        emitOp(OpCode::LOAD_CONST);
-        emitBytes(static_cast<uint8_t>((trueIdx >> 8) & 0xFF), static_cast<uint8_t>(trueIdx & 0xFF));
-        // Cache flag in globalEnv via string-based STORE_GLOBAL (dynamic runtime flag)
-        emitOp(OpCode::STORE_GLOBAL);
-        emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
-        emitOp(OpCode::POP);
+    // Namespaced AND Global imports both compile as a module closure to enable caching
+    std::unique_ptr<Compiler> moduleCompiler(new Compiler(alias + "_module", 0, current));
+    Compiler* previous = current;
+    current = moduleCompiler.get();
 
-        for (const auto& s : statements) {
-            compileStmt(s);
-        }
-        
-        patchJump(skipExec);
-    } else {
-        // Namespaced import: wrap in a module closure and return a dictionary of locals
-        std::unique_ptr<Compiler> moduleCompiler(new Compiler(alias + "_module", 0, current));
-        Compiler* previous = current;
-        current = moduleCompiler.get();
+    // Force module top-level to be locals by starting at depth 1
+    current->scopeDepth = 1;
+    current->isHarvesting = true;
+    
+    // Reserve slot 0 for the module closure itself (standard VM frame layout)
+    addLocal("");
+    markInitialized();
 
-        // Force module top-level to be locals by starting at depth 1
-        current->scopeDepth = 1;
-        current->isHarvesting = true;
-        
-        // Reserve slot 0 for the module closure itself (standard VM frame layout)
-        addLocal("");
-        markInitialized();
+    // Compile module body
+    for (const auto& s : statements) {
+        compileStmt(s);
+    }
 
-        // Compile module body
-        for (const auto& s : statements) {
-            compileStmt(s);
-        }
-
-        // Harvest locals into a dictionary for export
-        // Strategy: if the path ends in .ez (file inclusion), export all
-        // Otherwise (module import by name), only export marked ones.
-        bool isFileInclusion = (stmt.path.size() >= 3 &&
-            stmt.path.rfind(".ez") == stmt.path.size() - 3);
+    // Harvest locals into a dictionary for export
+    // Strategy: if the path ends in .ez (file inclusion), export all
+    // Otherwise (module import by name), only export marked ones.
+    bool isFileInclusion = (stmt.path.size() >= 3 &&
+        stmt.path.rfind(".ez") == stmt.path.size() - 3);
 
         emitOp(OpCode::MAKE_DICT);
         emitByte(0); // Start with empty dict
@@ -936,26 +916,62 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         
         patchJump(skipExec);
         
-        // Load from global cache and store into the requested alias
+        // Load from global cache (which now definitely holds the module dictionary)
         emitOp(OpCode::LOAD_GLOBAL);
         emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
 
-        size_t aliasIdx = identifierConstant(alias);
-        if (current->scopeDepth > 0) {
-            size_t slot = addLocal(alias);
-            markInitialized();
-            emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
-                      static_cast<uint8_t>(slot));
-            emitOp(OpCode::POP);
+        if (alias == "*") {
+            // Unpack all exported locals into the current scope
+            for (const auto& local : moduleCompiler->locals) {
+                if (local.depth == 1 && !local.name.empty()) {
+                    if (!isFileInclusion && !local.exported) continue;
+                    
+                    // DUP dictionary
+                    emitOp(OpCode::DUP);
+                    
+                    // LOAD_PROPERTY
+                    emitOp(OpCode::LOAD_PROPERTY);
+                    size_t propIdx = identifierConstant(local.name);
+                    emitBytes(static_cast<uint8_t>((propIdx >> 8) & 0xFF),
+                              static_cast<uint8_t>(propIdx & 0xFF));
+                    size_t icIdx = current->function->chunk.icEntries.size();
+                    current->function->chunk.icEntries.push_back(ICCacheEntry{});
+                    emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
+                    
+                    // Store in current scope
+                    if (current->scopeDepth > 0) {
+                        size_t slot = addLocal(local.name);
+                        markInitialized();
+                        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                                  static_cast<uint8_t>(slot));
+                        emitOp(OpCode::POP);
+                    } else {
+                        uint16_t aliasSlot = globalSlotFor(local.name);
+                        emitOp(OpCode::STORE_GLOBAL_SLOT);
+                        emitBytes(static_cast<uint8_t>((aliasSlot >> 8) & 0xFF),
+                                  static_cast<uint8_t>(aliasSlot & 0xFF));
+                        emitOp(OpCode::POP);
+                    }
+                }
+            }
+            emitOp(OpCode::POP); // Pop the dictionary itself
         } else {
-            uint16_t aliasSlot = globalSlotFor(alias);
-            emitOp(OpCode::STORE_GLOBAL_SLOT);
-            emitBytes(static_cast<uint8_t>((aliasSlot >> 8) & 0xFF),
-                      static_cast<uint8_t>(aliasSlot & 0xFF));
-            emitOp(OpCode::POP);
+            // Store into the requested alias
+            if (current->scopeDepth > 0) {
+                size_t slot = addLocal(alias);
+                markInitialized();
+                emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
+                          static_cast<uint8_t>(slot));
+                emitOp(OpCode::POP);
+            } else {
+                uint16_t aliasSlot = globalSlotFor(alias);
+                emitOp(OpCode::STORE_GLOBAL_SLOT);
+                emitBytes(static_cast<uint8_t>((aliasSlot >> 8) & 0xFF),
+                          static_cast<uint8_t>(aliasSlot & 0xFF));
+                emitOp(OpCode::POP);
+            }
         }
     }
-}
 
 void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     // 0. Outermost first, so the innermost decorator is applied first -- same

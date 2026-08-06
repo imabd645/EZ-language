@@ -756,18 +756,21 @@ StmtPtr Parser::enumStatement() {
         m.initializer = valueExpr;
         members.push_back(m);
 
-        if (match(TokenType::COMMA)) {
-            skipNewlines();
-        } else {
-            skipNewlines();
-        }
+        // The comma is optional: members may be separated by commas, newlines,
+        // or both, and a trailing comma is fine.
+        match(TokenType::COMMA);
+        skipNewlines();
     }
 
-    consume(TokenType::RBRACE, "Expected '}' after enum body");
-
+    // Checked BEFORE consuming '}' so the caret lands on the closing brace and
+    // the snippet shows the enum itself. Consuming first left the current token
+    // as the newline after '}', which reported the following line with a blank
+    // source line under it.
     if (members.empty()) {
         throw ParseError("Enum '" + name + "' has no members", line);
     }
+
+    consume(TokenType::RBRACE, "Expected '}' after enum body");
 
     return makeModelStmt(arena, line, column, length, nameToken.filename,
                          name, "", {}, {}, {}, {}, {}, members);

@@ -980,10 +980,30 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     current->function->chunk.icEntries.push_back(ICCacheEntry{});
                     emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF), static_cast<uint8_t>(icIdx & 0xFF));
                     
-                    // Store in current scope
+                    // Store in current scope, reusing the slot when this name is
+                    // already bound here.
+                    //
+                    // Imports form a diamond as soon as a package has more than
+                    // a couple of files: sqlite's connection.ez pulls in ffi.ez
+                    // directly AND again through statement.ez, so allocating a
+                    // fresh slot per occurrence brought ffi's 68 symbols in
+                    // twice over and blew the 256-local ceiling. Reusing the
+                    // slot also keeps last-import-wins, which is what a second
+                    // binding of the same name did before.
                     if (current->scopeDepth > 0) {
-                        size_t slot = addLocal(local.name);
-                        markInitialized();
+                        int existing = resolveLocal(local.name);
+                        size_t slot;
+                        if (existing != -1) {
+                            // Already bound and already initialised. Not calling
+                            // markInitialized() here is deliberate: it marks
+                            // locals.back(), so on the reuse path it would set
+                            // the depth of whatever was declared most recently
+                            // rather than the slot being written.
+                            slot = static_cast<size_t>(existing);
+                        } else {
+                            slot = addLocal(local.name);
+                            markInitialized();
+                        }
                         // Carry the export flag across the boundary.
                         //
                         // Without this a symbol stopped propagating after one

@@ -14,13 +14,27 @@ prop = nil
 try { prop = dict.d } catch e { out "missing property .d correctly threw" }
 out "Property: " + str(prop)
 
-out "\n4. Testing native methods:"
-out "dict.get('a', 0): " + str(dict.get("a", 0))
-out "dict.get('c', 100): " + str(dict.get("c", 100))
-out "dict.has('a'): " + str(dict.has("a"))
-out "dict.has('c'): " + str(dict.has("c"))
-out "dict.keys(): " + str(dict.keys())
-out "dict.values(): " + str(dict.values())
+out "\n4. Testing dictionary builtins:"
+// Dictionaries have no METHODS: `dict.get(...)` reads `get` as a property,
+// finds no such key, and throws. The operations are free functions instead.
+//
+// This section used to call dict.get/has/keys/values and died here on line 18.
+// Because an uncaught error still exited 0, the runner reported the whole file
+// as passing and sections 5-6 never ran at all.
+methodStyleWorks = false
+try {
+    dummy = dict.get("a", 0)
+    methodStyleWorks = true
+} catch e {
+    out "method-style dict.get() is not supported -- use the builtins"
+}
+when methodStyleWorks { out "FAIL: dict.get() unexpectedly resolved" }
+
+out "has_key(dict, 'a'): " + str(has_key(dict, "a"))
+out "has_key(dict, 'c'): " + str(has_key(dict, "c"))
+out "keys(dict): " + str(keys(dict))
+out "values(dict): " + str(values(dict))
+out "len(dict): " + str(len(dict))
 
 out "\n5. Testing nil behavior:"
 # This intentionally checks the RUNTIME error for nil arithmetic. Written as a

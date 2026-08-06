@@ -218,7 +218,7 @@ static intptr_t do_ffi_call(void* funcPtr, intptr_t* cArgs, size_t argc, bool is
     return ret;
 }
 #else
-static jmp_buf os_call_jmp_env;
+static thread_local jmp_buf os_call_jmp_env; // thread_local: safe for concurrent spawn() FFI calls
 static LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
     DWORD code = ExceptionInfo->ExceptionRecord->ExceptionCode;
     if (code == EXCEPTION_ACCESS_VIOLATION ||
@@ -431,11 +431,11 @@ void registerFFIBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("os_alloc", Value::makeNativeFunction("os_alloc", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
 #ifdef _WIN32
-            if (!args[0].isNumber()) return Value();
-            // Reject non-positive sizes: a negative number would wrap to a huge
-            // size_t and either fail or allocate absurd amounts.
-            double reqd = args[0].asNumber();
-            if (reqd <= 0) { interp.runtimeError("os_alloc size must be positive", 0, ""); return Value((long long)0); }
+            if (!args[0].isNumber()) { interp.runtimeError("os_alloc: size must be a number", 0, ""); return Value((long long)0); }
+            // Use asInteger() not asNumber(): avoids double-precision loss for
+            // sizes > 2^53 (e.g. 2^53+1 silently rounds to 2^53 via asNumber).
+            long long reqd = args[0].asInteger();
+            if (reqd <= 0) { interp.runtimeError("os_alloc: size must be positive", 0, ""); return Value((long long)0); }
             size_t size = (size_t)reqd;
             void* ptr = calloc(1, size);
             if (ptr) ffiTrackAlloc(reinterpret_cast<uintptr_t>(ptr), size);
@@ -478,19 +478,8 @@ void registerFFIBuiltins(RuntimeContext& interp) {
 #endif
         }));
 
-    interp.defineGlobal("os_write_uint64", Value::makeNativeFunction("os_write_uint64", 3,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
-            if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) return Value();
-            uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
-            size_t offset = (size_t)args[1].asNumber();
-            FFI_BOUNDS(interp, args, sizeof(uint64_t), Value());
-            SAFE_MEMORY_OP(interp, *(uint64_t*)(base + offset) = (uint64_t)args[2].asNumber(););
-            return Value();
-#else
-            return Value();
-#endif
-        }));
+    // NOTE: os_write_uint64 is registered once below (line ~646) with FFI_BOUNDS.
+    // The duplicate entry that was here has been removed.
 
     interp.defineGlobal("os_read_int64", Value::makeNativeFunction("os_read_int64", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
@@ -1127,6 +1116,85 @@ void registerFFIBuiltins(RuntimeContext& interp) {
                 g_callbacks.erase(it);
             }
             return Value();
+        }));
+
+    // ── Production-ready additions ────────────────────────────────────────────
+
+    // Bounded C-string read: stops at NUL or maxlen bytes, whichever comes first.
+    // Prevents runaway reads on un-terminated foreign strings.
+    interp.defineGlobal("os_read_string_ptr_n", Value::makeNativeFunction("os_read_string_ptr_n", 2,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isNumber()) return Value("");
+            const char* s = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
+            size_t maxLen = (size_t)args[1].asInteger();
+            if (!s) return Value("");
+            std::string res;
+            SAFE_MEMORY_OP(interp, res = std::string(s, strnlen(s, maxLen)));
+            return Value(res);
+#else
+            return Value("");
+#endif
+        }));
+
+    // Lets EZ-level Pointer.free() distinguish callback trampolines (ffi_closure)
+    // from plain os_alloc blocks so it can dispatch correctly.
+    interp.defineGlobal("os_is_callback", Value::makeNativeFunction("os_is_callback", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber()) return Value(false);
+            void* ptr = (void*)(intptr_t)args[0].asNumber();
+            std::lock_guard<std::mutex> lock(g_callbacksMutex);
+            return Value(g_callbacks.count(ptr) > 0);
+        }));
+
+    // os_call_sig_arr(funcPtr, retType, sigArray, argsArray)
+    // Fully variadic os_call_sig variant: takes user args as an EZ array so
+    // there is no N-argument limit at the EZ library level.
+    interp.defineGlobal("os_call_sig_arr", Value::makeNativeFunction("os_call_sig_arr", 4,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+#ifdef _WIN32
+            if (!args[0].isNumber() || !args[1].isString() || !args[2].isArray() || !args[3].isArray()) {
+                interp.runtimeError("os_call_sig_arr expects (ptr, retType, sigArray, argsArray)", 0, "");
+                return Value();
+            }
+            void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            if (!funcPtr) { interp.runtimeError("os_call_sig_arr: null function pointer", 0, ""); return Value(); }
+
+            std::string retType  = args[1].asString();
+            auto sigArray        = args[2].asArray().getElementsCopy();
+            auto userArgs        = args[3].asArray().getElementsCopy();
+            size_t argc          = sigArray.size();
+
+            std::vector<ffi_type*>   argTypes(argc);
+            std::vector<void*>       argValues(argc);
+            std::vector<intptr_t>    iArgs(argc, 0);
+            std::vector<double>      fArgs(argc, 0.0);
+            std::vector<std::string> tempStrings(argc);
+
+            for (size_t i = 0; i < argc; i++) {
+                std::string type = sigArray[i].isString() ? sigArray[i].asString() : "ptr";
+                const Value& val = (i < userArgs.size()) ? userArgs[i] : Value();
+
+                if (type == "float" || type == "double" || type == "f32" || type == "f64") {
+                    argTypes[i]  = &ffi_type_double;
+                    if (val.isInteger())     fArgs[i] = (double)val.asInteger();
+                    else if (val.isNumber()) fArgs[i] = val.asFloat();
+                    argValues[i] = &fArgs[i];
+                } else {
+                    argTypes[i]  = &ffi_type_pointer;
+                    iArgs[i]     = ffiMarshalIntArg(val, tempStrings[i]);
+                    argValues[i] = &iArgs[i];
+                }
+            }
+
+            ffi_type* rType = ffiReturnType(retType);
+            FfiRet retBuffer; retBuffer.i = 0;
+            if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp))
+                return Value();
+            return ffiReadReturn(retType, retBuffer);
+#else
+            return Value();
+#endif
         }));
 }
 

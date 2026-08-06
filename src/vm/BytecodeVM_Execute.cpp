@@ -1366,13 +1366,41 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (!handled) {
                             SYNC_IP();
                             this->stackTop = stackTop;
-                            if (dispatchCall(callee, argCount)) {
-                                LOAD_FRAME();
-                            } else {
-                                REFRESH_FRAME();
+
+                            // ── __call__ magic method ──────────────────────────────────────────────
+                            // If the callee is an instance that defines a __call__ method, invoke it
+                            // transparently.  This enables Python-ctypes-style callable objects:
+                            //   lib.add.argtypes = [c_int, c_int]
+                            //   result = lib.add(10, 20)   ← lib.add is a Function instance
+                            // The bound method receives `self` as its first argument (slot 0) via the
+                            // normal BoundMethod path, so no special arity adjustment is needed here.
+                            if (!handled && callee.isInstance()) {
+                                Value callMethod = callee.asInstance()->getProperty("__call__");
+                                if (callMethod.isCallable()) {
+                                    // Replace the callee slot on the stack with a BoundMethod so that
+                                    // dispatchCall inserts `self` automatically.
+                                    Value bound = Value(std::make_shared<EZBoundMethod>(callee, callMethod));
+                                    *(stackTop - argCount - 1) = bound;
+                                    if (dispatchCall(bound, argCount)) {
+                                        LOAD_FRAME();
+                                    } else {
+                                        REFRESH_FRAME();
+                                    }
+                                    stackTop = this->stackTop;
+                                    handled = true;
+                                }
                             }
-                            stackTop = this->stackTop;
+
+                            if (!handled) {
+                                if (dispatchCall(callee, argCount)) {
+                                    LOAD_FRAME();
+                                } else {
+                                    REFRESH_FRAME();
+                                }
+                                stackTop = this->stackTop;
+                            }
                         }
+
                     }
                     DISPATCH();
                 }

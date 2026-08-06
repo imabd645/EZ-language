@@ -427,13 +427,14 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
     } else {
         compileExpr(expr.value);
 
-        // Check if it's a static variable in current or parent functions
+        // Check if it's a static variable in current or parent functions.
+        // By name, to match the LOAD_GLOBAL that reads it -- see compileStatic.
         std::string mangled = resolveStatic(expr.name);
         if (!mangled.empty()) {
-            uint16_t slot = globalSlotFor(mangled);
-            emitOp(OpCode::STORE_GLOBAL_SLOT);
-            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
-                      static_cast<uint8_t>(slot & 0xFF));
+            size_t sNameIdx = identifierConstant(mangled);
+            emitOp(OpCode::STORE_GLOBAL);
+            emitBytes(static_cast<uint8_t>((sNameIdx >> 8) & 0xFF),
+                      static_cast<uint8_t>(sNameIdx & 0xFF));
             return;
         }
 
@@ -503,10 +504,11 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             std::string name = std::get<IdentifierExpr*>(target->variant)->name;
             std::string mangled = resolveStatic(name);
             if (!mangled.empty()) {
-                uint16_t slot = globalSlotFor(mangled);
-                emitOp(OpCode::STORE_GLOBAL_SLOT);
-                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
-                          static_cast<uint8_t>(slot & 0xFF));
+                // By name, to match the LOAD_GLOBAL that reads it.
+                size_t sNameIdx = identifierConstant(mangled);
+                emitOp(OpCode::STORE_GLOBAL);
+                emitBytes(static_cast<uint8_t>((sNameIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(sNameIdx & 0xFF));
             } else {
                 int local = resolveLocal(name);
                 if (local != -1) {

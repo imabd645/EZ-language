@@ -1372,11 +1372,23 @@ void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {
     size_t skipInit = emitJump(OpCode::JUMP_IF_TRUE);
     
     // 3. Initialization (runs only if HAS_GLOBAL was false)
+    //
+    // Stored BY NAME, not by slot. Globals live in two places -- a name-keyed
+    // map and a slot array -- and a slot store is invisible to a name lookup.
+    // This wrote the slot while HAS_GLOBAL (above) and LOAD_GLOBAL (the read in
+    // compileIdentifier) both consult the name map, so the value never landed
+    // anywhere either of them could see it:
+    //
+    //     task inc() { static x = 0  x += 1  give x }
+    //     inc()   ->  Undefined variable '__static_2_inc_x'
+    //
+    // The name is also what makes the once-only guard work: had only the store
+    // been switched to a slot, HAS_GLOBAL would have stayed false forever and
+    // the initializer would have re-run on every call, resetting the static.
     compileExpr(stmt.initializer);
-    uint16_t staticSlot = globalSlotFor(mangledName);
-    emitOp(OpCode::STORE_GLOBAL_SLOT);
-    emitBytes(static_cast<uint8_t>((staticSlot >> 8) & 0xFF),
-              static_cast<uint8_t>(staticSlot & 0xFF));
+    emitOp(OpCode::STORE_GLOBAL);
+    emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+              static_cast<uint8_t>(nameIdx & 0xFF));
     emitOp(OpCode::POP);
     
     // 4. Patch jump

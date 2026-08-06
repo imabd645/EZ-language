@@ -158,8 +158,31 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
     if (!stmt.step) {
         startLoop();
-        size_t loopStart = currentChunk().code.size();
-        loopStack.back().start = loopStart;
+
+        // The increment is placed at the TOP of the loop, jumped over on first
+        // entry, so that it sits exactly where `skip` lands.
+        //
+        // Laid out the obvious way -- condition, body, increment, jump back --
+        // the loop's start is the condition, and `skip` (which jumps to the
+        // loop start) lands there having stepped straight over the increment.
+        // The counter then never advances and `repeat i = 1 to 5 { skip }`
+        // spins forever. `while` and `get..in` are unaffected: for them the
+        // start IS the right place to resume.
+        //
+        //        JUMP -> bodyEntry     (skip the increment on the first pass)
+        //   incPoint:                  <- loop start, and where `skip` lands
+        //        INC_LOCAL
+        //   bodyEntry:
+        //        condition / exit
+        //        <body>
+        //        LOOP -> incPoint
+        size_t skipFirstInc = emitJump(OpCode::JUMP);
+
+        size_t incPoint = currentChunk().code.size();
+        loopStack.back().start = incPoint;
+        emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
+
+        patchJump(skipFirstInc);
 
         emitOp(OpCode::LOOP_LESS_EQ_LOCAL);
         emitByte(static_cast<uint8_t>(loopVar));
@@ -169,9 +192,7 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
         compileStmt(stmt.body);
 
-        emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL), static_cast<uint8_t>(loopVar));
-
-        emitLoop(loopStart);
+        emitLoop(incPoint);
         patchJump(exitJump);
         for (size_t breakOffset : loopStack.back().breaks) patchJump(breakOffset);
         endLoop();
@@ -196,8 +217,21 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
         patchJump(stepZeroJump);
 
         startLoop();
-        size_t loopStart = currentChunk().code.size();
-        loopStack.back().start = loopStart;
+
+        // Same shape as the unstepped loop above: the `loopVar += step` update
+        // goes at the top, jumped over on first entry, so that `skip` lands on
+        // it rather than stepping over it and spinning forever.
+        size_t skipFirstStep = emitJump(OpCode::JUMP);
+
+        size_t incPoint = currentChunk().code.size();
+        loopStack.back().start = incPoint;
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
+        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
+        emitOp(OpCode::ADD);
+        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
+        emitOp(OpCode::POP);
+
+        patchJump(skipFirstStep);
 
         // Condition: (step > 0) ? (loopVar <= endVar) : (loopVar >= endVar)
         emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
@@ -224,14 +258,8 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 
         compileStmt(stmt.body);
 
-        // loopVar += stepVar
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(loopVar));
-        emitBytes(static_cast<uint8_t>(OpCode::LOAD_LOCAL), static_cast<uint8_t>(stepVar));
-        emitOp(OpCode::ADD);
-        emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL), static_cast<uint8_t>(loopVar));
-        emitOp(OpCode::POP);
-
-        emitLoop(loopStart);
+        // The update now lives at incPoint, above.
+        emitLoop(incPoint);
         patchJump(exitJump);
 
         for (size_t breakOffset : loopStack.back().breaks) patchJump(breakOffset);
@@ -956,6 +984,21 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     if (current->scopeDepth > 0) {
                         size_t slot = addLocal(local.name);
                         markInitialized();
+                        // Carry the export flag across the boundary.
+                        //
+                        // Without this a symbol stopped propagating after one
+                        // hop: `use "src/ffi.ez"` brought make_sockaddr into
+                        // socket/main.ez as an ordinary (unexported) local, so
+                        // `use "socket"` -- which keeps only exported locals --
+                        // filtered it straight back out and callers saw nil.
+                        // Any package built as a thin main.ez over a src/
+                        // directory was therefore impossible: sqlite, socket and
+                        // orm are all laid out exactly that way.
+                        //
+                        // Only what the inner module explicitly marked `export`
+                        // travels onward, so a file inclusion's private helpers
+                        // still stay private.
+                        current->locals[slot].exported = local.exported;
                         emitBytes(static_cast<uint8_t>(OpCode::STORE_LOCAL),
                                   static_cast<uint8_t>(slot));
                         emitOp(OpCode::POP);

@@ -1,0 +1,3 @@
+use "helper.ez"
+use "src/deep.ez"
+export task pkgOwn() { give "own" }

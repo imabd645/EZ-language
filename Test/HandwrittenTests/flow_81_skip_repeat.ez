@@ -1,0 +1,73 @@
+// `skip` must advance the loop counter.
+//
+// It used to jump to the loop's start, which in a counted loop is the condition
+// test -- stepping straight over the increment emitted after the body. The
+// counter never advanced, so `repeat i = 1 to 5 { skip }` spun forever. `while`
+// and `get..in` were unaffected: for them the start IS where a skipped
+// iteration should resume.
+//
+// Self-checking: prints FAIL, which the runner treats as a failure even on a
+// zero exit. A regression here shows up as a hang instead, which the runner's
+// per-test timeout catches.
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        print("ok " + name)
+    } other {
+        print("FAIL " + name + " expected " + str(expected) + " got " + str(actual))
+    }
+}
+
+n = 0
+repeat i = 1 to 5 {
+    when i == 3 { skip }
+    n = n + 1
+}
+check("skip in repeat", n, 4)
+
+seen = []
+repeat i = 1 to 5 {
+    when i % 2 == 0 { skip }
+    push(seen, i)
+}
+check("counter correct after skip", join(seen, ","), "1,3,5")
+
+m = 0
+repeat i = 0 to 10 step 2 {
+    when i == 4 { skip }
+    m = m + 1
+}
+check("skip with positive step", m, 5)
+
+d = []
+repeat i = 5 to 1 step -1 {
+    when i == 3 { skip }
+    push(d, i)
+}
+check("skip with negative step", join(d, ","), "5,4,2,1")
+
+total = 0
+repeat a = 1 to 3 {
+    repeat b = 1 to 3 {
+        when b == 2 { skip }
+        when b == 3 { escape }
+        total = total + 1
+    }
+}
+check("skip and escape nested", total, 3)
+
+w = 0
+i = 0
+while i < 5 { i = i + 1  when i == 3 { skip }  w = w + 1 }
+check("skip in while", w, 4)
+
+g = 0
+get x in [1, 2, 3, 4, 5] { when x == 3 { skip }  g = g + 1 }
+check("skip in get..in", g, 4)
+
+// The loop variable must survive a skip on the final iteration.
+last = 0
+repeat i = 1 to 4 {
+    when i == 4 { skip }
+    last = i
+}
+check("skip on final iteration terminates", last, 3)

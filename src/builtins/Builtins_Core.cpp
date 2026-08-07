@@ -17,4 +17,13 @@ void registerCoreBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
+    interp.defineGlobal("eval", Value::makeNativeFunction("eval", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isString()) {
+                interp.runtimeError("eval() expects a string argument", 0, "");
+                return Value();
+            }
+            return interp.eval(args[0].asString(), "<eval>");
+        }));
+
 }

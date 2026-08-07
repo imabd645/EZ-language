@@ -45,6 +45,9 @@ public:
     // Virtual File System for packaged standalone executables
     static std::unordered_map<std::string, std::string> virtualFileSystem;
     
+    // Seed existing global slot for eval() to prevent collisions
+    void setGlobalSlot(const std::string& name, uint16_t slot);
+
 private:
     // Current function being compiled
     struct Compiler {

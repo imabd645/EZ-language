@@ -1,0 +1,11 @@
+out "=== Testing eval() Builtin ==="
+
+result = eval("give 10 + 20 * 2")
+out "Result of '10 + 20 * 2': " + str(result)
+
+eval("task dyn_add(a, b) { give a + b }")
+
+add_result = eval("give dyn_add(10, 20)")
+out "dyn_add(10, 20) = " + str(add_result)
+
+out "=== eval() test complete ==="

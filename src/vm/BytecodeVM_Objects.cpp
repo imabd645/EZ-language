@@ -36,6 +36,17 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
     if (parser.hasError()) return Value();
 
     BytecodeCompiler compiler(arena);
+    
+    // Seed the compiler with existing globals to avoid slot collisions
+    {
+        std::shared_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+        for (size_t i = 0; i < globalEnv->globalSlotNames.size(); ++i) {
+            if (!globalEnv->globalSlotNames[i].empty()) {
+                compiler.setGlobalSlot(globalEnv->globalSlotNames[i], i);
+            }
+        }
+    }
+    
     CompileResult result = compiler.compile(statements);
     if (!result.success) return Value();
 

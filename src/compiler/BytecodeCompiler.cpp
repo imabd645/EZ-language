@@ -44,6 +44,13 @@ uint16_t BytecodeCompiler::globalSlotFor(const std::string& name) {
     return slot;
 }
 
+void BytecodeCompiler::setGlobalSlot(const std::string& name, uint16_t slot) {
+    globalSlots[name] = slot;
+    if (slot >= nextGlobalSlot) {
+        nextGlobalSlot = slot + 1;
+    }
+}
+
 CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) {
     CompileResult result;
     hadError = false;

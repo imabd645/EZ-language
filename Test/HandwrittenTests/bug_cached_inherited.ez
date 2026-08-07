@@ -1,0 +1,19 @@
+model Base {
+    var count = 0
+
+    @cached
+    task getCount() {
+        give self.count
+    }
+}
+
+model Child extends Base {
+    task increment() {
+        self.count = self.count + 1
+    }
+}
+
+c = Child()
+out "Initial: " + str(c.getCount())
+c.increment()
+out "After increment: " + str(c.getCount()) // SHOULD BE 1!

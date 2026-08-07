@@ -1,0 +1,17 @@
+model Counter {
+    var count = 0
+
+    @cached
+    task getCount() {
+        give self.count
+    }
+
+    task increment() {
+        self.count = self.count + 1
+    }
+}
+
+c = Counter()
+out "Initial: " + str(c.getCount())
+c.increment()
+out "After increment: " + str(c.getCount()) // SHOULD BE 1!

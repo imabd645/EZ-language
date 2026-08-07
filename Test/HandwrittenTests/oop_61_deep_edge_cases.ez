@@ -1,0 +1,67 @@
+out "--- Testing Deep OOP Edge Cases ---"
+
+// 1. Double Super / Hidden
+model Base {
+    hidden secret = 42
+    
+    init() {
+        out "Base init"
+    }
+    
+    task getSecret() {
+        give self.secret
+    }
+}
+
+model Child extends Base {
+    init() {
+        super()
+        try {
+            super() // Double super should throw!
+        } catch e {
+            out "Caught double super: " + e
+        }
+    }
+    
+    task tryAccessSecret() {
+        try {
+            // Child accessing parent's hidden property
+            give self.secret
+        } catch e {
+            out "Caught hidden access: " + e
+            give -1
+        }
+    }
+}
+
+c = new Child()
+out "Parent getter: " + str(c.getSecret()) // Should be 42
+out "Child getter: " + str(c.tryAccessSecret())
+
+// 2. Static Inheritance
+model StaticBase {
+    static task greet() {
+        give "Hello Static"
+    }
+}
+
+model StaticChild extends StaticBase {}
+
+try {
+    out "Static Child Call: " + StaticChild.greet()
+} catch e {
+    out "Caught static inheritance: " + e
+}
+
+// 3. Interfaces
+interface Writer {
+    task write()
+}
+
+model MyWriter implements Writer {
+    task write() {
+        out "Writing!"
+    }
+}
+w = new MyWriter()
+w.write()

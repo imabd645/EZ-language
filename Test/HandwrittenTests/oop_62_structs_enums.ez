@@ -1,0 +1,29 @@
+out "--- Testing Structs and Enums ---"
+
+// 1. Enums
+enum Status { OK = 200, CREATED = 201, NOT_FOUND = 404 }
+enum Sequence { A = 10, B, C }
+
+out "Status.OK: " + str(Status.OK)
+out "Sequence.C: " + str(Sequence.C) // Should be 12
+
+// 2. Structs
+struct Person {
+    name: string
+    age: int = 25
+    balance: float
+}
+
+p1 = new Person()
+out "Default age: " + str(p1.age)
+out "Default name length: " + str(len(p1.name)) // Should be 0 since default is ""
+
+p2 = new Person("Alice", 30, 99.9)
+out "Positional struct: " + p2.name + " (" + str(p2.age) + ") $" + str(p2.balance)
+
+try {
+    p2.fakeProp = true // Test dynamic properties on structs
+    out "Dynamic prop: " + str(p2.fakeProp)
+} catch e {
+    out "Caught struct dynamic prop: " + e
+}

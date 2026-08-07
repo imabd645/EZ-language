@@ -4,7 +4,12 @@ model Parent {
 model Child extends Parent {
     init() {
         super()
-        super() // This should throw an error!
+        try {
+            super() // This should throw an error!
+        }
+        catch e {
+            out "this should throw an error"
+        } // This should throw an error!
     }
 }
 Child()

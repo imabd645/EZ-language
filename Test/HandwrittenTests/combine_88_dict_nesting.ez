@@ -1,0 +1,10 @@
+out "--- Testing Deep Dicts ---"
+data = { "user": { "name": "Alice", "stats": { "score": 100 } } }
+out "Deep score: " + str(data["user"]["stats"]["score"])
+
+try {
+    // Intentionally access a missing key in the chain
+    out data["user"]["bad_key"]["score"]
+} catch e {
+    out "Caught missing key cleanly."
+}

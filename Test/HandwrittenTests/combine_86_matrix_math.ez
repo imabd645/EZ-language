@@ -1,0 +1,9 @@
+out "--- Testing Matrix Array Logic ---"
+matrix = [[1, 2], [3, 4]]
+sum = 0
+repeat i = 0 to 1 {
+    repeat j = 0 to 1 {
+        sum = sum + matrix[i][j]
+    }
+}
+out "Matrix sum (10): " + str(sum)

@@ -1,0 +1,17 @@
+out "--- Testing Deep Throw ---"
+task recurseAndThrow(n) {
+    when (n == 0) { 
+        throw Exception("Deep crash") 
+    }
+    recurseAndThrow(n - 1)
+}
+
+try {
+    recurseAndThrow(10)
+} catch e {
+    when (typeOf(e) == "instance") {
+        out "Caught deep throw: " + e.message
+    } other {
+        out "Caught deep string throw: " + e
+    }
+}

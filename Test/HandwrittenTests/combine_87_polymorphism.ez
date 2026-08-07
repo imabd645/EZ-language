@@ -1,0 +1,17 @@
+out "--- Testing Polymorphism ---"
+model Animal { 
+    task speak() { give "..." } 
+}
+model Dog extends Animal { 
+    task speak() { give "Woof" } 
+}
+model Cat extends Animal { 
+    task speak() { give "Meow" } 
+}
+
+zoo = [Dog(), Cat(), Animal()]
+results = []
+repeat i = 0 to len(zoo) - 1 {
+    push(results, zoo[i].speak())
+}
+out "Zoo sounds: " + str(results)

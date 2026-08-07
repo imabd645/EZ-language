@@ -1,0 +1,14 @@
+out "--- Testing Async Map ---"
+task slowSquare(n) {
+    wait(5)
+    give n * n
+}
+
+arr = [1, 2, 3, 4, 5]
+futures = []
+repeat i = 0 to len(arr) - 1 {
+    push(futures, spawn(slowSquare, arr[i]))
+}
+
+results = awaitAll(futures)
+out "Async mapped squares: " + str(results)

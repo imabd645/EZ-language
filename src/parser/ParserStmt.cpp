@@ -968,12 +968,15 @@ StmtPtr Parser::modelStatement() {
     
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         MemberVisibility visibility = MemberVisibility::PUBLIC;
+        bool hasVisibilityModifier = false;
         
         // Check for visibility modifiers
         if (match(TokenType::HIDDEN)) {
             visibility = MemberVisibility::PRIVATE;
+            hasVisibilityModifier = true;
         } else if (match(TokenType::SHOWN)) {
             visibility = MemberVisibility::PUBLIC;
+            hasVisibilityModifier = true;
         }
         
         bool isStatic = false;
@@ -1154,6 +1157,10 @@ StmtPtr Parser::modelStatement() {
                 ExprPtr initializer = nullptr;
                 if (match(TokenType::EQUAL)) {
                     initializer = expression();
+                }
+                
+                if (initializer == nullptr && !hasVisibilityModifier) {
+                    throw ParseError("Property '" + propName.lexeme + "' must be initialized unless declared with 'hidden' or 'shown'", propName.line);
                 }
                 
                 skipNewlines();

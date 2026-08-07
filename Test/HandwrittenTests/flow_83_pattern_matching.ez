@@ -1,0 +1,15 @@
+task describeStatus(code) {
+    match code {
+        200 => { give "OK" }
+        404 => { give "Not Found" }
+        500 => {
+            print("Logging error internally...")
+            give "Server Error"
+        }
+        other => { give "Unknown" }
+    }
+}
+
+print(describeStatus(200))
+print(describeStatus(500))
+print(describeStatus(999))

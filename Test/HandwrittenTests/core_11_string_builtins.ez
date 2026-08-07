@@ -1,0 +1,38 @@
+out "--- Testing String Builtins ---"
+
+// 1. substr
+out "substr(\"hello\", -1, 3): " + substr("hello", -1, 3) // Should clamp start to 0
+out "substr(\"hello\", 2, -1): " + substr("hello", 2, -1) // Should clamp len to 0 -> ""
+out "substr(\"hello\", 10, 5): " + substr("hello", 10, 5) // start > length -> ""
+out "substr(\"hello\", 1, 10): " + substr("hello", 1, 10) // len > remaining -> "ello"
+
+// 2. split
+emptySplit = split("hello", "")
+out "split(\"hello\", \"\"): " + str(emptySplit) // Should split into characters
+out "split(\"apple,banana,orange\", \",\"): " + str(split("apple,banana,orange", ","))
+out "split(\"no_delims_here\", \",\"): " + str(split("no_delims_here", ",")) // Array of 1
+
+// 3. join
+out "join([\"a\", \"b\", \"c\"], \"-\"): " + join(["a", "b", "c"], "-")
+out "join([], \"-\"): " + join([], "-") // Empty array -> ""
+out "join([1, 2, 3], \"\"): " + join([1, 2, 3], "") // Empty delim -> "123"
+
+// 4. bytesToString
+out "bytesToString([104, 101, 108, 108, 111]): " + bytesToString([104, 101, 108, 108, 111])
+out "bytesToString([]): " + bytesToString([])
+
+try {
+    bytesToString(["not a number"])
+} catch e {
+    out "Caught invalid bytesToString: " + e
+}
+
+// 5. upper / lower
+out "upper(\"helloWORLD\"): " + upper("helloWORLD")
+// Assume lower() exists based on ARCHITECTURE.md
+out "lower(\"HELLOworld\"): " + lower("HELLOworld")
+
+// 6. urlEncode / urlDecode
+encoded = urlEncode("Hello World +!")
+out "urlEncode: " + encoded
+out "urlDecode: " + urlDecode(encoded)

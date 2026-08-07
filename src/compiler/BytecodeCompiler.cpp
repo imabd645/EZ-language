@@ -290,6 +290,7 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
 
     BytecodeFunctionPtr result = current->function;
     result->localCount = current->maxLocals;
+    result->hasCached = current->isCached;
     // Propagate the source filename so stack traces can show which file this function is from
     result->filename = currentFile;
 

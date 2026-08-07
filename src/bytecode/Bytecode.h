@@ -333,6 +333,7 @@ struct BytecodeFunction {
     bool isVariadic;
     bool isAsync;
     bool isMethod;
+    bool hasCached;
     Chunk chunk;
     std::vector<Upvalue> upvalues;
     size_t upvalueCount;
@@ -351,7 +352,7 @@ struct BytecodeFunction {
     size_t globalSlotCount;  // Number of global slots used (for LOAD/STORE_GLOBAL_SLOT)
 
     BytecodeFunction(const std::string& name, size_t arity)
-        : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false), isMethod(false),
+        : name(name), filename(""), arity(arity), isVariadic(false), isAsync(false), isMethod(false), hasCached(false),
           upvalueCount(0), localCount(0), defaultParamCount(0), globalSlotCount(0) {}
 };
 

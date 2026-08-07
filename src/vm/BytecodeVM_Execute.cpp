@@ -2184,6 +2184,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             if (val.isClosure()) {
                                 // Bind the method to this class for runtime access control
                                 val.asClosure()->function->className = className;
+                                if (val.asClosure()->function->hasCached) {
+                                    klass->behaviors.hasCached = true;
+                                }
                             }
                             
                             if (isStatic) {
@@ -2198,6 +2201,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         if (parentVal.isClass()) {
                             klass->parent = parentVal.asClass();
+                            if (klass->parent->behaviors.hasCached) {
+                                klass->behaviors.hasCached = true;
+                            }
                             // Inherit methods from parent
                             for (auto& [name, method] : klass->parent->methods) {
                                 if (klass->methods.find(name) == klass->methods.end()) {

@@ -1,0 +1,7 @@
+model Base {
+    var v1 = 1
+}
+
+b = Base()
+print(b.var)
+print(b.v1)

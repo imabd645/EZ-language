@@ -1,0 +1,79 @@
+out "--- Testing Buffer Builtins ---"
+
+// 1. Basic Creation and Size
+b1 = buffer(10)
+out "buf_size(b1): " + str(buf_size(b1))
+
+// 2. Fill and toString
+buf_fill(b1, 65) // 'A'
+out "buf_fill -> buf_to_str: " + buf_to_str(b1)
+
+// 3. String to Buffer and Copy
+b2 = buffer("Hello")
+out "b2 size: " + str(buf_size(b2))
+out "b2 str: " + buf_to_str(b2)
+
+// Copy "Hello" into b1 starting at index 2
+copied = buf_copy(b2, b1, 2)
+out "buf_copy result: " + buf_to_str(b1)
+out "Copied bytes: " + str(copied)
+
+// 4. Edge Cases: Out of bounds copy
+try {
+    // Copy into b1 starting at index 9, but trying to copy 5 bytes
+    buf_copy(b2, b1, 9)
+} catch e {
+    out "Caught bounds error on target: " + e
+}
+
+try {
+    // Negative source indices
+    buf_copy(b2, b1, 0, -1, 3)
+} catch e {
+    out "Caught bounds error on source: " + e
+}
+
+try {
+    // Negative size allocation
+    buffer(-5)
+} catch e {
+    out "Caught negative buffer allocation: " + e
+}
+
+out "--- MORE EDGE CASES ---"
+
+// 5. Zero byte buffer
+b0 = buffer(0)
+out "buf_size(buffer(0)): " + str(buf_size(b0))
+out "buf_to_str(b0): '" + buf_to_str(b0) + "'"
+
+// 6. Fill wrap-around
+buf_fill(b1, 256 + 66) // 256 + 66 wraps to 66 ('B')
+out "buf_fill overflow wraps to B: " + buf_to_str(b1)
+
+buf_fill(b1, -1) // -1 wraps to 255 (non-printable)
+out "buf_fill negative wrapped"
+
+// 7. Type-safety on copy
+try {
+    buf_copy("I am a string", b1)
+} catch e {
+    out "Caught invalid type copy 1: " + e
+}
+
+try {
+    buf_copy(b2, 100)
+} catch e {
+    out "Caught invalid type copy 2: " + e
+}
+
+// 8. Inverted range copy
+try {
+    buf_copy(b2, b1, 0, 5, 2) // srcStart=5 > srcEnd=2
+} catch e {
+    out "Caught inverted range: " + e
+}
+
+// 9. Null pointer / FFI edge case
+nullBuffer = os_buffer_from_ptr(0, 0)
+out "nullBuffer size: " + str(buf_size(nullBuffer))

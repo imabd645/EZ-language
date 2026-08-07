@@ -1,0 +1,11 @@
+out "--- Testing Exception Class ---"
+
+try {
+    throw Exception("Custom error here")
+} catch e {
+    when (typeOf(e) == "instance") {
+        out "Caught Exception message: " + e.message
+    } other {
+        out "Caught string error: " + e
+    }
+}

@@ -1,0 +1,30 @@
+out "--- Testing Regex Builtins ---"
+
+// 1. Basic tests
+out "re_test: " + str(re_test("hello world", "world"))
+out "re_test flags (i): " + str(re_test("hello WORLD", "world", "i"))
+
+// 2. Find
+res = re_find("My number is 555-1234.", "\\d{3}-\\d{4}")
+when (res != nil) {
+    out "re_find text: " + res["text"]
+}
+
+// 3. Find All
+strData = "apple: 5, banana: 10, cherry: 15"
+matches = re_find_all(strData, "\\d+")
+out "re_find_all counts: " + str(len(matches))
+when (len(matches) > 0) {
+    out "First match: " + matches[0]["text"]
+}
+
+// 4. Replace
+replaced = re_replace("I like dogs. Dogs are great.", "dogs?", "cats", "i")
+out "re_replace: " + replaced
+
+// 5. Edge cases: Invalid regex
+try {
+    re_test("abc", "[a-z") // Unclosed character class
+} catch e {
+    out "Caught invalid regex: " + e
+}

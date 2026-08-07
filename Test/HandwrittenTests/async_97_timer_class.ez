@@ -1,0 +1,16 @@
+out "--- Testing Timer ---"
+
+t = Timer(100, true) // Repeats every 100ms
+count = Atomic()
+count.init(0)
+
+t.onTick(|| {
+    count.add(1)
+})
+
+t.start()
+wait(350)
+t.stop()
+
+// Should have ticked ~3 times
+out "Timer ticks: " + str(count.get() >= 2)

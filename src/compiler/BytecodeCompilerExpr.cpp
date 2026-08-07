@@ -1,5 +1,6 @@
 #include "BytecodeCompiler.h"
 #include "utils/WrapArith.h"
+#include <cmath>
 #include <iostream>
 void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
     if (!expr) {
@@ -165,6 +166,18 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
                 case TokenType::PLUS:  emitConstant(Constant(ezarith::wrapAdd(l, r))); return;
                 case TokenType::MINUS: emitConstant(Constant(ezarith::wrapSub(l, r))); return;
                 case TokenType::STAR:  emitConstant(Constant(ezarith::wrapMul(l, r))); return;
+                case TokenType::STAR_STAR: {
+                    if (r >= 0) {
+                        long long base = l, exp = r, result = 1;
+                        while (exp > 0) {
+                            if (exp % 2 == 1) result = ezarith::wrapMul(result, base);
+                            exp /= 2;
+                            if (exp > 0) base = ezarith::wrapMul(base, base);
+                        }
+                        emitConstant(Constant(result)); return;
+                    }
+                    break;
+                }
                 case TokenType::SLASH:
                     // Leave the UB cases (÷0, LLONG_MIN / -1) unfolded so the VM
                     // reports them at runtime.
@@ -183,6 +196,7 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
                 case TokenType::PLUS: emitConstant(Constant(l + r)); return;
                 case TokenType::MINUS: emitConstant(Constant(l - r)); return;
                 case TokenType::STAR: emitConstant(Constant(l * r)); return;
+                case TokenType::STAR_STAR: emitConstant(Constant(std::pow(l, r))); return;
                 case TokenType::SLASH: if (r != 0.0) { emitConstant(Constant(l / r)); return; } break;
                 default: break;
             }
@@ -196,6 +210,7 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         case TokenType::PLUS:          emitOp(OpCode::ADD);        break;
         case TokenType::MINUS:         emitOp(OpCode::SUB);        break;
         case TokenType::STAR:          emitOp(OpCode::MUL);        break;
+        case TokenType::STAR_STAR:      emitOp(OpCode::POW);        break;
         case TokenType::SLASH:         emitOp(OpCode::DIV);        break;
         case TokenType::PERCENT:       emitOp(OpCode::MOD);        break;
         case TokenType::AMPERSAND:     emitOp(OpCode::BIT_AND);    break;
@@ -415,6 +430,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 case TokenType::PLUS_EQUAL: emitOp(OpCode::ADD); break;
                 case TokenType::MINUS_EQUAL: emitOp(OpCode::SUB); break;
                 case TokenType::STAR_EQUAL: emitOp(OpCode::MUL); break;
+                case TokenType::STAR_STAR_EQUAL: emitOp(OpCode::POW); break;
                 case TokenType::SLASH_EQUAL: emitOp(OpCode::DIV); break;
                 default: emitOp(OpCode::ADD); break;
             }
@@ -743,6 +759,7 @@ void BytecodeCompiler::compileSet(const SetExpr& expr) {
             case TokenType::PLUS_EQUAL: emitOp(OpCode::ADD); break;
             case TokenType::MINUS_EQUAL: emitOp(OpCode::SUB); break;
             case TokenType::STAR_EQUAL: emitOp(OpCode::MUL); break;
+            case TokenType::STAR_STAR_EQUAL: emitOp(OpCode::POW); break;
             case TokenType::SLASH_EQUAL: emitOp(OpCode::DIV); break;
             default: emitOp(OpCode::ADD); break;
         }

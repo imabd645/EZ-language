@@ -45,6 +45,7 @@ private:
     void scanInterpolatedString();
     void scanNumber();
     void scanHexNumber();
+    void scanBinaryNumber();
     void scanIdentifier();
     void skipLineComment();
     void skipBlockComment();

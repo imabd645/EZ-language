@@ -87,6 +87,7 @@ enum class TokenKind {
     PLUS,
     MINUS,
     STAR,
+    STAR_STAR,
     SLASH,
     PERCENT,
     EQUAL,
@@ -100,6 +101,7 @@ enum class TokenKind {
     PLUS_EQUAL,
     MINUS_EQUAL,
     STAR_EQUAL,
+    STAR_STAR_EQUAL,
     SLASH_EQUAL,
 
     // Bitwise
@@ -202,6 +204,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";
         case TokenType::STAR: return "STAR";
+        case TokenType::STAR_STAR: return "STAR_STAR";
         case TokenType::SLASH: return "SLASH";
         case TokenType::PERCENT: return "PERCENT";
         case TokenType::EQUAL: return "EQUAL";
@@ -215,6 +218,7 @@ inline std::string tokenTypeToString(TokenType type) {
         case TokenType::PLUS_EQUAL: return "PLUS_EQUAL";
         case TokenType::MINUS_EQUAL: return "MINUS_EQUAL";
         case TokenType::STAR_EQUAL: return "STAR_EQUAL";
+        case TokenType::STAR_STAR_EQUAL: return "STAR_STAR_EQUAL";
         case TokenType::SLASH_EQUAL: return "SLASH_EQUAL";
         case TokenType::AMPERSAND: return "AMPERSAND";
         case TokenType::CARET: return "CARET";

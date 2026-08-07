@@ -148,7 +148,13 @@ void Lexer::scanToken() {
             }
             break;
         case '*':
-            if (match('=')) {
+            if (match('*')) {
+                if (match('=')) {
+                    addToken(TokenType::STAR_STAR_EQUAL);
+                } else {
+                    addToken(TokenType::STAR_STAR);
+                }
+            } else if (match('=')) {
                 addToken(TokenType::STAR_EQUAL);
             } else {
                 addToken(TokenType::STAR);
@@ -224,6 +230,7 @@ void Lexer::scanToken() {
                 if (lastType == TokenType::PLUS ||
                     lastType == TokenType::MINUS ||
                     lastType == TokenType::STAR ||
+                    lastType == TokenType::STAR_STAR ||
                     lastType == TokenType::SLASH ||
                     lastType == TokenType::PERCENT ||
                     lastType == TokenType::EQUAL_EQUAL ||
@@ -240,6 +247,7 @@ void Lexer::scanToken() {
                     lastType == TokenType::PLUS_EQUAL ||
                     lastType == TokenType::MINUS_EQUAL ||
                     lastType == TokenType::STAR_EQUAL ||
+                    lastType == TokenType::STAR_STAR_EQUAL ||
                     lastType == TokenType::SLASH_EQUAL ||
                     lastType == TokenType::AMPERSAND ||
                     lastType == TokenType::PIPE ||
@@ -284,6 +292,9 @@ void Lexer::scanToken() {
                 if (c == '0' && (peek() == 'x' || peek() == 'X')) {
                     advance(); // Consume 'x'
                     scanHexNumber();
+                } else if (c == '0' && (peek() == 'b' || peek() == 'B')) {
+                    advance(); // Consume 'b'
+                    scanBinaryNumber();
                 } else {
                     scanNumber();
                 }
@@ -440,6 +451,20 @@ void Lexer::scanHexNumber() {
         addToken(TokenType::NUMBER, static_cast<long long>(std::stoull(text, nullptr, 16)));
     } catch (...) {
         error("Hexadecimal literal too large");
+    }
+}
+
+void Lexer::scanBinaryNumber() {
+    while (peek() == '0' || peek() == '1') advance();
+    std::string text = source.substr(start + 2, current - (start + 2)); // Skip 0b
+    if (text.empty()) {
+        error("Expected binary digits after '0b'");
+        return;
+    }
+    try {
+        addToken(TokenType::NUMBER, static_cast<long long>(std::stoull(text, nullptr, 2)));
+    } catch (...) {
+        error("Binary literal too large");
     }
 }
 

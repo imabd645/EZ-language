@@ -8,7 +8,7 @@ ExprPtr Parser::assignment() {
     ExprPtr expr = ternary();
     
     if (match({TokenType::EQUAL, TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, 
-               TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {
+               TokenType::STAR_EQUAL, TokenType::STAR_STAR_EQUAL, TokenType::SLASH_EQUAL})) {
         Token op = previous();
         ExprPtr value = assignment();
         
@@ -26,6 +26,7 @@ ExprPtr Parser::assignment() {
                     case TokenType::PLUS_EQUAL: binOp = TokenType::PLUS; break;
                     case TokenType::MINUS_EQUAL: binOp = TokenType::MINUS; break;
                     case TokenType::STAR_EQUAL: binOp = TokenType::STAR; break;
+                    case TokenType::STAR_STAR_EQUAL: binOp = TokenType::STAR_STAR; break;
                     case TokenType::SLASH_EQUAL: binOp = TokenType::SLASH; break;
                     default: binOp = TokenType::PLUS; break;
                 }
@@ -183,11 +184,24 @@ ExprPtr Parser::term() {
 }
 
 ExprPtr Parser::factor() {
-    ExprPtr expr = unary();
+    ExprPtr expr = power();
     
     while (match({TokenType::STAR, TokenType::SLASH, TokenType::PERCENT})) {
         Token op = previous();
-        ExprPtr right = unary();
+        ExprPtr right = power();
+        expr = makeBinaryExpr(arena, op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
+    }
+    
+    return expr;
+}
+
+ExprPtr Parser::power() {
+    ExprPtr expr = unary();
+    
+    // Right-associative: 2 ** 3 ** 2 = 2 ** (3 ** 2) = 512
+    if (match({TokenType::STAR_STAR})) {
+        Token op = previous();
+        ExprPtr right = power(); // recurse for right-associativity
         expr = makeBinaryExpr(arena, op.line, op.column, op.lexeme.length(), op.filename, expr, op.type, right);
     }
     

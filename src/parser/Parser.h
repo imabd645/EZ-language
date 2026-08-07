@@ -90,6 +90,7 @@ private:
     ExprPtr bitwiseShift();
     ExprPtr term();
     ExprPtr factor();
+    ExprPtr power();
     ExprPtr unary();
     ExprPtr call();
     ExprPtr primary();

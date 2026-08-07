@@ -1,0 +1,38 @@
+out "=== Testing ** Power Operator ==="
+
+// Basic power
+out 2 ** 10        // 1024
+out 3 ** 3         // 27
+out 10 ** 0        // 1
+out 5 ** 1         // 5
+
+// Right-associative: 2 ** 3 ** 2 = 2 ** 9 = 512
+out 2 ** 3 ** 2    // 512
+
+// Negative exponent (float result)
+out 2 ** -1        // 0.5
+
+// Mixed with other operators
+out 2 + 3 ** 2     // 11  (power binds tighter than +)
+out 2 * 3 ** 2     // 18  (power binds tighter than *)
+
+// Compound assignment
+x = 2
+x **= 10
+out x              // 1024
+
+out "=== Testing 0b Binary Literals ==="
+
+// Basic binary
+out 0b1010         // 10
+out 0b11111111     // 255
+out 0b0            // 0
+out 0b1            // 1
+out 0b100000000    // 256
+
+// Binary in expressions
+out 0b1010 + 0b0101   // 15
+out 0b1111 & 0b1010   // 10 (bitwise AND)
+out 0b1010 | 0b0101   // 15 (bitwise OR)
+
+out "=== Tests Complete ==="

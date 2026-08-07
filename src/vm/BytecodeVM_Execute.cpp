@@ -2951,10 +2951,8 @@ void BytecodeVM::doModulo() {
 
 void BytecodeVM::doPower() {
     Value b = pop(), a = pop();
-    // NOTE: the compiler never emits OpCode::POW (EZ has no power operator; the
-    // pow() builtin calls std::pow directly), so this path is currently
-    // unreachable. Kept correct anyway: wrapping square-and-multiply, consistent
-    // with the language's defined-wrap integer semantics.
+    // Wrapping square-and-multiply for integer bases with non-negative exponents,
+    // consistent with the language's defined-wrap integer semantics.
     if (a.isInteger() && b.isInteger() && b.asInteger() >= 0) {
         long long base = a.asInteger();
         long long exp = b.asInteger();

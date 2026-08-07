@@ -1,0 +1,4 @@
+model ModBase {
+    init() { self.baseVal = 100 }
+    task getVal() { give self.baseVal }
+}

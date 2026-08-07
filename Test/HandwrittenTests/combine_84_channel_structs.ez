@@ -1,0 +1,15 @@
+out "--- Testing Channels with Structs ---"
+struct Message {
+    id: number
+    payload: string
+}
+
+task sender(ch) {
+    msg = Message(1, "Thread Hello")
+    ch.send(msg)
+}
+
+ch = Channel()
+f1 = spawn(sender, ch)
+msgRecv = ch.receive()
+out "Received struct id: " + str(msgRecv.id) + ", payload: " + msgRecv.payload

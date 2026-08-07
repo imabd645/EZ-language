@@ -1,0 +1,10 @@
+out "--- Testing Closure in Struct ---"
+struct Action {
+    name: string
+    fn: any
+}
+
+// Since structs are just objects, we can assign lambdas to properties.
+act = Action("greet", |name| { give "Hello " + name })
+res = act.fn("World")
+out "Closure in struct: " + res

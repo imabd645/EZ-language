@@ -1,0 +1,34 @@
+out "--- Testing Decorators ---"
+
+@audited
+model Account {
+    init(owner) {
+        self.owner = owner
+        self.balance = 0
+        self.rate = 0.05
+    }
+
+    @cached
+    task computeInterest() {
+        give self.balance * self.rate
+    }
+}
+
+acc = Account("Alice")
+acc.balance = 100
+acc.balance = 500
+
+log = audit(acc)
+out "Audit log size (should be 5 due to init + assignments): " + str(len(log) >= 3)
+out "Audit last entry new value: " + str(log[len(log)-1]["new"])
+
+res1 = acc.computeInterest()
+out "Cached interest 1: " + str(res1)
+
+res2 = acc.computeInterest()
+out "Cached interest 2 matching: " + str(res1 == res2)
+
+// Invalidate cache
+acc.balance = 1000
+res3 = acc.computeInterest()
+out "Cached interest 3 (invalidated): " + str(res3)

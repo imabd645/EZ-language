@@ -1,0 +1,10 @@
+out "--- Testing OOP across Modules ---"
+use "Test/HandwrittenTests/combine_83_module.ez"
+
+model ModChild extends ModBase {
+    init() { super() }
+    task getVal() { give self.baseVal * 2 }
+}
+
+c = ModChild()
+out "Cross module OOP: " + str(c.getVal())

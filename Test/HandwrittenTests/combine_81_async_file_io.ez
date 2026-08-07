@@ -1,0 +1,14 @@
+out "--- Testing Async File I/O ---"
+fPath = "async_test.txt"
+
+task writer(path, content) {
+    writeFile(path, content)
+    give true
+}
+
+f1 = spawn(writer, fPath, "Async File Content")
+await(f1)
+
+content = readFile(fPath)
+out "Async read: " + content
+File.remove(fPath)

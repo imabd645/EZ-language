@@ -1,0 +1,10 @@
+out "--- Testing Regex + JSON ---"
+data = "id:123, name:EZ, id:456, name:Lang"
+matches = re_find_all(data, "id:(\\d+)")
+
+arr = []
+repeat i = 0 to len(matches)-1 {
+    push(arr, matches[i]["text"])
+}
+
+out "Regex to array: " + str(arr)

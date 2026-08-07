@@ -1,0 +1,9 @@
+out "--- Testing GC Stress ---"
+repeat i = 0 to 500 {
+    temp = [1, 2, 3, "garbage", {a: i}]
+    when (i == 250) {
+        gc_collect()
+    }
+}
+gc_collect()
+out "GC Stress completed without crashing."

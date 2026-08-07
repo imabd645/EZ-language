@@ -1,21 +1,21 @@
 model Base {
-    var v1 = 1
-    var v2 = 2
+     v1 = 1
+    v2 = 2
     task mix() { give self.v1 + self.v2 }
 }
 
 model Child extends Base {
-    var v3 = 3
+     v3 = 3
     task mix() { give super.mix() + self.v3 }
 }
 
 model GrandChild extends Child {
-    var v4 = 4
+     v4 = 4
     task mix() { give super.mix() + self.v4 }
 }
 
 model GreatGrandChild extends GrandChild {
-    var v5 = 5
+     v5 = 5
     task mix() { give super.mix() + self.v5 }
 }
 

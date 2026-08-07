@@ -2734,6 +2734,12 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             return false;
         }
 
+        if (super_val->instance->superInitialized) {
+            runtimeError("super() has already been called");
+            return false;
+        }
+        super_val->instance->superInitialized = true;
+
         // Use BoundMethod to handles self-injection correctly
         Value bound = Value(std::make_shared<EZBoundMethod>(Value(super_val->instance), initMethod));
         *(stackTop - argCount - 1) = bound;

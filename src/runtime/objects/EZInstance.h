@@ -14,6 +14,7 @@ struct EZInstance {
     std::shared_ptr<EZShape> shape;
     std::vector<Value> propertyValues;
     mutable std::shared_mutex prop_mutex;
+    bool superInitialized = false;
 
 private:
     // ── Decorator runtime state (lazily allocated) ─────────────────────────────

@@ -1,0 +1,11 @@
+model Parent {
+    init() { out "Parent init" }
+}
+model Child extends Parent {
+    init() {
+        super()
+        super() // This should throw an error!
+    }
+}
+Child()
+out "Finished"

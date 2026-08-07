@@ -1,5 +1,5 @@
 model Counter {
-    var count = 0
+    count = 0
 
     @cached
     task getCount() {

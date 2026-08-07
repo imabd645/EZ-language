@@ -1,5 +1,5 @@
 model Base {
-    var v1 = 1
+     v1 = 1
 }
 
 b = Base()

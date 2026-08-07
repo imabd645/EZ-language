@@ -1,0 +1,24 @@
+model Greeter {
+    task sayHi() {
+        give "Original Hi!"
+    }
+}
+
+g = new Greeter()
+print(g.sayHi())
+
+// Patch the class method dynamically
+try {
+    Greeter.sayHi = || { give "Patched Hi!" }
+    print(g.sayHi()) // Should it be Original or Patched?
+} catch e {
+    print("Cannot patch class: " + e)
+}
+
+// Patch the instance method
+try {
+    g.sayHi = || { give "Instance Hi!" }
+    print(g.sayHi())
+} catch e {
+    print("Cannot patch instance: " + e)
+}

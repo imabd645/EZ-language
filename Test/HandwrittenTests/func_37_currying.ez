@@ -1,0 +1,17 @@
+task add3(a) {
+    give |b| {
+        give |c| {
+            give a + b + c
+        }
+    }
+}
+
+add2 = add3(10)
+add1 = add2(20)
+result = add1(12)
+
+print("Curried Result: " + str(result))
+
+// Direct invocation chain
+chain = add3(5)(10)(15)
+print("Chain Result: " + str(chain))

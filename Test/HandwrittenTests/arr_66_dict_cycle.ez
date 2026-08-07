@@ -1,0 +1,11 @@
+d = {}
+d["self"] = d
+d["nested"] = [1, 2, d]
+
+print("Dict with cycle created safely.")
+try {
+    print(d)
+    print("Printed cycle safely.")
+} catch e {
+    print("Failed to print cycle: " + e)
+}

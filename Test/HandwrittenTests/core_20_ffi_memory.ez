@@ -1,0 +1,26 @@
+out "--- Testing FFI Memory ---"
+
+// 1. Allocate 8 bytes
+ptr = os_alloc(8)
+out "Allocated pointer: " + str(ptr != 0)
+
+// 2. Write and Read
+os_write_uint32(ptr, 0, 4294967295)
+val = os_read_uint32(ptr, 0)
+out "Read uint32 (4294967295): " + str(val)
+
+os_write_byte(ptr, 4, 255)
+bval = os_read_byte(ptr, 4)
+out "Read byte (255): " + str(bval)
+
+// 3. Free
+os_free(ptr)
+out "Memory freed safely."
+
+// 4. Safe memory operations check (try reading null memory)
+try {
+    os_read_byte(0, 0)
+    out "FAILED: Should not read null pointer"
+} catch e {
+    out "Caught null pointer read safely."
+}

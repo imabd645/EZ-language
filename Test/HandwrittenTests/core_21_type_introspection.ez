@@ -1,0 +1,18 @@
+out "--- Testing Type Introspection ---"
+
+out "typeOf(10): " + typeOf(10)
+out "typeOf(10.5): " + typeOf(10.5)
+out "typeOf('abc'): " + typeOf("abc")
+out "typeOf([1, 2]): " + typeOf([1, 2])
+out "typeOf({a: 1}): " + typeOf({a: 1})
+
+model TestClass {}
+tc = new TestClass()
+out "typeOf(instance): " + typeOf(tc)
+
+try {
+    // Some languages have type() for class name
+    out "type(instance): " + type(tc)
+} catch e {
+    out "type() might not exist"
+}

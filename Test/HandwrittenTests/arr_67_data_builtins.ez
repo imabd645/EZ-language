@@ -1,0 +1,28 @@
+out "--- Testing Data Builtins ---"
+
+// 1. map
+arr = [1, 2, 3]
+mapped = map(arr, |x| { give x * 2 })
+out "map: " + str(mapped)
+
+// 2. filter
+filtered = filter(arr, |x| { give x > 1 })
+out "filter: " + str(filtered)
+
+// 3. reduce
+reduced = reduce(arr, |acc, x| { give acc + x }, 0)
+out "reduce: " + str(reduced)
+
+// 4. JSON
+dict = {"name": "EZ", "version": 1.0, "active": true, "nested": [1, 2, 3]}
+jsonStr = to_json(dict)
+out "to_json: " + jsonStr
+parsed = parse_json(jsonStr)
+out "parse_json: " + str(parsed["name"])
+
+// 5. Edge cases: non-arrays/dicts
+try {
+    map(42, |x| { give x })
+} catch e {
+    out "Caught invalid map: " + e
+}

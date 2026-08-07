@@ -1,0 +1,22 @@
+out "--- Testing Math Builtins ---"
+
+out "floor(2.9): " + str(floor(2.9))
+out "ceil(2.1): " + str(ceil(2.1))
+out "abs(-42): " + str(abs(-42))
+out "sqrt(16): " + str(sqrt(16))
+out "pow(2, 3): " + str(pow(2, 3))
+out "min(10, 5): " + str(min(10, 5))
+out "max(10, 5): " + str(max(10, 5))
+
+// Edge cases
+try {
+    out "sqrt(-1): " + str(sqrt(-1))
+} catch e {
+    out "Caught sqrt(-1): " + e
+}
+
+try {
+    floor("not a number")
+} catch e {
+    out "Caught invalid floor: " + e
+}

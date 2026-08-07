@@ -1,0 +1,31 @@
+out "--- Testing IO Builtins ---"
+
+// 1. Basic File I/O
+filePath = "test_io_tmp.txt"
+content = "Hello, World!\nThis is EZ."
+
+writeFile(filePath, content)
+readBack = readFile(filePath)
+out "readFile matches: " + str(content == readBack)
+
+// 2. Append File
+appendFile(filePath, "\nAppended line.")
+readBackAppended = readFile(filePath)
+out "Appended successfully: " + str(len(readBackAppended) > len(content))
+
+// 3. Lines I/O
+linesPath = "test_lines_tmp.txt"
+writeLine(linesPath, "Line 1")
+appendLine(linesPath, "Line 2")
+
+linesArray = readLines(linesPath)
+out "readLines count: " + str(len(linesArray))
+out "Line 1 match: " + str(linesArray[0] == "Line 1")
+out "Line 2 match: " + str(linesArray[1] == "Line 2")
+
+// 4. Edge cases
+try {
+    readFile("non_existent_file_12345.txt")
+} catch e {
+    out "Caught non-existent file read: " + e
+}

@@ -1,0 +1,15 @@
+closures = []
+
+arr1 = [1, 2, 3]
+arr2 = [10, 20]
+
+get i in arr1 {
+    get j in arr2 {
+        push(closures, || { give i + j })
+    }
+}
+
+print("Should be 11: " + str(closures[0]()))
+print("Should be 21: " + str(closures[1]()))
+print("Should be 12: " + str(closures[2]()))
+print("Should be 23: " + str(closures[5]()))

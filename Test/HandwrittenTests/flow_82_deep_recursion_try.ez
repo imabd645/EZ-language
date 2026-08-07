@@ -1,0 +1,18 @@
+task deepRecurse(n) {
+    when n == 0 {
+        throw "Hit bottom"
+    }
+    
+    try {
+        give deepRecurse(n - 1)
+    } catch e {
+        when n == 5 {
+            give "Caught at 5: " + e
+        }
+        throw e
+    } finally {
+    }
+}
+
+result = deepRecurse(10)
+print("Result: " + str(result))

@@ -1,0 +1,22 @@
+task resolveLater(val) {
+    wait(10)
+    give val
+}
+
+task asyncWorker() {
+    try {
+        throw "Oops an error"
+    } catch e {
+        print("Caught error: " + e)
+        print("Awaiting inside catch block...")
+        
+        result = await(resolveLater(42))
+        print("Recovered with value: " + str(result))
+        give result
+    }
+}
+
+print("Starting worker...")
+f = spawn(asyncWorker)
+final = await(f)
+print("Final result: " + str(final))

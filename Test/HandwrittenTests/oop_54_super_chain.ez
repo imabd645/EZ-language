@@ -1,0 +1,32 @@
+model A {
+    task speak() {
+        give "A"
+    }
+}
+
+model B extends A {
+    task speak() {
+        give "B -> " + super.speak()
+    }
+}
+
+model C extends B {
+    task speak() {
+        give "C -> " + super.speak()
+    }
+}
+
+model D extends C {
+    task speak() {
+        give "D -> " + super.speak()
+    }
+}
+
+model E extends D {
+    task speak() {
+        give "E -> " + super.speak()
+    }
+}
+
+inst = new E()
+print("Deep Super Chain: " + inst.speak())

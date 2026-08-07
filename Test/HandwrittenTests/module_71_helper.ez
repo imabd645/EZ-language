@@ -1,0 +1,4 @@
+task helperMath(x) {
+    give x * x
+}
+helperVar = 42

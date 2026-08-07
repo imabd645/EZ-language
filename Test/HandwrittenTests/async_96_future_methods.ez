@@ -1,0 +1,28 @@
+out "--- Testing Future Methods ---"
+
+task slowWorker(id, ms) {
+    wait(ms)
+    give id
+}
+
+f1 = spawn(slowWorker, 1, 50)
+f2 = spawn(slowWorker, 2, 10)
+f3 = spawn(slowWorker, 3, 20)
+
+out "isDone before wait: " + str(isDone(f1))
+
+results = awaitAll([f1, f2, f3])
+out "awaitAll results: " + str(results)
+
+out "isDone after wait: " + str(isDone(f1))
+
+// Cancel test
+f4 = spawn(slowWorker, 4, 1000)
+cancel(f4)
+
+try {
+    await(f4)
+    out "FAILED: Should have thrown!"
+} catch e {
+    out "Caught cancelled future safely."
+}

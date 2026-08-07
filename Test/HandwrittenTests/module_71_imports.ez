@@ -1,0 +1,9 @@
+out "--- Testing Module Includes ---"
+use "Test/HandwrittenTests/module_71_helper.ez"
+
+out "Helper Math (16): " + str(helperMath(4))
+out "Helper Var (42): " + str(helperVar)
+
+// Modifying helper var
+helperVar = 100
+out "Helper Var (100): " + str(helperVar)

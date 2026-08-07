@@ -1,0 +1,14 @@
+closures = []
+i = 0
+while i < 3 {
+    push(closures, || { 
+        i = i + 10
+        give i 
+    })
+    i = i + 1
+}
+
+// i is now 3
+print("Run 0: " + str(closures[0]())) // should be 13
+print("Run 1: " + str(closures[1]())) // should be 23
+print("Run 2: " + str(closures[2]())) // should be 33

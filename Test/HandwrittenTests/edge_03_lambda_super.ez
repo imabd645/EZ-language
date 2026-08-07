@@ -1,0 +1,14 @@
+model A {
+    task get() { give "A" }
+}
+
+model B extends A {
+    task get() {
+        // Can a lambda capture super?
+        f = || { give super.get() }
+        give f()
+    }
+}
+
+b = B()
+print("Lambda super: " + str(b.get()))

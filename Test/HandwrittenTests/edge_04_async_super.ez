@@ -1,0 +1,23 @@
+model Base {
+    task fetch(n) {
+        give n * 2
+    }
+}
+
+model AsyncChild extends Base {
+    task fetch(n) {
+        // Try/catch around await around super!
+        try {
+            val = super.fetch(n)
+            f = spawn(|| { give val * 3 })
+            give await f
+        } catch e {
+            give -1
+        }
+    }
+}
+
+ac = AsyncChild()
+f = spawn(|| { give ac.fetch(5) })
+res = await f
+print("Async deep super result: " + str(res)) // Expected: 5 * 2 * 3 = 30

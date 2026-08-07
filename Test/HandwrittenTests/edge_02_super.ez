@@ -1,0 +1,23 @@
+model Base {
+    var v1 = 1
+    var v2 = 2
+    task mix() { give self.v1 + self.v2 }
+}
+
+model Child extends Base {
+    var v3 = 3
+    task mix() { give super.mix() + self.v3 }
+}
+
+model GrandChild extends Child {
+    var v4 = 4
+    task mix() { give super.mix() + self.v4 }
+}
+
+model GreatGrandChild extends GrandChild {
+    var v5 = 5
+    task mix() { give super.mix() + self.v5 }
+}
+
+inst = new GreatGrandChild()
+print("Deep Super Chain Result (Expected 15): " + str(inst.mix()))

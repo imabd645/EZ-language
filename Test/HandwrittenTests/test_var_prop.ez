@@ -3,5 +3,5 @@ model Base {
 }
 
 b = Base()
-print(b.var)
+
 print(b.v1)

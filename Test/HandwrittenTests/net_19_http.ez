@@ -1,0 +1,15 @@
+out "--- Testing Network Builtins ---"
+
+// 1. URL encode decode
+encoded = url_encode("?name=EZ Language&val=100")
+out "URL Encoded: " + encoded
+out "URL Decoded: " + url_decode(encoded)
+
+// 2. HTTP Get to invalid domain
+try {
+    // Should safely throw rather than crash
+    res = http_get("http://invalid.domain.that.does.not.exist.com")
+    out "HTTP Result (unexpected): " + str(res)
+} catch e {
+    out "Caught HTTP failure safely: " + str(e)
+}

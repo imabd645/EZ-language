@@ -1,0 +1,17 @@
+out "--- Testing Eval Builtin ---"
+
+// 1. Basic math eval
+res1 = eval("10 + 5 * 2")
+out "Eval Math (20): " + str(res1)
+
+// 2. Variable Scope evaluation
+x = 100
+res2 = eval("x * 2") // Does eval capture local scope?
+out "Eval Local Scope (200): " + str(res2)
+
+// 3. Syntax Error in eval
+try {
+    eval("10 + * 2")
+} catch e {
+    out "Caught syntax error in eval: " + e
+}

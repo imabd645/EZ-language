@@ -63,8 +63,15 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
 
     // Compile all statements
     try {
-        for (const auto& stmt : statements) {
-            compileStmt(stmt);
+        for (size_t i = 0; i < statements.size(); ++i) {
+            const auto& stmt = statements[i];
+            if (i == statements.size() - 1 && std::holds_alternative<ExpressionStmt*>(stmt->variant)) {
+                auto exprStmt = std::get<ExpressionStmt*>(stmt->variant);
+                compileExpr(exprStmt->expr);
+                emitReturn();
+            } else {
+                compileStmt(stmt);
+            }
         }
     } catch (const CompilerError&) {
         // Error already recorded in hadError / errorMessage

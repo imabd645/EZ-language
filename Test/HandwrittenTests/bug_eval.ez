@@ -1,0 +1,15 @@
+out "--- Testing eval return ---"
+res = eval("10 + 5")
+out "Result 1: " + str(res)
+
+res2 = eval("a = 20; a * 3")
+out "Result 2: " + str(res2)
+
+out "--- Testing eval syntax error ---"
+try {
+    eval("!#%")
+    out "FAIL: did not throw"
+} catch e {
+    out "PASS: caught syntax error - " + str(e)
+}
+out "Done"

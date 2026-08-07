@@ -28,12 +28,18 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
 
     Lexer lexer(code, filename);
     std::vector<Token> tokens = lexer.tokenize();
-    if (lexer.hasError()) return Value();
+    if (lexer.hasError()) {
+        throwException("SyntaxError", "Syntax error in eval()", 0, filename);
+        return Value();
+    }
 
     ASTArena arena;
     Parser parser(tokens, arena);
     std::vector<StmtPtr> statements = parser.parse();
-    if (parser.hasError()) return Value();
+    if (parser.hasError()) {
+        throwException("SyntaxError", "Parse error in eval()", 0, filename);
+        return Value();
+    }
 
     BytecodeCompiler compiler(arena);
     

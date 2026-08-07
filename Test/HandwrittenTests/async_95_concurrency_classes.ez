@@ -1,0 +1,36 @@
+out "--- Testing Concurrency Classes ---"
+
+// 1. Atomic
+a = Atomic()
+a.init(10)
+a.add(5)
+out "Atomic get (15): " + str(a.get())
+a.sub(3)
+out "Atomic get (12): " + str(a.get())
+a.set(100)
+out "Atomic set (100): " + str(a.get())
+
+// 2. Channel
+ch = Channel()
+ch.send("Hello")
+ch.send("World")
+out "Channel size (2): " + str(ch.size())
+
+msg1 = ch.receive()
+out "Channel receive 1: " + msg1
+msg2 = ch.tryReceive()
+out "Channel tryReceive: " + msg2
+
+out "Channel size (0): " + str(ch.size())
+
+timeoutMsg = ch.receiveTimeout(50)
+out "Channel receiveTimeout (nil): " + str(timeoutMsg == nil)
+
+ch.close()
+out "Channel isClosed (true): " + str(ch.isClosed())
+
+try {
+    ch.send("After close")
+} catch e {
+    out "Caught send on closed channel: " + e
+}

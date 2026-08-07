@@ -1,0 +1,14 @@
+out "--- Testing DateTime Class ---"
+
+// 1. Default (Now)
+now = DateTime()
+out "Year: " + str(now.year() >= 2024)
+out "Month: " + str(now.month() > 0)
+
+// 2. Specific Date
+launch = DateTime(2026, 8, 7, 9, 30, 0)
+out "Specific Date format: " + launch.format("%Y-%m-%d %H:%M:%S")
+
+// 3. Diff
+diffMs = now.diff(launch)
+out "Diff computes safely: " + str(typeOf(diffMs) == "number" or typeOf(diffMs) == "integer")

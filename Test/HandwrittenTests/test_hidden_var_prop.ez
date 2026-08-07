@@ -1,0 +1,8 @@
+model Base {
+    hidden var v1 = 1
+}
+
+b = Base()
+// we know b.var throws hidden error
+// but what about b.v1?
+print(b.v1)

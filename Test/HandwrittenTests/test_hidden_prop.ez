@@ -1,0 +1,8 @@
+model Base {
+    hidden prop1
+    shown prop2
+}
+
+b = Base()
+b.prop2 = "world"
+print("prop2: " + b.prop2)

@@ -1159,8 +1159,14 @@ StmtPtr Parser::modelStatement() {
                     initializer = expression();
                 }
                 
-                if (initializer == nullptr && !hasVisibilityModifier) {
-                    throw ParseError("Property '" + propName.lexeme + "' must be initialized unless declared with 'hidden' or 'shown'", propName.line);
+                // A bare `x` says nothing about the property, so require SOME
+                // declaration: an initializer, a visibility modifier, or a type
+                // annotation. The type annotation was missing from this check,
+                // which made `data: any` -- declare the type here, assign it in
+                // init() -- a parse error. That form is used 34 times across the
+                // tree and left `use "collections"` unable to load at all.
+                if (initializer == nullptr && !hasVisibilityModifier && typeHint == nullptr) {
+                    throw ParseError("Property '" + propName.lexeme + "' must be initialized, given a type annotation, or declared with 'hidden' or 'shown'", propName.line);
                 }
                 
                 skipNewlines();

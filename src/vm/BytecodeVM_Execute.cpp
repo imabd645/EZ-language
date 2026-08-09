@@ -2740,11 +2740,16 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             return false;
         }
 
-        if (super_val->instance->superInitialized) {
-            runtimeError("super() has already been called");
-            return false;
+        // Scoped to the executing constructor, not to the instance: in a chain
+        // three deep each level legitimately calls super() once on the SAME
+        // instance, so an instance-wide flag rejected the second level.
+        if (!frames.empty()) {
+            if (frames.back().superCalled) {
+                runtimeError("super() has already been called");
+                return false;
+            }
+            frames.back().superCalled = true;
         }
-        super_val->instance->superInitialized = true;
 
         // Use BoundMethod to handles self-injection correctly
         Value bound = Value(std::make_shared<EZBoundMethod>(Value(super_val->instance), initMethod));

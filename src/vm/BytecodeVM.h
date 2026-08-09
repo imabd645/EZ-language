@@ -81,6 +81,12 @@ private:
         std::string    functionName;
         std::string    filename;   // Source file this frame belongs to
         int            line;
+        // Has this invocation already called super()? The rule is one super()
+        // per CONSTRUCTOR CALL, so it belongs on the frame. Tracking it on the
+        // instance instead broke every inheritance chain three deep or more:
+        // GrandChild.init calls super(), which runs Child.init, which calls
+        // super() on the same instance and was rejected as a duplicate.
+        bool           superCalled = false;
 
         const Chunk& chunk() const { return function->chunk; }
     };

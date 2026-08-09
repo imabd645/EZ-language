@@ -303,9 +303,32 @@ a = [1, 2, 3]
 b = [...a, 4, 5]      # [1, 2, 3, 4, 5]
 ```
 
-> **`**` is not a real operator.** Although a `POW` opcode exists in the bytecode ISA, the lexer never produces a `**`/power token — there is only a single `*` (multiply) operator. For exponentiation, use the `pow(base, exp)` builtin. Writing `2 ** 8` will lex as two consecutive `*` tokens and will not parse as exponentiation.
+#### Exponentiation
 
-> **`0b...` binary literals are not supported** by the lexer — only decimal numbers and `0x...` hexadecimal literals are recognized.
+```ez
+out 2 ** 10           # 1024
+out 2 ** 3 ** 2       # 512  — right-associative: 2 ** (3 ** 2)
+out 2 ** 3 * 2        # 16   — ** binds tighter than *
+out 2 ** -1           # 0.5
+x = 3
+x **= 2               # 9
+```
+
+`**` is right-associative and binds tighter than `* / %`. Integer bases with a
+non-negative exponent use wrapping square-and-multiply, consistent with EZ's
+defined-wrap integer semantics; anything else falls back to floating point.
+
+> **`-2 ** 2` is `4`, not `-4`.** Unary minus binds tighter than `**` here,
+> unlike Python and standard mathematical notation. Write `-(2 ** 2)` for the
+> negation of the power. The `pow(base, exp)` builtin remains available.
+
+#### Number literals
+
+```ez
+255       # decimal
+0xFF      # hex   -> 255
+0b1010    # binary -> 10   (0B also accepted)
+```
 
 ### Control Flow
 
@@ -1120,7 +1143,7 @@ with no positions and no flags:
 | `round(x)` | Round to nearest integer |
 | `abs(x)` | Absolute value |
 | `sqrt(x)` | Square root |
-| `pow(base, exp)` | Exponentiation (use this instead of `**`) |
+| `pow(base, exp)` | Exponentiation (the `**` operator does the same) |
 | `min(a, b)` | Minimum of two values |
 | `max(a, b)` | Maximum of two values |
 | `rand()` | Random float in `[0, 1)` |
@@ -1236,6 +1259,22 @@ t.stop()
 | `getattr(obj, name)` | Get property by name string |
 | `setattr(obj, name, val)` | Set property by name string |
 | `hasattr(obj, name)` | Check if property exists |
+| `eval(code)` | Compile and run a string of EZ source, returning the value of its last expression |
+
+`eval` shares the caller's globals, so it can read and define them:
+
+```ez
+g = 41
+eval("g + 1")            # 42
+eval("newVar = 99")      # defines a global
+```
+
+A lexer or parser error inside `eval` throws and is catchable. Note the parser
+also prints the underlying diagnostic to stderr before throwing, so a caught
+`eval` failure still produces output. Two caveats: the static type checker
+cannot see names created inside an `eval` string, so referring to them in
+ordinary code afterwards is a compile error; and, as with any `eval`, never pass
+it text derived from untrusted input.
 
 ### Errors & Process Control
 
@@ -1346,6 +1385,60 @@ os_call(msgBox, "int", 0, "Hello from EZ!", "EZ FFI Demo", 0)
 
 If `funcPtr` is null (library/function not found), or if the call itself crashes (access violation), `os_call` raises a catchable EZ runtime error rather than terminating the process.
 
+> **`os_get_func` returns `0` for a symbol that does not exist** — it does not throw. Passing that `0` to `os_call` is what produces the access-violation error, one step removed from the real cause. Check the pointer before calling:
+>
+> ```ez
+> fn = os_get_func(lib, "MaybeMissing")
+> when fn == 0 { throw "symbol not found" }
+> ```
+
+### Typed calls: `os_call_sig(funcPtr, returnType, sigArray, ...args)`
+
+`os_call` passes every argument in an integer/pointer register, so it **cannot
+pass a real floating-point parameter** — a `double` argument arrives mangled.
+When any parameter is a float or double, use `os_call_sig`, which takes an array
+of per-argument type names:
+
+```ez
+# double pow(double, double)
+crt  = os_load_lib("msvcrt.dll")
+powF = os_get_func(crt, "pow")
+os_call_sig(powF, "double", ["double", "double"], 2, 10)   # 1024.0
+```
+
+Type names accepted in the signature array and as `returnType`: `"int"`,
+`"ptr"`, `"string"`, `"float"` / `"f32"`, `"double"` / `"f64"`.
+
+`os_call_sig_arr(funcPtr, returnType, sigArray, argsArray)` is the same thing
+with the arguments passed as an array instead of varargs, so it has no
+argument-count ceiling — useful when building a call dynamically.
+
+### Callbacks: passing an EZ function to native code
+
+Many Win32 APIs take a function pointer (enumeration callbacks, window
+procedures, comparators). `os_ffi_create_callback` compiles an EZ function into
+a native trampoline and returns its address.
+
+```ez
+# int compare(const void*, const void*)
+cb = os_ffi_create_callback(["ptr", "ptr"], "int", | a, b | {
+    give os_read_int32(a, 0) - os_read_int32(b, 0)
+})
+
+os_call(qsortFn, "int", arrPtr, count, 4, cb)
+
+os_ffi_free_callback(cb)     # release when finished
+```
+
+| Function | Description |
+|---|---|
+| `os_ffi_create_callback(sigArray, returnType, fn)` | Native function pointer wrapping an EZ function |
+| `os_ffi_free_callback(ptr)` | Release a callback created above |
+| `os_is_callback(ptr)` | Whether a pointer is one of ours |
+
+A callback stays alive until freed, so creating them in a loop without freeing
+leaks trampolines.
+
 ### Raw memory access
 
 For working with structs and pointers returned by Win32 APIs, EZ exposes direct memory read/write builtins:
@@ -1355,8 +1448,10 @@ For working with structs and pointers returned by Win32 APIs, EZ exposes direct 
 | `os_alloc(size)` / `os_free(ptr)` | Allocate/free a raw memory block, returns its address as an integer |
 | `os_read_byte(ptr, offset)` / `os_write_byte(ptr, offset, val)` | Single byte |
 | `os_read_uint16/32/64(ptr, offset)` / `os_write_uint16/32/64(ptr, offset, val)` | Unsigned integers of various widths |
-| `os_read_float32/64(ptr, offset)` / `os_write_float32/64(ptr, offset, val)` | Floats/doubles |
+| `os_read_int16/32/64(ptr, offset)` / `os_write_int16/32/64(ptr, offset, val)` | **Signed** integers — use these for values that can go negative; the unsigned readers will report `-1` as `4294967295` |
+| `os_read_float32/64(ptr, offset)` / `os_write_float32/64(ptr, offset, val)` | Floats/doubles (`os_read_float`/`os_read_double` are aliases) |
 | `os_read_string_ptr(ptr)` | Read a null-terminated C string from a pointer |
+| `os_read_string_ptr_n(ptr, maxLen)` | Same, but stops after `maxLen` bytes — use this when the string may not be terminated, so a missing NUL cannot walk off the end of the mapping |
 | `os_write_string(ptr, offset, str)` | Write a string into memory |
 | `os_buffer_from_ptr(ptr, size)` | Wrap a raw pointer as an EZ `buffer` |
 | `os_buffer_addr(buf)` | Get the backing address of an EZ `buffer` |
@@ -1448,8 +1543,8 @@ Because that repository is not part of this codebase, this README does **not** d
 
 A summary of places where this repository's source diverges from commonly-circulated descriptions of EZ:
 
-- **No `**` power operator** — the lexer does not produce a power token; use `pow(base, exp)`.
-- **No `0b...` binary literals** — only decimal and `0x...` hex literals are lexed.
+- **`-2 ** 2` is `4`, not `-4`** — unary minus binds tighter than `**` here, unlike Python and standard mathematical notation. Write `-(2 ** 2)` when you mean the negation of the power.
+- **A malformed binary literal reports a confusing error** — `0b1012` lexes as `0b101` followed by `2`, so the message is about the *next* token (e.g. "Expected ')'") rather than the bad digit. `0b2` and a bare `0b` are reported properly.
 - **String interpolation uses `` `text {expr}` ``**, not `` `text ${expr}` ``.
 - **No `db_*` (SQLite) or `pdf_*` builtins exist in C++** despite `sqlite3` being linked by CMake — any database or PDF functionality must come from an `ezlib` package.
 - **No `md5`, `sha256`, or `hmac_sha256` builtins exist in C++** — general hashing lives in the `ezlib` `crypto` package. Base64 is partly covered: `b64url_encode`/`b64url_decode` (URL-safe alphabet) and `hex_to_bytes` are builtins, but standard-alphabet `base64_encode`/`base64_decode` are not.

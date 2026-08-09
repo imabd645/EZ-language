@@ -61,7 +61,12 @@ set(SOURCES
     src/builtins/Builtins_Console.cpp
     src/builtins/Builtins_Core.cpp
     src/builtins/Builtins_Data.cpp
-    src/builtins/Builtins_FFI.cpp
+    src/builtins/FFI/FFI.cpp
+    src/builtins/FFI/FFI_Support.cpp
+    src/builtins/FFI/FFI_Memory.cpp
+    src/builtins/FFI/FFI_Call.cpp
+    src/builtins/FFI/FFI_Callback.cpp
+    src/builtins/FFI/FFI_Struct.cpp
     src/builtins/Builtins_GC.cpp
     src/builtins/Builtins_Http.cpp
     src/builtins/Builtins_IO.cpp

@@ -186,7 +186,7 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 **SEH vs setjmp**: Different exception handling for MSVC vs MinGW.
 - MSVC: `__try` / `__except`
 - MinGW: `setjmp` / `longjmp` with vectored exception handler
-- See `src/builtins/Builtins_FFI.cpp` for pattern
+- See `src/builtins/FFI/` for pattern (split by concern: `FFI_Memory.cpp`, `FFI_Call.cpp`, `FFI_Callback.cpp`, `FFI_Struct.cpp`; shared plumbing in `FFI_Internal.h`)
 
 **Hardcoded Paths**: Ezlib path is platform-specific.
 - Windows: `C:/ezlib`

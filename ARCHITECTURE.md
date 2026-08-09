@@ -96,7 +96,22 @@ The `Value` type is a `std::variant` supporting 23 distinct types:
 - `Atomic` class - Atomic integer operations
 - `Channel` class - Thread-safe queue with condition variables
 
-### FFI Layer (`src/builtins/Builtins_FFI.cpp`)
+### FFI Layer (`src/builtins/FFI/`)
+
+**File layout** — split by concern; each group registers its own builtins:
+
+| File | Contents |
+|---|---|
+| `FFI.cpp` | `registerFFIBuiltins()` — calls the four group registrars |
+| `FFI_Internal.h` | Shared plumbing only: allocation registry, bounds check, crash-guard macros, group registrar declarations |
+| `FFI_Support.cpp` | Allocation registry, `ffiBoundsCheck`, vectored exception handler |
+| `FFI_Memory.cpp` | `os_alloc`/`os_free` and every `os_read_*`/`os_write_*` (27 builtins) |
+| `FFI_Call.cpp` | `os_load_lib`, `os_get_func`, `os_call`, `os_call_sig`, `os_call_sig_arr` |
+| `FFI_Callback.cpp` | libffi closures for EZ callbacks, proxy WndProc |
+| `FFI_Struct.cpp` | Struct layout, pack, unpack |
+
+Anything used by only one file keeps `static` linkage there; `FFI_Internal.h`
+carries just what genuinely crosses a file boundary.
 
 **libffi Integration**:
 - Dynamic foreign function calls with type signatures
@@ -216,7 +231,7 @@ The EZ interpreter is currently Windows-only with the following platform-specifi
 
 ### Platform-Specific Code Locations
 
-- `src/builtins/Builtins_FFI.cpp`: Extensive `#ifdef _WIN32` and `#ifdef _MSC_VER`
+- `src/builtins/FFI/`: Extensive `#ifdef _WIN32` and `#ifdef _MSC_VER`
 - `src/builtins/Builtins_Console.cpp`: Windows-only console functions
 - `src/builtins/Builtins_Net.cpp`: Winsock2 includes
 - `src/eventloop/EventLoop.h`: Windows macro undefs for libuv compatibility

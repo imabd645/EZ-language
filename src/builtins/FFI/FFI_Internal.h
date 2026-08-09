@@ -59,6 +59,16 @@ void ffiTrackAlloc(uintptr_t addr, size_t size);
 bool ffiUntrackAlloc(uintptr_t addr);
 bool ffiBoundsCheck(RuntimeContext& interp, uintptr_t base, size_t offset, size_t accessSize);
 
+// Shrink a requested length to what is actually left in the tracked block that
+// `addr` falls inside; returns `requested` unchanged for an untracked pointer.
+//
+// This is for reads whose length argument is a CAP rather than a promise --
+// os_read_string_ptr_n(ptr, 65536) means "stop at the NUL, and never scan past
+// 65536 bytes", not "65536 bytes are readable". Rejecting such a call because
+// the allocation is smaller than the cap would break every sensible use; the
+// right answer is to lower the cap to the end of the block.
+size_t ffiClampToBlock(uintptr_t addr, size_t requested);
+
 // ── Crash guard ─────────────────────────────────────────────────────────────
 // A bad native call or pointer dereference must surface as a catchable EZ error
 // rather than killing the process. MSVC uses __try/__except directly; MinGW has

@@ -66,6 +66,22 @@ bool ffiBoundsCheck(RuntimeContext& interp, uintptr_t base, size_t offset, size_
     return true; // not inside a managed block -> raw pointer, allowed
 }
 
+// See the header for why this clamps rather than rejects.
+size_t ffiClampToBlock(uintptr_t addr, size_t requested) {
+    std::lock_guard<std::mutex> lock(g_ffiAllocsMutex);
+    if (g_ffiAllocs.empty()) return requested;
+    auto it = g_ffiAllocs.upper_bound(addr); // first block starting after addr
+    if (it == g_ffiAllocs.begin()) return requested;
+    --it;
+    uintptr_t blockStart = it->first;
+    uintptr_t blockEnd   = blockStart + it->second;
+    if (addr >= blockStart && addr < blockEnd) {
+        size_t available = (size_t)(blockEnd - addr);
+        return requested < available ? requested : available;
+    }
+    return requested; // not in a managed block -> raw pointer, caller's business
+}
+
 #ifdef _WIN32
 #ifndef _MSC_VER
 thread_local jmp_buf os_call_jmp_env; // thread_local: safe for concurrent spawn() FFI calls

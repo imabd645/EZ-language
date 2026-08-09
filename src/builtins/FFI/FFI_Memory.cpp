@@ -53,6 +53,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint64_t), Value(0LL));
             uint64_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
             return Value((long long)val);
@@ -71,6 +72,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int64_t), Value(0LL));
             int64_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(int64_t*)(base + offset));
             return Value((long long)val);
@@ -101,6 +103,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint32_t), Value(0LL));
             uint32_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(uint32_t*)(base + offset));
             return Value((long long)val);
@@ -116,6 +119,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int32_t), Value(0LL));
             int32_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(int32_t*)(base + offset));
             return Value((long long)val);
@@ -163,6 +167,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint16_t), Value(0LL));
             uint16_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(uint16_t*)(base + offset));
             return Value((long long)val);
@@ -178,6 +183,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(int16_t), Value(0LL));
             int16_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(int16_t*)(base + offset));
             return Value((long long)val);
@@ -238,6 +244,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(float), Value(0.0));
             float val = 0;
             SAFE_MEMORY_OP(interp, val = *(float*)(base + offset));
             return Value((double)val);
@@ -268,6 +275,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value(0.0));
             double val = 0;
             SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
@@ -298,6 +306,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value(0.0));
             double val = 0;
             SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
@@ -328,6 +337,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0.0);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(double), Value(0.0));
             double val = 0;
             SAFE_MEMORY_OP(interp, val = *(double*)(base + offset));
             return Value(val);
@@ -358,6 +368,7 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) return Value(0LL);
             uint8_t* base = reinterpret_cast<uint8_t*>((uintptr_t)args[0].asNumber());
             size_t offset = (size_t)args[1].asNumber();
+            FFI_BOUNDS(interp, args, sizeof(uint8_t), Value(0LL));
             uint8_t val = 0;
             SAFE_MEMORY_OP(interp, val = *(base + offset));
             return Value((long long)val);
@@ -388,6 +399,11 @@ void registerFFIMemory(RuntimeContext& interp) {
             if (!args[0].isNumber()) return Value("");
             const char* str = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
             if (!str) return Value("");
+            // The only read that cannot be bounds-checked: the length is not
+            // known until the terminating NUL is found, so there is no span to
+            // validate up front. A string without a NUL inside the allocation
+            // will read past it, caught only by the crash guard. Use
+            // os_read_string_ptr_n when the data may not be terminated.
             std::string res;
             SAFE_MEMORY_OP(interp, res = std::string(str));
             return Value(res);
@@ -422,6 +438,12 @@ void registerFFIMemory(RuntimeContext& interp) {
             const char* s = reinterpret_cast<const char*>((uintptr_t)args[0].asNumber());
             size_t maxLen = (size_t)args[1].asInteger();
             if (!s) return Value("");
+            // maxLen is a CAP, not a promise that many bytes are readable:
+            // ffi.string_at passes 65536 to mean "stop at the NUL, and never
+            // scan past 64K". Clamp it to what the tracked block actually holds
+            // instead of rejecting -- rejecting broke every caller that passes a
+            // generous cap for a short string. Untracked pointers are unchanged.
+            maxLen = ffiClampToBlock((uintptr_t)args[0].asNumber(), maxLen);
             std::string res;
             SAFE_MEMORY_OP(interp, res = std::string(s, strnlen(s, maxLen)));
             return Value(res);

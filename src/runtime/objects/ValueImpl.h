@@ -148,6 +148,48 @@ inline std::string Value::asString() const {
     std::cerr << "[Value] asString fail, index=" << index() << "\n"; throw std::runtime_error("Not a string");
 }
 
+// ── Recursion guard for the container printers ──────────────────────────────
+// toString() walks arrays and tuples recursively on the NATIVE stack, which the
+// interpreter's own call-depth limit does not cover. Two ordinary programs used
+// to kill the process outright:
+//
+//     a = []                       a = []
+//     push(a, a)                   repeat i = 0 to 5000 { a = [a] }
+//     out a          <- crash      out a          <- crash
+//
+// The first is a cycle, and the GC is a cycle collector, so cyclic data is a
+// supported shape -- printing it must not be fatal. The second simply runs out
+// of native stack. Both now produce a marker instead of dying: a repeat of a
+// container already being printed renders as `[...]`, and nesting past
+// TOSTRING_MAX_DEPTH renders the same way.
+//
+// The path is thread_local so concurrent spawn()ed prints cannot corrupt each
+// other's state.
+static constexpr size_t TOSTRING_MAX_DEPTH = 512;
+
+inline std::vector<const void*>& ezToStringPath() {
+    static thread_local std::vector<const void*> path;
+    return path;
+}
+
+// RAII: pushes a container onto the active path and pops it on every exit.
+struct EZToStringFrame {
+    bool recursive;
+    bool tooDeep;
+    explicit EZToStringFrame(const void* p) : recursive(false), tooDeep(false) {
+        auto& path = ezToStringPath();
+        if (path.size() >= TOSTRING_MAX_DEPTH) { tooDeep = true; return; }
+        for (const void* seen : path) {
+            if (seen == p) { recursive = true; return; }
+        }
+        path.push_back(p);
+    }
+    ~EZToStringFrame() {
+        if (!recursive && !tooDeep) ezToStringPath().pop_back();
+    }
+    bool blocked() const { return recursive || tooDeep; }
+};
+
 inline std::string Value::toString() const {
     switch (type()) {
         case ValueType::NIL: return "nil";
@@ -166,6 +208,8 @@ inline std::string Value::toString() const {
         case ValueType::SHORT_STRING: return asString();
         case ValueType::CONCAT_STRING: return asString();
         case ValueType::ARRAY: {
+            EZToStringFrame frame(asArrayPtr().get());
+            if (frame.blocked()) return "[...]";
             std::string result = "[";
             const auto& arr = asArray();
             for (size_t i = 0; i < arr.size(); i++) {
@@ -180,6 +224,8 @@ inline std::string Value::toString() const {
             return result;
         }
         case ValueType::TUPLE: {
+            EZToStringFrame frame(asTuplePtr().get());
+            if (frame.blocked()) return "(...)";
             std::string result = "(";
             const auto& tup = asTuple();
             for (size_t i = 0; i < tup.size(); i++) {

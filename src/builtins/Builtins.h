@@ -6,6 +6,11 @@ class RuntimeContext;
 void registerBuiltins(RuntimeContext& interp);
 
 void registerIOBuiltins(RuntimeContext& interp);
+
+// Release the OS handles of File objects that have been garbage collected.
+// Defined in Builtins_IO.cpp, called by gc_collect() so an explicit collection
+// also frees file descriptors, not just memory.
+void ezReapDeadFileStreams();
 void registerNetBuiltins(RuntimeContext& interp);
 void registerDBBuiltins(RuntimeContext& interp);
 void registerMathBuiltins(RuntimeContext& interp);

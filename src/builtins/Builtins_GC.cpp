@@ -1,5 +1,6 @@
 #include "runtime/objects/EZObjects.h"
 #include "gc/CycleCollector.h"
+#include "builtins/Builtins.h"   // ezReapDeadFileStreams()
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
 #include "runtime/Environment.h"
@@ -32,6 +33,12 @@ void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gc_collect", Value::makeNativeFunction("gc_collect", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             CycleCollector::instance().collect();
+            // Collecting may have destroyed File instances. Their OS handles
+            // live in a side table that is otherwise only pruned when another
+            // file is opened, so release them here too -- a program that drops
+            // its last File and never opens another would hold the handle
+            // indefinitely.
+            ezReapDeadFileStreams();
             return Value(true);
         }));
 

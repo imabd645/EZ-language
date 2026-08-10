@@ -79,6 +79,17 @@ static void removeStream(EZInstance* inst) {
     g_fileStreams.erase(inst);
 }
 
+// Release the handles of every File that has been collected.
+//
+// Reaping on open alone is not enough: a program that drops its last File and
+// never opens another would hold that OS handle until it did. gc_collect()
+// calls this so there is an explicit, predictable way to release them --
+// "collect frees resources" being the reasonable expectation.
+void ezReapDeadFileStreams() {
+    std::lock_guard<std::mutex> lk(g_fileMtx);
+    reapDeadStreams_locked();
+}
+
 void registerIOBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("__input__", Value::makeNativeFunction("input", 0, 
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {

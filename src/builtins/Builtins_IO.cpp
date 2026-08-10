@@ -14,26 +14,64 @@
 #include <memory>
 
 // ── File stream storage ────────────────────────────────────────────────────────
-// We cannot add a new variant to Value without modifying Value.h, so we store
-// the fstream handles in a global map keyed by EZInstance raw pointer.  Every
-// access goes through the helpers below which hold a mutex.
-// When an instance is garbage-collected its destructor will NOT automatically
-// close the stream, so File.close() is the canonical cleanup path.  As a safety
-// net the shared_ptr destructor will close the fstream when refcount hits zero.
+// A Value cannot carry an fstream, so the handles live in a side table keyed by
+// the owning EZInstance. Every access goes through the helpers below, which hold
+// a mutex.
+//
+// The table used to be pruned ONLY by File.close(), which made two problems:
+//
+//   1. A file that was never closed stayed in the table forever. The table holds
+//      a strong reference, so the fstream was never destroyed and the OS handle
+//      never released -- 400 unclosed files kept their path locked against
+//      deletion, and a long-running process would exhaust its handle budget.
+//      The old comment claimed the shared_ptr destructor was a safety net; it
+//      could not be, because this very table was the reference keeping it alive.
+//
+//   2. The key is a raw pointer that was never invalidated. Once an instance was
+//      freed its entry became a stale mapping from an address the allocator is
+//      free to hand out again, so a NEW file could have inherited the dead
+//      one's stream.
+//
+// Both are fixed by remembering the owner weakly and dropping entries whose
+// owner has died. Erasing the entry releases the last reference to the fstream,
+// which closes the handle -- so an unreferenced File now closes itself.
+static std::mutex g_fileMtx;
 
-static std::mutex                                                     g_fileMtx;
-static std::unordered_map<EZInstance*, std::shared_ptr<std::fstream>>  g_fileStreams;
+struct FileStreamEntry {
+    std::shared_ptr<std::fstream> stream;
+    std::weak_ptr<EZInstance>     owner;   // expires when the File is collected
+};
+static std::unordered_map<EZInstance*, FileStreamEntry> g_fileStreams;
 
-static void storeStream(EZInstance* inst, std::shared_ptr<std::fstream> fs) {
+// Drop entries whose File instance no longer exists. Called on open, so the
+// table is bounded by the number of files actually still reachable.
+static void reapDeadStreams_locked() {
+    for (auto it = g_fileStreams.begin(); it != g_fileStreams.end(); ) {
+        if (it->second.owner.expired()) it = g_fileStreams.erase(it);
+        else                            ++it;
+    }
+}
+
+static void storeStream(const std::shared_ptr<EZInstance>& inst,
+                        std::shared_ptr<std::fstream> fs) {
     std::lock_guard<std::mutex> lk(g_fileMtx);
-    g_fileStreams[inst] = std::move(fs);
+    // Reap first: this also removes any stale entry sitting on a recycled
+    // address, so the insert below cannot inherit a dead file's stream.
+    reapDeadStreams_locked();
+    g_fileStreams[inst.get()] = FileStreamEntry{ std::move(fs), inst };
 }
 
 static std::shared_ptr<std::fstream> getStream(EZInstance* inst) {
     std::lock_guard<std::mutex> lk(g_fileMtx);
     auto it = g_fileStreams.find(inst);
-    if (it != g_fileStreams.end()) return it->second;
-    return nullptr;
+    if (it == g_fileStreams.end()) return nullptr;
+    // A live caller holds the instance, so an expired owner here means the entry
+    // is stale from a recycled address rather than this file's.
+    if (it->second.owner.expired()) {
+        g_fileStreams.erase(it);
+        return nullptr;
+    }
+    return it->second.stream;
 }
 
 static void removeStream(EZInstance* inst) {
@@ -215,7 +253,9 @@ void registerIOBuiltins(RuntimeContext& interp) {
             }
 
             // Store the stream handle and metadata on the instance
-            storeStream(instance.get(), fs);
+            // Pass the shared_ptr, not the raw pointer: the table keeps a weak
+            // reference so it can tell when this File has been collected.
+            storeStream(instance, fs);
             instance->setProperty("_path", Value(path));
             instance->setProperty("_mode", Value(mode));
             instance->setProperty("_open", Value(true));

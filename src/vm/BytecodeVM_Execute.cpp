@@ -2653,7 +2653,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         } catch (const RuntimeError& e) {
             throw; // Propagate RuntimeError so it can be caught by EZ or VM loop
         } catch (const std::exception& e) {
-            runtimeError(std::string("Native function error: ") + e.what());
+            raiseFault(std::string("Native function error: ") + e.what());
             return false;
         }
         return true;
@@ -2675,7 +2675,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         // dispatchCall takes a uint8_t argCount, so argCount+1 would wrap to 0 at
         // 255 args and silently drop every argument.
         if (argCount >= 255) {
-            runtimeError("Too many arguments to method call (max 254)");
+            raiseFault("Too many arguments to method call (max 254)");
             return false;
         }
 
@@ -2717,7 +2717,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         }
 
         if (!bcFunc) {
-            runtimeError("Function compilation failed");
+            raiseFault("Function compilation failed");
             return false;
         }
 
@@ -2747,11 +2747,11 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             size_t reportedArity = bcFunc->isMethod && bcFunc->arity > 0 ? bcFunc->arity - 1 : bcFunc->arity;
             
             if (argCount < minArity) {
-                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
+                raiseFault("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
             if (argCount > bcFunc->arity) {
-                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
+                raiseFault("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
         }
@@ -2828,7 +2828,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                          : Value();
         
         if (initMethod.isNil()) {
-            runtimeError("Parent has no 'init' method for super(...) call");
+            raiseFault("Parent has no 'init' method for super(...) call");
             return false;
         }
 
@@ -2837,7 +2837,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         // instance, so an instance-wide flag rejected the second level.
         if (!frames.empty()) {
             if (frames.back().superCalled) {
-                runtimeError("super() has already been called");
+                raiseFault("super() has already been called");
                 return false;
             }
             frames.back().superCalled = true;
@@ -2867,14 +2867,14 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         return true;
     }
 
-    runtimeError("Value is not callable: " + callee.typeName());
+    raiseFault("Value is not callable: " + callee.typeName());
     return false;
 }
 
 void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
     // Enforce maximum call depth to catch unbounded recursion cleanly
     if (frames.size() >= FRAMES_MAX) {
-        runtimeError("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
+        raiseFault("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
         return;
     }
 
@@ -2885,7 +2885,7 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
     // local slots, plus the working headroom the function body's expression
     // temporaries will need.
     if (!hasStackHeadroom(bcFunc->localCount + STACK_HEADROOM)) {
-        runtimeError("Stack overflow: operand stack exhausted");
+        raiseFault("Stack overflow: operand stack exhausted");
         return;
     }
 

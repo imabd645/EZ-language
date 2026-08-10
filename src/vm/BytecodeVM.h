@@ -42,6 +42,15 @@ public:
 
     // RuntimeContext interface
     void runtimeError(const std::string& message, int line = 0, const std::string& filename = "") override;
+
+    // runtimeError() that is guaranteed NOT to throw. Use it for any fault raised
+    // while run()'s dispatch is on the stack and the caller already reports the
+    // failure by returning (dispatchCall -> false, pushCallFrame -> void): the
+    // fault travels as running=false + pendingException and DISPATCH() routes it
+    // to handle_vm_fault. Throwing from there is fatal when the dispatch is
+    // running inside the libuv event-loop callback -- see the note in
+    // runtimeError() and guardedHelper().
+    void raiseFault(const std::string& message);
     void throwException(const std::string& className, const std::string& message, int line = 0, const std::string& filename = "") override;
     std::shared_ptr<Environment> getGlobalEnv() override { return globalEnv; }
     void defineGlobal(const std::string& name, const Value& value) override;

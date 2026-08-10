@@ -317,6 +317,21 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
     throw RuntimeError(message, faultLine);
 }
 
+void BytecodeVM::raiseFault(const std::string& message) {
+    // Same fault-without-unwinding trick guardedHelper() uses. The callers here
+    // (dispatchCall, pushCallFrame) already signal failure by returning, so the
+    // throw at the end of runtimeError() was redundant -- and fatal when the
+    // dispatch is running inside the libuv event-loop callback, where a throw
+    // skips every catch on the stack and jumps to a null handler. A web handler
+    // declared with the wrong arity took the whole server down that way:
+    //   ERROR in _handleCallback: 'home' expected at most 0 args but got 1
+    //   [FATAL] Windows Exception 0xc0000005
+    bool savedFaultMode = faultMode;
+    faultMode = true;
+    runtimeError(message);
+    faultMode = savedFaultMode;
+}
+
 void BytecodeVM::throwException(const std::string& className, const std::string& message, int line, const std::string& filename) {
     Value classVal = globalEnv->get(className);
     if (classVal.isClass()) {

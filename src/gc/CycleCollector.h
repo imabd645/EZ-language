@@ -93,7 +93,15 @@ public:
     // Statistics
     size_t trackedCount()     const { std::lock_guard<std::mutex> lock(mutex_); return young_tracked_.size() + old_tracked_.size(); }
     size_t cyclesCollected()  const { std::lock_guard<std::mutex> lock(mutex_); return cyclesCollected_; }
-    void   setThresholds(size_t minor, size_t major) { minor_threshold_ = minor; major_threshold_ = major; }
+    // The major threshold is also raised automatically to track the surviving
+    // heap (see collect_major), so what is set here acts as the FLOOR it will
+    // never drop below rather than a fixed trigger point.
+    void   setThresholds(size_t minor, size_t major) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        minor_threshold_      = minor;
+        major_threshold_base_ = major;
+        major_threshold_      = major;
+    }
 
 private:
     CycleCollector() = default;
@@ -152,7 +160,12 @@ private:
     std::vector<TrackedObject> young_tracked_;
     std::vector<TrackedObject> old_tracked_;
     size_t                     minor_threshold_ = 2000;
-    size_t                     major_threshold_ = 10000;
+    // Current trigger point for a major collection, and the floor it is never
+    // lowered past. major_threshold_ grows with the surviving heap after each
+    // major collection -- see collect_major() for why a fixed value made
+    // allocation quadratic.
+    size_t                     major_threshold_      = 10000;
+    size_t                     major_threshold_base_ = 10000;
     size_t                     cyclesCollected_ = 0;
     bool                       disabled_        = false;
     // Number of live mutator threads (main thread counts as 1). Collection only

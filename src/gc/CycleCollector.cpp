@@ -303,10 +303,27 @@ void CycleCollector::collect_major() {
     combined.insert(combined.end(), young_tracked_.begin(), young_tracked_.end());
     
     collect_internal(combined, true);
-    
+
     // All survivors form the new old generation
     old_tracked_ = std::move(combined);
     young_tracked_.clear();
+
+    // Raise the next trigger to sit above the surviving heap.
+    //
+    // Without this the threshold was fixed, so a program legitimately holding
+    // more than major_threshold_ live objects re-entered a FULL major
+    // collection on every subsequent allocation: the condition that fired the
+    // collection was still true when it finished, because nothing was garbage.
+    // Building N live objects therefore cost O(N^2) -- 5000 nested arrays took
+    // 528ms versus 2ms with the collector disabled, and 10000 did not finish.
+    //
+    // Scaling by the survivor count spaces major collections geometrically, so
+    // the amortised cost per allocation is constant while the collector still
+    // runs often enough to reclaim cycles. This is what CPython's generational
+    // GC does with its long-lived-object growth factor.
+    const size_t survivors = old_tracked_.size();
+    const size_t scaled    = survivors + survivors / 2;   // 1.5x headroom
+    major_threshold_ = (scaled > major_threshold_base_) ? scaled : major_threshold_base_;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

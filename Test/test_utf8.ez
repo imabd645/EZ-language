@@ -1,0 +1,91 @@
+# UTF-8 handling.
+#
+# EZ strings are byte strings holding UTF-8. Most operations only move whole
+# sequences around and are safe by construction, but three used to turn valid
+# text into invalid text:
+#
+#   reverse("café")  -> bytes 169 195 102 97 99   (flipped é's two bytes)
+#   chr(233)         -> byte 233                  (not valid UTF-8 alone)
+#   ord("é")         -> 195                       (lead byte, not U+00E9)
+#
+# len/substr stay BYTE-oriented on purpose: substr takes offsets that indexOf
+# produces, and making one count characters while the other counts bytes would
+# leave them silently inconsistent.
+
+fails = 0
+
+task check(label, cond) {
+    when cond {
+        out "  ok   " + label
+    } other {
+        fails = fails + 1
+        out "  BAD  " + label
+    }
+}
+
+task checkEq(label, actual, expected) {
+    check(label + " (got " + str(actual) + ")", actual == expected)
+}
+
+task threw(fn) {
+    try { fn() give false } catch (e) { give true }
+}
+
+out "-- reverse keeps sequences intact --"
+checkEq("reverse('café')", reverse("café"), "éfac")
+checkEq("reverse ascii", reverse("abcdef"), "fedcba")
+checkEq("reverse empty", reverse(""), "")
+checkEq("reverse single multibyte", reverse("é"), "é")
+checkEq("double reverse round-trips", reverse(reverse("naïve café 日本")), "naïve café 日本")
+# A reversed string must still be readable as the same characters.
+checkEq("reversed string has the same length", len(reverse("日本語")), len("日本語"))
+
+out "-- chr encodes, ord decodes --"
+checkEq("chr ascii", chr(101), "e")
+checkEq("chr 2-byte", chr(233), "é")
+checkEq("chr 3-byte", chr(26085), "日")
+checkEq("chr 2-byte is two bytes", len(chr(233)), 2)
+checkEq("chr 3-byte is three bytes", len(chr(26085)), 3)
+checkEq("chr 4-byte is four bytes", len(chr(128512)), 4)
+
+checkEq("ord ascii", ord("e"), 101)
+checkEq("ord 2-byte", ord("é"), 233)
+checkEq("ord 3-byte", ord("日"), 26085)
+checkEq("ord empty", ord(""), 0)
+
+out "-- round trip --"
+roundTrips = true
+get cp in [0, 65, 127, 128, 233, 2047, 2048, 8364, 26085, 65535, 65536, 128512, 1114111] {
+    when ord(chr(cp)) != cp { roundTrips = false }
+}
+check("ord(chr(cp)) == cp across all encoding widths", roundTrips)
+
+out "-- invalid code points are rejected, not silently mangled --"
+check("negative rejected", threw(| | { give chr(-1) }))
+check("above U+10FFFF rejected", threw(| | { give chr(1114112) }))
+check("lone surrogate rejected", threw(| | { give chr(55296) }))
+
+out "-- byte-oriented operations are unchanged --"
+s = "naïve café 日本"
+checkEq("len counts bytes", len(s), 19)
+checkEq("split/join", join(split(s, " "), "|"), "naïve|café|日本")
+checkEq("replace", replace(s, "café", "tea"), "naïve tea 日本")
+checkEq("indexOf returns a byte offset", indexOf(s, "café"), 7)
+check("contains", contains(s, "日本"))
+checkEq("concat", "é" + "!", "é!")
+checkEq("trim", trim("  é  "), "é")
+
+out "-- malformed input degrades, never throws --"
+# substr can still cut a sequence in half (byte offsets); the result must be
+# handled rather than crash anything downstream.
+half = substr("café", 0, 4)
+check("reverse of a cut sequence returns", len(reverse(half)) == 4)
+check("ord of a stray continuation byte returns", ord(substr("café", 4, 1)) > 0)
+
+out ""
+when fails == 0 {
+    out "ALL UTF-8 TESTS PASSED"
+} other {
+    out "!!! TEST FAILED: " + str(fails) + " check(s) failed"
+    exit(1)
+}

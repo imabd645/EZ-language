@@ -1242,9 +1242,15 @@ impossible date is a `ValueError`.
 t = Timer(1000, true)          # every second, repeating
 t.onTick(| | { out "tick" })
 t.start()
-# ...
+wait(5000)                     # keep the main thread alive, or nothing fires
 t.stop()
 ```
+
+`start()` returns immediately — the ticks happen on another thread. When the main
+script runs off the end, the process exits and takes any pending timer with it, so
+a script that only calls `start()` prints nothing at all and exits 0. Hold the main
+thread open with `wait(ms)` (or any other blocking work) for as long as the timer
+should run. The same applies to a one-shot `Timer(interval)`.
 
 | Method | Description |
 |---|---|

@@ -1,0 +1,61 @@
+# Faults raised from inside dispatchCall/pushCallFrame must travel as
+# running=false + pendingException instead of unwinding a C++ exception. A throw
+# from there is unrecoverable when the dispatch is running inside the libuv
+# event-loop callback (any FFI callback / ezweb handler): it skips every catch on
+# the stack and jumps to a null handler, which took a whole web server down with
+#   ERROR in _handleCallback: 'home' expected at most 0 args but got 1
+#   [FATAL] Windows Exception 0xc0000005
+# They must still be ordinary catchable EZ errors everywhere else -- that is what
+# this checks.
+#
+# Every call below goes through a function VALUE, never a direct call by name:
+# a direct call is rejected by the type checker before it ever runs, so only the
+# indirect form reaches the runtime arity check. This is also exactly how a web
+# handler is invoked -- stored at registration, called later with the request.
+
+task noArgs() { give 1 }
+task twoArgs(a, b) { give a + b }
+
+task apply1(f, a) { give f(a) }
+task apply2(f, a, b) { give f(a, b) }
+
+# ── too many arguments ──────────────────────────────────────────────────────
+ok = "no"
+try { apply1(noArgs, 1) } catch (e) { ok = "caught" }
+out "too-many: " + ok                 # expect: too-many: caught
+
+# ── too few arguments ───────────────────────────────────────────────────────
+ok = "no"
+try { apply1(twoArgs, 1) } catch (e) { ok = "caught" }
+out "too-few: " + ok                  # expect: too-few: caught
+
+# ── value is not callable ───────────────────────────────────────────────────
+ok = "no"
+try { apply1(5, 1) } catch (e) { ok = "caught" }
+out "not-callable: " + ok             # expect: not-callable: caught
+
+# ── unbounded recursion hits the call-depth limit and stays catchable ───────
+# Deliberately NOT a tail call: `give recurse(n + 1)` is tail-call optimised into
+# a loop and never grows the frame stack, so it would spin instead of faulting.
+task recurse(n) { give 1 + recurse(n + 1) }
+ok = "no"
+try { recurse(0) } catch (e) { ok = "caught" }
+out "depth: " + ok                    # expect: depth: caught
+
+# ── catchable ACROSS a frame boundary ───────────────────────────────────────
+# The try lives in the caller here, so handle_vm_fault leaves the fault in place
+# and callFunction re-raises it from ordinary code.
+task callsBadly(f) { give apply2(f, 1, 2) }
+ok = "no"
+try { callsBadly(noArgs) } catch (e) { ok = "caught" }
+out "nested: " + ok                   # expect: nested: caught
+
+# ── a lambda stored in a collection, called with the wrong arity ────────────
+handlers = {}
+handlers["home"] = || { give "home" }
+ok = "no"
+try { apply1(handlers["home"], 1) } catch (e) { ok = "caught" }
+out "stored: " + ok                   # expect: stored: caught
+
+# ── execution continues normally after all of that ──────────────────────────
+out "after: " + str(apply2(twoArgs, 20, 22))   # expect: after: 42

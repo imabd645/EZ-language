@@ -97,6 +97,14 @@ void registerGCBuiltins(RuntimeContext& interp) {
     makeErrorClass("IndexError", exceptionClass);
     makeErrorClass("KeyError", exceptionClass);
     makeErrorClass("PermissionError", exceptionClass);
+    // throwException() only builds a typed instance when a global class of that
+    // name exists; otherwise it silently falls back to a plain string error that
+    // no `catch (SomeError e)` clause can match. These three were named at
+    // throw sites but never defined, so file, parser and regex failures all
+    // arrived as untyped strings.
+    makeErrorClass("IOError", exceptionClass);
+    makeErrorClass("SyntaxError", exceptionClass);
+    makeErrorClass("RegexError", exceptionClass);
 
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {

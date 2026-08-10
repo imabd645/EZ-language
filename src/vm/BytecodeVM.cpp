@@ -562,6 +562,17 @@ Value BytecodeVM::callFunction(const Value& callee,
     if (callee.isNativeFunction()) {
         try {
             return callee.asNativeFunction()->function(*this, args);
+        } catch (const RuntimeError&) {
+            // Propagate rather than flatten. A RuntimeError raised by
+            // throwException() carries the exception INSTANCE, which is what a
+            // typed `catch (FileNotFoundError e)` matches on. Letting it fall
+            // into the std::exception handler below rebuilt it as a plain
+            // string prefixed "Native function error: ", so the class was lost
+            // and only an untyped catch could see it -- which is exactly what
+            // happened to File(), since a constructor is invoked through here
+            // rather than through the main dispatch path (which already had
+            // this re-throw).
+            throw;
         } catch (const std::exception& e) {
             runtimeError(std::string("Native function error: ") + e.what(), line, filename);
             return Value();

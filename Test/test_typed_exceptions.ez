@@ -1,0 +1,102 @@
+# Typed catches must match errors raised by the interpreter itself.
+#
+# throwException(class, message) builds a typed instance ONLY when a global
+# class of that name exists, and otherwise falls back to a plain string that no
+# `catch (SomeError e)` clause can match. Two things broke that:
+#
+#   1. IOError, SyntaxError and RegexError were named at throw sites but never
+#      registered, so regex/parser/FFI failures arrived untyped.
+#   2. callFunction() caught the typed RuntimeError in its generic
+#      std::exception handler and rebuilt it as a string prefixed
+#      "Native function error: ", losing the class. Constructors run through
+#      that path, which is why File() could not be caught by type even though
+#      FileNotFoundError was defined.
+
+fails = 0
+task check(label, cond) {
+    when cond { out "  ok   " + label } other { fails = fails + 1 out "  BAD  " + label }
+}
+
+out "== the classes now exist =="
+get n in ["Exception", "IOError", "SyntaxError", "RegexError",
+          "FileNotFoundError", "TypeError", "ValueError", "IndexError",
+          "KeyError", "NetworkError", "PermissionError"] {
+    v = nil
+    try { v = eval(n) } catch (e) { }
+    check(n + " is defined", typeOf(v) == "model")
+}
+
+out ""
+out "== typed catch matches native errors =="
+matched = "none"
+try { File("no_such_dir/x.txt", "r") }
+catch (FileNotFoundError e) { matched = "FileNotFoundError: " + str(e.message) }
+catch (e) { matched = "generic" }
+check("File() -> FileNotFoundError  [" + matched + "]", contains(matched, "FileNotFoundError"))
+
+matched = "none"
+try { re_test("a", "(") }
+catch (RegexError e) { matched = "RegexError: " + str(e.message) }
+catch (e) { matched = "generic" }
+check("re_test bad pattern -> RegexError  [" + matched + "]", contains(matched, "RegexError"))
+
+matched = "none"
+try { File("a.txt", "zz") }
+catch (ValueError e) { matched = "ValueError" }
+catch (e) { matched = "generic" }
+check("File() bad mode -> ValueError  [" + matched + "]", matched == "ValueError")
+
+matched = "none"
+try { a = [] push(a, a) to_json(a) }
+catch (ValueError e) { matched = "ValueError" }
+catch (e) { matched = "generic" }
+check("to_json cyclic -> ValueError  [" + matched + "]", matched == "ValueError")
+
+out ""
+out "== subclass matching through Exception =="
+matched = "none"
+try { File("no_such_dir/x.txt", "r") }
+catch (Exception e) { matched = "Exception base" }
+catch (e) { matched = "generic" }
+check("FileNotFoundError caught by Exception  [" + matched + "]", matched == "Exception base")
+
+out ""
+out "== the wrong type must NOT match =="
+matched = "none"
+try { File("no_such_dir/x.txt", "r") }
+catch (KeyError e) { matched = "KeyError (WRONG)" }
+catch (e) { matched = "fell through correctly" }
+check("FileNotFoundError not caught by KeyError  [" + matched + "]", matched == "fell through correctly")
+
+out ""
+out "== untyped catch still catches everything =="
+c = 0
+try { File("nope/x", "r") } catch (e) { c = c + 1 }
+try { re_test("a", "(") } catch (e) { c = c + 1 }
+try { 1 / 0 } catch (e) { c = c + 1 }
+try { throw "plain" } catch (e) { c = c + 1 }
+check("all four caught by untyped catch", c == 4)
+
+out ""
+out "== the message survives =="
+msg = ""
+try { File("no_such_dir/x.txt", "r") } catch (FileNotFoundError e) { msg = str(e.message) }
+check("message is intact and unprefixed  [" + msg + "]",
+      contains(msg, "no_such_dir") and not contains(msg, "Native function error"))
+
+out ""
+out "== user models still work =="
+model MyErr extends Exception { init(m) { super(m) self.message = m } }
+matched = "none"
+try { throw MyErr("mine") }
+catch (MyErr e) { matched = "MyErr: " + str(e.message) }
+catch (e) { matched = "generic" }
+check("user model typed catch  [" + matched + "]", contains(matched, "MyErr"))
+
+matched = "none"
+try { throw MyErr("mine") } catch (Exception e) { matched = "base" } catch (e) { matched = "generic" }
+check("user subclass caught by Exception", matched == "base")
+
+out ""
+when fails == 0 { out "ALL EXCEPTION TESTS PASSED" }
+other { out "!!! TEST FAILED: " + str(fails) + " check(s)" exit(1) }

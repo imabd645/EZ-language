@@ -302,6 +302,97 @@ void CycleCollector::collect_internal(std::vector<TrackedObject>& candidates, bo
     phase1_purgeExpired(candidates);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Safepoint protocol
+//
+//   collector                          worker thread
+//   ---------                          -------------
+//   safepointRequested_ = true
+//   wait for parkedMutators_           ... pollSafepoint() at a backward jump
+//     to reach the thread count        parkAtSafepoint(): ++parked, notify, wait
+//   (all parked) -> collect
+//   safepointRequested_ = false
+//   notify_all                         wakes, --parked, resumes bytecode
+//
+// If the workers do not all arrive within the timeout the request is withdrawn
+// and no collection happens this round. That is the same outcome as the old
+// unconditional deferral, so the worst case is unchanged -- but only for the
+// threads that genuinely cannot answer, instead of for every program that ever
+// called spawn().
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CycleCollector::parkAtSafepoint() {
+    std::unique_lock<std::mutex> lk(safepointMutex_);
+    // Re-check under the lock: the request may have been withdrawn between the
+    // relaxed load in pollSafepoint() and getting here.
+    if (!safepointRequested_.load(std::memory_order_acquire)) return;
+
+    parkedMutators_.fetch_add(1, std::memory_order_release);
+    parkedCv_.notify_all();
+    resumeCv_.wait(lk, [this] {
+        return !safepointRequested_.load(std::memory_order_acquire);
+    });
+    parkedMutators_.fetch_sub(1, std::memory_order_release);
+}
+
+bool CycleCollector::bringToSafepoint() {
+    const int others = activeMutators_.load(std::memory_order_acquire) - 1;
+    if (others <= 0) return true;   // sole mutator: nothing to coordinate
+
+    // Only one collector at a time may drive a safepoint.
+    bool expected = false;
+    if (!safepointRequested_.compare_exchange_strong(expected, true,
+                                                     std::memory_order_acq_rel)) {
+        return false;               // another thread is already collecting
+    }
+
+    std::unique_lock<std::mutex> lk(safepointMutex_);
+    // Bounded: a thread blocked in a native call that is not a marked safe
+    // region (a raw FFI call, say) will never arrive, and waiting forever would
+    // hang the program rather than merely delay a collection.
+    const bool allParked = parkedCv_.wait_for(
+        lk, std::chrono::milliseconds(25),
+        [this, others] {
+            // Threads that exited in the meantime no longer need to park.
+            const int stillRunning = activeMutators_.load(std::memory_order_acquire) - 1;
+            return parkedMutators_.load(std::memory_order_acquire) >= stillRunning
+                || stillRunning <= 0;
+        });
+
+    if (!allParked) {
+        safepointRequested_.store(false, std::memory_order_release);
+        lk.unlock();
+        resumeCv_.notify_all();
+        return false;
+    }
+    return true;   // callers must pair this with releaseSafepoint()
+}
+
+void CycleCollector::releaseSafepoint() {
+    {
+        std::lock_guard<std::mutex> lk(safepointMutex_);
+        safepointRequested_.store(false, std::memory_order_release);
+    }
+    resumeCv_.notify_all();
+}
+
+void CycleCollector::enterSafeRegion() {
+    std::lock_guard<std::mutex> lk(safepointMutex_);
+    parkedMutators_.fetch_add(1, std::memory_order_release);
+    parkedCv_.notify_all();
+}
+
+void CycleCollector::exitSafeRegion() {
+    std::unique_lock<std::mutex> lk(safepointMutex_);
+    // Stay counted as parked until any collection in flight has finished --
+    // leaving early would resume bytecode while the collector is still walking
+    // the graph, which is exactly the race safepoints exist to prevent.
+    resumeCv_.wait(lk, [this] {
+        return !safepointRequested_.load(std::memory_order_acquire);
+    });
+    parkedMutators_.fetch_sub(1, std::memory_order_release);
+}
+
 void CycleCollector::collect_minor() {
     collect_internal(young_tracked_, false);
     // Promote survivors to old generation
@@ -344,11 +435,14 @@ void CycleCollector::collect_major() {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 void CycleCollector::collect() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    // Refuse to collect while another mutator thread is live — collecting then
-    // would race concurrent mutation (see track()/beginMutatorThread()). The
-    // garbage stays tracked and is reclaimed by a later collect once the extra
-    // threads have joined.
-    if (activeMutators_.load(std::memory_order_acquire) != 1) return;
-    collect_major();
+    // Bring the other mutators to a stop first. This used to return without
+    // doing anything whenever a spawn() worker was alive, which made an
+    // explicit gc_collect() silently do nothing in exactly the programs that
+    // needed it most.
+    if (!bringToSafepoint()) return;   // unreachable thread: caller can retry
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        collect_major();
+    }
+    releaseSafepoint();
 }

@@ -5,6 +5,8 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <condition_variable>
+#include <chrono>
 #include <functional>
 #include <cstdint>
 
@@ -57,22 +59,50 @@ public:
     template<typename T>
     void track(const std::shared_ptr<T>& ptr, ValueType type) {
         if (!ptr) return;
-        std::lock_guard<std::mutex> lock(mutex_);
-        young_tracked_.push_back({ std::static_pointer_cast<void>(ptr), type });
-        // Only run collection when this is the sole active mutator thread.
-        // The Bacon-Rajan phases read use_count() and traverse/clear object
-        // graphs that other spawn()ed VM threads mutate concurrently without
-        // any synchronisation, so collecting while another thread is live would
-        // race (misclassified garbage -> use-after-free / wiped-live-object).
-        // Deferring is safe: the objects stay tracked and are reclaimed once
-        // the extra threads join (activeMutators_ returns to 1).
-        if (!disabled_ && activeMutators_.load(std::memory_order_acquire) == 1) {
-            if (young_tracked_.size() >= minor_threshold_) {
-                collect_minor();
-            } else if (old_tracked_.size() >= major_threshold_) {
-                collect_major();
+
+        // Answer a pending safepoint before taking any lock. A thread that
+        // parked while holding mutex_ would block the very collection it is
+        // waiting for.
+        pollSafepoint();
+
+        bool wantMinor = false;
+        bool wantMajor = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            young_tracked_.push_back({ std::static_pointer_cast<void>(ptr), type });
+            if (!disabled_) {
+                if (young_tracked_.size() >= minor_threshold_)      wantMinor = true;
+                else if (old_tracked_.size() >= major_threshold_)   wantMajor = true;
             }
         }
+        if (!wantMinor && !wantMajor) return;
+
+        // Back off after a failed handshake. The threshold stays exceeded, so
+        // without this every subsequent allocation would retry immediately and
+        // pay the full timeout again -- turning one unreachable thread into a
+        // hard slowdown for everyone. Retrying after a few thousand
+        // allocations costs nothing and still collects promptly once the
+        // blocking thread frees up.
+        if (safepointBackoff_.load(std::memory_order_relaxed) > 0) {
+            safepointBackoff_.fetch_sub(1, std::memory_order_relaxed);
+            return;
+        }
+
+        // Stop the other mutators, then collect with mutex_ held. The handshake
+        // runs with mutex_ RELEASED so a worker can still finish its own
+        // track() and get back to a poll; holding it would deadlock the two
+        // against each other until the timeout.
+        if (!bringToSafepoint()) {
+            safepointBackoff_.store(4096, std::memory_order_relaxed);
+            return;                         // someone is unreachable: try later
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            // Re-check: another thread may have collected while we waited.
+            if (wantMinor && young_tracked_.size() >= minor_threshold_)     collect_minor();
+            else if (wantMajor && old_tracked_.size() >= major_threshold_)  collect_major();
+        }
+        releaseSafepoint();
     }
 
     // Manual trigger (e.g. from tests or shutdown).
@@ -84,7 +114,49 @@ public:
     // collection cannot begin once a thread has registered — closing the window
     // where a mutator could start racing mid-collection.
     void beginMutatorThread() { std::lock_guard<std::mutex> lock(mutex_); ++activeMutators_; }
-    void endMutatorThread()   { std::lock_guard<std::mutex> lock(mutex_); --activeMutators_; }
+    void endMutatorThread()   {
+        { std::lock_guard<std::mutex> lock(mutex_); --activeMutators_; }
+        // A thread leaving may be the last one a pending safepoint was waiting
+        // for, so wake the collector rather than let it sit out its timeout.
+        parkedCv_.notify_all();
+    }
+
+    // ── Safepoints ────────────────────────────────────────────────────────────
+    // The collector cannot run while another thread is executing bytecode: its
+    // phases read use_count() and walk a graph that thread may be reshaping.
+    // The old resolution was to skip collection entirely whenever a spawn()
+    // worker was alive, which is safe but means a continuously busy pool never
+    // collects at all -- measured at 40,000 cyclic objects accumulated and zero
+    // reclaimed while six overlapping workers ran.
+    //
+    // Instead the collector now ASKS the other threads to stop. Each of them
+    // polls this flag at backward jumps -- every loop and every recursive call
+    // passes one, so any thread running EZ code reaches a poll promptly -- and
+    // parks until the collection finishes.
+    //
+    // pollSafepoint() is the fast path: one relaxed atomic load, no barrier, no
+    // lock. It sits on the hot dispatch path so it has to cost nothing when no
+    // collection is pending, which is essentially always.
+    // True if a collection is waiting for this thread to stop. Callers on the
+    // hot dispatch path test this first and only then do the work of making VM
+    // state consistent, so the common case costs one relaxed load.
+    bool safepointPending() const {
+        return safepointRequested_.load(std::memory_order_relaxed);
+    }
+
+    void pollSafepoint() {
+        if (__builtin_expect(safepointPending(), 0)) {
+            parkAtSafepoint();
+        }
+    }
+
+    // A thread about to block in a native call that does NOT touch the object
+    // graph -- sleeping, waiting on a channel, blocking on a socket -- counts as
+    // parked for the duration. Without this a worker asleep in wait() would
+    // never reach a backward jump, so it could not answer a safepoint request
+    // and every collection would time out waiting for it.
+    void enterSafeRegion();
+    void exitSafeRegion();
 
     // GC Control Flags (Python-like)
     void disable() { std::lock_guard<std::mutex> lock(mutex_); disabled_ = true; }
@@ -105,6 +177,18 @@ public:
 
 private:
     CycleCollector() = default;
+
+    // Slow path of pollSafepoint(): block until the collection finishes.
+    void parkAtSafepoint();
+
+    // Ask every other mutator to park, and wait for them. Returns false if they
+    // did not all arrive within the timeout, in which case NOTHING is held and
+    // the caller must skip collecting -- degrading to the old defer-and-retry
+    // behaviour rather than risking a collection racing a live mutator. A
+    // thread stuck in a native call that is not marked as a safe region is the
+    // case this covers.
+    bool bringToSafepoint();
+    void releaseSafepoint();
 
     void collect_minor();
     void collect_major();
@@ -168,9 +252,38 @@ private:
     size_t                     major_threshold_base_ = 10000;
     size_t                     cyclesCollected_ = 0;
     bool                       disabled_        = false;
-    // Number of live mutator threads (main thread counts as 1). Collection only
-    // runs when this is 1, i.e. no spawn() worker is concurrently mutating.
+    // Number of live mutator threads (main thread counts as 1).
     std::atomic<int>           activeMutators_{1};
+
+    // ── Safepoint state ───────────────────────────────────────────────────────
+    // Guarded by safepointMutex_, which is deliberately SEPARATE from mutex_:
+    // the handshake happens with mutex_ released, because a worker that is
+    // blocked waiting for mutex_ inside track() cannot also be parking, and
+    // holding both would let the collector wait on threads it is itself
+    // blocking.
+    std::atomic<bool>          safepointRequested_{false};
+    std::atomic<int>           parkedMutators_{0};
+    // Allocations to skip before retrying a handshake that just timed out.
+    std::atomic<int>           safepointBackoff_{0};
+    mutable std::mutex         safepointMutex_;
+    std::condition_variable    parkedCv_;   // collector waits for threads to arrive
+    std::condition_variable    resumeCv_;   // threads wait for the all-clear
+};
+
+// RAII wrapper for a blocking native call that does not touch the object graph.
+// While it is in scope the thread counts as parked, so the collector need not
+// wait for it -- and on the way out the thread blocks until any collection that
+// started meanwhile has finished, so it never resumes bytecode mid-collection.
+//
+//     GCSafeRegion safe;                 // sleeping / waiting on a channel /
+//     std::this_thread::sleep_for(...);  // blocked on a socket
+//
+// Do NOT use it around anything that reads or writes EZ values.
+struct GCSafeRegion {
+    GCSafeRegion()  { CycleCollector::instance().enterSafeRegion(); }
+    ~GCSafeRegion() { CycleCollector::instance().exitSafeRegion(); }
+    GCSafeRegion(const GCSafeRegion&)            = delete;
+    GCSafeRegion& operator=(const GCSafeRegion&) = delete;
 };
 
 #endif // CYCLE_COLLECTOR_H

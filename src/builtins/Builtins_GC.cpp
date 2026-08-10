@@ -118,6 +118,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("stop", Value::makeNativeFunction("stop", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) { interp.runtimeError("stop() expects number", 0, ""); return Value(); }
+            GCSafeRegion safe;   // sleeping: see wait()
             std::this_thread::sleep_for(std::chrono::milliseconds((int)args[0].asNumber()));
             return Value();
         }));
@@ -258,7 +259,11 @@ void registerGCBuiltins(RuntimeContext& interp) {
     auto awaitFn = [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
         if (!args[0].isFuture()) { interp.runtimeError("await() expects future", 0, ""); return Value(); }
         auto fut = args[0].asFuture();
-        fut->wait();
+        {
+            // Blocked on another thread's result: nothing of ours is in flight.
+            GCSafeRegion safe;
+            fut->wait();
+        }
         return fut->get();
     };
     interp.defineGlobal("await", Value::makeNativeFunction("await", 1, awaitFn));
@@ -292,7 +297,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             for (auto& v : arr.getElementsCopy()) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
                 auto fut = v.asFuture();
-                fut->wait();
+                { GCSafeRegion safe; fut->wait(); }
                 results.push_back(fut->get());
             }
             return Value::makeArray(results);
@@ -322,7 +327,14 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
             // Plain `false`, not FALSE: the Win32 TRUE/FALSE macros are #undef'd
             // project-wide because they collide with TokenKind::TRUE/FALSE.
-            DWORD result = WaitForMultipleObjects((DWORD)handles.size(), handles.data(), false, INFINITE);
+            // Blocked on other threads' futures, holding nothing of our own.
+            // INFINITE, so without this a collector would wait out its whole
+            // timeout on a thread parked here.
+            DWORD result;
+            {
+                GCSafeRegion safe;
+                result = WaitForMultipleObjects((DWORD)handles.size(), handles.data(), false, INFINITE);
+            }
             if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
                 size_t index = result - WAIT_OBJECT_0;
                 return futures[index].asFuture()->get();

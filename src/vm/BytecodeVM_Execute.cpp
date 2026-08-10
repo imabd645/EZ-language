@@ -1364,7 +1364,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     }
                     DISPATCH(); 
                 }
-                CASE_CODE(LOOP)           ip -= READ_INT();  DISPATCH();
+                CASE_CODE(LOOP) {
+                    ip -= READ_INT();
+                    // Safepoint poll. Every loop and every recursive call goes
+                    // through a backward jump, so a thread running EZ code is
+                    // never far from one -- which is what lets the collector
+                    // stop the world instead of skipping collection entirely
+                    // whenever a spawn() worker is alive.
+                    //
+                    // The check is one relaxed atomic load; only when a
+                    // collection is actually pending do we pay for flushing the
+                    // frame, and that path then blocks anyway.
+                    if (__builtin_expect(CycleCollector::instance().safepointPending(), 0)) {
+                        SYNC_IP();      // leave the frame describing where we are
+                        CycleCollector::instance().pollSafepoint();
+                        LOAD_FRAME();
+                    }
+                    DISPATCH();
+                }
 
                 CASE_CODE(CALL) {
                     bool handled = false;

@@ -37,9 +37,24 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             }
             
             auto mtx = args[0].asMutexPtr();
-            
-            // RAII lock â€” automatically unlocks on scope exit, even if an exception is thrown
-            std::lock_guard<std::recursive_mutex> guard(mtx->mtx);
+
+            // Acquiring counts as a safe region: a thread waiting here holds no
+            // EZ state and is not running bytecode, so the collector must not
+            // wait for it to reach a backward jump -- it will not reach one
+            // until it gets the lock. Without this, a thread that parked at a
+            // safepoint while HOLDING this mutex left every other contender
+            // blocked and unable to answer, so each collection burned its full
+            // timeout and a lock-heavy workload crawled.
+            {
+                GCSafeRegion safe;
+                mtx->mtx.lock();
+            }
+            // Unlock on every exit path, including an exception from the body.
+            struct Unlocker {
+                std::recursive_mutex& m;
+                ~Unlocker() { m.unlock(); }
+            } unlocker{mtx->mtx};
+
             return interp.callFunction(args[1], {}, 0, "");
         }));
 
@@ -55,6 +70,10 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
                 ? static_cast<int>(args[0].asInteger())
                 : static_cast<int>(args[0].asFloat());
             if (ms > 0) {
+                // Sleeping touches no EZ object, so count as parked: otherwise a
+                // worker asleep here never reaches a backward jump and every
+                // collection times out waiting for it.
+                GCSafeRegion safe;
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
             }
             return Value();
@@ -177,6 +196,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             auto instance = args[0].asInstance();
             auto chan = instance->getProperty("_channel").asChannelPtr();
             
+            GCSafeRegion safe;   // blocked on a producer, not on the heap
             std::unique_lock<std::mutex> lock(chan->mtx);
             chan->cv.wait(lock, [&]() {
                 return !chan->q.empty() || chan->closed;
@@ -235,6 +255,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
                 : static_cast<long long>(args[1].asFloat());
             if (ms < 0) ms = 0;
 
+            GCSafeRegion safe;   // bounded block on a producer
             std::unique_lock<std::mutex> lock(chan->mtx);
             bool ready = chan->cv.wait_for(lock, std::chrono::milliseconds(ms), [&]() {
                 return !chan->q.empty() || chan->closed;

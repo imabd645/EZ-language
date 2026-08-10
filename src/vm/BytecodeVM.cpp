@@ -360,9 +360,11 @@ void BytecodeVM::initBuiltins() {
         auto inst = args[0].asInstance();
         if (!inst->klass->behaviors.audited) { ctx.runtimeError("audit() called on non-@audited model '" + inst->klass->name + "'"); return Value(); }
         auto result = std::make_shared<EZArray>();
+        CycleCollector::instance().track(result, ValueType::ARRAY);
         if (inst->getAuditLog()) {
             for (const auto& e : *inst->getAuditLog()) {
                 auto d = std::make_shared<EZDictionary>();
+                CycleCollector::instance().track(d, ValueType::DICTIONARY);
                 d->modifyMap([&](auto& m) { m["field"]     = Value(e.field); });
                 d->modifyMap([&](auto& m) { m["old"]       = e.oldValue; });
                 d->modifyMap([&](auto& m) { m["new"]       = e.newValue; });
@@ -387,10 +389,12 @@ void BytecodeVM::initBuiltins() {
         auto inst = args[0].asInstance();
         long long since = args[1].isInteger() ? args[1].asInteger() : (long long)args[1].asFloat();
         auto result = std::make_shared<EZArray>();
+        CycleCollector::instance().track(result, ValueType::ARRAY);
         if (inst->getAuditLog()) {
             for (const auto& e : *inst->getAuditLog()) {
                 if (e.timestamp < since) continue;
                 auto d = std::make_shared<EZDictionary>();
+                CycleCollector::instance().track(d, ValueType::DICTIONARY);
                 d->modifyMap([&](auto& m) { m["field"]     = Value(e.field); });
                 d->modifyMap([&](auto& m) { m["old"]       = e.oldValue; });
                 d->modifyMap([&](auto& m) { m["new"]       = e.newValue; });
@@ -408,6 +412,7 @@ void BytecodeVM::initBuiltins() {
         auto inst = args[0].asInstance();
         if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("snapshot() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
         auto snap = std::make_shared<EZDictionary>();
+        CycleCollector::instance().track(snap, ValueType::DICTIONARY);
         {
             for (const auto& [k, v] : inst->getPropertiesCopy()) snap->modifyMap([&](auto& m) { m[k] = v; });
         }
@@ -433,6 +438,7 @@ void BytecodeVM::initBuiltins() {
         auto a = args[0].asDictionaryPtr();
         auto b = args[1].asDictionaryPtr();
         auto result = std::make_shared<EZDictionary>();
+        CycleCollector::instance().track(result, ValueType::DICTIONARY);
         // Fix 2.4: take both map copies once — previous code called getMapCopy() O(n) times inside the loop
         auto aMap = a->getMapCopy();
         auto bMap = b->getMapCopy();
@@ -441,6 +447,7 @@ void BytecodeVM::initBuiltins() {
             Value va = (it != aMap.end()) ? it->second : Value();
             if (va.toString() != vb.toString()) {
                 auto entry = std::make_shared<EZDictionary>();
+                CycleCollector::instance().track(entry, ValueType::DICTIONARY);
                 entry->modifyMap([&](auto& m) { m["was"] = va; });
                 entry->modifyMap([&](auto& m) { m["now"] = vb; });
                 result->modifyMap([&](auto& m) { m[k] = Value(entry); });

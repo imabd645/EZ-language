@@ -32,6 +32,10 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("gc_collect", Value::makeNativeFunction("gc_collect", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
+            // Dead stack slots still reference whatever they last held, which
+            // would make genuinely unreachable objects look live to a
+            // collection the user explicitly asked for.
+            interp.releaseStaleStackSlots();
             CycleCollector::instance().collect();
             // Collecting may have destroyed File instances. Their OS handles
             // live in a side table that is otherwise only pruned when another

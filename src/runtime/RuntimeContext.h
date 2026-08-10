@@ -29,6 +29,17 @@ public:
     
     // Utilities
     virtual std::string stringify(const Value& val, int line = 0, const std::string& filename = "") = 0;
+
+    // Drop references held by stack slots above the current top.
+    //
+    // Popping only moves the stack pointer, so the vacated slots keep holding
+    // whatever Value they last had. Those references are invisible to the
+    // program but keep objects alive until the slot is overwritten -- a file
+    // opened in a top-level loop stayed open after its variable was cleared,
+    // because the last instance was still sitting in a dead slot. Called before
+    // an explicit gc_collect() so a requested collection sees the true
+    // reachable set. Default is a no-op for contexts with no value stack.
+    virtual void releaseStaleStackSlots() {}
     virtual std::shared_ptr<Environment> getCurrentEnv() const = 0;
 };
 

@@ -47,6 +47,15 @@ public:
     void defineGlobal(const std::string& name, const Value& value) override;
     Value eval(const std::string& code, const std::string& filename = "<eval>") override;
     std::string stringify(const Value& val, int line = 0, const std::string& filename = "") override;
+
+    // Clear the unused tail of the value stack. Everything at or above stackTop
+    // is dead by definition -- the program cannot reach it -- but the slots
+    // still hold their last Value and keep those objects alive.
+    void releaseStaleStackSlots() override {
+        if (!stack.empty() && stackTop >= stack.data()) {
+            clearStackSlots(stackTop, stack.data() + stack.size());
+        }
+    }
     std::shared_ptr<Environment> getCurrentEnv() const override { return globalEnv; }
 
     // Initialize global slot table from compiler output (Issue C optimization)

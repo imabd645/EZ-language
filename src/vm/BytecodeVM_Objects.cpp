@@ -54,7 +54,18 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
     }
     
     CompileResult result = compiler.compile(statements);
-    if (!result.success) return Value();
+    if (!result.success) {
+        // Was `return Value()`: a compile error made eval() hand back nil while
+        // a lex or parse error in the very same function threw SyntaxError. The
+        // caller could not tell "this evaluated to nothing" from "this did not
+        // compile", and result.error -- which says what was wrong -- was thrown
+        // away. Report it the same way as the other two failures.
+        throwException("SyntaxError",
+                       result.error.empty() ? "Compile error in eval()"
+                                            : result.error,
+                       0, filename);
+        return Value();
+    }
 
     // Merge any new slots the eval'd code introduced
     if (!result.globalSlotNames.empty()) {

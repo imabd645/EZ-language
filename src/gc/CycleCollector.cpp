@@ -219,28 +219,42 @@ std::vector<size_t> CycleCollector::phase3_findGarbage(
     std::vector<bool> liveFlag(live.size(), false);
 
     // Seed: any candidate with adjustedRC > 0 is reachable from outside.
+    std::vector<size_t> worklist;
     for (size_t i = 0; i < live.size(); i++) {
-        if (adjustedRC[i] > 0) liveFlag[i] = true;
+        if (adjustedRC[i] > 0) {
+            liveFlag[i] = true;
+            worklist.push_back(i);
+        }
     }
 
-    // Flood-fill: everything reachable from a live candidate is also live.
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (size_t i = 0; i < live.size(); i++) {
-            if (!liveFlag[i]) continue;
-            ValueVisitor visitor = [&](const Value& v) {
-                void* raw = extractRawPtr(v);
-                if (raw) {
-                    auto it = ptrToIdx.find(raw);
-                    if (it != ptrToIdx.end() && !liveFlag[it->second]) {
-                        liveFlag[it->second] = true;
-                        changed = true;
-                    }
+    // Flood-fill from the seeds. Each object is traversed at most once, when it
+    // is first marked live, so this is O(objects + references).
+    //
+    // This was previously a fixed point -- `while (changed)` rescanning EVERY
+    // candidate on each pass. Liveness then spread only one link per pass, so a
+    // chain-shaped heap (`d = [d]` repeated, a linked list, a deep AST) needed
+    // as many passes as it had links, each pass costing a full scan: O(N^2).
+    // Allocating 5000 nested arrays spent ~490ms in the collector against 2ms
+    // with it disabled, and 10000 took 4s. A worklist reaches the same fixed
+    // point in one pass over each object.
+    //
+    // Iterative rather than recursive on purpose: the traversal depth equals
+    // the heap's reference depth, which is unbounded from a script's point of
+    // view, and recursing on it would exhaust the native stack.
+    while (!worklist.empty()) {
+        size_t i = worklist.back();
+        worklist.pop_back();
+        ValueVisitor visitor = [&](const Value& v) {
+            void* raw = extractRawPtr(v);
+            if (raw) {
+                auto it = ptrToIdx.find(raw);
+                if (it != ptrToIdx.end() && !liveFlag[it->second]) {
+                    liveFlag[it->second] = true;
+                    worklist.push_back(it->second);
                 }
-            };
-            traverseObject(live[i], types[i], visitor);
-        }
+            }
+        };
+        traverseObject(live[i], types[i], visitor);
     }
 
     // Collect garbage indices.

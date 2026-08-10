@@ -1,6 +1,7 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/Utf8.h"
 #include "utils/MiniJson.h"
 
 #include <string>
@@ -327,9 +328,11 @@ void registerDataBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("reverse", Value::makeNativeFunction("reverse", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args[0].isString()) {
-                std::string s = args[0].asString();
-                std::reverse(s.begin(), s.end());
-                return Value(s);
+                // Reverse characters, not bytes. std::reverse on the raw bytes
+                // turned "café" into the byte sequence 169 195 102 97 99 -- a
+                // valid string in, an invalid one out, because it flipped the
+                // two bytes of é against each other.
+                return Value(ez_utf8::reverseChars(args[0].asString()));
             }
             if (args[0].isArray()) {
                 auto arr = args[0].asArray().getElementsCopy(); std::reverse(arr.begin(), arr.end()); return Value::makeArray(arr);

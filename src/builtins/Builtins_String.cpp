@@ -1,6 +1,7 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/Utf8.h"
 
 #include <string>
 #include <vector>
@@ -268,14 +269,32 @@ void registerStringBuiltins(RuntimeContext& interp) {
             if (!args[0].isString()) { interp.runtimeError("ord() expects string", 0, ""); return Value(); }
             std::string s = args[0].asString();
             if (s.empty()) return Value(0LL);
-            return Value((long long)(unsigned char)s[0]);
+            // The Unicode code point, not the first byte. Returning the lead
+            // byte made ord("é") 195 -- a value that is not the character and
+            // that chr() could not turn back into it. ASCII is unaffected.
+            size_t i = 0;
+            return Value((long long)ez_utf8::decode(s, i));
         }));
 
     interp.defineGlobal("chr", Value::makeNativeFunction("chr", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isNumber()) { interp.runtimeError("chr() expects a number", 0, ""); return Value(); }
-            char c = (char)args[0].asNumber();
-            return Value(std::string(1, c));
+            double raw = args[0].asNumber();
+            if (raw < 0 || raw > 1114111.0) {
+                interp.runtimeError("chr() expects a code point between 0 and 1114111", 0, "");
+                return Value();
+            }
+            // Encode as UTF-8 rather than writing the low byte. chr(233) used to
+            // produce the single byte 233, which is not valid UTF-8 on its own,
+            // so any non-ASCII code point yielded a broken string.
+            std::string out;
+            if (!ez_utf8::encode((uint32_t)raw, out)) {
+                interp.runtimeError("chr() cannot encode code point " +
+                                    std::to_string((long long)raw) +
+                                    " (surrogate halves are not characters)", 0, "");
+                return Value();
+            }
+            return Value(out);
         }));
 
     interp.defineGlobal("substring", Value::makeNativeFunction("substring", -1,

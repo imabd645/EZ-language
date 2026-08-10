@@ -224,6 +224,11 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         case TokenType::LESS_EQUAL:    emitOp(OpCode::LESS_EQ);    break;
         case TokenType::GREATER:       emitOp(OpCode::GREATER);    break;
         case TokenType::GREATER_EQUAL: emitOp(OpCode::GREATER_EQ); break;
+        // The parser has always accepted `x in y` at comparison precedence, but
+        // nothing compiled it -- the expression reached here and died with
+        // "Unknown binary operator: 7". That is what stopped the `test` package
+        // from loading at all, since it uses `when not (k in b)`.
+        case TokenType::IN:            emitOp(OpCode::IN);         break;
         default:
             errorAt("Unknown binary operator: " + std::to_string(static_cast<int>(expr.op)), currentLine);
     }

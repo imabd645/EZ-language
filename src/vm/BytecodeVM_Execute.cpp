@@ -125,6 +125,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         // wrong handler.
         &&handle_LOAD_LOCAL_W,
         &&handle_STORE_LOCAL_W,
+        &&handle_IN,
         &&handle_END
     };
     // Tracing is off in every normal run, so mark the check cold: the compiler
@@ -195,6 +196,58 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(STORE_LOCAL_W) {
                     uint16_t slot = READ_SHORT();
                     frame->slots[slot] = *(stackTop - 1);
+                    DISPATCH();
+                }
+
+                // needle in haystack -> bool
+                //
+                // Reads the way the rest of the language does -- `when not (k in
+                // b)` rather than `when not has_key(b, k)`. What it means
+                // depends on the container, matching how each is normally asked
+                // about:
+                //   array/tuple : does any ELEMENT equal the needle
+                //   dictionary  : is the needle a KEY (the useful question; the
+                //                 values are reachable, the keys are the index)
+                //   string      : is the needle a SUBSTRING
+                CASE_CODE(IN) {
+                    {
+                        Value haystack = *(--stackTop);
+                        Value needle   = *(--stackTop);
+                        bool found = false;
+
+                        if (haystack.isArray()) {
+                            const auto& arr = haystack.asArray();
+                            for (size_t i = 0; i < arr.size(); ++i) {
+                                if (arr[i].equals(needle)) { found = true; break; }
+                            }
+                        } else if (haystack.isTuple()) {
+                            const auto& tup = haystack.asTuple();
+                            for (size_t i = 0; i < tup.size(); ++i) {
+                                if (tup[i].equals(needle)) { found = true; break; }
+                            }
+                        } else if (haystack.isDictionary()) {
+                            // Any value can be written as a key, and keys are
+                            // stored as strings, so compare on the same
+                            // stringification the subscript uses.
+                            found = haystack.asDictionaryPtr()->has(needle.toString());
+                        } else if (haystack.isString()) {
+                            if (!needle.isString()) {
+                                SYNC_IP();
+                                throwException("TypeError",
+                                    "'in' on a string expects a string on the left, got " +
+                                    needle.typeName());
+                                return;
+                            }
+                            found = haystack.asString().find(needle.asString()) != std::string::npos;
+                        } else {
+                            SYNC_IP();
+                            throwException("TypeError",
+                                "'in' expects an array, tuple, dictionary or string on the "
+                                "right, got " + haystack.typeName());
+                            return;
+                        }
+                        *stackTop++ = Value(found);
+                    }
                     DISPATCH();
                 }
 

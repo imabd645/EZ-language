@@ -128,6 +128,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::LOAD_LOCAL: return "LOAD_LOCAL";
         case OpCode::LOAD_LOCAL_W: return "LOAD_LOCAL_W";
         case OpCode::STORE_LOCAL_W: return "STORE_LOCAL_W";
+        case OpCode::IN:            return "IN";
         case OpCode::STORE_LOCAL: return "STORE_LOCAL";
         case OpCode::LOAD_UPVALUE: return "LOAD_UPVALUE";
         case OpCode::STORE_UPVALUE: return "STORE_UPVALUE";

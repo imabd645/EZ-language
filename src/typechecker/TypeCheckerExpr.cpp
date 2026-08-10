@@ -183,7 +183,14 @@ TypeInfo TypeChecker::checkBinary(const BinaryExpr& expr) {
         return left.baseType == "Any" ? right : left;
     } else if (expr.op == TokenType::EQUAL_EQUAL || expr.op == TokenType::BANG_EQUAL ||
                expr.op == TokenType::LESS || expr.op == TokenType::LESS_EQUAL ||
-               expr.op == TokenType::GREATER || expr.op == TokenType::GREATER_EQUAL) {
+               expr.op == TokenType::GREATER || expr.op == TokenType::GREATER_EQUAL ||
+               // `x in y` is a membership test. Operand types are deliberately
+               // not constrained here: the right side may be an array, tuple,
+               // dictionary or string, and any of those may arrive typed as Any.
+               // The VM rejects an unusable container at runtime with a clear
+               // message, which is better than a checker guess that refuses
+               // valid code.
+               expr.op == TokenType::IN) {
         return TypeInfo("bool");
     } else if (expr.op == TokenType::AND || expr.op == TokenType::OR) {
         if (left.baseType != "Any" && left.baseType != "bool") {

@@ -163,6 +163,7 @@ enum class OpCode : uint8_t {
     // misinterpret every previously compiled bytecode file.
     LOAD_LOCAL_W,               // slot(2): load local, 16-bit slot
     STORE_LOCAL_W,              // slot(2): store to local, 16-bit slot
+    IN,                         // membership: needle in haystack -> bool
 
     END            // End of chunk marker
 };

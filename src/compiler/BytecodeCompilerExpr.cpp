@@ -228,7 +228,7 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
         // nothing compiled it -- the expression reached here and died with
         // "Unknown binary operator: 7". That is what stopped the `test` package
         // from loading at all, since it uses `when not (k in b)`.
-        case TokenType::IN:            emitOp(OpCode::IN);         break;
+        case TokenType::IN:            emitOp(OpCode::MEMBER_IN);  break;
         default:
             errorAt("Unknown binary operator: " + std::to_string(static_cast<int>(expr.op)), currentLine);
     }

@@ -163,7 +163,10 @@ enum class OpCode : uint8_t {
     // misinterpret every previously compiled bytecode file.
     LOAD_LOCAL_W,               // slot(2): load local, 16-bit slot
     STORE_LOCAL_W,              // slot(2): store to local, 16-bit slot
-    IN,                         // membership: needle in haystack -> bool
+    // Named MEMBER_IN, not IN: <windows.h> defines IN as an empty SAL
+    // annotation macro, so a plain `IN,` here expands to nothing and breaks
+    // the enum in every translation unit that pulls in the Win32 headers.
+    MEMBER_IN,                  // membership: needle in haystack -> bool
 
     END            // End of chunk marker
 };

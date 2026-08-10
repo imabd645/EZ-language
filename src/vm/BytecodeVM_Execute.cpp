@@ -125,7 +125,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         // wrong handler.
         &&handle_LOAD_LOCAL_W,
         &&handle_STORE_LOCAL_W,
-        &&handle_IN,
+        &&handle_MEMBER_IN,
         &&handle_END
     };
     // Tracing is off in every normal run, so mark the check cold: the compiler
@@ -209,7 +209,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 //   dictionary  : is the needle a KEY (the useful question; the
                 //                 values are reachable, the keys are the index)
                 //   string      : is the needle a SUBSTRING
-                CASE_CODE(IN) {
+                CASE_CODE(MEMBER_IN) {
                     {
                         Value haystack = *(--stackTop);
                         Value needle   = *(--stackTop);

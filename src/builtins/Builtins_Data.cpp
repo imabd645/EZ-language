@@ -3,6 +3,7 @@
 #include "runtime/RuntimeContext.h"
 #include "runtime/Utf8.h"
 #include "utils/MiniJson.h"
+#include <stdexcept>
 
 #include <string>
 #include <vector>
@@ -48,14 +49,29 @@ void registerDataBuiltins(RuntimeContext& interp) {
             if (args[0].isNumber()) return args[0];
             if (args[0].isInteger()) return args[0];
             if (args[0].isString()) {
+                const std::string original = args[0].asString();
                 try {
-                    std::string s = args[0].asString();
+                    // Trailing whitespace is fine; trailing anything else is not.
+                    std::string s = original;
+                    size_t end = s.find_last_not_of(" \t\r\n");
+                    s = (end == std::string::npos) ? "" : s.substr(0, end + 1);
+                    if (s.empty()) throw std::invalid_argument("empty");
+
+                    size_t consumed = 0;
+                    Value out;
                     if (s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
-                        return Value(std::stoll(s));
+                        out = Value(std::stoll(s, &consumed));
+                    } else {
+                        out = Value(std::stod(s, &consumed));
                     }
-                    return Value(std::stod(s));
-                } 
-                catch (...) { interp.runtimeError("Cannot convert '" + args[0].asString() + "' to number", 0, ""); return Value(); }
+                    // stoll/stod stop at the first character they cannot use and
+                    // report success, so num("12abc") quietly returned 12 while
+                    // num("abc") threw -- the same malformed input handled two
+                    // different ways. Require the WHOLE string to be a number.
+                    if (consumed != s.size()) throw std::invalid_argument("trailing characters");
+                    return out;
+                }
+                catch (...) { interp.runtimeError("Cannot convert '" + original + "' to number", 0, ""); return Value(); }
             }
             if (args[0].isBool()) return Value(args[0].asBool() ? 1LL : 0LL);
             interp.runtimeError("Cannot convert " + args[0].typeName() + " to number", 0, ""); return Value();

@@ -1,0 +1,503 @@
+# ============================================================================
+# EZ Snake — console edition
+#
+#   ez examples/snake_console.ez
+#
+# Arrow keys or WASD to steer, Space to pause, Esc to quit, R to restart.
+#
+# Console games need to read the keyboard WITHOUT blocking: getch() waits for a
+# keypress, which would freeze the snake between inputs. The `auto` package's
+# is_down() sits on GetAsyncKeyState and answers immediately, so the loop can
+# poll input many times per frame and still tick on a fixed clock.
+#
+# Structure — each model owns one thing:
+#
+#   Point     a position, and the arithmetic on positions
+#   Board     the playfield bounds
+#   Snake     body segments, movement, growth, self-collision
+#   Food      where the food is, and finding a free cell for the next one
+#   Renderer  everything that touches the screen; no game rules live here
+#   Input     turns key state into intents, with edge detection
+#   Game      owns the state machine and the loop; asks the others
+# ============================================================================
+
+use "auto"
+
+# ── Tuning ──────────────────────────────────────────────────────────────────
+BOARD_W   = 38
+BOARD_H   = 18
+START_MS  = 120        # milliseconds per step at the start
+FAST_MS   = 55         # fastest it will ever get
+SPEEDUP   = 3          # milliseconds shaved off per food eaten
+START_LEN = 4
+
+# Screen position of the playfield's top-left interior cell.
+ORIGIN_X = 2
+ORIGIN_Y = 4
+
+# Windows console colour attributes.
+COL_BORDER = 8
+COL_BODY   = 10
+COL_HEAD   = 11
+COL_FOOD   = 12
+COL_TEXT   = 15
+COL_DIM    = 7
+COL_ALERT  = 14
+
+enum State { TITLE, PLAYING, PAUSED, OVER }
+
+# ── Point ───────────────────────────────────────────────────────────────────
+model Point {
+    init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    task equals(o) { give self.x == o.x and self.y == o.y }
+    task copy()    { give Point(self.x, self.y) }
+
+    # Returns a NEW point rather than mutating: the snake keeps its old head
+    # around as a body segment, so movement must not edit it in place.
+    task plus(dx, dy) { give Point(self.x + dx, self.y + dy) }
+}
+
+# ── Board ───────────────────────────────────────────────────────────────────
+model Board {
+    init(w, h) {
+        self.w = w
+        self.h = h
+    }
+
+    task contains(p) {
+        give p.x >= 0 and p.x < self.w and p.y >= 0 and p.y < self.h
+    }
+
+    task centre() { give Point(self.w / 2, self.h / 2) }
+    task cellCount() { give self.w * self.h }
+}
+
+# ── Snake ───────────────────────────────────────────────────────────────────
+model Snake {
+    init(start, length) {
+        # parts[0] is the head. The tail trails off to the left of the start.
+        self.parts = []
+        i = 0
+        while i < length {
+            push(self.parts, Point(start.x - i, start.y))
+            i = i + 1
+        }
+        self.dx = 1
+        self.dy = 0
+        # Direction is buffered and applied once per step. Without this, two
+        # quick turns inside a single tick could reverse the snake into its own
+        # neck -- an instant death the player never asked for.
+        self.pendingDx = 1
+        self.pendingDy = 0
+        self.lastTail = nil
+    }
+
+    task head() { give self.parts[0] }
+    task length() { give len(self.parts) }
+
+    # Refuses a reversal: with a body behind you, turning 180 is always fatal
+    # and is almost always a mis-key rather than an intent.
+    task steer(dx, dy) {
+        when dx == 0 - self.dx and dy == 0 - self.dy { give self }
+        self.pendingDx = dx
+        self.pendingDy = dy
+        give self
+    }
+
+    task nextHead() {
+        give self.head().plus(self.pendingDx, self.pendingDy)
+    }
+
+    # Moves one cell. `grow` keeps the tail, which is how eating lengthens.
+    task advance(grow) {
+        self.dx = self.pendingDx
+        self.dy = self.pendingDy
+
+        newParts = [self.nextHead()]
+        get p in self.parts { push(newParts, p) }
+
+        self.lastTail = nil
+        when not grow {
+            self.lastTail = newParts[len(newParts) - 1]
+            trimmed = []
+            i = 0
+            while i < len(newParts) - 1 {
+                push(trimmed, newParts[i])
+                i = i + 1
+            }
+            newParts = trimmed
+        }
+        self.parts = newParts
+        give self
+    }
+
+    # `skipHead` exists because after moving, the head legitimately occupies a
+    # cell and must not count as a collision with itself.
+    task occupies(p, skipHead) {
+        i = 0
+        when skipHead { i = 1 }
+        while i < len(self.parts) {
+            when self.parts[i].equals(p) { give true }
+            i = i + 1
+        }
+        give false
+    }
+
+    task bitSelf() { give self.occupies(self.head(), true) }
+}
+
+# ── Food ────────────────────────────────────────────────────────────────────
+model Food {
+    init(board) {
+        self.board = board
+        self.at = Point(0, 0)
+    }
+
+    # Rejection sampling: pick a random cell, retry while it is under the
+    # snake. Bounded so a nearly-full board cannot spin forever -- if the
+    # random probes keep failing it falls back to the first free cell.
+    task respawn(snake) {
+        tries = 0
+        while tries < 200 {
+            p = Point(randint(0, self.board.w - 1), randint(0, self.board.h - 1))
+            when not snake.occupies(p, false) {
+                self.at = p
+                give true
+            }
+            tries = tries + 1
+        }
+        y = 0
+        while y < self.board.h {
+            x = 0
+            while x < self.board.w {
+                p = Point(x, y)
+                when not snake.occupies(p, false) {
+                    self.at = p
+                    give true
+                }
+                x = x + 1
+            }
+            y = y + 1
+        }
+        give false        # board completely full: the player has won
+    }
+}
+
+# ── Renderer ────────────────────────────────────────────────────────────────
+# Everything that writes to the screen. Keeping it separate means the game
+# rules never have to think in screen coordinates, and the drawing can be
+# incremental -- only the cells that changed are repainted, so the board does
+# not flicker the way a full redraw every tick would.
+model Renderer {
+    init(board) {
+        self.board = board
+    }
+
+    task write(x, y, s, col) {
+        gotoxy(x, y)
+        color(col)
+        out s
+        reset()
+        give self
+    }
+
+    # Board coordinates -> screen coordinates.
+    task cell(p, s, col) {
+        give self.write(ORIGIN_X + p.x, ORIGIN_Y + p.y, s, col)
+    }
+
+    task clearScreen() {
+        clear()
+        give self
+    }
+
+    task drawFrame() {
+        top = "+"
+        i = 0
+        while i < self.board.w { top = top + "-" i = i + 1 }
+        top = top + "+"
+
+        self.write(ORIGIN_X - 1, ORIGIN_Y - 1, top, COL_BORDER)
+        self.write(ORIGIN_X - 1, ORIGIN_Y + self.board.h, top, COL_BORDER)
+
+        y = 0
+        while y < self.board.h {
+            self.write(ORIGIN_X - 1, ORIGIN_Y + y, "|", COL_BORDER)
+            self.write(ORIGIN_X + self.board.w, ORIGIN_Y + y, "|", COL_BORDER)
+            y = y + 1
+        }
+        give self
+    }
+
+    task drawSnake(snake) {
+        i = 0
+        get p in snake.parts {
+            when i == 0 { self.cell(p, "@", COL_HEAD) }
+            other { self.cell(p, "o", COL_BODY) }
+            i = i + 1
+        }
+        give self
+    }
+
+    task drawFood(food) {
+        self.cell(food.at, "*", COL_FOOD)
+        give self
+    }
+
+    task eraseCell(p) {
+        self.cell(p, " ", COL_TEXT)
+        give self
+    }
+
+    task drawHud(score, best, speedMs) {
+        self.write(ORIGIN_X - 1, 1, "EZ SNAKE", COL_HEAD)
+        line = "Score " + str(score) + "   Best " + str(best) +
+               "   Speed " + str(speedMs) + "ms      "
+        self.write(ORIGIN_X - 1, 2, line, COL_TEXT)
+        give self
+    }
+
+    task drawFooter(msg) {
+        self.write(ORIGIN_X - 1, ORIGIN_Y + self.board.h + 1,
+                   msg + "                                        ", COL_DIM)
+        give self
+    }
+
+    # Centred banner used by the title, pause and game-over screens.
+    task banner(lines, col) {
+        top = ORIGIN_Y + (self.board.h / 2) - (len(lines) / 2)
+        i = 0
+        get text in lines {
+            pad = ORIGIN_X + (self.board.w / 2) - (len(text) / 2)
+            self.write(pad, top + i, text, col)
+            i = i + 1
+        }
+        give self
+    }
+
+    # Leaves the cursor below the board so the shell prompt does not land in
+    # the middle of the drawing.
+    task finish() {
+        gotoxy(0, ORIGIN_Y + self.board.h + 3)
+        reset()
+        give self
+    }
+}
+
+# ── Input ───────────────────────────────────────────────────────────────────
+# Turns raw key state into intents. Direction keys are level-triggered (holding
+# steers), while pause/restart/quit are EDGE-triggered -- a held key must fire
+# once, not toggle pause on every frame it is down.
+model Input {
+    init() {
+        self.prevSpace = false
+        self.prevR = false
+    }
+
+    task direction() {
+        when is_down("up")    or is_down("w") { give Point(0, 0 - 1) }
+        when is_down("down")  or is_down("s") { give Point(0, 1) }
+        when is_down("left")  or is_down("a") { give Point(0 - 1, 0) }
+        when is_down("right") or is_down("d") { give Point(1, 0) }
+        give nil
+    }
+
+    task quitPressed() { give is_down("escape") }
+
+    task togglePressed() {
+        now = is_down("space")
+        fired = now and not self.prevSpace
+        self.prevSpace = now
+        give fired
+    }
+
+    task restartPressed() {
+        now = is_down("r")
+        fired = now and not self.prevR
+        self.prevR = now
+        give fired
+    }
+
+    task anyStartPressed() {
+        give is_down("space") or is_down("enter")
+    }
+}
+
+# ── Game ────────────────────────────────────────────────────────────────────
+model Game {
+    init() {
+        self.board = Board(BOARD_W, BOARD_H)
+        self.render = Renderer(self.board)
+        self.input = Input()
+        self.best = 0
+        self.state = State.TITLE
+        self.reset()
+    }
+
+    task reset() {
+        self.snake = Snake(self.board.centre(), START_LEN)
+        self.food = Food(self.board)
+        self.food.respawn(self.snake)
+        self.score = 0
+        self.speed = START_MS
+        give self
+    }
+
+    task startRound() {
+        self.reset()
+        self.state = State.PLAYING
+        self.render.clearScreen().drawFrame()
+        self.render.drawSnake(self.snake).drawFood(self.food)
+        self.render.drawHud(self.score, self.best, self.speed)
+        self.render.drawFooter("Arrows/WASD steer   Space pause   Esc quit")
+        give self
+    }
+
+    # One simulation step. Returns false when the round has ended.
+    task step() {
+        target = self.snake.nextHead()
+
+        when not self.board.contains(target) {
+            give self.endRound("You hit the wall")
+        }
+        # The tail cell is about to be vacated, so moving into it is legal --
+        # unless the snake is about to grow, in which case the tail stays put.
+        eating = target.equals(self.food.at)
+        when self.snake.occupies(target, false) {
+            tail = self.snake.parts[self.snake.length() - 1]
+            when eating or not target.equals(tail) {
+                give self.endRound("You ran into yourself")
+            }
+        }
+
+        self.snake.advance(eating)
+
+        # Repaint only what moved.
+        when self.snake.lastTail != nil { self.render.eraseCell(self.snake.lastTail) }
+        self.render.cell(self.snake.head(), "@", COL_HEAD)
+        when self.snake.length() > 1 {
+            self.render.cell(self.snake.parts[1], "o", COL_BODY)
+        }
+
+        when eating {
+            self.score = self.score + 1
+            self.speed = self.speed - SPEEDUP
+            when self.speed < FAST_MS { self.speed = FAST_MS }
+            filled = not self.food.respawn(self.snake)
+            when filled { give self.win() }
+            self.render.drawFood(self.food)
+            self.render.drawHud(self.score, self.best, self.speed)
+        }
+        give true
+    }
+
+    task endRound(reason) {
+        when self.score > self.best { self.best = self.score }
+        self.state = State.OVER
+        self.render.banner([
+            "  G A M E   O V E R  ",
+            "",
+            "  " + reason + "  ",
+            "  Score " + str(self.score) + "   Best " + str(self.best) + "  ",
+            "",
+            "  R to play again    Esc to quit  "
+        ], COL_ALERT)
+        give false
+    }
+
+    task win() {
+        when self.score > self.best { self.best = self.score }
+        self.state = State.OVER
+        self.render.banner([
+            "  YOU FILLED THE BOARD  ",
+            "",
+            "  Final score " + str(self.score) + "  ",
+            "",
+            "  R to play again    Esc to quit  "
+        ], COL_HEAD)
+        give false
+    }
+
+    task showTitle() {
+        self.render.clearScreen().drawFrame()
+        self.render.banner([
+            "  E Z   S N A K E  ",
+            "",
+            "  Arrows or WASD to steer  ",
+            "  Space pauses, Esc quits  ",
+            "",
+            "  Press Space to begin  "
+        ], COL_HEAD)
+        give self
+    }
+
+    task pause() {
+        self.state = State.PAUSED
+        self.render.banner(["  P A U S E D  ", "", "  Space to resume  "], COL_ALERT)
+        give self
+    }
+
+    task resume() {
+        self.state = State.PLAYING
+        # The banner painted over the board, so restore what it covered.
+        self.render.clearScreen().drawFrame()
+        self.render.drawSnake(self.snake).drawFood(self.food)
+        self.render.drawHud(self.score, self.best, self.speed)
+        self.render.drawFooter("Arrows/WASD steer   Space pause   Esc quit")
+        give self
+    }
+
+    # The main loop. Input is polled far more often than the snake moves: the
+    # step happens on a fixed clock, but a key tapped between steps is still
+    # noticed, so steering feels immediate rather than quantised to the tick.
+    task run() {
+        self.showTitle()
+        running = true
+
+        while running {
+            when self.input.quitPressed() { running = false }
+
+            when self.state == State.TITLE {
+                when self.input.anyStartPressed() { self.startRound() }
+            }
+
+            when self.state == State.PAUSED {
+                when self.input.togglePressed() { self.resume() }
+            }
+
+            when self.state == State.OVER {
+                when self.input.restartPressed() { self.startRound() }
+            }
+
+            when self.state == State.PLAYING {
+                nextStep = clock() + self.speed
+                while clock() < nextStep and self.state == State.PLAYING {
+                    d = self.input.direction()
+                    when d != nil { self.snake.steer(d.x, d.y) }
+                    when self.input.togglePressed() { self.pause() }
+                    when self.input.quitPressed() {
+                        running = false
+                        self.state = State.OVER
+                    }
+                    wait(4)
+                }
+                when self.state == State.PLAYING and running { self.step() }
+            } other {
+                # Not simulating: idle politely instead of spinning a core.
+                self.input.togglePressed()
+                self.input.restartPressed()
+                wait(30)
+            }
+        }
+
+        self.render.finish()
+        out "Thanks for playing. Best score: " + str(self.best)
+        give self
+    }
+}
+
+Game().run()

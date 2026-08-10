@@ -1,0 +1,44 @@
+# A function stored in a FIELD is a plain value, not a method, so calling it must
+# not pass the instance as a hidden first argument. `out obj` / `str(obj)` used to
+# bind self onto a field-held toString and die with
+#   '<lambda>' expected at most 0 args but got 1
+# A toString declared on the model is a real method and must still receive self.
+
+# ── 1. field-held toString on a native class ────────────────────────────────
+a = Atomic()
+a.add(10)
+a.toString = || { give "atomic-field" }
+out a                       # expect: atomic-field
+out str(a)                  # expect: atomic-field
+
+# ── 2. field-held toString on a user model ──────────────────────────────────
+model Plain {
+    init() { self.n = 1 }
+}
+p = Plain()
+p.toString = || { give "plain-field" }
+out p                       # expect: plain-field
+out str(p)                  # expect: plain-field
+
+# ── 3. a declared toString is a method: self stays implicit ─────────────────
+model Declared {
+    init(label) { self.label = label }
+    task toString() { give "declared:" + self.label }
+}
+d = Declared("x")
+out d                       # expect: declared:x
+out str(d)                  # expect: declared:x
+
+# ── 4. a field-held toString overrides the declared one, still unbound ──────
+d.toString = || { give "overridden" }
+out d                       # expect: overridden
+
+# ── 5. unrelated field-held functions keep their own arity ─────────────────
+a.twice = |v| { give v * 2 }
+out str(a.twice(21))        # expect: 42
+a.none = || { give "zero" }
+out a.none()                # expect: zero
+
+# ── 6. objects with no toString still print normally ───────────────────────
+q = Plain()
+out str(q.n)                # expect: 1

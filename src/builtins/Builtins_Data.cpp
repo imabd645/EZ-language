@@ -378,8 +378,55 @@ void registerDataBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("to_json", Value::makeNativeFunction("to_json", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            // Containers on the path from the root to the value being converted.
+            // Without this a self-referential value recursed until the native
+            // stack gave out and killed the process:
+            //
+            //     a = []
+            //     push(a, a)
+            //     to_json(a)        <- crash
+            //
+            // JSON has no way to express a cycle, so unlike toString() -- which
+            // can print a `[...]` marker -- there is nothing sensible to emit.
+            // It is reported as a catchable error instead. `depth` additionally
+            // stops a very deeply nested (but acyclic) value from exhausting the
+            // stack before it ever reaches a cycle.
+            std::vector<const void*> path;
+            bool failed = false;
+            std::string failure;
+            const size_t JSON_MAX_DEPTH = 512;
+
             std::function<MiniJson::Value(const Value&)> convert;
             convert = [&](const Value& v) -> MiniJson::Value {
+                if (failed) return MiniJson::Value("null");
+
+                const void* id = nullptr;
+                if (v.isDictionary())  id = (const void*)v.asDictionaryPtr().get();
+                else if (v.isArray())  id = (const void*)v.asArrayPtr().get();
+
+                if (id) {
+                    for (const void* seen : path) {
+                        if (seen == id) {
+                            failed = true;
+                            failure = "to_json(): value contains a reference to itself, "
+                                      "which JSON cannot represent";
+                            return MiniJson::Value("null");
+                        }
+                    }
+                    if (path.size() >= JSON_MAX_DEPTH) {
+                        failed = true;
+                        failure = "to_json(): value nested deeper than " +
+                                  std::to_string(JSON_MAX_DEPTH) + " levels";
+                        return MiniJson::Value("null");
+                    }
+                    path.push_back(id);
+                }
+                // Pops `id` on every return path below.
+                struct PathPop {
+                    std::vector<const void*>& p; bool active;
+                    ~PathPop() { if (active) p.pop_back(); }
+                } pop{path, id != nullptr};
+
                 if (v.isDictionary()) {
                     MiniJson::Value mv(MiniJson::OBJECT);
                     auto dictPtr = v.asDictionaryPtr();
@@ -405,6 +452,10 @@ void registerDataBuiltins(RuntimeContext& interp) {
                 return MiniJson::Value("null");
             };
             MiniJson::Value root = convert(args[0]);
+            if (failed) {
+                interp.throwException("ValueError", failure, 0, "");
+                return Value();
+            }
             std::stringstream ss; MiniJson::StreamWriter writer;
             writer.write(root, &ss);
             return Value(ss.str());

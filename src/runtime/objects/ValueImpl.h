@@ -290,6 +290,48 @@ inline std::string Value::typeName() const {
     }
 }
 
+// ── Memo for structural comparison ──────────────────────────────────────────
+// equals() walks containers recursively. Without a record of which PAIRS have
+// already been compared, a value whose children are shared gets re-walked once
+// per path that reaches it, which is exponential in depth:
+//
+//     a = []          repeat 24 times: a = [a, a]
+//     a == b          -> 18 seconds (depth 20 took 0.9s: ~16x per 4 levels)
+//
+// Recording compared pairs makes each pair cost once, turning that into linear
+// work over distinct pairs. It also terminates on cyclic values, which used to
+// recurse until the native stack ran out.
+//
+// A pair is remembered only while it is ASSUMED equal (the classic bisimulation
+// trick): if two cyclic values are equal everywhere reachable, the assumption
+// holds; if any concrete difference is found, equals() returns false before the
+// assumption is ever relied upon.
+// Entries live for the whole OUTERMOST comparison, not just while a pair is on
+// the stack. That distinction is the point: popping on exit would terminate
+// cycles but leave the exponential case untouched, because the blow-up comes
+// from reaching the same pair again through a different path after the first
+// visit has already finished.
+//
+// A hash set rather than a list: comparing two large arrays of containers
+// produces one entry per element pair, and a linear scan would turn that into
+// quadratic work -- trading one performance bug for another.
+struct EZEqualsMemo {
+    struct PairHash {
+        size_t operator()(const std::pair<const void*, const void*>& p) const {
+            size_t h1 = std::hash<const void*>{}(p.first);
+            size_t h2 = std::hash<const void*>{}(p.second);
+            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+        }
+    };
+    std::unordered_set<std::pair<const void*, const void*>, PairHash> pairs;
+    size_t depth = 0;
+};
+
+inline EZEqualsMemo& ezEqualsMemo() {
+    static thread_local EZEqualsMemo memo;
+    return memo;
+}
+
 inline bool Value::equals(const Value& other) const {
     if (isNumber() && other.isNumber()) {
         return asNumber() == other.asNumber();
@@ -302,6 +344,45 @@ inline bool Value::equals(const Value& other) const {
         return asString() == other.asString();
     }
     if (type() != other.type()) return false;
+
+    // Identity short-circuit: the same container is trivially equal to itself,
+    // and this alone collapses the common shared-substructure case.
+    const void* idA = nullptr;
+    const void* idB = nullptr;
+    switch (type()) {
+        case ValueType::ARRAY:      idA = (const void*)asArrayPtr().get();
+                                    idB = (const void*)other.asArrayPtr().get();      break;
+        case ValueType::TUPLE:      idA = (const void*)asTuplePtr().get();
+                                    idB = (const void*)other.asTuplePtr().get();      break;
+        case ValueType::DICTIONARY: idA = (const void*)asDictionaryPtr().get();
+                                    idB = (const void*)other.asDictionaryPtr().get(); break;
+        default: break;
+    }
+    if (idA && idA == idB) return true;
+
+    // Records this pair for the duration of the outermost comparison. A pair
+    // seen before is treated as equal: either it is genuinely equal (already
+    // proven on the earlier path) or it is a cycle, where assuming equality is
+    // correct unless a concrete difference turns up elsewhere -- and any such
+    // difference makes the whole comparison false before the assumption is
+    // relied upon.
+    struct MemoFrame {
+        bool alreadySeen = false;
+        MemoFrame(const void* a, const void* b) {
+            auto& memo = ezEqualsMemo();
+            memo.depth++;
+            if (!a) return;
+            alreadySeen = !memo.pairs.insert({a, b}).second;
+        }
+        ~MemoFrame() {
+            auto& memo = ezEqualsMemo();
+            // Only the outermost frame clears, so entries survive across
+            // sibling branches -- which is what removes the exponential cost.
+            if (--memo.depth == 0) memo.pairs.clear();
+        }
+    } memoFrame(idA, idB);
+    if (memoFrame.alreadySeen) return true;
+
     switch (type()) {
         case ValueType::NIL: return true;
         case ValueType::BOOL: return asBool() == other.asBool();

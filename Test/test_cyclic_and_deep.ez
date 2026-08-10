@@ -1,0 +1,117 @@
+# Cyclic and deeply nested values must not kill the process.
+#
+# All three of these used to be fatal or effectively hung:
+#
+#   1. `push(a, a); out a`  crashed -- toString() recursed through arrays with
+#      no cycle check. The GC is a cycle collector, so cyclic data is a
+#      supported shape and printing it must not be fatal.
+#   2. str()/to_json() on a ~5000-deep value exhausted the NATIVE stack, which
+#      the interpreter's own call-depth limit does not cover.
+#   3. `==` re-walked shared children once per path that reached them, which is
+#      exponential in depth: 18 seconds at depth 24.
+
+fails = 0
+
+task check(label, cond) {
+    when cond {
+        out "  ok   " + label
+    } other {
+        fails = fails + 1
+        out "  BAD  " + label
+    }
+}
+
+task threw(fn) {
+    try { fn() give false } catch (e) { give true }
+}
+
+out "-- printing cyclic values --"
+a = []
+push(a, a)
+check("self-referential array prints", contains(str(a), "..."))
+
+x = []
+y = []
+push(x, y)
+push(y, x)
+check("mutual cycle prints", contains(str(x), "..."))
+
+mixed = [1, 2]
+push(mixed, mixed)
+push(mixed, 3)
+s = str(mixed)
+check("cycle inside normal data keeps the other elements",
+      contains(s, "1") and contains(s, "3") and contains(s, "..."))
+
+# A value reachable twice but not cyclic is NOT a cycle and must print in full.
+shared = [1, 2]
+check("shared but acyclic prints in full", not contains(str([shared, shared]), "..."))
+
+out "-- printing deeply nested values --"
+deep = []
+i = 0
+while i < 3000 { deep = [deep] i = i + 1 }
+check("3000-deep str() returns", len(str(deep)) > 0)
+
+out "-- ordinary output is unchanged --"
+check("nested array", str([1, [2, [3]], 4]) == "[1, [2, [3]], 4]")
+check("strings quoted", str(["a", "b"]) == "[\"a\", \"b\"]")
+check("empty array", str([]) == "[]")
+
+out "-- to_json rejects what JSON cannot express --"
+check("cyclic array is an error, not a crash", threw(| | { give to_json(a) }))
+d = {}
+d["self"] = d
+check("cyclic dict is an error", threw(| | { give to_json(d) }))
+check("over-deep value is an error", threw(| | {
+    v = []
+    j = 0
+    while j < 600 { v = [v] j = j + 1 }
+    give to_json(v)
+}))
+check("normal value still serialises", to_json([1, 2]) != "")
+check("shared but acyclic still serialises", to_json([shared, shared]) != "")
+
+out "-- equality on shared substructure is not exponential --"
+task build(n) {
+    v = []
+    k = 0
+    while k < n { v = [v, v] k = k + 1 }
+    give v
+}
+t = clock()
+check("depth 30 compares equal", build(30) == build(30))
+elapsed = clock() - t
+# Before the fix this shape cost ~18s at depth 24 and was unreachable at 30.
+# A generous ceiling: the point is exponential-vs-linear, not a precise budget.
+check("...and finishes quickly (took " + str(elapsed) + "ms)", elapsed < 2000)
+
+out "-- equality stays correct --"
+check("equal arrays", [1, 2, 3] == [1, 2, 3])
+check("differing element", not ([1, 2, 3] == [1, 2, 4]))
+check("differing length", not ([1, 2] == [1, 2, 3]))
+check("nested equal", [1, [2, [3]]] == [1, [2, [3]]])
+check("nested differing at the leaf", not ([1, [2, [3]]] == [1, [2, [4]]]))
+check("dicts equal", {"a": 1, "b": 2} == {"a": 1, "b": 2})
+check("dicts differing", not ({"a": 1} == {"a": 2}))
+
+p = build(20)
+q = build(20)
+push(q, 99)
+check("shared-shape values that differ report false", not (p == q))
+
+out "-- cyclic equality terminates --"
+c1 = []
+push(c1, c1)
+c2 = []
+push(c2, c2)
+check("cycle == matching cycle", c1 == c2)
+check("cycle == plain array", not (c1 == [1]))
+
+out ""
+when fails == 0 {
+    out "ALL CYCLIC/DEEP TESTS PASSED"
+} other {
+    out "!!! TEST FAILED: " + str(fails) + " check(s) failed"
+    exit(1)
+}

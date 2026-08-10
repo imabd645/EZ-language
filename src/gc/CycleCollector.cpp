@@ -4,7 +4,17 @@
 
 void EZClosure::traverse(const ValueVisitor& visit) const {
     for (const auto& uv : upvalues) {
-        if (uv) visit(uv->closed);
+        if (!uv) continue;
+        // Follow the CURRENT location, not just `closed`. An upvalue that is
+        // still open points at a live stack slot and its `closed` field is nil,
+        // so visiting only `closed` made the captured value invisible to the
+        // collector -- a closure that captures the container holding it looked
+        // acyclic and was never reclaimed.
+        //
+        // Reading another thread's stack slot is safe here because collection
+        // only runs at a safepoint, with every other mutator parked.
+        Value* loc = uv->location.load(std::memory_order_acquire);
+        visit(loc ? *loc : uv->closed);
     }
 }
 #include "runtime/Value.h"          // Full definition of Value, EZArray, EZInstance, etc.
@@ -14,6 +24,29 @@ void EZClosure::traverse(const ValueVisitor& visit) const {
 // ─────────────────────────────────────────────────────────────────────────────
 // extractRawPtr — extract the raw heap pointer from a Value for identity lookup
 // ─────────────────────────────────────────────────────────────────────────────
+// Report every candidate-eligible object a Value refers to, looking THROUGH
+// wrapper types that are not themselves tracked.
+//
+// A bound method is the case that matters. It is never registered with the
+// collector, so it can never be a candidate, and an edge that lands on one used
+// to stop there -- making `n.fn = n.hello` (an instance holding a method bound
+// to itself) look like a reference to something outside the candidate set. The
+// instance therefore kept a positive adjusted count and was never collected.
+// Expanding through the wrapper turns that into the self-edge it really is.
+void CycleCollector::forEachReferencedPtr(const Value& v,
+                                          const std::function<void(void*)>& sink) {
+    if (v.type() == ValueType::BOUND_METHOD) {
+        auto bm = v.asBoundMethod();
+        if (bm) {
+            // The wrapper itself is not a candidate; its two halves may be.
+            forEachReferencedPtr(bm->receiver, sink);
+            forEachReferencedPtr(bm->method, sink);
+        }
+        return;
+    }
+    if (void* raw = extractRawPtr(v)) sink(raw);
+}
+
 void* CycleCollector::extractRawPtr(const Value& v) {
     switch (v.type()) {
         case ValueType::ARRAY:        return v.asArrayPtr().get();
@@ -194,13 +227,12 @@ void CycleCollector::phase2_buildCandidates(
     // candidate's adjustedRC (because that ref is internal to the set).
     for (size_t i = 0; i < live.size(); i++) {
         ValueVisitor visitor = [&](const Value& v) {
-            void* raw = extractRawPtr(v);
-            if (raw) {
+            forEachReferencedPtr(v, [&](void* raw) {
                 auto it = ptrToIdx.find(raw);
                 if (it != ptrToIdx.end()) {
                     adjustedRC[it->second]--;
                 }
-            }
+            });
         };
         traverseObject(live[i], types[i], visitor);
     }
@@ -245,14 +277,13 @@ std::vector<size_t> CycleCollector::phase3_findGarbage(
         size_t i = worklist.back();
         worklist.pop_back();
         ValueVisitor visitor = [&](const Value& v) {
-            void* raw = extractRawPtr(v);
-            if (raw) {
+            forEachReferencedPtr(v, [&](void* raw) {
                 auto it = ptrToIdx.find(raw);
                 if (it != ptrToIdx.end() && !liveFlag[it->second]) {
                     liveFlag[it->second] = true;
                     worklist.push_back(it->second);
                 }
-            }
+            });
         };
         traverseObject(live[i], types[i], visitor);
     }

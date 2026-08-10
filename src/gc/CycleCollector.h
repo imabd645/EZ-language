@@ -234,6 +234,13 @@ private:
     // Extract a raw void* from a Value for pointer-identity lookup.
     static void* extractRawPtr(const Value& v);
 
+    // Report every candidate-eligible object a Value refers to, looking THROUGH
+    // wrapper types that are never tracked themselves (bound methods). Without
+    // that expansion an edge landing on a bound method simply stopped, so an
+    // instance holding a method bound to itself never looked cyclic.
+    static void forEachReferencedPtr(const Value& v,
+                                     const std::function<void(void*)>& sink);
+
     // Null out all outgoing Value references in an object (break cycles).
     void clearObject(
         const std::shared_ptr<void>& obj,

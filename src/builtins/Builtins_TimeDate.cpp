@@ -397,9 +397,25 @@ void registerTimeDateBuiltins(RuntimeContext& interp) {
                 // process. See ValueImpl.h.
                 g_stringInternEnabled = false;
 
+                // Register as a mutator for the thread's whole life. The
+                // callback runs EZ code that reads and writes shared objects,
+                // so without this the collector had no idea this thread existed
+                // and could walk the graph while a tick was reshaping it --
+                // precisely the race that spawn()ed workers register to avoid.
+                // Ticks answer safepoints at backward jumps like any other
+                // bytecode, and the sleep below is a safe region.
+                struct MutatorScope {
+                    MutatorScope()  { CycleCollector::instance().beginMutatorThread(); }
+                    ~MutatorScope() { CycleCollector::instance().endMutatorThread(); }
+                } mutatorScope;
+
                 while (true) {
-                    // Sleep for the interval
-                    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                    {
+                        // Idle between ticks: touches nothing, so the collector
+                        // must not wait for this thread to reach a backward jump.
+                        GCSafeRegion safe;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                    }
 
                     auto st = stateWeak.lock();
                     if (!st || st->stopRequested.load()) break;

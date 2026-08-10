@@ -1,0 +1,65 @@
+# The `in` membership operator.
+#
+# The parser already accepted `x in y` at comparison precedence, but nothing
+# compiled it -- the expression reached the compiler and died with
+# "Unknown binary operator: 7". That is what stopped the shipped `test` package
+# from loading at all, since it uses `when not (k in b)`.
+#
+# Meaning follows how each container is normally asked about:
+#   array/tuple : element equality
+#   dictionary  : KEY membership (matching has_key and subscripting)
+#   string      : substring
+
+fails = 0
+task check(l, c) { when c { out "  ok   " + l } other { fails = fails + 1 out "  BAD  " + l } }
+task threw(fn) { try { fn() give false } catch (e) { give true } }
+
+out "== arrays =="
+check("3 in [1,2,3]", 3 in [1, 2, 3])
+check("9 not in [1,2,3]", not (9 in [1, 2, 3]))
+check("string element", "b" in ["a", "b"])
+check("empty array", not (1 in []))
+check("nested equality", [1,2] in [[1,2],[3]])
+check("nil element", nil in [nil, 1])
+
+out "== tuples =="
+check("element present", 2 in (1, 2, 3))
+check("element absent", not (7 in (1, 2, 3)))
+
+out "== dictionaries test KEYS =="
+d = {"name": "ez", "ver": 2}
+check("existing key", "name" in d)
+check("missing key", not ("nope" in d))
+check("values are NOT matched", not ("ez" in d))
+check("empty dict", not ("k" in {}))
+
+out "== strings =="
+check("substring", "ell" in "hello")
+check("absent substring", not ("xyz" in "hello"))
+check("empty needle", "" in "hello")
+check("whole string", "hello" in "hello")
+
+out "== precedence and composition =="
+check("with not", not (5 in [1, 2]))
+check("in a when", true)
+when 2 in [1, 2] { check("when guard fires", true) } other { check("when guard fires", false) }
+check("with and", (1 in [1]) and (2 in [2]))
+check("arithmetic binds tighter", (1 + 1) in [2])
+check("comparison result", ("a" in ["a"]) == true)
+
+out "== get loops still work =="
+total = 0
+get x in [1, 2, 3] { total = total + x }
+check("get over array", total == 6)
+kcount = 0
+get k in keys(d) { kcount = kcount + 1 }
+check("get over keys", kcount == 2)
+
+out "== errors are clear =="
+check("nil container throws", threw(| | { give 1 in nil }))
+check("number container throws", threw(| | { give 1 in 42 }))
+check("non-string in string throws", threw(| | { give 1 in "abc" }))
+
+out ""
+when fails == 0 { out "ALL IN-OPERATOR TESTS PASSED" }
+other { out "!!! TEST FAILED: " + str(fails) exit(1) }

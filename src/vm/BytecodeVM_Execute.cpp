@@ -1445,11 +1445,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (callee.isNativeFunction() && callee.asNativeFunction()->name == "str" && argCount == 1) {
                             Value arg = *(stackTop - 1);
                             if (arg.isInstance()) {
-                                Value method = arg.asInstance()->getProperty("toString");
+                                auto inst = arg.asInstance();
+                                Value method = inst->getProperty("toString");
                                 if (method.isCallable()) {
                                     SYNC_IP();
                                     this->stackTop = stackTop;
-                                    Value bound = Value(std::make_shared<EZBoundMethod>(arg, method));
+                                    // Field-held function: call it as-is, no implicit
+                                    // self. See the matching note in TO_STRING.
+                                    Value bound = inst->hasProperty("toString")
+                                        ? method
+                                        : Value(std::make_shared<EZBoundMethod>(arg, method));
                                     *(stackTop - 2) = bound;
                                     stackTop--; // remove arg to leave 0 args
                                     if (dispatchCall(bound, 0)) {
@@ -2047,11 +2052,21 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         Value v = *(stackTop - 1);
                         if (v.isInstance()) {
-                            Value method = v.asInstance()->getProperty("toString");
+                            auto inst = v.asInstance();
+                            Value method = inst->getProperty("toString");
                             if (method.isCallable()) {
                                 SYNC_IP();
                                 this->stackTop = stackTop;
-                                Value bound = Value(std::make_shared<EZBoundMethod>(v, method));
+                                // A function held in a FIELD is a plain value, not a
+                                // method, so calling it must not pass the instance as
+                                // a hidden first argument -- same rule GET_PROPERTY
+                                // applies. Binding unconditionally here meant
+                                // `obj.toString = || { ... }` died with "expected at
+                                // most 0 args but got 1" the moment the object was
+                                // printed.
+                                Value bound = inst->hasProperty("toString")
+                                    ? method
+                                    : Value(std::make_shared<EZBoundMethod>(v, method));
                                 *(stackTop - 1) = bound;
                                 if (dispatchCall(bound, 0)) {
                                     LOAD_FRAME();

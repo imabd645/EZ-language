@@ -145,7 +145,12 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     if (seen.count(oldCl.get())) return seen[oldCl.get()];
 
                     auto newCl = std::make_shared<EZClosure>(oldCl->function);
-                    seen[oldCl.get()] = Value(newCl);
+                    // makeClosure() registers it with the collector; the raw
+                    // Value() constructor does not. Track ONCE and reuse the
+                    // same Value below, so the copy handed to the worker is
+                    // collectable but not double-registered.
+                    Value newClVal = Value::makeClosure(newCl);
+                    seen[oldCl.get()] = newClVal;
 
                     for (auto& uv : oldCl->upvalues) {
                         if (!uv) { newCl->upvalues.push_back(nullptr); continue; }
@@ -159,7 +164,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                         newUv->next = nullptr;
                         newCl->upvalues.push_back(newUv);   // closure owns the upvalue
                     }
-                    return Value(newCl);
+                    return newClVal;
                 } else if (v.isBoundMethod()) {
                     auto oldBm = v.asBoundMethod();
                     if (seen.count(oldBm.get())) return seen[oldBm.get()];

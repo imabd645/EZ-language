@@ -2301,7 +2301,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 closure->upvalues.push_back(frameUpvalues.back().upvalues[index]);
                             }
                         }
-                        *stackTop++ = Value(closure);
+                        // makeClosure(), not Value(closure): the raw constructor
+                        // skips CycleCollector::track(), so closures built here
+                        // -- which is every closure in ordinary EZ code -- were
+                        // never candidates. A container holding a closure that
+                        // captures it back therefore had an edge pointing
+                        // outside the candidate set and could never be
+                        // collected.
+                        *stackTop++ = Value::makeClosure(closure);
                     }
                     DISPATCH();
                 }

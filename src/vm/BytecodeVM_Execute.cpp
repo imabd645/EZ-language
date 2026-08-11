@@ -2651,7 +2651,24 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             clearStackSlots(stackTop, oldTop);
             push(result);
         } catch (const RuntimeError& e) {
-            throw; // Propagate RuntimeError so it can be caught by EZ or VM loop
+            // Do NOT re-throw. A C++ exception cannot unwind out of this dispatch
+            // when it is running inside the libuv event-loop callback (every FFI
+            // callback and every ezweb handler): it skips each catch on the stack
+            // and jumps to a null handler, killing the process. Re-throwing here
+            // meant a native that failed inside a `try` took the whole server
+            // down even though the EZ code around it caught the error --
+            //   task safe(x) { try { give parse_json(x) } catch (e) { give nil } }
+            // was fatal from a request handler, because parse_json("5") raises
+            // "Failed to parse JSON".
+            //
+            // The fault travels the same way every other VM fault does:
+            // pendingException + running=false, which DISPATCH() routes to
+            // handle_vm_fault and on to the owning EZ try block.
+            if (pendingException.isNil()) {
+                pendingException = e.value.isNil() ? Value(e.what()) : e.value;
+            }
+            running = false;
+            return false;
         } catch (const std::exception& e) {
             raiseFault(std::string("Native function error: ") + e.what());
             return false;

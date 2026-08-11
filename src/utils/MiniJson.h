@@ -84,22 +84,32 @@ namespace MiniJson {
         
         Value parseObject(const std::string& str, size_t& pos) {
             Value obj(OBJECT);
-            pos++; 
-            
+            pos++;
+
             while (pos < str.length()) {
+                // Belt and braces: if an iteration ever consumes nothing, stop
+                // rather than spin. parseValue() guarantees progress on its own,
+                // but this loop is what actually hung the process and a parser
+                // fed untrusted input should not be one edit away from doing it
+                // again.
+                size_t iterationStart = pos;
+
                 skipWhitespace(str, pos);
+                if (pos >= str.length()) break;
                 if (str[pos] == '}') { pos++; break; }
-                
+
                 std::string key = parseString(str, pos);
                 skipWhitespace(str, pos);
-                if (str[pos] == ':') pos++;
+                if (pos < str.length() && str[pos] == ':') pos++;
                 skipWhitespace(str, pos);
-                
+
                 Value val = parseValue(str, pos);
                 obj.properties[key] = val;
-                
+
                 skipWhitespace(str, pos);
-                if (str[pos] == ',') pos++;
+                if (pos < str.length() && str[pos] == ',') pos++;
+
+                if (pos == iterationStart) break;
             }
             return obj;
         }
@@ -108,22 +118,50 @@ namespace MiniJson {
             Value arr(ARRAY);
             pos++;
             while (pos < str.length()) {
+                size_t iterationStart = pos;   // see parseObject
                 skipWhitespace(str, pos);
+                if (pos >= str.length()) break;
                 if (str[pos] == ']') { pos++; break; }
                 arr.items.push_back(parseValue(str, pos));
                 skipWhitespace(str, pos);
-                if (str[pos] == ',') pos++;
+                if (pos < str.length() && str[pos] == ',') pos++;
+                if (pos == iterationStart) break;
             }
             return arr;
         }
         
         Value parseValue(const std::string& str, size_t& pos) {
             skipWhitespace(str, pos);
+            if (pos >= str.length()) return Value();
             if (str[pos] == '"') return Value(parseString(str, pos));
             if (str[pos] == '{') return parseObject(str, pos);
             if (str[pos] == '[') return parseArray(str, pos);
+
+            // Numbers, true, false and null.
+            //
+            // isalnum() alone does not match a leading '-', so a negative value
+            // consumed NOTHING: pos never moved, an empty token came back, and
+            // the caller looped on the same character forever. `{"a": -5}` hung
+            // the process outright -- and in a server that is the whole event
+            // loop, so every later request hung with it.
+            //
+            // JSON numbers are  -? int frac? exp?  , so a sign is legal at the
+            // front and directly after e/E.
             size_t start = pos;
-            while (pos < str.length() && (isalnum(str[pos]) || str[pos] == '.')) pos++;
+            if (str[pos] == '-' || str[pos] == '+') pos++;
+            while (pos < str.length()) {
+                char c = str[pos];
+                if (isalnum(static_cast<unsigned char>(c)) || c == '.') { pos++; continue; }
+                if ((c == '-' || c == '+') && pos > start &&
+                    (str[pos - 1] == 'e' || str[pos - 1] == 'E')) { pos++; continue; }
+                break;
+            }
+
+            // Guarantee forward progress. Every loop that calls parseValue
+            // assumes the position moves; if some byte we do not recognise ever
+            // gets here, consuming it turns a hang into a parse error, which the
+            // caller can at least report.
+            if (pos == start) pos++;
             return Value(str.substr(start, pos - start));
         }
         

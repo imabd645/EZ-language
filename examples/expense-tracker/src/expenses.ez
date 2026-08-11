@@ -209,6 +209,21 @@ export task summary(userId) {
 
 # ── Import / export ──────────────────────────────────────────────────────────
 
+# Two decimal places. str() on a float prints the full repr -- 62.300000 -- which
+# is not what belongs in an exported spreadsheet column.
+export task formatAmount(v) {
+    n = 0.0
+    try { n = num(str(v)) * 1.0 } catch (e) { n = 0.0 }
+    neg = n < 0
+    when neg { n = 0 - n }
+    cents = floor(n * 100 + 0.5)
+    whole = floor(cents / 100)
+    frac = floor(cents - whole * 100)
+    f = str(frac)
+    when len(f) < 2 { f = "0" + f }
+    give (neg ? "-" : "") + str(floor(whole)) + "." + f
+}
+
 export task toRecords(rows) {
     out_ = []
     get r in rows {
@@ -216,7 +231,7 @@ export task toRecords(rows) {
             "date": r["spent_on"],
             "category": r["category"],
             "description": r["description"],
-            "amount": str(r["amount"])
+            "amount": formatAmount(r["amount"])
         })
     }
     give out_

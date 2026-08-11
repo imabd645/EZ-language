@@ -1,0 +1,67 @@
+# ============================================================================
+# Seed a demo account with a few months of expenses.
+#
+#   ez seed.ez            # demo@example.com / demo1234
+# ============================================================================
+use "src/db.ez"
+use "src/users.ez"
+use "src/expenses.ez"
+
+EMAIL = "demo@example.com"
+PASSWORD = "demo1234"
+
+dbOpen()
+
+user = findByEmail(EMAIL)
+when user == nil {
+    user = createUser(EMAIL, "Demo User", PASSWORD)
+    out "created " + EMAIL
+} other {
+    out EMAIL + " already exists"
+}
+
+when count(user["id"]) > 0 {
+    out str(count(user["id"])) + " expenses already present; nothing added"
+} other {
+    rows = [
+        ["2026-06-02", "Housing",       "Rent",              1250.00],
+        ["2026-06-03", "Utilities",     "Electricity",         84.20],
+        ["2026-06-04", "Food",          "Weekly groceries",   112.35],
+        ["2026-06-07", "Transport",     "Monthly bus pass",    65.00],
+        ["2026-06-09", "Food",          "Lunch with Sam",      24.80],
+        ["2026-06-14", "Entertainment", "Cinema",              18.00],
+        ["2026-06-15", "Health",        "Pharmacy",            32.40],
+        ["2026-06-18", "Shopping",      "Running shoes",      119.99],
+        ["2026-06-22", "Food",          "Weekly groceries",    98.10],
+        ["2026-06-28", "Transport",     "Taxi",                21.50],
+        ["2026-07-01", "Housing",       "Rent",              1250.00],
+        ["2026-07-03", "Utilities",     "Internet",            45.00],
+        ["2026-07-05", "Food",          "Weekly groceries",   105.60],
+        ["2026-07-08", "Travel",        "Train to Leeds",      78.40],
+        ["2026-07-11", "Food",          "Dinner out",          56.25],
+        ["2026-07-13", "Entertainment", "Concert ticket",      65.00],
+        ["2026-07-19", "Food",          "Weekly groceries",   121.05],
+        ["2026-07-24", "Health",        "Dentist",            140.00],
+        ["2026-07-26", "Shopping",      "Books",               38.75],
+        ["2026-08-01", "Housing",       "Rent",              1250.00],
+        ["2026-08-02", "Utilities",     "Water",               29.90],
+        ["2026-08-04", "Food",          "Weekly groceries",   117.45],
+        ["2026-08-06", "Transport",     "Fuel",                62.30],
+        ["2026-08-09", "Other",         "Gift",                45.00]
+    ]
+    added = 0
+    get r in rows {
+        create(user["id"], r[3], r[1], r[2], r[0])
+        added = added + 1
+    }
+    out "added " + str(added) + " expenses"
+}
+
+s = summary(user["id"])
+out ""
+out "  account : " + EMAIL + " / " + PASSWORD
+out "  entries : " + str(s["count"])
+out "  total   : " + str(s["total"])
+out ""
+out "  now run:  ez app.ez"
+dbClose()

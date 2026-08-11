@@ -1,0 +1,344 @@
+# ============================================================================
+# Expense Tracker — a small but complete web application in EZ.
+#
+#   ez app.ez              # http://localhost:8080
+#   ez seed.ez             # demo account + sample data
+#   ez test_app.ez         # data-layer test suite
+#
+# HTML pages use a signed session cookie; /api/* uses a JWT bearer token.
+# ============================================================================
+use "web"
+# csv and json both export parse/stringify/read/write, so they are
+# imported under a namespace. Without the alias whichever `use` came
+# last would silently win and csv.stringify(rows, delim, columns)
+# would land on json.stringify(val).
+use "csv" as csv
+use "json" as json
+use "jwt"
+use "log"
+use "src/db.ez"
+use "src/users.ez"
+use "src/expenses.ez"
+use "src/views.ez"
+
+PORT = 8080
+
+# In a real deployment these come from the environment. Falling back to a fixed
+# string keeps the demo runnable, but a fixed secret means anyone can forge a
+# session, so it is regenerated per boot when nothing is configured.
+SESSION_SECRET = "dev-session-secret-change-me"
+JWT_SECRET = "dev-jwt-secret-change-me"
+
+app = WebApp()
+logger = getLogger("expenses")
+
+dbOpen()
+info("database ready, schema v" + str(schemaVersion()))
+
+# ── Session helpers ──────────────────────────────────────────────────────────
+
+# The signed-in user, or nil. The session cookie holds only the user id; the row
+# is re-read every request so a deleted or renamed account takes effect at once.
+task currentUser(req) {
+    sess = req["session"]
+    when typeOf(sess) != "dictionary" { give nil }
+    when not has_key(sess, "uid") { give nil }
+    uid = sess["uid"]
+    when typeOf(uid) == "nil" { give nil }
+    give findById(uid)
+}
+
+task requireLogin(req) {
+    u = currentUser(req)
+    when u == nil { give nil }
+    give u
+}
+
+task redirectTo(url) {
+    give { "status": 302, "body": "", "headers": { "Location": url } }
+}
+
+task html(body) {
+    give { "status": 200, "body": body, "headers": { "Content-Type": "text/html; charset=utf-8" } }
+}
+
+# ── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.get("/login")
+task loginForm(req) {
+    when currentUser(req) != nil { give redirectTo("/") }
+    give html(loginPage(nil, req["query"]["registered"] == "1"
+                        ? "Account created — please sign in." : nil))
+}
+
+@app.post("/login")
+task loginSubmit(req) {
+    email = req["form"]["email"]
+    password = req["form"]["password"]
+    user = authenticate(str(email), str(password))
+    when user == nil {
+        warn("failed login for " + str(email))
+        # Deliberately vague: saying which half was wrong turns this into an
+        # account-enumeration oracle.
+        give html(loginPage("Email or password is incorrect.", nil))
+    }
+    req["session"]["uid"] = user["id"]
+    info("login: " + user["email"])
+    give redirectTo("/")
+}
+
+@app.get("/register")
+task registerForm(req) {
+    when currentUser(req) != nil { give redirectTo("/") }
+    give html(registerPage(nil, nil))
+}
+
+@app.post("/register")
+task registerSubmit(req) {
+    f = req["form"]
+    try {
+        user = createUser(str(f["email"]), str(f["name"]), str(f["password"]))
+        info("registered: " + user["email"])
+        give redirectTo("/login?registered=1")
+    } catch (e) {
+        msg = str(e)
+        # Strip the "user/error: " prefix before showing it to a person.
+        when indexOf(msg, USER_ERROR) == 0 {
+            msg = substr(msg, len(USER_ERROR), len(msg) - len(USER_ERROR))
+        }
+        give html(registerPage(msg, f))
+    }
+}
+
+@app.get("/logout")
+task logout(req) {
+    req["session"]["uid"] = nil
+    give redirectTo("/login")
+}
+
+# ── Pages ────────────────────────────────────────────────────────────────────
+
+@app.get("/")
+task dashboard(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    give html(dashboardPage(
+        user,
+        summary(user["id"]),
+        byCategory(user["id"]),
+        list(user["id"], {"limit": 8}),
+        nil))
+}
+
+@app.get("/expenses")
+task expenseList(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    q = req["query"]
+    filters = {}
+    get k in ["category", "from", "to", "search"] {
+        when has_key(q, k) and len(str(q[k])) > 0 { filters[k] = str(q[k]) }
+    }
+    rows = list(user["id"], filters)
+    sum = 0.0
+    get r in rows { sum = sum + r["amount"] }
+    give html(expensesPage(user, rows, filters, sum, nil, nil))
+}
+
+@app.get("/expenses/new")
+task newExpenseForm(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    give html(expenseFormPage(user, nil, nil))
+}
+
+@app.post("/expenses/new")
+task createExpense(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    f = req["form"]
+    try {
+        create(user["id"], str(f["amount"]), str(f["category"]),
+               str(f["description"]), str(f["spent_on"]))
+        give redirectTo("/expenses")
+    } catch (e) {
+        give html(expenseFormPage(user, nil, _cleanError(str(e))))
+    }
+}
+
+@app.get("/expenses/<int:id>/edit")
+task editExpenseForm(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    e = find(user["id"], req["params"]["id"])
+    when e == nil { give { "status": 404, "body": errorPage(user, 404, "No such expense.") } }
+    give html(expenseFormPage(user, e, nil))
+}
+
+@app.post("/expenses/<int:id>/edit")
+task updateExpense(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    f = req["form"]
+    try {
+        update(user["id"], req["params"]["id"], str(f["amount"]), str(f["category"]),
+               str(f["description"]), str(f["spent_on"]))
+        give redirectTo("/expenses")
+    } catch (e) {
+        existing = find(user["id"], req["params"]["id"])
+        give html(expenseFormPage(user, existing, _cleanError(str(e))))
+    }
+}
+
+@app.post("/expenses/<int:id>/delete")
+task deleteExpense(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    remove(user["id"], req["params"]["id"])
+    give redirectTo("/expenses")
+}
+
+@app.get("/reports")
+task reports(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    give html(reportsPage(user, byCategory(user["id"]), byMonth(user["id"])))
+}
+
+# ── CSV export ───────────────────────────────────────────────────────────────
+
+@app.get("/export.csv")
+task exportCsv(req) {
+    user = requireLogin(req)
+    when user == nil { give redirectTo("/login") }
+    body = csv.stringify(toRecords(list(user["id"])), ",",
+                         ["date", "category", "description", "amount"])
+    give {
+        "status": 200,
+        "body": body,
+        "headers": {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": "attachment; filename=\"expenses.csv\""
+        }
+    }
+}
+
+# ── JSON API (JWT bearer) ────────────────────────────────────────────────────
+
+task _cleanError(msg) {
+    m = str(msg)
+    get prefix in [USER_ERROR, EXPENSE_ERROR] {
+        when indexOf(m, prefix) == 0 {
+            give substr(m, len(prefix), len(m) - len(prefix))
+        }
+    }
+    give m
+}
+
+# Read and verify the Authorization header. Returns the user row or nil.
+task apiUser(req) {
+    headers = req["headers"]
+    when not has_key(headers, "authorization") { give nil }
+    raw = str(headers["authorization"])
+    when indexOf(raw, "Bearer ") != 0 { give nil }
+    token = substr(raw, 7, len(raw) - 7)
+    res = JWT.verify(token, JWT_SECRET)
+    when not res["valid"] { give nil }
+    give findById(res["claims"]["sub"])
+}
+
+task apiError(status, message) {
+    give json_response({"error": message}, status)
+}
+
+@app.post("/api/login")
+task apiLogin(req) {
+    body = json.safeParse(req["body"], {})
+    user = authenticate(str(json.getPath(body, "email", "")), str(json.getPath(body, "password", "")))
+    when user == nil { give apiError(401, "Invalid credentials") }
+    token = JWT.encode({"sub": user["id"]}, JWT_SECRET,
+                       {"expiresIn": 3600, "issuer": "expense-tracker"})
+    give json_response({"token": token, "expires_in": 3600, "user": publicUser(user)})
+}
+
+@app.get("/api/me")
+task apiMe(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    give json_response(publicUser(user))
+}
+
+@app.get("/api/expenses")
+task apiListExpenses(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    q = req["query"]
+    filters = {}
+    get k in ["category", "from", "to", "search", "limit", "offset"] {
+        when has_key(q, k) and len(str(q[k])) > 0 { filters[k] = str(q[k]) }
+    }
+    rows = list(user["id"], filters)
+    give json_response({"count": len(rows), "expenses": rows})
+}
+
+@app.post("/api/expenses")
+task apiCreateExpense(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    body = json.safeParse(req["body"], {})
+    try {
+        e = create(user["id"],
+                   json.getPath(body, "amount", 0),
+                   str(json.getPath(body, "category", "")),
+                   str(json.getPath(body, "description", "")),
+                   str(json.getPath(body, "spent_on", today())))
+        give json_response(e, 201)
+    } catch (err) {
+        give apiError(422, _cleanError(str(err)))
+    }
+}
+
+@app.get("/api/expenses/<int:id>")
+task apiGetExpense(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    e = find(user["id"], req["params"]["id"])
+    when e == nil { give apiError(404, "Not found") }
+    give json_response(e)
+}
+
+@app.delete("/api/expenses/<int:id>")
+task apiDeleteExpense(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    when not remove(user["id"], req["params"]["id"]) { give apiError(404, "Not found") }
+    give json_response({"deleted": true})
+}
+
+@app.get("/api/summary")
+task apiSummary(req) {
+    user = apiUser(req)
+    when user == nil { give apiError(401, "Unauthorized") }
+    give json_response({
+        "summary": summary(user["id"]),
+        "by_category": byCategory(user["id"]),
+        "by_month": byMonth(user["id"])
+    })
+}
+
+@app.get("/health")
+task health(req) {
+    give json_response({"status": "ok", "schema": schemaVersion(), "users": countUsers()})
+}
+
+# ── Start ────────────────────────────────────────────────────────────────────
+
+out ""
+out "  Expense Tracker"
+out "  http://localhost:" + str(PORT)
+out ""
+out "  Pages : /  /expenses  /reports  /export.csv"
+out "  API   : POST /api/login -> token, then Authorization: Bearer <token>"
+out ""
+
+app.run(PORT)

@@ -1,0 +1,330 @@
+# ============================================================================
+# HTML rendering.
+#
+# Every value that comes from a user goes through esc(). Interpolating a raw
+# description into the page would let one user store a <script> tag that runs in
+# another user's browser.
+# ============================================================================
+use "src/expenses.ez"
+
+export task esc(v) {
+    s = str(v)
+    s = join(split(s, "&"), "&amp;")     # first, or it double-escapes the rest
+    s = join(split(s, "<"), "&lt;")
+    s = join(split(s, ">"), "&gt;")
+    s = join(split(s, "\""), "&quot;")
+    s = join(split(s, "'"), "&#39;")
+    give s
+}
+
+export task money(v) {
+    n = 0.0
+    try { n = num(str(v)) * 1.0 } catch (e) { n = 0.0 }
+    neg = n < 0
+    when neg { n = 0 - n }
+    cents = floor(n * 100 + 0.5)
+    whole = floor(cents / 100)
+    frac = cents - whole * 100
+    f = str(floor(frac))
+    when len(f) < 2 { f = "0" + f }
+    give (neg ? "-" : "") + str(floor(whole)) + "." + f
+}
+
+_STYLE = "<style>" +
+  "*{box-sizing:border-box}" +
+  "body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;" +
+  "background:#f6f7f9;color:#1a1a1a}" +
+  "a{color:#2b6cb0;text-decoration:none}a:hover{text-decoration:underline}" +
+  "header{background:#1a202c;color:#fff;padding:14px 24px;display:flex;" +
+  "align-items:center;gap:22px}" +
+  "header .brand{font-weight:700;font-size:17px;color:#fff}" +
+  "header nav{display:flex;gap:16px;flex:1}header nav a{color:#cbd5e0}" +
+  "header .who{color:#a0aec0;font-size:13px}" +
+  ".wrap{max-width:960px;margin:24px auto;padding:0 16px}" +
+  ".card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;" +
+  "margin-bottom:18px}" +
+  ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}" +
+  ".stat{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px}" +
+  ".stat .label{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#718096}" +
+  ".stat .value{font-size:22px;font-weight:600;margin-top:4px}" +
+  "table{width:100%;border-collapse:collapse}" +
+  "th,td{padding:9px 10px;border-bottom:1px solid #edf2f7;text-align:left}" +
+  "th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#718096}" +
+  "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}" +
+  "input,select,textarea{padding:8px 10px;border:1px solid #cbd5e0;border-radius:6px;" +
+  "font:inherit;width:100%}" +
+  "label{display:block;font-size:13px;color:#4a5568;margin-bottom:4px}" +
+  ".row{display:flex;gap:10px;flex-wrap:wrap}.row>div{flex:1;min-width:130px}" +
+  "button,.btn{background:#2b6cb0;color:#fff;border:0;border-radius:6px;padding:9px 16px;" +
+  "font:inherit;cursor:pointer;display:inline-block}" +
+  "button:hover{background:#2c5282}" +
+  ".btn.sec{background:#e2e8f0;color:#2d3748}" +
+  ".btn.danger{background:#c53030}" +
+  ".err{background:#fff5f5;border:1px solid #feb2b2;color:#c53030;padding:10px 12px;" +
+  "border-radius:6px;margin-bottom:14px}" +
+  ".ok{background:#f0fff4;border:1px solid #9ae6b4;color:#276749;padding:10px 12px;" +
+  "border-radius:6px;margin-bottom:14px}" +
+  ".bar{height:7px;background:#edf2f7;border-radius:4px;overflow:hidden;margin-top:5px}" +
+  ".bar>span{display:block;height:100%;background:#4299e1}" +
+  ".muted{color:#718096;font-size:13px}" +
+  "h1{font-size:22px;margin:0 0 14px}h2{font-size:16px;margin:0 0 12px}" +
+  ".auth{max-width:380px;margin:60px auto}" +
+  "</style>"
+
+export task layout(title, user, body) {
+    nav = ""
+    who = ""
+    when user != nil {
+        nav = "<nav>" +
+              "<a href='/'>Dashboard</a>" +
+              "<a href='/expenses'>Expenses</a>" +
+              "<a href='/reports'>Reports</a>" +
+              "<a href='/expenses/new'>Add</a>" +
+              "</nav>"
+        who = "<span class='who'>" + esc(user["name"]) + "</span>" +
+              "<a href='/logout' class='who'>Sign out</a>"
+    }
+    give "<!doctype html><html><head><meta charset='utf-8'>" +
+         "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
+         "<title>" + esc(title) + " · Expenses</title>" + _STYLE + "</head><body>" +
+         "<header><span class='brand'>Expense Tracker</span>" + nav + who + "</header>" +
+         "<div class='wrap'>" + body + "</div></body></html>"
+}
+
+task _alerts(err, msg) {
+    s = ""
+    when err != nil and len(str(err)) > 0 { s = s + "<div class='err'>" + esc(err) + "</div>" }
+    when msg != nil and len(str(msg)) > 0 { s = s + "<div class='ok'>" + esc(msg) + "</div>" }
+    give s
+}
+
+# ── Auth pages ───────────────────────────────────────────────────────────────
+
+export task loginPage(err, msg) {
+    give layout("Sign in", nil,
+        "<div class='auth'><div class='card'><h1>Sign in</h1>" +
+        _alerts(err, msg) +
+        "<form method='post' action='/login'>" +
+        "<div style='margin-bottom:12px'><label>Email</label>" +
+        "<input name='email' type='email' required autofocus></div>" +
+        "<div style='margin-bottom:16px'><label>Password</label>" +
+        "<input name='password' type='password' required></div>" +
+        "<button type='submit'>Sign in</button>" +
+        "</form>" +
+        "<p class='muted' style='margin-top:14px'>No account? " +
+        "<a href='/register'>Create one</a></p>" +
+        "</div></div>")
+}
+
+export task registerPage(err, values) {
+    v = typeOf(values) == "dictionary" ? values : {}
+    email = has_key(v, "email") ? v["email"] : ""
+    name = has_key(v, "name") ? v["name"] : ""
+    give layout("Create account", nil,
+        "<div class='auth'><div class='card'><h1>Create account</h1>" +
+        _alerts(err, nil) +
+        "<form method='post' action='/register'>" +
+        "<div style='margin-bottom:12px'><label>Name</label>" +
+        "<input name='name' value='" + esc(name) + "' required autofocus></div>" +
+        "<div style='margin-bottom:12px'><label>Email</label>" +
+        "<input name='email' type='email' value='" + esc(email) + "' required></div>" +
+        "<div style='margin-bottom:16px'><label>Password</label>" +
+        "<input name='password' type='password' required minlength='8'>" +
+        "<div class='muted'>At least 8 characters.</div></div>" +
+        "<button type='submit'>Create account</button>" +
+        "</form>" +
+        "<p class='muted' style='margin-top:14px'>Already registered? " +
+        "<a href='/login'>Sign in</a></p>" +
+        "</div></div>")
+}
+
+# ── Dashboard ────────────────────────────────────────────────────────────────
+
+task _stat(label, value) {
+    give "<div class='stat'><div class='label'>" + esc(label) + "</div>" +
+         "<div class='value'>" + value + "</div></div>"
+}
+
+export task dashboardPage(user, sum, cats, recent, msg) {
+    stats = "<div class='grid'>" +
+        _stat("This month", "$" + money(sum["this_month"])) +
+        _stat("All time", "$" + money(sum["total"])) +
+        _stat("Entries", str(sum["count"])) +
+        _stat("Average", "$" + money(sum["average"])) +
+        "</div>"
+
+    catRows = ""
+    biggest = 0.0
+    get c in cats {
+        when c["total"] > biggest { biggest = c["total"] }
+    }
+    get c in cats {
+        pct = biggest > 0 ? floor(c["total"] * 100 / biggest) : 0
+        catRows = catRows +
+            "<tr><td>" + esc(c["category"]) + "<div class='bar'><span style='width:" +
+            str(pct) + "%'></span></div></td>" +
+            "<td class='num'>" + str(c["n"]) + "</td>" +
+            "<td class='num'>$" + money(c["total"]) + "</td></tr>"
+    }
+    when len(cats) == 0 {
+        catRows = "<tr><td colspan='3' class='muted'>Nothing recorded yet.</td></tr>"
+    }
+
+    rows = ""
+    get e in recent {
+        rows = rows + "<tr><td>" + esc(e["spent_on"]) + "</td>" +
+               "<td>" + esc(e["category"]) + "</td>" +
+               "<td>" + esc(e["description"]) + "</td>" +
+               "<td class='num'>$" + money(e["amount"]) + "</td></tr>"
+    }
+    when len(recent) == 0 {
+        rows = "<tr><td colspan='4' class='muted'>No expenses yet. " +
+               "<a href='/expenses/new'>Add the first one</a>.</td></tr>"
+    }
+
+    give layout("Dashboard", user,
+        _alerts(nil, msg) +
+        "<h1>Hello, " + esc(user["name"]) + "</h1>" + stats +
+        "<div class='card'><h2>By category</h2><table>" +
+        "<tr><th>Category</th><th class='num'>Count</th><th class='num'>Total</th></tr>" +
+        catRows + "</table></div>" +
+        "<div class='card'><h2>Recent</h2><table>" +
+        "<tr><th>Date</th><th>Category</th><th>Description</th><th class='num'>Amount</th></tr>" +
+        rows + "</table>" +
+        "<p style='margin:14px 0 0'><a class='btn' href='/expenses'>All expenses</a></p>" +
+        "</div>")
+}
+
+# ── Expense list ─────────────────────────────────────────────────────────────
+
+task _categoryOptions(selected, includeAll) {
+    opts = includeAll ? "<option value=''>All categories</option>" : ""
+    get c in CATEGORIES {
+        sel = str(selected) == c ? " selected" : ""
+        opts = opts + "<option" + sel + ">" + esc(c) + "</option>"
+    }
+    give opts
+}
+
+export task expensesPage(user, rows, filters, sumTotal, msg, err) {
+    f = typeOf(filters) == "dictionary" ? filters : {}
+    fv = |k| { give has_key(f, k) ? str(f[k]) : "" }
+
+    body = ""
+    get e in rows {
+        body = body + "<tr><td>" + esc(e["spent_on"]) + "</td>" +
+               "<td>" + esc(e["category"]) + "</td>" +
+               "<td>" + esc(e["description"]) + "</td>" +
+               "<td class='num'>$" + money(e["amount"]) + "</td>" +
+               "<td class='num'><a href='/expenses/" + str(e["id"]) + "/edit'>Edit</a> " +
+               "<form method='post' action='/expenses/" + str(e["id"]) + "/delete' " +
+               "style='display:inline' onsubmit=\"return confirm('Delete this expense?')\">" +
+               "<button class='btn danger' style='padding:3px 9px;font-size:12px'>Delete</button>" +
+               "</form></td></tr>"
+    }
+    when len(rows) == 0 {
+        body = "<tr><td colspan='5' class='muted'>Nothing matches those filters.</td></tr>"
+    }
+
+    give layout("Expenses", user,
+        _alerts(err, msg) +
+        "<h1>Expenses</h1>" +
+        "<div class='card'><form method='get' action='/expenses'>" +
+        "<div class='row'>" +
+        "<div><label>Category</label><select name='category'>" +
+        _categoryOptions(fv("category"), true) + "</select></div>" +
+        "<div><label>From</label><input type='date' name='from' value='" + esc(fv("from")) + "'></div>" +
+        "<div><label>To</label><input type='date' name='to' value='" + esc(fv("to")) + "'></div>" +
+        "<div><label>Search</label><input name='search' value='" + esc(fv("search")) + "'></div>" +
+        "<div style='flex:0 0 auto;display:flex;align-items:flex-end;gap:8px'>" +
+        "<button type='submit'>Filter</button>" +
+        "<a class='btn sec' href='/expenses'>Reset</a></div>" +
+        "</div></form></div>" +
+        "<div class='card'>" +
+        "<p class='muted'>" + str(len(rows)) + " entries · total $" + money(sumTotal) +
+        " · <a href='/export.csv'>Export CSV</a></p>" +
+        "<table><tr><th>Date</th><th>Category</th><th>Description</th>" +
+        "<th class='num'>Amount</th><th class='num'>Actions</th></tr>" +
+        body + "</table></div>")
+}
+
+# ── Expense form ─────────────────────────────────────────────────────────────
+
+export task expenseFormPage(user, expense, err) {
+    editing = expense != nil
+    action = editing ? "/expenses/" + str(expense["id"]) + "/edit" : "/expenses/new"
+    amount = editing ? str(expense["amount"]) : ""
+    category = editing ? expense["category"] : "Food"
+    desc = editing ? expense["description"] : ""
+    date = editing ? expense["spent_on"] : today()
+
+    give layout(editing ? "Edit expense" : "Add expense", user,
+        "<div style='max-width:520px'>" +
+        "<h1>" + (editing ? "Edit expense" : "Add expense") + "</h1>" +
+        _alerts(err, nil) +
+        "<div class='card'><form method='post' action='" + action + "'>" +
+        "<div class='row' style='margin-bottom:12px'>" +
+        "<div><label>Amount</label>" +
+        "<input name='amount' type='number' step='0.01' min='0.01' value='" +
+        esc(amount) + "' required autofocus></div>" +
+        "<div><label>Date</label>" +
+        "<input name='spent_on' type='date' value='" + esc(date) + "' required></div>" +
+        "</div>" +
+        "<div style='margin-bottom:12px'><label>Category</label>" +
+        "<select name='category'>" + _categoryOptions(category, false) + "</select></div>" +
+        "<div style='margin-bottom:16px'><label>Description</label>" +
+        "<input name='description' value='" + esc(desc) + "' maxlength='200'></div>" +
+        "<button type='submit'>" + (editing ? "Save changes" : "Add expense") + "</button> " +
+        "<a class='btn sec' href='/expenses'>Cancel</a>" +
+        "</form></div></div>")
+}
+
+# ── Reports ──────────────────────────────────────────────────────────────────
+
+export task reportsPage(user, cats, months) {
+    catRows = ""
+    total = 0.0
+    get c in cats { total = total + c["total"] }
+    get c in cats {
+        pct = total > 0 ? floor(c["total"] * 1000 / total) / 10 : 0
+        catRows = catRows + "<tr><td>" + esc(c["category"]) + "</td>" +
+                  "<td class='num'>" + str(c["n"]) + "</td>" +
+                  "<td class='num'>$" + money(c["total"]) + "</td>" +
+                  "<td class='num'>" + str(pct) + "%</td></tr>"
+    }
+    when len(cats) == 0 {
+        catRows = "<tr><td colspan='4' class='muted'>No data.</td></tr>"
+    }
+
+    biggest = 0.0
+    get m in months {
+        when m["total"] > biggest { biggest = m["total"] }
+    }
+    monthRows = ""
+    get m in months {
+        pct = biggest > 0 ? floor(m["total"] * 100 / biggest) : 0
+        monthRows = monthRows + "<tr><td>" + esc(m["month"]) +
+                    "<div class='bar'><span style='width:" + str(pct) + "%'></span></div></td>" +
+                    "<td class='num'>" + str(m["n"]) + "</td>" +
+                    "<td class='num'>$" + money(m["total"]) + "</td></tr>"
+    }
+    when len(months) == 0 {
+        monthRows = "<tr><td colspan='3' class='muted'>No data.</td></tr>"
+    }
+
+    give layout("Reports", user,
+        "<h1>Reports</h1>" +
+        "<div class='card'><h2>By category</h2><table>" +
+        "<tr><th>Category</th><th class='num'>Count</th><th class='num'>Total</th>" +
+        "<th class='num'>Share</th></tr>" + catRows + "</table></div>" +
+        "<div class='card'><h2>By month</h2><table>" +
+        "<tr><th>Month</th><th class='num'>Count</th><th class='num'>Total</th></tr>" +
+        monthRows + "</table></div>")
+}
+
+export task errorPage(user, code, message) {
+    give layout(str(code), user,
+        "<div class='card'><h1>" + esc(code) + "</h1>" +
+        "<p>" + esc(message) + "</p>" +
+        "<p><a class='btn' href='/'>Back to dashboard</a></p></div>")
+}

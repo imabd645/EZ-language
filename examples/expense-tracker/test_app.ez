@@ -119,7 +119,10 @@ checkEq("filter from", len(list(UID, {"from": "2026-02-01"})), 2)
 checkEq("filter to", len(list(UID, {"to": "2026-01-31"})), 2)
 checkEq("date range", len(list(UID, {"from": "2026-01-16", "to": "2026-02-01"})), 2)
 checkEq("search", len(list(UID, {"search": "Rent"})), 1)
-checkEq("search is a substring match", len(list(UID, {"search": "en"})), 2)
+# Of "Lunch", "Train ticket", "Rent" and "Groceries", only "Rent" contains
+# "en"; three of them contain "e".
+checkEq("search matches mid-word", len(list(UID, {"search": "en"})), 1)
+checkEq("search matches several rows", len(list(UID, {"search": "e"})), 3)
 checkEq("limit", len(list(UID, {"limit": 2})), 2)
 checkEq("offset", len(list(UID, {"limit": 2, "offset": 3})), 1)
 checkEq("no match", len(list(UID, {"category": "Travel"})), 0)

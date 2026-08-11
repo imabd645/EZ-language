@@ -127,13 +127,86 @@ namespace MiniJson {
             return Value(str.substr(start, pos - start));
         }
         
+        // Decode one \uXXXX escape (already past the 'u') into `out`.
+        // Returns false if the four hex digits are not there.
+        static bool parseHex4(const std::string& str, size_t& pos, uint32_t& cp) {
+            if (pos + 4 > str.length()) return false;
+            cp = 0;
+            for (int i = 0; i < 4; ++i) {
+                char c = str[pos + i];
+                cp <<= 4;
+                if      (c >= '0' && c <= '9') cp |= (uint32_t)(c - '0');
+                else if (c >= 'a' && c <= 'f') cp |= (uint32_t)(c - 'a' + 10);
+                else if (c >= 'A' && c <= 'F') cp |= (uint32_t)(c - 'A' + 10);
+                else return false;
+            }
+            pos += 4;
+            return true;
+        }
+
+        static void appendUtf8(std::string& res, uint32_t cp) {
+            if (cp < 0x80) {
+                res += (char)cp;
+            } else if (cp < 0x800) {
+                res += (char)(0xC0 | (cp >> 6));
+                res += (char)(0x80 | (cp & 0x3F));
+            } else if (cp < 0x10000) {
+                res += (char)(0xE0 | (cp >> 12));
+                res += (char)(0x80 | ((cp >> 6) & 0x3F));
+                res += (char)(0x80 | (cp & 0x3F));
+            } else {
+                res += (char)(0xF0 | (cp >> 18));
+                res += (char)(0x80 | ((cp >> 12) & 0x3F));
+                res += (char)(0x80 | ((cp >> 6) & 0x3F));
+                res += (char)(0x80 | (cp & 0x3F));
+            }
+        }
+
         std::string parseString(const std::string& str, size_t& pos) {
             std::string res;
             if (str[pos] != '"') return "";
             pos++;
+            // Escapes must be TRANSLATED, not just un-backslashed. This used to
+            // skip the backslash and copy the next character verbatim, so `\n`
+            // decoded to the letter 'n' and `\t` to 't' -- stringify() emits those
+            // escapes for real control characters, so to_json -> parse_json did
+            // not round-trip any string containing a newline or a tab, and every
+            // \uXXXX arrived as the literal text "uXXXX".
             while (pos < str.length() && str[pos] != '"') {
-                if (str[pos] == '\\' && pos + 1 < str.length()) pos++;
-                res += str[pos++];
+                if (str[pos] != '\\') { res += str[pos++]; continue; }
+                if (pos + 1 >= str.length()) { pos++; break; }
+                char esc = str[pos + 1];
+                pos += 2;
+                switch (esc) {
+                    case '"':  res += '"';  break;
+                    case '\\': res += '\\'; break;
+                    case '/':  res += '/';  break;
+                    case 'b':  res += '\b'; break;
+                    case 'f':  res += '\f'; break;
+                    case 'n':  res += '\n'; break;
+                    case 'r':  res += '\r'; break;
+                    case 't':  res += '\t'; break;
+                    case 'u': {
+                        uint32_t cp = 0;
+                        if (!parseHex4(str, pos, cp)) { res += 'u'; break; }
+                        // A code point above the BMP arrives as a surrogate pair.
+                        if (cp >= 0xD800 && cp <= 0xDBFF &&
+                            pos + 1 < str.length() && str[pos] == '\\' && str[pos + 1] == 'u') {
+                            size_t save = pos;
+                            pos += 2;
+                            uint32_t lo = 0;
+                            if (parseHex4(str, pos, lo) && lo >= 0xDC00 && lo <= 0xDFFF) {
+                                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                            } else {
+                                pos = save;   // not a valid pair; emit the high half as-is
+                            }
+                        }
+                        appendUtf8(res, cp);
+                        break;
+                    }
+                    // Not a JSON escape: keep it literally rather than losing it.
+                    default: res += '\\'; res += esc; break;
+                }
             }
             if (pos < str.length()) pos++;
             return res;
@@ -157,6 +230,17 @@ namespace MiniJson {
                     else if (c == '\n') escaped += "\\n";
                     else if (c == '\r') escaped += "\\r";
                     else if (c == '\t') escaped += "\\t";
+                    else if (c == '\b') escaped += "\\b";
+                    else if (c == '\f') escaped += "\\f";
+                    // RFC 8259 forbids a raw control character inside a string, so
+                    // the remaining ones ( -) have to go out as \uXXXX
+                    // or the document we emit is not valid JSON.
+                    else if ((unsigned char)c < 0x20) {
+                        static const char* HEX = "0123456789abcdef";
+                        escaped += "\\u00";
+                        escaped += HEX[((unsigned char)c >> 4) & 0xF];
+                        escaped += HEX[(unsigned char)c & 0xF];
+                    }
                     else escaped += c;
                 }
                 escaped += "\"";

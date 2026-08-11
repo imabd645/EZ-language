@@ -1123,7 +1123,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (a.isInteger() && b.isInteger()) {
                             long long al = a.asInteger();
                             long long bl = b.asInteger();
-                            if (bl == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
+                            if (bl == 0) { SYNC_IP(); runtimeError("Division by zero"); RAISE_FAULT(); }
                             
                             if (al % bl == 0) {
                                 long long res = al / bl;
@@ -1138,7 +1138,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         } else if (a.isNumber() && b.isNumber()) {
                             double db = b.asNumber();
-                            if (db == 0) { SYNC_IP(); runtimeError("Division by zero"); return; }
+                            if (db == 0) { SYNC_IP(); runtimeError("Division by zero"); RAISE_FAULT(); }
                             double res = a.asNumber() / db;
                             stackTop -= 2;
                             *stackTop = Value(res);
@@ -1171,7 +1171,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
                             long long bl = b.asInteger();
-                            if (bl == 0) { SYNC_IP(); runtimeError("Modulo by zero"); return; }
+                            if (bl == 0) { SYNC_IP(); runtimeError("Modulo by zero"); RAISE_FAULT(); }
                             long long res = a.asInteger() % bl;
                             stackTop -= 2;
                             *stackTop = Value(res);

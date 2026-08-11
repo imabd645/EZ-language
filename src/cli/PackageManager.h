@@ -26,6 +26,7 @@
 
 #include "cli/Registry.h"
 #include "utils/MiniJson.h"
+#include "utils/EzLibPath.h"
 
 namespace fs = std::filesystem;
 
@@ -90,15 +91,17 @@ public:
         readManifestDependencies(deps);
         bool listed = deps.erase(name) > 0;
 
-        fs::path dir = fs::path(root) / "lib" / name;
+        fs::path dir = installBase() / name;
         std::error_code ec;
         bool removed = fs::exists(dir) && fs::remove_all(dir, ec) > 0;
 
-        if (!listed && !removed) {
+        bool unlocked = removeFromLock(name);
+
+        if (!listed && !removed && !unlocked) {
             std::cerr << "'" << name << "' is not installed." << std::endl;
             return false;
         }
-        if (listed) writeManifestDependencies(deps);
+        if (listed && fs::exists(manifestPath())) writeManifestDependencies(deps);
         std::cout << "Removed " << name << std::endl;
         return true;
     }
@@ -174,7 +177,7 @@ public:
     }
 
     void listInstalled() {
-        fs::path libDir = fs::path(root) / "lib";
+        fs::path libDir = installBase();
         if (!fs::exists(libDir)) {
             std::cout << "No packages installed." << std::endl;
             return;
@@ -383,8 +386,25 @@ private:
         return out;
     }
 
+    /**
+     * Where installed packages live.
+     *
+     * This is the SAME directory the compiler resolves `use "name"` from
+     * (see src/utils/EzLibPath.h), so anything installed is immediately
+     * importable from every project on the machine -- which is how the EZ
+     * ecosystem works: one shared library root, not a per-project tree.
+     *
+     * Installing into a project-local ./lib would be actively harmful here,
+     * because lib/ is searched BEFORE the library root: a local copy silently
+     * shadows the real one, and the package is invisible to every other
+     * project. Honouring EZLIB_PATH also means a custom/portable stdlib
+     * location keeps `ez install` and `use` pointing at the same place.
+     */
+    static fs::path installBase() { return fs::path(ezLibBaseNoSlash()); }
+
     std::string manifestPath() const { return (fs::path(root) / "package.ez").string(); }
-    std::string lockPath() const { return (fs::path(root) / "ez.lock").string(); }
+    /** The lock describes the shared library root, so it lives beside it. */
+    std::string lockPath() const { return (installBase() / "ez.lock").string(); }
 
     bool readManifestDependencies(std::map<std::string, std::string>& out) {
         std::string text = ezreg::readFileText(manifestPath());
@@ -447,6 +467,36 @@ private:
         return ezreg::writeFileText(manifestPath(), text);
     }
 
+    /**
+     * Drop one package from the lock. Returns whether it was there.
+     * The lock spans the whole library root, so uninstalling must edit it
+     * rather than leave a record of something no longer on disk.
+     */
+    bool removeFromLock(const std::string& name) {
+        bool ok = false;
+        MiniJson::Value lock = ezreg::parseJson(ezreg::readFileText(lockPath()), ok);
+        if (!ok || !lock.properties.count("packages")) return false;
+
+        MiniJson::Value pkgs = lock["packages"];
+        if (!pkgs.properties.count(name)) return false;
+
+        std::string out = "{\n  \"registry\": \"" + ezreg::jsonEscape(registry) + "\",\n  \"packages\": {";
+        bool first = true;
+        for (const auto& key : pkgs.getMemberNames()) {
+            if (key == name) continue;
+            out += (first ? "\n" : ",\n");
+            out += "    \"" + ezreg::jsonEscape(key) + "\": {\n"
+                   "      \"version\": \"" + ezreg::jsonEscape(pkgs[key].get("version", "").asString()) + "\",\n"
+                   "      \"sha256\": \"" + ezreg::jsonEscape(pkgs[key].get("sha256", "").asString()) + "\",\n"
+                   "      \"direct\": " +
+                   (pkgs[key].get("direct", "false").asString() == "true" ? "true" : "false") + "\n    }";
+            first = false;
+        }
+        out += first ? "}\n}\n" : "\n  }\n}\n";
+        ezreg::writeFileText(lockPath(), out);
+        return true;
+    }
+
     void readLock(std::map<std::string, std::string>& out) {
         bool ok = false;
         MiniJson::Value lock = ezreg::parseJson(ezreg::readFileText(lockPath()), ok);
@@ -457,23 +507,62 @@ private:
         }
     }
 
+    /** One entry of ez.lock. */
+    struct LockEntry {
+        std::string version;
+        std::string sha256;
+        bool        direct = false;
+    };
+
     /**
      * ez.lock records exactly what was installed, with checksums, so a later
      * install can be reproduced and verified rather than re-resolved to
      * whatever is newest today.
+     *
+     * The lock covers the whole shared library root, so this MERGES: the plan
+     * only describes the packages touched by this command, and rewriting the
+     * file from it alone would drop every previously installed package.
      */
     void writeLock(const std::vector<PlannedPackage>& plan) {
+        std::map<std::string, LockEntry> entries;
+
+        bool ok = false;
+        MiniJson::Value lock = ezreg::parseJson(ezreg::readFileText(lockPath()), ok);
+        if (ok && lock.properties.count("packages")) {
+            MiniJson::Value pkgs = lock["packages"];
+            for (const auto& key : pkgs.getMemberNames()) {
+                LockEntry e;
+                e.version = pkgs[key].get("version", "").asString();
+                e.sha256  = pkgs[key].get("sha256", "").asString();
+                e.direct  = pkgs[key].get("direct", "false").asString() == "true";
+                entries[key] = e;
+            }
+        }
+
+        for (const auto& p : plan) {
+            LockEntry e;
+            e.version = p.version;
+            e.sha256  = p.shasum;
+            // A package already recorded as directly wanted stays direct even
+            // if it turns up again only as someone else's dependency.
+            auto prev = entries.find(p.name);
+            e.direct = p.direct || (prev != entries.end() && prev->second.direct);
+            entries[p.name] = e;
+        }
+
         std::string out = "{\n  \"registry\": \"" + ezreg::jsonEscape(registry) + "\",\n  \"packages\": {";
         bool first = true;
-        for (const auto& p : plan) {
+        for (const auto& [name, e] : entries) {
             out += (first ? "\n" : ",\n");
-            out += "    \"" + ezreg::jsonEscape(p.name) + "\": {\n"
-                   "      \"version\": \"" + ezreg::jsonEscape(p.version) + "\",\n"
-                   "      \"sha256\": \"" + ezreg::jsonEscape(p.shasum) + "\",\n"
-                   "      \"direct\": " + (p.direct ? "true" : "false") + "\n    }";
+            out += "    \"" + ezreg::jsonEscape(name) + "\": {\n"
+                   "      \"version\": \"" + ezreg::jsonEscape(e.version) + "\",\n"
+                   "      \"sha256\": \"" + ezreg::jsonEscape(e.sha256) + "\",\n"
+                   "      \"direct\": " + (e.direct ? "true" : "false") + "\n    }";
             first = false;
         }
         out += first ? "}\n}\n" : "\n  }\n}\n";
+        std::error_code lec;
+        fs::create_directories(installBase(), lec);
         ezreg::writeFileText(lockPath(), out);
     }
 
@@ -546,7 +635,13 @@ private:
                 if (p.name == name) updated[name] = "^" + p.version;
             }
         }
-        if (!newlyAdded.empty()) writeManifestDependencies(updated);
+        // Record the dependency only when the current directory really is a
+        // package. Installing is global, so `ez install x` run from an
+        // arbitrary directory must not drop a package.ez into it -- that
+        // used to leave stray manifests in unrelated projects.
+        if (!newlyAdded.empty() && fs::exists(manifestPath())) {
+            writeManifestDependencies(updated);
+        }
         writeLock(plan);
 
         std::cout << "Done." << std::endl;
@@ -581,7 +676,7 @@ private:
             }
         }
 
-        fs::path target = fs::path(root) / "lib" / p.installDir;
+        fs::path target = installBase() / p.installDir;
         std::error_code ec;
         fs::remove_all(target, ec);
         fs::create_directories(target, ec);

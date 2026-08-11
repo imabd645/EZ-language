@@ -1,0 +1,68 @@
+# JSON escape handling: to_json() and parse_json() must round-trip exactly.
+#
+# parse_json used to skip the backslash and copy the next character verbatim, so
+# an escape was never translated: "a\nb" decoded to the three letters a, n, b and
+# "a\tb" to a, t, b. to_json escapes those characters correctly, so a value could
+# not survive its own serialisation -- and every \uXXXX arrived as literal "uXXXX".
+
+task bytes(x) {
+    r = ""
+    repeat i = 0 to len(x) - 1 { r = r + str(ord(substr(x, i, 1))) + " " }
+    give r
+}
+
+task rt(v) { give parse_json(to_json({"s": v}))["s"] }
+
+task check(name, got, want) {
+    when str(got) == str(want) { out "  [PASS] " + name }
+    other { out "  [FAIL] " + name + "  got=" + str(got) + " want=" + str(want) }
+}
+
+out "== control characters round-trip =="
+check("newline",     bytes(rt("a\nb")), "97 10 98 ")
+check("tab",         bytes(rt("a\tb")), "97 9 98 ")
+check("carriage ret", bytes(rt("a\rb")), "97 13 98 ")
+check("backslash",   bytes(rt("a\\b")), "97 92 98 ")
+check("quote",       bytes(rt("a\"b")), "97 34 98 ")
+
+out ""
+out "== equality after a round trip =="
+check("newline equal", rt("line1\nline2") == "line1\nline2", true)
+check("tab equal",     rt("a\tb") == "a\tb", true)
+check("mixed equal",   rt("a\t\n\"\\b") == "a\t\n\"\\b", true)
+check("plain text",    rt("hello world"), "hello world")
+check("empty string",  rt(""), "")
+
+out ""
+out "== decoding escapes written by other tools =="
+# \u0041 is 'A'; \u00e9 is 'é' (2 UTF-8 bytes); \ud83d\ude00 is an emoji (4 bytes)
+check("\\u ascii",     parse_json("{\"s\": \"\\u0041\"}")["s"], "A")
+check("\\u latin1 len", len(parse_json("{\"s\": \"\\u00e9\"}")["s"]), 2)
+check("\\u surrogate len", len(parse_json("{\"s\": \"\\ud83d\\ude00\"}")["s"]), 4)
+check("\\/ solidus",   parse_json("{\"s\": \"a\\/b\"}")["s"], "a/b")
+check("\\b backspace", bytes(parse_json("{\"s\": \"\\b\"}")["s"]), "8 ")
+check("\\f formfeed",  bytes(parse_json("{\"s\": \"\\f\"}")["s"]), "12 ")
+
+out ""
+out "== keys are decoded too =="
+d = parse_json("{\"a\\nb\": 1}")
+check("escaped key", has_key(d, "a\nb"), true)
+
+out ""
+out "== nested and array values =="
+deep = {"outer": {"inner": ["x\ty", "p\nq"]}}
+back = parse_json(to_json(deep))
+check("nested array 0", back["outer"]["inner"][0], "x\ty")
+check("nested array 1", back["outer"]["inner"][1], "p\nq")
+
+out ""
+out "== emitted JSON has no raw control bytes =="
+j = to_json({"s": "a\nb\tc"})
+raw = false
+repeat i = 0 to len(j) - 1 {
+    c = ord(substr(j, i, 1))
+    # a real newline inside the STRING would be invalid; the pretty printer's own
+    # layout newlines sit outside string literals, so only check for a raw tab
+    when c == 9 { raw = true }
+}
+check("no raw tab in output", raw, false)

@@ -162,6 +162,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
     #define CASE_CODE(name) case OpCode::name:
 #endif
 
+// Deliver a fault that runtimeError() or throwException() has just recorded to
+// whichever EZ `catch` owns it.
+//
+// EVERY fault site inside run() must end with this rather than `return`.
+// Returning leaves run() on the spot, so handle_vm_fault never runs and the
+// enclosing `try` never sees the error. Worse, it died *silently*: runtimeError
+// only prints a report when there is no handler at all, so a program with a try
+// block around the failing line exited 70 with no message whatsoever --
+//
+//     n = someDict["missing"]        # nil
+//     try { give n.field } catch (e) { give "caught" }   # never reached
+//
+// The label is function-scoped, so this works under both the computed-goto and
+// the switch dispatch.
+#define RAISE_FAULT() goto handle_vm_fault
+
     dispatch_start:
     try {
         INTERPRET_LOOP {
@@ -174,7 +190,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     if (__builtin_expect(idx >= frame->function->chunk.resolvedConstants.size(), 0)) {
                         SYNC_IP();
                         runtimeError("Invalid bytecode: constant index out of range");
-                        return;
+                        RAISE_FAULT();
                     }
                     *stackTop++ = frame->function->chunk.resolvedConstants[idx];
                     DISPATCH();
@@ -242,7 +258,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 throwException("TypeError",
                                     "'in' on a string expects a string on the left, got " +
                                     needle.typeName());
-                                return;
+                                RAISE_FAULT();
                             }
                             found = haystack.asString().find(needle.asString()) != std::string::npos;
                         } else {
@@ -250,7 +266,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             throwException("TypeError",
                                 "'in' expects an array, tuple, dictionary or string on the "
                                 "right, got " + haystack.typeName());
-                            return;
+                            RAISE_FAULT();
                         }
                         *stackTop++ = Value(found);
                     }
@@ -294,7 +310,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (!globalEnv->getIfExists(name, v)) {
                             SYNC_IP();
                             runtimeError("Undefined variable '" + name + "'");
-                            return;
+                            RAISE_FAULT();
                         }
                         *stackTop++ = v;
                     }
@@ -361,7 +377,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         // Fix 1.5: non-numeric loop variable is a programmer error, not a silent exit
                         SYNC_IP();
                         runtimeError("repeat loop variable must be numeric, got: " + lv.typeName());
-                        return;
+                        RAISE_FAULT();
                     }
                     DISPATCH();
                 }
@@ -380,7 +396,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         // Fix 1.5: non-numeric loop variable is a programmer error, not a silent exit
                         SYNC_IP();
                         runtimeError("repeat loop variable must be numeric, got: " + lv.typeName());
-                        return;
+                        RAISE_FAULT();
                     }
                     DISPATCH();
                 }
@@ -442,7 +458,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     }
                                     SYNC_IP();
                                     runtimeError("Property or method '" + propName + "' does not exist on instance of '" + inst->klass->name + "'");
-                                    return;
+                                    RAISE_FAULT();
                                 }
 
                                 if (isField) {
@@ -474,7 +490,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             } else {
                                 SYNC_IP();
                                 runtimeError("Key or property '" + propName + "' does not exist in dictionary");
-                                return;
+                                RAISE_FAULT();
                             }
                         } else if (obj.isClass()) {
                             auto klass = obj.asClass();
@@ -553,7 +569,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     }
                                     SYNC_IP();
                                     runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");
-                                    return;
+                                    RAISE_FAULT();
                                 }
                             }
                         } else if (obj.isSuper()) {
@@ -574,7 +590,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             if (method.isNil()) {
                                 SYNC_IP();
                                 runtimeError("Method '" + propName + "' does not exist in superclass hierarchy");
-                                return;
+                                RAISE_FAULT();
                             }
                             if (method.isFunction() || method.isClosure() || method.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
                             else *stackTop++ = method;
@@ -591,7 +607,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             SYNC_IP();
                             runtimeError("Cannot access property '" + propName + "' on " + obj.typeName());
-                            return;
+                            RAISE_FAULT();
                         }
 
                     }
@@ -657,7 +673,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         else {
                             SYNC_IP();
                             runtimeError("Cannot set property '" + propName + "' on " + obj.typeName());
-                            return;
+                            RAISE_FAULT();
                         }
                         *stackTop++ = value;
                     }
@@ -685,7 +701,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             } else {
                                 SYNC_IP();
                                 runtimeError("Cannot set property '" + propName + "' on " + obj.typeName());
-                                return;
+                                RAISE_FAULT();
                             }
                             *stackTop++ = value;
                         } else {
@@ -751,7 +767,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                         if (!ok) {
                                             SYNC_IP();
                                             runtimeError("ValidationError: " + v.message + " (field '" + propName + "')");
-                                            return;
+                                            RAISE_FAULT();
                                         }
                                     }
                                 }
@@ -858,7 +874,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             lk.unlock();
                             SYNC_IP();
                             runtimeError("RateLimitError: rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
-                            return;
+                            RAISE_FAULT();
                         }
                         win.push_back(now);
 
@@ -1600,14 +1616,14 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 if (!unexpected.empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument '" + unexpected + "'");
-                                    return;
+                                    RAISE_FAULT();
                                 }
                                 totalArity = expectedCallerParams;
                             } else {
                                 if (!kwargs.asDictionaryPtr()->empty()) {
                                     SYNC_IP();
                                     runtimeError("Unexpected keyword argument");
-                                    return;
+                                    RAISE_FAULT();
                                 }
                             }
                         }
@@ -1845,7 +1861,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             SYNC_IP();
                             runtimeError("Cannot spread non-iterable value");
-                            return;
+                            RAISE_FAULT();
                         }
                     }
                     DISPATCH();
@@ -1858,7 +1874,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (!argsArray.isArray()) {
                             SYNC_IP();
                             runtimeError("CALL_SPREAD requires an array of arguments");
-                            return;
+                            RAISE_FAULT();
                         }
                         auto& args = argsArray.asArray();
                         int argc = args.size();
@@ -1984,7 +2000,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             SYNC_IP();
                             runtimeError("Not iterable: " + v.typeName());
-                            return;
+                            RAISE_FAULT();
                         }
                     }
                     DISPATCH();
@@ -2004,7 +2020,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             SYNC_IP();
                             runtimeError("Not a dictionary: " + v.typeName());
-                            return;
+                            RAISE_FAULT();
                         }
                     }
                     DISPATCH();
@@ -2159,7 +2175,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 if (fut->isError()) {
                                     SYNC_IP();
                                     throwException("Exception", fut->getError());
-                                    return;
+                                    RAISE_FAULT();
                                 } else {
                                     *(stackTop - 1) = fut->get();
                                 }
@@ -2322,7 +2338,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     SYNC_IP();
                                     runtimeError("Model '" + className + "' fails to implement interface '" + 
                                                  iface->name + "': missing task '" + methodName + "'");
-                                    return;
+                                    RAISE_FAULT();
                                 }
                             }
                         }

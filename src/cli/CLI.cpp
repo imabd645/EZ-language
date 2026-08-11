@@ -23,6 +23,26 @@
 bool g_disableContracts = false;
 bool g_disableTypeCheck = false;
 
+/**
+ * Read a line without echoing it, so a password never appears on screen or in
+ * a scrollback buffer. Falls back to a normal read if the handle is not a
+ * console (a pipe, for instance), because there is nothing to hide there.
+ */
+static std::string readHiddenLine() {
+    std::string line;
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD mode = 0;
+    if (in != INVALID_HANDLE_VALUE && GetConsoleMode(in, &mode)) {
+        SetConsoleMode(in, mode & ~ENABLE_ECHO_INPUT);
+        std::getline(std::cin, line);
+        SetConsoleMode(in, mode);
+        std::cout << std::endl;
+    } else {
+        std::getline(std::cin, line);
+    }
+    return line;
+}
+
 void signalHandler(int sig) {
     std::cerr << "\n[FATAL] Signal " << sig << " - segfault or abort" << std::endl;
     _exit(139);
@@ -323,9 +343,24 @@ void showHelp() {
     std::cout << "Usage:" << std::endl;
     std::cout << "  ez                Run REPL (interactive mode)" << std::endl;
     std::cout << "  ez <file.ez>      Run a script file" << std::endl;
-    std::cout << "  ez install <pkg>  Install a package" << std::endl;
-    std::cout << "  ez list           List installed packages" << std::endl;
-    std::cout << "  ez init <name>    Create a new package" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Packages:" << std::endl;
+    std::cout << "  ez install                  Install everything in package.ez" << std::endl;
+    std::cout << "  ez install <pkg>[@range]    Add and install a package" << std::endl;
+    std::cout << "  ez uninstall <pkg>          Remove a package" << std::endl;
+    std::cout << "  ez list                     List installed packages" << std::endl;
+    std::cout << "  ez search <query>           Search the registry" << std::endl;
+    std::cout << "  ez info <pkg>               Show package details" << std::endl;
+    std::cout << "  ez init <name>              Scaffold a new package" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Publishing:" << std::endl;
+    std::cout << "  ez register                 Create a registry account" << std::endl;
+    std::cout << "  ez login / logout / whoami  Manage your session" << std::endl;
+    std::cout << "  ez publish                  Publish the package in this directory" << std::endl;
+    std::cout << "  ez yank <pkg>@<version>     Hide a version from resolution" << std::endl;
+    std::cout << "  ez unyank <pkg>@<version>   Undo a yank" << std::endl;
+    std::cout << "  ez config registry [url]    Show or set the registry" << std::endl;
+    std::cout << std::endl;
     std::cout << "  ez bundle <file.ez> [out.exe] [--gui] [--icon app.ico]  Create a standalone executable" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
@@ -417,15 +452,100 @@ int cli_main(int argc, char* argv[]) {
     if (argc > 1) {
         std::string cmd = argv[1];
         
-        if (cmd == "install") {
+        if (cmd == "install" || cmd == "i" || cmd == "add") {
+            PackageManager pm;
+            // `ez install` with no argument installs what package.ez declares;
+            // with one, it adds that package and records it there.
+            if (argc < 3) return pm.installAll() ? 0 : 1;
+            bool allOk = true;
+            for (int i = 2; i < argc; i++) {
+                if (!pm.installOne(argv[i])) allOk = false;
+            }
+            return allOk ? 0 : 1;
+        }
+        else if (cmd == "uninstall" || cmd == "remove" || cmd == "rm") {
             if (argc < 3) {
-                std::cout << "Usage: ez install <pkg> [version]" << std::endl;
+                std::cout << "Usage: ez uninstall <package>" << std::endl;
                 return 1;
             }
-            std::string pkg = argv[2];
-            std::string ver = (argc >= 4) ? argv[3] : "main";
             PackageManager pm;
-            return pm.installPackage(pkg, ver) ? 0 : 1;
+            return pm.uninstall(argv[2]) ? 0 : 1;
+        }
+        else if (cmd == "search") {
+            if (argc < 3) {
+                std::cout << "Usage: ez search <query>" << std::endl;
+                return 1;
+            }
+            std::string query = argv[2];
+            for (int i = 3; i < argc; i++) query += " " + std::string(argv[i]);
+            PackageManager pm;
+            return pm.search(query) ? 0 : 1;
+        }
+        else if (cmd == "info" || cmd == "show") {
+            if (argc < 3) {
+                std::cout << "Usage: ez info <package>" << std::endl;
+                return 1;
+            }
+            PackageManager pm;
+            return pm.info(argv[2]) ? 0 : 1;
+        }
+        else if (cmd == "publish") {
+            PackageManager pm(".");
+            return pm.publish() ? 0 : 1;
+        }
+        else if (cmd == "yank" || cmd == "unyank") {
+            if (argc < 3) {
+                std::cout << "Usage: ez " << cmd << " <package>@<version>" << std::endl;
+                return 1;
+            }
+            PackageManager pm;
+            return pm.yank(argv[2], cmd == "yank") ? 0 : 1;
+        }
+        else if (cmd == "login") {
+            PackageManager pm;
+            std::string user, pass;
+            if (argc >= 4) {
+                user = argv[2];
+                pass = argv[3];
+            } else {
+                std::cout << "Username: " << std::flush;
+                std::getline(std::cin, user);
+                std::cout << "Password: " << std::flush;
+                pass = readHiddenLine();
+            }
+            return pm.login(user, pass) ? 0 : 1;
+        }
+        else if (cmd == "register" || cmd == "signup") {
+            PackageManager pm;
+            std::string user, email, pass;
+            std::cout << "Username: " << std::flush;  std::getline(std::cin, user);
+            std::cout << "Email:    " << std::flush;  std::getline(std::cin, email);
+            std::cout << "Password: " << std::flush;  pass = readHiddenLine();
+            return pm.registerAccount(user, email, pass) ? 0 : 1;
+        }
+        else if (cmd == "logout") {
+            PackageManager pm;
+            return pm.logout() ? 0 : 1;
+        }
+        else if (cmd == "whoami") {
+            PackageManager pm;
+            return pm.whoami() ? 0 : 1;
+        }
+        else if (cmd == "config") {
+            if (argc >= 4 && std::string(argv[2]) == "registry") {
+                if (!ezreg::setRegistryUrl(argv[3])) {
+                    std::cerr << "Could not write " << ezreg::configPath() << std::endl;
+                    return 1;
+                }
+                std::cout << "Registry set to " << ezreg::registryUrl() << std::endl;
+                return 0;
+            }
+            if (argc >= 3 && std::string(argv[2]) == "registry") {
+                std::cout << ezreg::registryUrl() << std::endl;
+                return 0;
+            }
+            std::cout << "Usage: ez config registry [url]" << std::endl;
+            return 1;
         }
         else if (cmd == "init") {
             if (argc < 3) {
@@ -436,9 +556,9 @@ int cli_main(int argc, char* argv[]) {
             pm.initPackage(argv[2]);
             return 0;
         }
-        else if (cmd == "list") {
+        else if (cmd == "list" || cmd == "ls") {
             PackageManager pm;
-            pm.listPackages();
+            pm.listInstalled();
             return 0;
         }
         else if (cmd == "bundle") {

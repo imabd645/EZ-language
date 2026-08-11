@@ -1,0 +1,46 @@
+[New Thread 4920.0x69a0]
+[New Thread 4920.0x5624]
+[New Thread 4920.0x516c]
+[New Thread 4920.0x6178]
+[New Thread 4920.0x1550]
+[New Thread 4920.0x56e4]
+[2026-08-11 15:30:09.957] [INFO] [app] database ready, schema v1
+
+  Expense Tracker
+  http://localhost:8080
+
+  Pages : /  /expenses  /reports  /export.csv
+  API   : POST /api/login -> token, then Authorization: Bearer <token>
+
+===================================================
+ EZ Web Framework (C++ Accel Callback Mode) 
+ Listening natively on http://localhost:8080
+===================================================
+[New Thread 4920.0x6c60]
+[New Thread 4920.0x58c8]
+
+Thread 9 received signal SIGSEGV, Segmentation fault.
+[Switching to Thread 4920.0x58c8]
+0x00007ff74148546b in std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::weak_ptr<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::equal_to<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::weak_ptr<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > >::~unordered_map() ()
+#0  0x00007ff74148546b in std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::weak_ptr<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::equal_to<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::weak_ptr<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > > >::~unordered_map() ()
+#1  0x00007ff741445fad in run_dtor_list (ptr=<optimized out>) at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/tls_atexit.c:62
+#2  run_dtor_list (ptr=0x5784f90) at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/tls_atexit.c:56
+#3  tls_callback (hDllHandle=<optimized out>, dwReason=<optimized out>, lpReserved=<optimized out>) at D:/W/B/src/mingw-w64/mingw-w64-crt/crt/tls_atexit.c:165
+#4  0x00007fff7eb6471b in ntdll!RtlTimeToSecondsSince1970 () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#5  0x00007fff7ebddd4a in ntdll!RtlEncodeRemotePointer () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#6  0x00007fff7eabf723 in ntdll!RtlAllocateHeap () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#7  0x00007fff7eabface in ntdll!RtlAllocateHeap () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#8  0x00007fff7eb2b2b5 in ntdll!LdrShutdownThread () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#9  0x00007fff7eb2adf6 in ntdll!RtlExitUserThread () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#10 0x00007fff7d90f0f7 in msvcrt!_endthreadex () from C:\WINDOWS\System32\msvcrt.dll
+#11 0x00007ffebb42a305 in pthread_create_wrapper () from C:\ezlib\web\dlls\http_accel.dll
+#12 0x00007fff7d90f0ad in msvcrt!_beginthreadex () from C:\WINDOWS\System32\msvcrt.dll
+#13 0x00007fff7d90f17c in msvcrt!_endthreadex () from C:\WINDOWS\System32\msvcrt.dll
+#14 0x00007fff7cede957 in KERNEL32!BaseThreadInitThunk () from C:\WINDOWS\System32\kernel32.dll
+#15 0x00007fff7eb2ad6c in ntdll!RtlUserThreadStart () from C:\WINDOWS\SYSTEM32\ntdll.dll
+#16 0x0000000000000000 in ?? ()
+A debugging session is active.
+
+	Inferior 1 [process 4920] will be killed.
+
+Quit anyway? (y or n) [answered Y; input not from terminal]

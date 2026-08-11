@@ -1,0 +1,103 @@
+# Strings produced on a non-main thread must survive that thread's exit.
+#
+# Strings of 14+ characters are interned in a thread_local pool. The pool is only
+# sound while the strings in it do not outlive the thread that made them -- and
+# they do: a worker's result, and its error message, are handed to whoever awaits
+# it. When such a thread exits, mingw's TLS teardown destroys the map and faults
+# inside ~unordered_map, taking the whole process with it:
+#     #0  std::unordered_map<...>::~unordered_map()
+#     #1  run_dtor_list (tls_atexit.c)
+#     #8  ntdll!LdrShutdownThread
+#
+# Interning is therefore opt-in and only the main thread opts in. This file makes
+# worker threads produce, return and throw long strings, then lets them exit.
+#
+# Every string below is deliberately 14+ characters -- shorter ones are stored
+# inline and never touch the pool, so a test using "ok" would pass regardless.
+
+_pass = 0
+_fail = 0
+
+task check(name, cond) {
+    when cond { _pass = _pass + 1  out "  [PASS] " + name }
+    other     { _fail = _fail + 1  out "  [FAIL] " + name }
+}
+
+LONG = "this string is comfortably longer than fourteen characters"
+
+out "== a worker returns a long string =="
+f = spawn(|| { give LONG + " from the worker" })
+r = await(f)
+check("result survived the worker's exit", r == LONG + " from the worker")
+check("result is long enough to be interned", len(r) > 14)
+
+out ""
+out "== many workers, all returning long strings =="
+futures = []
+repeat i = 0 to 11 {
+    push(futures, spawn(|| { give LONG + " batch" }))
+}
+allOk = true
+get fut in futures {
+    when await(fut) != LONG + " batch" { allOk = false }
+}
+check("twelve workers all returned intact", allOk)
+
+out ""
+out "== a worker that THROWS a long message =="
+# The error text is built on the worker and read on the main thread, which is
+# the exact lifetime the pool got wrong.
+caught = ""
+try {
+    await(spawn(|| { throw LONG + " raised inside a worker" }))
+} catch (e) {
+    # The error arrives as an exception INSTANCE, so the text is in .message --
+    # str(e) on the instance itself just gives "<instance>".
+    caught = str(e.message)
+}
+check("error message crossed the thread boundary", indexOf(caught, "raised inside a worker") != -1)
+check("the full long string came through", len(caught) > len(LONG))
+
+out ""
+out "== many throwing workers =="
+# A single throwing worker crashed roughly one run in three; twelve crashed
+# almost always.
+errs = 0
+repeat i = 0 to 11 {
+    try { await(spawn(|| { throw LONG + " repeated failure" })) }
+    catch (e) { errs = errs + 1 }
+}
+check("all twelve failures were caught", errs == 12)
+
+out ""
+out "== workers building strings dynamically =="
+# Concatenation on the worker produces a fresh long string per call.
+built = []
+repeat i = 0 to 7 {
+    push(built, spawn(|| { give LONG + "-" + str(clock()) }))
+}
+okCount = 0
+get b in built {
+    when len(await(b)) > len(LONG) { okCount = okCount + 1 }
+}
+check("eight dynamically built strings returned", okCount == 8)
+
+out ""
+out "== a Timer callback builds long strings on its own thread =="
+_tick = ""
+t = Timer(30, false)
+t.onTick(|| { _tick = LONG + " from the timer callback" })
+t.start()
+wait(400)
+t.stop()
+check("timer callback string survived", indexOf(_tick, "from the timer callback") != -1)
+
+out ""
+out "== the main thread still works afterwards =="
+check("long strings still fine on main", (LONG + " main") == LONG + " main")
+check("arithmetic still fine", 2 + 2 == 4)
+
+out ""
+out "========================================"
+out " passed: " + str(_pass) + "   failed: " + str(_fail)
+out "========================================"

@@ -1,0 +1,99 @@
+# parse_json must accept every shape of JSON number -- and must always make
+# forward progress.
+#
+# The scalar scanner matched only isalnum() and '.', so a leading '-' consumed
+# NOTHING: the position never moved, an empty token came back, and the enclosing
+# object loop spun on the same character forever. `{"a": -5}` hung the process.
+#
+# In a server that is the whole event loop: the request never answered, the
+# worker thread waited on it forever, and every later request -- including the
+# health check -- hung behind it. It looked exactly like a crash.
+#
+# Anything with a minus sign in it is enough to trigger it, which is most real
+# payloads: a negative amount, a delta, a longitude, a temperature.
+
+_pass = 0
+_fail = 0
+
+task check(name, cond) {
+    when cond { _pass = _pass + 1  out "  [PASS] " + name }
+    other     { _fail = _fail + 1  out "  [FAIL] " + name }
+}
+
+task rt(text) { give parse_json(text) }
+
+out "== negative numbers =="
+check("negative integer", rt("{\"a\": -5}")["a"] == -5)
+check("negative float", rt("{\"a\": -2.5}")["a"] == -2.5)
+check("negative in an array", rt("[-1, -2, -3]")[2] == -3)
+check("negative alongside positive", rt("{\"a\": -1, \"b\": 2}")["b"] == 2)
+check("several negatives", rt("{\"a\": -1, \"b\": -2, \"c\": -3}")["c"] == -3)
+check("negative zero", rt("{\"a\": -0}")["a"] == 0)
+check("nested negative", rt("{\"o\": {\"i\": -7}}")["o"]["i"] == -7)
+check("negative in a nested array", rt("{\"o\": [-9]}")["o"][0] == -9)
+
+out ""
+out "== the exact payload that hung the server =="
+body = rt("{\"amount\":-5,\"category\":\"Nope\",\"spent_on\":\"bad\"}")
+check("amount", body["amount"] == -5)
+check("category", body["category"] == "Nope")
+check("spent_on", body["spent_on"] == "bad")
+
+out ""
+out "== positive and plain numbers still work =="
+check("positive integer", rt("{\"a\": 5}")["a"] == 5)
+check("float", rt("{\"a\": 2.5}")["a"] == 2.5)
+check("zero", rt("{\"a\": 0}")["a"] == 0)
+check("large", rt("{\"a\": 1234567}")["a"] == 1234567)
+
+out ""
+out "== exponents, including a negative one =="
+check("exponent", rt("{\"a\": 1e3}")["a"] == 1000)
+check("negative exponent", rt("{\"a\": 1e-3}")["a"] == 0.001)
+check("explicit positive exponent", rt("{\"a\": 1e+3}")["a"] == 1000)
+check("uppercase E", rt("{\"a\": 2E2}")["a"] == 200)
+check("negative mantissa and exponent", rt("{\"a\": -1.5e-2}")["a"] == -0.015)
+
+out ""
+out "== literals still parse =="
+check("true", rt("{\"a\": true}")["a"] == true)
+check("false", rt("{\"a\": false}")["a"] == false)
+check("string", rt("{\"a\": \"x\"}")["a"] == "x")
+check("empty object", len(keys(rt("{}"))) == 0)
+check("empty array", len(rt("[]")) == 0)
+
+out ""
+out "== round trip through to_json =="
+original = {"neg": -42, "pos": 42, "frac": -1.25}
+back = parse_json(to_json(original))
+check("negative survives a round trip", back["neg"] == -42)
+check("positive survives", back["pos"] == 42)
+check("negative fraction survives", back["frac"] == -1.25)
+
+out ""
+out "== malformed input terminates instead of hanging =="
+# Each of these used to be able to spin. They may parse to anything at all --
+# the requirement is only that the call RETURNS.
+task survives(text) {
+    try { parse_json(text) } catch (e) { }
+    give true
+}
+check("unterminated object", survives("{\"a\": 1"))
+check("stray minus", survives("{\"a\": -}"))
+check("lone minus value", survives("{\"a\": -"))
+check("bare minus in an array", survives("[-]"))
+check("unexpected byte", survives("{\"a\": @}"))
+check("missing colon", survives("{\"a\" 1}"))
+check("trailing comma", survives("{\"a\": 1,}"))
+check("unterminated array", survives("[1, 2"))
+check("just a brace", survives("{"))
+check("nested unterminated", survives("{\"a\": {\"b\": -"))
+
+out ""
+out "== execution continues =="
+check("still running", rt("{\"z\": -99}")["z"] == -99)
+
+out ""
+out "========================================"
+out " passed: " + str(_pass) + "   failed: " + str(_fail)
+out "========================================"

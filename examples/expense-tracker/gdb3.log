@@ -1,0 +1,38 @@
+[New Thread 23252.0x583c]
+[New Thread 23252.0x3b68]
+[New Thread 23252.0x724c]
+[New Thread 23252.0x29ac]
+[New Thread 23252.0x69b0]
+[New Thread 23252.0x1b48]
+[2026-08-11 15:43:19.384] [INFO] [app] database ready, schema v1
+
+  Expense Tracker
+  http://localhost:8080
+
+  Pages : /  /expenses  /reports  /export.csv
+  API   : POST /api/login -> token, then Authorization: Bearer <token>
+
+===================================================
+ EZ Web Framework (C++ Accel Callback Mode) 
+ Listening natively on http://localhost:8080
+===================================================
+[New Thread 23252.0x5c3c]
+[Thread 23252.0x724c exited with code 0]
+[Thread 23252.0x3b68 exited with code 0]
+[Thread 23252.0x583c exited with code 0]
+[Thread 23252.0x1b48 exited with code 0]
+[New Thread 23252.0x7158]
+[New Thread 23252.0x1494]
+[Thread 23252.0x1494 exited with code 0]
+[Thread 23252.0x7158 exited with code 0]
+[New Thread 23252.0x6640]
+[Thread 23252.0x6640 exited with code 0]
+[New Thread 23252.0x3504]
+[New Thread 23252.0x410c]
+[Thread 23252.0x3504 exited with code 0]
+[New Thread 23252.0x6eb8]
+[Thread 23252.0x410c exited with code 0]
+[Thread 23252.0x3b50 exited with code 4294967295]
+[Thread 23252.0x6eb8 exited with code 4294967295]
+[Thread 23252.0x5c3c exited with code 4294967295]
+[Thread 23252.0x69b0 exited with code 4294967295]

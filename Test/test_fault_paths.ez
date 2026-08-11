@@ -1,0 +1,124 @@
+# Every way the VM can raise a fault must produce a catchable EZ error and leave
+# the program running.
+#
+# The VM must not throw a C++ exception while run()'s dispatch is on the stack:
+# that exception cannot unwind when the dispatch is itself inside the libuv
+# event-loop callback (every FFI callback, every ezweb request handler), where a
+# throw skips each catch on the stack and jumps to a null handler -- the process
+# dies with an access violation instead of the error being caught. Faults travel
+# as pendingException + running=false and handle_vm_fault delivers them.
+#
+# That rule was previously enforced one site at a time, so each unguarded site
+# became the next crash:
+#   - an arithmetic helper on a bad operand      (guardedHelper)
+#   - a handler declared with the wrong arity    (dispatchCall)
+#   - a native failing inside a `try`            (native invocation)
+# This file exercises all of them plus the paths around them, so a regression in
+# any one shows up here rather than as a dead server.
+
+_pass = 0
+_fail = 0
+
+task check(name, cond) {
+    when cond { _pass = _pass + 1  out "  [PASS] " + name }
+    other     { _fail = _fail + 1  out "  [FAIL] " + name }
+}
+
+out "== arithmetic / index helpers =="
+# The operands come back through parse_json so the static type checker cannot
+# fold these away: it rejects `1 + {}` outright, and the point here is the
+# RUNTIME fault path.
+task aDict() { give parse_json("{\"k\": 1}") }
+task anArray() { give parse_json("[1, 2]") }
+task aString() { give parse_json("[\"a\"]")[0] }
+
+task badAdd() { try { give 1 + aDict() } catch (e) { give "caught" } }
+check("adding a dictionary", badAdd() == "caught")
+task badIndex() { try { give anArray()["x"] } catch (e) { give "caught" } }
+check("string index into an array", badIndex() == "caught")
+task badShift() { try { give aString() >> 2 } catch (e) { give "caught" } }
+check("shifting a string", badShift() == "caught")
+task nilProp() { try { n = aDict()["missing"]  give n.field } catch (e) { give "caught" } }
+check("property of nil", nilProp() == "caught")
+
+out ""
+out "== call dispatch =="
+task noArgs() { give 1 }
+task apply1(f, a) { give f(a) }
+task apply2(f, a, b) { give f(a, b) }
+task tooMany() { try { give apply1(noArgs, 1) } catch (e) { give "caught" } }
+check("too many arguments", tooMany() == "caught")
+task twoArgs(a, b) { give a + b }
+task tooFew() { try { give apply1(twoArgs, 1) } catch (e) { give "caught" } }
+check("too few arguments", tooFew() == "caught")
+task notCallable() { try { give apply1(5, 1) } catch (e) { give "caught" } }
+check("calling a number", notCallable() == "caught")
+task deepRec(n) { give 1 + deepRec(n + 1) }
+task overflow() { try { give deepRec(0) } catch (e) { give "caught" } }
+check("call-depth overflow", overflow() == "caught")
+
+out ""
+out "== natives failing inside a try =="
+task nativeFail(x) { try { give parse_json(x) } catch (e) { give "caught" } }
+check("parse_json on a bare scalar", nativeFail("5") == "caught")
+check("parse_json on empty input", nativeFail("") == "caught")
+check("parse_json on valid input", nativeFail("[7]")[0] == 7)
+task numFail(x) { try { give num(x) } catch (e) { give "caught" } }
+check("num on nonsense", numFail("zzz") == "caught")
+
+out ""
+out "== the try may live in the caller, across a frame boundary =="
+task raisesButDoesNotCatch(x) { give parse_json(x) }
+task callerCatches(x) {
+    try { raisesButDoesNotCatch(x)  give "no error" } catch (e) { give "caught" }
+}
+check("caller's try catches a native fault", callerCatches("5") == "caught")
+check("caller's try lets success through", callerCatches("[1]") == "no error")
+
+out ""
+out "== EZ throw, including from inside a catch =="
+task plainThrow() { throw "boom" }
+task catchesPlain() { try { plainThrow()  give "no" } catch (e) { give "caught" } }
+check("plain throw", catchesPlain() == "caught")
+task rethrows(x) {
+    try { give parse_json(x) } catch (e) { throw "wrapped: " + str(e) }
+}
+task catchesRethrow(x) { try { give rethrows(x) } catch (e) { give "caught" } }
+check("throw from inside a catch", catchesRethrow("5") == "caught")
+check("rethrow path passes success through", catchesRethrow("[2]")[0] == 2)
+
+out ""
+out "== typed exceptions still carry their class =="
+task typed() {
+    try { f = File("_definitely_missing_file_.txt", "r")  give "no" }
+    catch (FileNotFoundError e) { give "typed" }
+    catch (e) { give "untyped" }
+}
+check("File() raises a typed error", typed() == "typed")
+
+out ""
+out "== a native that calls back into EZ stops at the first fault =="
+# map/filter/each call back into EZ per element. A fault in the callback must
+# abort rather than run the callback for every remaining element.
+_calls = 0
+task counting(x) {
+    _calls = _calls + 1
+    give x + aDict()     # faults on the first element
+}
+task mapFails() {
+    try { give map([1, 2, 3, 4, 5], counting) } catch (e) { give "caught" }
+}
+check("map with a failing callback is caught", mapFails() == "caught")
+check("callback body ran once, not five times", _calls == 1)
+
+out ""
+out "== execution continues normally afterwards =="
+check("arithmetic still works", 2 + 2 == 4)
+check("calls still work", apply2(twoArgs, 20, 22) == 42)
+check("natives still work", parse_json("{\"k\": 9}")["k"] == 9)
+check("nested try still works", catchesRethrow("[3]")[0] == 3)
+
+out ""
+out "========================================"
+out " passed: " + str(_pass) + "   failed: " + str(_fail)
+out "========================================"

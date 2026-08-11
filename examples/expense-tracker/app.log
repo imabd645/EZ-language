@@ -1,0 +1,12 @@
+[2026-08-11 15:42:24.217] [INFO] [app] database ready, schema v1
+
+  Expense Tracker
+  http://localhost:8080
+
+  Pages : /  /expenses  /reports  /export.csv
+  API   : POST /api/login -> token, then Authorization: Bearer <token>
+
+===================================================
+ EZ Web Framework (C++ Accel Callback Mode) 
+ Listening natively on http://localhost:8080
+===================================================

@@ -301,35 +301,22 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
 
     running = false;
 
-    // faultMode is set while a doXXX helper runs (see guardedHelper). In that
-    // window we must NOT throw a C++ exception: the helper is deep inside run()'s
-    // computed-goto dispatch, and when that dispatch is itself running inside the
-    // libuv event-loop callback (every FFI callback / ezweb handler), a C++
-    // exception cannot unwind at all -- verified with gdb, it skips every catch
-    // on the stack (helper, run, callFunction, the uv callback) and jumps to a
-    // null handler, crashing the process. Instead the fault travels as
-    // running=false + pendingException, and the dispatch routes it to
-    // handle_vm_fault with a plain goto. This is how a handler that indexes nil
-    // now produces a catchable EZ error instead of taking the server down.
-    if (faultMode) {
+    // THE no-throw-inside-dispatch invariant. See dispatchDepth_ in BytecodeVM.h.
+    //
+    // While run()'s dispatch is on the stack a C++ exception cannot unwind --
+    // when that dispatch is running inside the libuv event-loop callback (every
+    // FFI callback, every ezweb handler) a throw skips every catch on the stack
+    // and jumps to a null handler, killing the process. running=false plus
+    // pendingException is already set above, and DISPATCH() routes that to
+    // handle_vm_fault, so returning here delivers the fault to the owning EZ
+    // catch block by the same path every other VM fault uses.
+    //
+    // Outside the dispatch there is no dispatch to unwind through and the throw
+    // is the correct way to reach an embedding caller, so it still happens.
+    if (insideDispatch()) {
         return;
     }
     throw RuntimeError(message, faultLine);
-}
-
-void BytecodeVM::raiseFault(const std::string& message) {
-    // Same fault-without-unwinding trick guardedHelper() uses. The callers here
-    // (dispatchCall, pushCallFrame) already signal failure by returning, so the
-    // throw at the end of runtimeError() was redundant -- and fatal when the
-    // dispatch is running inside the libuv event-loop callback, where a throw
-    // skips every catch on the stack and jumps to a null handler. A web handler
-    // declared with the wrong arity took the whole server down that way:
-    //   ERROR in _handleCallback: 'home' expected at most 0 args but got 1
-    //   [FATAL] Windows Exception 0xc0000005
-    bool savedFaultMode = faultMode;
-    faultMode = true;
-    runtimeError(message);
-    faultMode = savedFaultMode;
 }
 
 void BytecodeVM::throwException(const std::string& className, const std::string& message, int line, const std::string& filename) {
@@ -344,19 +331,23 @@ void BytecodeVM::throwException(const std::string& className, const std::string&
             pendingException = Value(inst);
         }
         
-        // Let runtimeError handle printing if uncaught, passing the instance inside the C++ exception
-        // Note: We bypass runtimeError here so it doesn't print immediately, but instead we just throw!
-        // Wait, if it's uncaught, we want runtimeError's exact formatting logic. 
-        // Actually, if we just throw, the catch block at top level will leave pendingException set 
-        // and the VM will print it? 
-        // Let's print using runtimeError logic if tryStack is empty!
-        
+        // Nothing will catch this, so hand it to runtimeError for the printed
+        // report (header, source line, traceback) and the usual exit path.
         if (tryStack.empty() && !isAsyncTask) {
-            runtimeError(message, faultLine, filename); // This will print and throw a standard RuntimeError (which is fine, script dies)
-        } else {
-            throw RuntimeError(message, faultLine, Value(inst));
+            runtimeError(message, faultLine, filename);
+            return;
         }
-        return;
+
+        // A handler exists. Same invariant as runtimeError(): while the dispatch
+        // is on the stack the fault must travel as pendingException +
+        // running=false rather than as a C++ exception, because that exception
+        // cannot unwind when the dispatch is inside the libuv event-loop
+        // callback. handle_vm_fault picks it up and resumes in the catch block.
+        if (insideDispatch()) {
+            running = false;
+            return;
+        }
+        throw RuntimeError(message, faultLine, Value(inst));
     }
     // Fallback if the class isn't defined
     runtimeError(message, line, filename);
@@ -581,6 +572,16 @@ Value BytecodeVM::callFunction(const Value& callee,
                                 const std::vector<Value>& args,
                                 int line,
                                 const std::string& filename) {
+    // A fault raised while the dispatch is live is reported by recording rather
+    // than by unwinding, so a native that calls back into EZ in a loop -- map,
+    // filter, reduce, each, a sort comparator -- no longer has its loop cut
+    // short by a C++ exception. Refusing to start another call once a fault is
+    // in flight restores the abort: the remaining iterations become no-ops
+    // instead of running the callback body again with the error still pending.
+    if (insideDispatch() && !pendingException.isNil()) {
+        return Value();
+    }
+
     if (callee.isNativeFunction()) {
         try {
             return callee.asNativeFunction()->function(*this, args);
@@ -670,6 +671,22 @@ Value BytecodeVM::callFunction(const Value& callee,
     restoreState();
 
     if (propagate) {
+        // The callee raised something whose handler lives further out. Same
+        // invariant as everywhere else: if an outer dispatch is still on the
+        // stack -- which is the case whenever a native, an FFI callback or a
+        // web handler called back into EZ -- hand the fault back through
+        // pendingException + running=false and let that dispatch's
+        // handle_vm_fault find the owning catch. Throwing here would unwind
+        // through the dispatch, which is exactly what cannot be done under the
+        // libuv callback.
+        //
+        // restoreState() has just put `running` back to what the caller had, so
+        // it is cleared again here.
+        if (insideDispatch()) {
+            pendingException = propagated;
+            running = false;
+            return Value();
+        }
         throw RuntimeError(
             propagated.isDictionary() && propagated.asDictionaryPtr()->has("message")
                 ? propagated.asDictionaryPtr()->get("message").toString()

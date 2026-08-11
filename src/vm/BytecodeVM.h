@@ -43,14 +43,6 @@ public:
     // RuntimeContext interface
     void runtimeError(const std::string& message, int line = 0, const std::string& filename = "") override;
 
-    // runtimeError() that is guaranteed NOT to throw. Use it for any fault raised
-    // while run()'s dispatch is on the stack and the caller already reports the
-    // failure by returning (dispatchCall -> false, pushCallFrame -> void): the
-    // fault travels as running=false + pendingException and DISPATCH() routes it
-    // to handle_vm_fault. Throwing from there is fatal when the dispatch is
-    // running inside the libuv event-loop callback -- see the note in
-    // runtimeError() and guardedHelper().
-    void raiseFault(const std::string& message);
     void throwException(const std::string& className, const std::string& message, int line = 0, const std::string& filename = "") override;
     std::shared_ptr<Environment> getGlobalEnv() override { return globalEnv; }
     void defineGlobal(const std::string& name, const Value& value) override;
@@ -167,12 +159,49 @@ private:
     // Execution flag
     bool running;
 
-    // Set true only while a doXXX helper runs inside guardedHelper. In that
-    // window runtimeError() records the fault (running=false + pendingException)
-    // and returns instead of throwing a C++ exception, which cannot unwind when
-    // the dispatch is running inside the libuv event-loop callback. See
-    // runtimeError() and guardedHelper().
-    bool faultMode = false;
+    // ── The no-throw-inside-dispatch invariant ────────────────────────────────
+    //
+    // How deep we are inside run()'s computed-goto dispatch. Non-zero means the
+    // dispatch is on the C++ stack, and in that state THE VM MUST NOT THROW.
+    //
+    // A C++ exception cannot unwind out of the dispatch when run() is itself
+    // executing inside the libuv event-loop callback -- which is the case for
+    // every FFI callback and every ezweb request handler. Verified with gdb: the
+    // throw skips every catch on the stack (the helper, run(), callFunction, the
+    // uv callback) and jumps to a null handler, so the process dies with an
+    // access violation instead of the error being caught.
+    //
+    // Faults therefore travel as `pendingException` + `running = false`. The
+    // DISPATCH() macro notices `!running` and jumps to handle_vm_fault, which
+    // either resumes in the owning EZ catch block, or returns so that an outer
+    // frame can. runtimeError() and throwException() consult this counter and
+    // record-and-return rather than throw whenever it is non-zero; they still
+    // throw when called from outside the dispatch, where unwinding is the
+    // correct way to reach an embedding caller.
+    //
+    // This replaced a series of one-site patches (a faultMode flag around the
+    // arithmetic helpers, then a separate non-throwing path for dispatchCall,
+    // then another for native functions). Each covered a single call site and
+    // the next unguarded site became the next crash; the counter states the rule
+    // once, for every fault the VM can raise.
+    int dispatchDepth_ = 0;
+
+    // Increments dispatchDepth_ for the lifetime of a scope. Uses RAII so the
+    // count is restored even if some path further in does unwind -- a leaked
+    // increment would silently disable throwing for the rest of the program.
+    struct DispatchScope {
+        BytecodeVM* vm;
+        explicit DispatchScope(BytecodeVM* v) : vm(v) { ++vm->dispatchDepth_; }
+        ~DispatchScope() { --vm->dispatchDepth_; }
+        DispatchScope(const DispatchScope&) = delete;
+        DispatchScope& operator=(const DispatchScope&) = delete;
+    };
+
+public:
+    // True while run()'s dispatch is on the stack. Callers that are about to
+    // raise a fault use it to choose between recording and throwing.
+    bool insideDispatch() const { return dispatchDepth_ > 0; }
+private:
 
     // Global Slot Array moved to Environment for async task sharing
 

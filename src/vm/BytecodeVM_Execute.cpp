@@ -20,6 +20,12 @@ using ezarith::wrapNeg;
 
 void BytecodeVM::run(size_t targetFrameCount) {
     if (frames.empty()) return;
+
+    // Marks the dispatch as live for the whole of this call, including the
+    // nested run() invocations that callFunction makes. While it is live the VM
+    // records faults instead of throwing them -- see dispatchDepth_ in
+    // BytecodeVM.h for why a C++ exception cannot be allowed to unwind here.
+    DispatchScope dispatchScope(this);
     // targetFrameCount is the frame depth to run down to: RETURN leaves run()
     // once the frame at that depth has returned.
     //
@@ -2651,26 +2657,25 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             clearStackSlots(stackTop, oldTop);
             push(result);
         } catch (const RuntimeError& e) {
-            // Do NOT re-throw. A C++ exception cannot unwind out of this dispatch
-            // when it is running inside the libuv event-loop callback (every FFI
-            // callback and every ezweb handler): it skips each catch on the stack
-            // and jumps to a null handler, killing the process. Re-throwing here
-            // meant a native that failed inside a `try` took the whole server
-            // down even though the EZ code around it caught the error --
-            //   task safe(x) { try { give parse_json(x) } catch (e) { give nil } }
-            // was fatal from a request handler, because parse_json("5") raises
-            // "Failed to parse JSON".
+            // A native that reports failure through interp.runtimeError() no
+            // longer reaches here at all: the dispatch is live, so runtimeError()
+            // records the fault and returns, and the native's own `return
+            // Value()` brings us back normally. This catch is the backstop for a
+            // native that constructs and throws a RuntimeError itself.
             //
-            // The fault travels the same way every other VM fault does:
-            // pendingException + running=false, which DISPATCH() routes to
-            // handle_vm_fault and on to the owning EZ try block.
+            // Either way the fault must NOT be re-thrown. Re-throwing was what
+            // made an ordinary defensive helper fatal inside a request handler:
+            //   task safe(x) { try { give parse_json(x) } catch (e) { give nil } }
+            // parse_json("5") raises "Failed to parse JSON", and the C++ throw
+            // could not unwind under the libuv callback, so the process died
+            // instead of the EZ catch running.
             if (pendingException.isNil()) {
                 pendingException = e.value.isNil() ? Value(e.what()) : e.value;
             }
             running = false;
             return false;
         } catch (const std::exception& e) {
-            raiseFault(std::string("Native function error: ") + e.what());
+            runtimeError(std::string("Native function error: ") + e.what());
             return false;
         }
         return true;
@@ -2692,7 +2697,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         // dispatchCall takes a uint8_t argCount, so argCount+1 would wrap to 0 at
         // 255 args and silently drop every argument.
         if (argCount >= 255) {
-            raiseFault("Too many arguments to method call (max 254)");
+            runtimeError("Too many arguments to method call (max 254)");
             return false;
         }
 
@@ -2734,7 +2739,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         }
 
         if (!bcFunc) {
-            raiseFault("Function compilation failed");
+            runtimeError("Function compilation failed");
             return false;
         }
 
@@ -2764,11 +2769,11 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             size_t reportedArity = bcFunc->isMethod && bcFunc->arity > 0 ? bcFunc->arity - 1 : bcFunc->arity;
             
             if (argCount < minArity) {
-                raiseFault("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
+                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
             if (argCount > bcFunc->arity) {
-                raiseFault("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
+                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
                 return false;
             }
         }
@@ -2845,7 +2850,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                          : Value();
         
         if (initMethod.isNil()) {
-            raiseFault("Parent has no 'init' method for super(...) call");
+            runtimeError("Parent has no 'init' method for super(...) call");
             return false;
         }
 
@@ -2854,7 +2859,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         // instance, so an instance-wide flag rejected the second level.
         if (!frames.empty()) {
             if (frames.back().superCalled) {
-                raiseFault("super() has already been called");
+                runtimeError("super() has already been called");
                 return false;
             }
             frames.back().superCalled = true;
@@ -2884,14 +2889,14 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         return true;
     }
 
-    raiseFault("Value is not callable: " + callee.typeName());
+    runtimeError("Value is not callable: " + callee.typeName());
     return false;
 }
 
 void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
     // Enforce maximum call depth to catch unbounded recursion cleanly
     if (frames.size() >= FRAMES_MAX) {
-        raiseFault("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
+        runtimeError("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
         return;
     }
 
@@ -2902,7 +2907,7 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
     // local slots, plus the working headroom the function body's expression
     // temporaries will need.
     if (!hasStackHeadroom(bcFunc->localCount + STACK_HEADROOM)) {
-        raiseFault("Stack overflow: operand stack exhausted");
+        runtimeError("Stack overflow: operand stack exhausted");
         return;
     }
 
@@ -3152,19 +3157,14 @@ void BytecodeVM::doShiftRight() {
 }
 
 void BytecodeVM::guardedHelper(void (BytecodeVM::*fn)()) {
-    // While the helper runs, runtimeError() records faults as running=false +
-    // pendingException and RETURNS instead of throwing (faultMode). A C++
-    // exception is never raised, so nothing has to unwind -- which is essential,
-    // because unwinding is broken when this dispatch runs inside the libuv
-    // event-loop callback (an FFI callback / ezweb handler): gdb showed a throw
-    // there skip every catch on the stack and crash. The fault is picked up by
-    // the DISPATCH macro's running check, which routes to handle_vm_fault.
+    // The helper runs inside run()'s dispatch, so runtimeError() already records
+    // faults as running=false + pendingException and returns rather than
+    // throwing -- see dispatchDepth_ in BytecodeVM.h. The DISPATCH macro's
+    // `running` check then routes to handle_vm_fault.
     //
-    // The try/catch remains only as a backstop for a C++ exception from some
-    // path that does NOT go through runtimeError (e.g. a std::bad_alloc); the
-    // normal fault path raises nothing to catch.
-    bool savedFaultMode = faultMode;
-    faultMode = true;
+    // The try/catch is a backstop for a C++ exception raised by something that
+    // does NOT go through runtimeError (std::bad_alloc, a throwing std:: call in
+    // a helper). The normal fault path raises nothing to catch.
     try {
         (this->*fn)();
     } catch (const RuntimeError& e) {
@@ -3176,7 +3176,6 @@ void BytecodeVM::guardedHelper(void (BytecodeVM::*fn)()) {
         if (pendingException.isNil()) pendingException = Value(std::string(e.what()));
         running = false;
     }
-    faultMode = savedFaultMode;
 }
 
 void BytecodeVM::doIndexGet() {

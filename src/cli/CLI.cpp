@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 #include <cstdlib>
 #include <csignal>
 #include <algorithm>
@@ -347,6 +348,7 @@ void showHelp() {
     std::cout << "Packages:" << std::endl;
     std::cout << "  ez install                  Install everything in package.ez" << std::endl;
     std::cout << "  ez install <pkg>[@range]    Add and install a package" << std::endl;
+    std::cout << "  ez install <pkg> --force    Replace a package ez did not install" << std::endl;
     std::cout << "  ez uninstall <pkg>          Remove a package" << std::endl;
     std::cout << "  ez list                     List installed packages" << std::endl;
     std::cout << "  ez search <query>           Search the registry" << std::endl;
@@ -454,12 +456,20 @@ int cli_main(int argc, char* argv[]) {
         
         if (cmd == "install" || cmd == "i" || cmd == "add") {
             PackageManager pm;
-            // `ez install` with no argument installs what package.ez declares;
-            // with one, it adds that package and records it there.
-            if (argc < 3) return pm.installAll() ? 0 : 1;
-            bool allOk = true;
+            // Packages install into the shared library root, so --force is what
+            // permits replacing a directory ez did not put there.
+            std::vector<std::string> names;
             for (int i = 2; i < argc; i++) {
-                if (!pm.installOne(argv[i])) allOk = false;
+                std::string arg = argv[i];
+                if (arg == "--force" || arg == "-f") pm.setForce(true);
+                else names.push_back(arg);
+            }
+            // `ez install` with no package installs what package.ez declares;
+            // with one, it adds that package and records it there.
+            if (names.empty()) return pm.installAll() ? 0 : 1;
+            bool allOk = true;
+            for (const auto& name : names) {
+                if (!pm.installOne(name)) allOk = false;
             }
             return allOk ? 0 : 1;
         }

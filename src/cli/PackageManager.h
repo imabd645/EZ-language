@@ -48,6 +48,12 @@ public:
 
     const std::string& registryUrl() const { return registry; }
 
+    /**
+     * Allow installs to replace a directory ez did not install.
+     * Off by default: see the guard in installPlanned().
+     */
+    void setForce(bool value) { force = value; }
+
     // ── install ─────────────────────────────────────────────────────────────
 
     /**
@@ -364,6 +370,7 @@ public:
 private:
     std::string root;
     std::string registry;
+    bool        force = false;
 
     static std::string pad(const std::string& s, size_t width) {
         std::string out = s;
@@ -495,6 +502,13 @@ private:
         out += first ? "}\n}\n" : "\n  }\n}\n";
         ezreg::writeFileText(lockPath(), out);
         return true;
+    }
+
+    /** Whether ez.lock claims this package, i.e. ez installed it. */
+    bool lockHasPackage(const std::string& name) {
+        std::map<std::string, std::string> locked;
+        readLock(locked);
+        return locked.count(name) > 0;
     }
 
     void readLock(std::map<std::string, std::string>& out) {
@@ -677,6 +691,22 @@ private:
         }
 
         fs::path target = installBase() / p.installDir;
+
+        // Installing replaces the target directory outright. Because that
+        // directory now lives in the shared library root, it may hold a
+        // hand-written package that this tool never installed -- overwriting
+        // it would silently destroy source that exists nowhere else.
+        //
+        // ez.lock records everything installed from a registry, so anything
+        // present but absent from the lock is treated as locally owned and
+        // left alone until the user says otherwise.
+        if (fs::exists(target) && !lockHasPackage(p.name) && !force) {
+            std::cerr << "  " << target.string() << " already exists and was not installed by ez.\n"
+                      << "  Refusing to overwrite it: it may be a local package.\n"
+                      << "  Move it aside, or re-run with --force to replace it." << std::endl;
+            return false;
+        }
+
         std::error_code ec;
         fs::remove_all(target, ec);
         fs::create_directories(target, ec);

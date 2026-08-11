@@ -1,0 +1,219 @@
+# ============================================================================
+# Expense tracker — test suite for the data layer.
+#
+# Runs against a throwaway database; no server required.
+#   ez test_app.ez
+# ============================================================================
+use "src/db.ez"
+use "src/users.ez"
+use "src/expenses.ez"
+
+_pass = 0
+_fail = 0
+
+task check(name, cond) {
+    when cond { _pass = _pass + 1  out "  [PASS] " + name }
+    other     { _fail = _fail + 1  out "  [FAIL] " + name }
+}
+
+task checkEq(name, got, want) {
+    when str(got) == str(want) { _pass = _pass + 1  out "  [PASS] " + name }
+    other {
+        _fail = _fail + 1
+        out "  [FAIL] " + name + "  got=[" + str(got) + "] want=[" + str(want) + "]"
+    }
+}
+
+task checkThrows(name, prefix, fn) {
+    threw = false
+    matched = false
+    try { fn() } catch (e) {
+        threw = true
+        matched = indexOf(str(e), prefix) == 0
+    }
+    check(name, threw and matched)
+}
+
+TEST_DB = "_test_expenses.db"
+dbReset(TEST_DB)
+
+out "== schema =="
+checkEq("migrated to v1", schemaVersion(), 1)
+checkEq("no users yet", countUsers(), 0)
+
+out ""
+out "== registration =="
+u = createUser("Ada@Example.com", "Ada Lovelace", "correct-horse")
+check("user created", u != nil)
+checkEq("email is normalised to lowercase", u["email"], "ada@example.com")
+checkEq("name kept", u["name"], "Ada Lovelace")
+check("password is not stored in the clear", u["password_hash"] != "correct-horse")
+check("hash is long", len(u["password_hash"]) > 20)
+checkEq("one user", countUsers(), 1)
+
+checkThrows("duplicate email rejected", USER_ERROR, || {
+    createUser("ADA@example.com", "Impostor", "another-password")
+})
+checkThrows("bad email rejected", USER_ERROR, || { createUser("nope", "N", "12345678") })
+checkThrows("short password rejected", USER_ERROR, || { createUser("b@c.com", "B", "short") })
+checkThrows("blank name rejected", USER_ERROR, || { createUser("c@d.com", "   ", "12345678") })
+
+out ""
+out "== authentication =="
+check("correct password", authenticate("ada@example.com", "correct-horse") != nil)
+check("email is case-insensitive", authenticate("ADA@EXAMPLE.COM", "correct-horse") != nil)
+check("wrong password rejected", authenticate("ada@example.com", "nope") == nil)
+check("unknown email rejected", authenticate("nobody@example.com", "correct-horse") == nil)
+pub = publicUser(u)
+check("publicUser hides the hash", has_key(pub, "password_hash") == false)
+check("publicUser keeps the email", has_key(pub, "email"))
+
+out ""
+out "== password change =="
+check("change succeeds", changePassword(u["id"], "correct-horse", "new-password-1"))
+check("old password no longer works", authenticate("ada@example.com", "correct-horse") == nil)
+check("new password works", authenticate("ada@example.com", "new-password-1") != nil)
+checkThrows("wrong current password rejected", USER_ERROR, || {
+    changePassword(u["id"], "not-it", "another-one")
+})
+
+UID = u["id"]
+
+out ""
+out "== validation =="
+checkEq("valid date", isValidDate("2026-02-28"), true)
+checkEq("leap day 2024 valid", isValidDate("2024-02-29"), true)
+checkEq("leap day 2023 invalid", isValidDate("2023-02-29"), false)
+checkEq("month 13 invalid", isValidDate("2026-13-01"), false)
+checkEq("wrong shape invalid", isValidDate("1/2/2026"), false)
+checkEq("known category", isValidCategory("Food"), true)
+checkEq("unknown category", isValidCategory("Yachts"), false)
+checkEq("negative amount rejected", len(validate(-5, "Food", "2026-01-01")) > 0, true)
+checkEq("zero amount rejected", len(validate(0, "Food", "2026-01-01")) > 0, true)
+checkEq("text amount rejected", len(validate("abc", "Food", "2026-01-01")) > 0, true)
+checkEq("numeric string accepted", len(validate("12.50", "Food", "2026-01-01")), 0)
+
+out ""
+out "== create / read =="
+e1 = create(UID, 12.50, "Food", "Lunch", "2026-01-15")
+check("created", e1 != nil)
+checkEq("amount", e1["amount"], 12.5)
+checkEq("category", e1["category"], "Food")
+checkEq("date", e1["spent_on"], "2026-01-15")
+create(UID, 40.00, "Transport", "Train ticket", "2026-01-20")
+create(UID, 900.00, "Housing", "Rent", "2026-02-01")
+create(UID, 25.25, "Food", "Groceries", "2026-02-03")
+checkEq("four expenses", count(UID), 4)
+check("find by id", find(UID, e1["id"])["description"] == "Lunch")
+check("find of a missing id is nil", find(UID, 99999) == nil)
+checkThrows("invalid create rejected", EXPENSE_ERROR, || {
+    create(UID, 10, "Yachts", "nope", "2026-01-01")
+})
+
+out ""
+out "== listing and filters =="
+checkEq("all rows", len(list(UID)), 4)
+checkEq("newest first", list(UID)[0]["spent_on"], "2026-02-03")
+checkEq("filter by category", len(list(UID, {"category": "Food"})), 2)
+checkEq("filter from", len(list(UID, {"from": "2026-02-01"})), 2)
+checkEq("filter to", len(list(UID, {"to": "2026-01-31"})), 2)
+checkEq("date range", len(list(UID, {"from": "2026-01-16", "to": "2026-02-01"})), 2)
+checkEq("search", len(list(UID, {"search": "Rent"})), 1)
+checkEq("search is a substring match", len(list(UID, {"search": "en"})), 2)
+checkEq("limit", len(list(UID, {"limit": 2})), 2)
+checkEq("offset", len(list(UID, {"limit": 2, "offset": 3})), 1)
+checkEq("no match", len(list(UID, {"category": "Travel"})), 0)
+
+out ""
+out "== a search term cannot break out of the query =="
+# The filter values go in as bound parameters. If they were concatenated, this
+# would drop the table.
+create(UID, 1.00, "Other", "'; DROP TABLE expenses; --", "2026-03-01")
+checkEq("quote in description is stored", len(list(UID, {"search": "DROP TABLE"})), 1)
+checkEq("table survives", count(UID), 5)
+remove(UID, list(UID, {"search": "DROP TABLE"})[0]["id"])
+checkEq("cleaned up", count(UID), 4)
+
+out ""
+out "== update / delete =="
+upd = update(UID, e1["id"], 15.00, "Food", "Lunch (corrected)", "2026-01-15")
+checkEq("amount updated", upd["amount"], 15.0)
+checkEq("description updated", upd["description"], "Lunch (corrected)")
+checkThrows("updating a missing row fails", EXPENSE_ERROR, || {
+    update(UID, 99999, 1, "Food", "x", "2026-01-01")
+})
+check("delete works", remove(UID, e1["id"]))
+checkEq("row is gone", count(UID), 3)
+check("deleting twice is false", remove(UID, e1["id"]) == false)
+
+out ""
+out "== one user cannot touch another's data =="
+bob = createUser("bob@example.com", "Bob", "bob-password")
+OID = bob["id"]
+mine = create(UID, 10.00, "Food", "Mine", "2026-02-10")
+check("other user cannot read it", find(OID, mine["id"]) == nil)
+check("other user cannot delete it", remove(OID, mine["id"]) == false)
+checkThrows("other user cannot update it", EXPENSE_ERROR, || {
+    update(OID, mine["id"], 1, "Food", "hijacked", "2026-01-01")
+})
+check("row is untouched", find(UID, mine["id"])["description"] == "Mine")
+checkEq("other user's list is empty", len(list(OID)), 0)
+
+out ""
+out "== reports =="
+s = summary(UID)
+checkEq("summary count", s["count"], 4)
+checkEq("summary total", s["total"], 975.25)
+checkEq("largest", s["largest"], 900.0)
+cats = byCategory(UID)
+check("categories returned", len(cats) > 0)
+checkEq("largest category first", cats[0]["category"], "Housing")
+checkEq("category total", cats[0]["total"], 900.0)
+months = byMonth(UID)
+checkEq("two months", len(months), 2)
+checkEq("newest month first", months[0]["month"], "2026-02")
+checkEq("filtered total", total(UID, {"category": "Food"}), 35.25)
+
+out ""
+out "== import is all-or-nothing =="
+before = count(UID)
+checkThrows("a bad row rolls the batch back", EXPENSE_ERROR, || {
+    importRecords(UID, [
+        {"date": "2026-03-01", "category": "Food", "description": "ok", "amount": "5"},
+        {"date": "2026-03-02", "category": "Nonsense", "description": "bad", "amount": "5"}
+    ])
+})
+checkEq("nothing was inserted", count(UID), before)
+added = importRecords(UID, [
+    {"date": "2026-03-01", "category": "Food", "description": "one", "amount": "5"},
+    {"date": "2026-03-02", "category": "Travel", "description": "two", "amount": "15"}
+])
+checkEq("good batch imported", added, 2)
+checkEq("rows landed", count(UID), before + 2)
+
+out ""
+out "== deleting a user cascades =="
+n = count(OID)
+create(OID, 5.0, "Food", "Bob's lunch", "2026-01-01")
+checkEq("bob has a row", count(OID), n + 1)
+db().exec("DELETE FROM users WHERE id = ?", [OID])
+checkEq("bob's expenses went with him", count(OID), 0)
+checkEq("ada's are untouched", count(UID), before + 2)
+
+out ""
+out "== persistence across a reopen =="
+total_before = count(UID)
+dbClose()
+dbOpen(TEST_DB)
+checkEq("rows survived the reopen", count(UID), total_before)
+checkEq("user survived", findByEmail("ada@example.com")["name"], "Ada Lovelace")
+
+dbClose()
+File.remove(TEST_DB)
+try { File.remove(TEST_DB + "-wal") } catch (e) {}
+try { File.remove(TEST_DB + "-shm") } catch (e) {}
+
+out ""
+out "========================================"
+out " passed: " + str(_pass) + "   failed: " + str(_fail)
+out "========================================"

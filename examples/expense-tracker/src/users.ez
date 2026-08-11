@@ -1,0 +1,106 @@
+# ============================================================================
+# Users: registration, authentication, profile.
+# ============================================================================
+use "src/db.ez"
+use "auth"
+use "datetime"
+
+export USER_ERROR = "user/error: "
+
+task _nowIso() {
+    c = getComponents(now())
+    give str(c["year"]) + "-" + padZero(c["month"]) + "-" + padZero(c["day"]) +
+         " " + padZero(c["hour"]) + ":" + padZero(c["minute"]) + ":" + padZero(c["second"])
+}
+
+# Good enough to catch a typo; deliberately not an RFC 5322 parser, which
+# accepts things no mail server will.
+task _looksLikeEmail(email) {
+    e = str(email)
+    at = indexOf(e, "@")
+    when at < 1 { give false }
+    rest = substr(e, at + 1, len(e) - at - 1)
+    dot = indexOf(rest, ".")
+    when dot < 1 { give false }
+    when dot >= len(rest) - 1 { give false }
+    when indexOf(rest, "@") != -1 { give false }
+    give true
+}
+
+export task validateRegistration(email, name, password) {
+    problems = []
+    when not _looksLikeEmail(email) { push(problems, "Enter a valid email address.") }
+    when len(trim(str(name))) == 0 { push(problems, "Name is required.") }
+    when len(str(password)) < 8 { push(problems, "Password must be at least 8 characters.") }
+    give problems
+}
+
+# Create an account. Throws USER_ERROR if the email is taken or input is bad.
+export task createUser(email, name, password) {
+    problems = validateRegistration(email, name, password)
+    when len(problems) > 0 { throw USER_ERROR + join(problems, " ") }
+
+    e = lower(trim(str(email)))
+    when findByEmail(e) != nil { throw USER_ERROR + "That email is already registered." }
+
+    # PBKDF2 with a per-user salt, via the auth package. The plain password is
+    # never stored and never logged.
+    hash = hash_password(str(password))
+    db().exec(
+        "INSERT INTO users (email, name, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        [e, trim(str(name)), hash, _nowIso()]
+    )
+    give findByEmail(e)
+}
+
+export task findByEmail(email) {
+    give db().one("SELECT * FROM users WHERE email = ?", [lower(trim(str(email)))])
+}
+
+export task findById(id) {
+    give db().one("SELECT * FROM users WHERE id = ?", [id])
+}
+
+# Verify a login. Returns the user row, or nil when either the email is unknown
+# or the password is wrong -- the caller must not be able to tell which, or the
+# response becomes an account-enumeration oracle.
+export task authenticate(email, password) {
+    user = findByEmail(email)
+    when user == nil {
+        # Hash anyway so a missing account does not answer measurably faster
+        # than a wrong password.
+        hash_password("timing-equaliser")
+        give nil
+    }
+    when not verify_password(str(password), user["password_hash"]) { give nil }
+    give user
+}
+
+export task changePassword(userId, oldPassword, newPassword) {
+    user = findById(userId)
+    when user == nil { throw USER_ERROR + "No such user." }
+    when not verify_password(str(oldPassword), user["password_hash"]) {
+        throw USER_ERROR + "Current password is incorrect."
+    }
+    when len(str(newPassword)) < 8 {
+        throw USER_ERROR + "Password must be at least 8 characters."
+    }
+    db().exec("UPDATE users SET password_hash = ? WHERE id = ?",
+              [hash_password(str(newPassword)), userId])
+    give true
+}
+
+export task countUsers() {
+    give db().scalar("SELECT count(*) FROM users")
+}
+
+# A user row without the password hash, safe to serialise into a response.
+export task publicUser(user) {
+    when user == nil { give nil }
+    give {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "created_at": user["created_at"]
+    }
+}

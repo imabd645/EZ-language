@@ -1,0 +1,257 @@
+# ============================================================================
+# Expenses: CRUD, filtering and reporting.
+#
+# Every query is scoped by user_id. That is the whole authorisation model, so it
+# is enforced here rather than left to each route to remember.
+# ============================================================================
+use "src/db.ez"
+use "datetime"
+
+export EXPENSE_ERROR = "expense/error: "
+
+export CATEGORIES = ["Food", "Transport", "Housing", "Utilities", "Health",
+                     "Entertainment", "Shopping", "Travel", "Other"]
+
+task _nowIso() {
+    c = getComponents(now())
+    give str(c["year"]) + "-" + padZero(c["month"]) + "-" + padZero(c["day"]) +
+         " " + padZero(c["hour"]) + ":" + padZero(c["minute"]) + ":" + padZero(c["second"])
+}
+
+export task today() {
+    c = getComponents(now())
+    give str(c["year"]) + "-" + padZero(c["month"]) + "-" + padZero(c["day"])
+}
+
+# YYYY-MM-DD, checked properly: string comparison and BETWEEN only behave if
+# every stored date has the same shape.
+export task isValidDate(s) {
+    d = str(s)
+    when len(d) != 10 { give false }
+    when substr(d, 4, 1) != "-" or substr(d, 7, 1) != "-" { give false }
+    repeat i = 0 to 9 {
+        when i != 4 and i != 7 {
+            c = substr(d, i, 1)
+            when c < "0" or c > "9" { give false }
+        }
+    }
+    month = num(substr(d, 5, 2))
+    day = num(substr(d, 8, 2))
+    when month < 1 or month > 12 { give false }
+    when day < 1 or day > daysInMonth(num(substr(d, 0, 4)), month) { give false }
+    give true
+}
+
+export task isValidCategory(c) {
+    get k in CATEGORIES {
+        when k == str(c) { give true }
+    }
+    give false
+}
+
+export task validate(amount, category, spentOn) {
+    problems = []
+    a = amount
+    when typeOf(a) == "string" {
+        try { a = num(a) } catch (e) { a = nil }
+    }
+    when typeOf(a) != "integer" and typeOf(a) != "float" {
+        push(problems, "Amount must be a number.")
+    } other {
+        when a <= 0 { push(problems, "Amount must be greater than zero.") }
+        when a > 1000000000 { push(problems, "Amount is unreasonably large.") }
+    }
+    when not isValidCategory(category) { push(problems, "Pick a valid category.") }
+    when not isValidDate(spentOn) { push(problems, "Date must be YYYY-MM-DD.") }
+    give problems
+}
+
+# ── Commands ────────────────────────────────────────────────────────────────
+
+export task create(userId, amount, category, description, spentOn) {
+    problems = validate(amount, category, spentOn)
+    when len(problems) > 0 { throw EXPENSE_ERROR + join(problems, " ") }
+    a = typeOf(amount) == "string" ? num(amount) : amount
+    db().exec(
+        "INSERT INTO expenses (user_id, amount, category, description, spent_on, created_at)" +
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        [userId, a * 1.0, str(category), trim(str(description)), str(spentOn), _nowIso()]
+    )
+    give db().one("SELECT * FROM expenses WHERE id = last_insert_rowid()")
+}
+
+export task find(userId, id) {
+    give db().one("SELECT * FROM expenses WHERE id = ? AND user_id = ?", [id, userId])
+}
+
+export task update(userId, id, amount, category, description, spentOn) {
+    existing = find(userId, id)
+    # Scoped by user_id, so this is also the authorisation check: another user's
+    # row is simply not found.
+    when existing == nil { throw EXPENSE_ERROR + "No such expense." }
+    problems = validate(amount, category, spentOn)
+    when len(problems) > 0 { throw EXPENSE_ERROR + join(problems, " ") }
+    a = typeOf(amount) == "string" ? num(amount) : amount
+    db().exec(
+        "UPDATE expenses SET amount = ?, category = ?, description = ?, spent_on = ?" +
+        " WHERE id = ? AND user_id = ?",
+        [a * 1.0, str(category), trim(str(description)), str(spentOn), id, userId]
+    )
+    give find(userId, id)
+}
+
+export task remove(userId, id) {
+    changed = db().exec("DELETE FROM expenses WHERE id = ? AND user_id = ?", [id, userId])
+    give changed > 0
+}
+
+# ── Queries ──────────────────────────────────────────────────────────────────
+
+# List with optional filters:
+#   category, from, to, search, limit, offset
+#
+# Values are always bound as parameters, never concatenated into the SQL -- a
+# category or search term arrives straight from a query string.
+export task list(userId, filters = nil) {
+    f = typeOf(filters) == "dictionary" ? filters : {}
+    sql = "SELECT * FROM expenses WHERE user_id = ?"
+    params = [userId]
+
+    when has_key(f, "category") and len(str(f["category"])) > 0 {
+        sql = sql + " AND category = ?"
+        push(params, str(f["category"]))
+    }
+    when has_key(f, "from") and len(str(f["from"])) > 0 {
+        sql = sql + " AND spent_on >= ?"
+        push(params, str(f["from"]))
+    }
+    when has_key(f, "to") and len(str(f["to"])) > 0 {
+        sql = sql + " AND spent_on <= ?"
+        push(params, str(f["to"]))
+    }
+    when has_key(f, "search") and len(str(f["search"])) > 0 {
+        sql = sql + " AND description LIKE ?"
+        push(params, "%" + str(f["search"]) + "%")
+    }
+
+    sql = sql + " ORDER BY spent_on DESC, id DESC"
+
+    limit = has_key(f, "limit") ? num(str(f["limit"])) : 500
+    when limit > 1000 { limit = 1000 }
+    when limit < 1 { limit = 1 }
+    sql = sql + " LIMIT ?"
+    push(params, limit)
+
+    when has_key(f, "offset") {
+        off = num(str(f["offset"]))
+        when off > 0 {
+            sql = sql + " OFFSET ?"
+            push(params, off)
+        }
+    }
+    give db().query(sql, params)
+}
+
+export task count(userId) {
+    give db().scalar("SELECT count(*) FROM expenses WHERE user_id = ?", [userId])
+}
+
+export task total(userId, filters = nil) {
+    rows = list(userId, filters)
+    sum = 0.0
+    get r in rows { sum = sum + r["amount"] }
+    give sum
+}
+
+# ── Reports ──────────────────────────────────────────────────────────────────
+
+# Totals per category, largest first.
+export task byCategory(userId, fromDate = nil, toDate = nil) {
+    sql = "SELECT category, count(*) AS n, sum(amount) AS total" +
+          " FROM expenses WHERE user_id = ?"
+    params = [userId]
+    when fromDate != nil { sql = sql + " AND spent_on >= ?"  push(params, str(fromDate)) }
+    when toDate != nil { sql = sql + " AND spent_on <= ?"  push(params, str(toDate)) }
+    sql = sql + " GROUP BY category ORDER BY total DESC"
+    give db().query(sql, params)
+}
+
+# Totals per month, newest first. `substr(spent_on, 1, 7)` is YYYY-MM, which is
+# why the stored format has to be exactly YYYY-MM-DD.
+export task byMonth(userId, limit = 12) {
+    give db().query(
+        "SELECT substr(spent_on, 1, 7) AS month, count(*) AS n, sum(amount) AS total" +
+        " FROM expenses WHERE user_id = ?" +
+        " GROUP BY month ORDER BY month DESC LIMIT ?",
+        [userId, limit]
+    )
+}
+
+# Headline figures for the dashboard.
+export task summary(userId) {
+    row = db().one(
+        "SELECT count(*) AS n, coalesce(sum(amount), 0) AS total," +
+        "       coalesce(avg(amount), 0) AS average," +
+        "       coalesce(max(amount), 0) AS largest" +
+        " FROM expenses WHERE user_id = ?", [userId])
+    thisMonth = db().scalar(
+        "SELECT coalesce(sum(amount), 0) FROM expenses" +
+        " WHERE user_id = ? AND substr(spent_on, 1, 7) = ?",
+        [userId, substr(today(), 0, 7)])
+    give {
+        "count": row["n"],
+        "total": row["total"],
+        "average": row["average"],
+        "largest": row["largest"],
+        "this_month": thisMonth
+    }
+}
+
+# ── Import / export ──────────────────────────────────────────────────────────
+
+export task toRecords(rows) {
+    out_ = []
+    get r in rows {
+        push(out_, {
+            "date": r["spent_on"],
+            "category": r["category"],
+            "description": r["description"],
+            "amount": str(r["amount"])
+        })
+    }
+    give out_
+}
+
+# Bulk-load records of {date, category, description, amount}.
+#
+# Runs in one transaction: a half-imported file is worse than a rejected one,
+# so any bad row rolls the whole thing back.
+export task importRecords(userId, records) {
+    conn = db()
+    conn.begin()
+    added = 0
+    try {
+        get rec in records {
+            amount = has_key(rec, "amount") ? rec["amount"] : 0
+            category = has_key(rec, "category") ? rec["category"] : ""
+            date = has_key(rec, "date") ? rec["date"] : ""
+            desc = has_key(rec, "description") ? rec["description"] : ""
+            problems = validate(amount, category, date)
+            when len(problems) > 0 {
+                throw EXPENSE_ERROR + "row " + str(added + 1) + ": " + join(problems, " ")
+            }
+            conn.exec(
+                "INSERT INTO expenses (user_id, amount, category, description, spent_on, created_at)" +
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                [userId, num(str(amount)) * 1.0, str(category), trim(str(desc)),
+                 str(date), _nowIso()]
+            )
+            added = added + 1
+        }
+    } catch (e) {
+        conn.rollback()
+        throw e
+    }
+    conn.commit()
+    give added
+}

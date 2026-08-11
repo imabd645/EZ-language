@@ -1,0 +1,99 @@
+# ============================================================================
+# Database: connection, schema and migrations.
+# ============================================================================
+use "sqlite"
+
+export DB_PATH_DEFAULT = "expenses.db"
+
+_dbHandle = nil
+_dbPath = ""
+
+# Open (or reopen) the database and make sure the schema is current.
+export task dbOpen(path = nil) {
+    p = path == nil ? DB_PATH_DEFAULT : str(path)
+    when _dbHandle != nil and _dbPath == p { give _dbHandle }
+    when _dbHandle != nil { dbClose() }
+    _dbHandle = connect(p)
+    _dbPath = p
+    # WAL lets readers run while a writer is active, which matters as soon as
+    # more than one request is in flight.
+    _dbHandle.exec("PRAGMA journal_mode=WAL")
+    # OFF by default in SQLite; without it the ON DELETE CASCADE below is
+    # silently ignored and deleting a user orphans all of their rows.
+    _dbHandle.exec("PRAGMA foreign_keys=ON")
+    runMigrations(_dbHandle)
+    give _dbHandle
+}
+
+export task db() {
+    when _dbHandle == nil { give dbOpen() }
+    give _dbHandle
+}
+
+export task dbClose() {
+    when _dbHandle != nil {
+        _dbHandle.close()
+        _dbHandle = nil
+        _dbPath = ""
+    }
+    give true
+}
+
+# Drop everything and rebuild. Used by the test suite.
+export task dbReset(path = nil) {
+    p = path == nil ? DB_PATH_DEFAULT : str(path)
+    dbClose()
+    when File.exists(p) { File.remove(p) }
+    # WAL leaves two sidecar files behind; a stale one resurrects old rows.
+    when File.exists(p + "-wal") { File.remove(p + "-wal") }
+    when File.exists(p + "-shm") { File.remove(p + "-shm") }
+    give dbOpen(p)
+}
+
+# ── Schema ───────────────────────────────────────────────────────────────────
+#
+# Versioned so an existing database can be upgraded in place rather than
+# recreated. Each step runs once and bumps user_version.
+# Named runMigrations, not migrate: the sqlite package exports its own
+# migrate(db, migrations, on_apply) and the two would be indistinguishable
+# at the call site.
+export task runMigrations(conn) {
+    version = conn.scalar("PRAGMA user_version")
+    when typeOf(version) == "nil" { version = 0 }
+
+    when version < 1 {
+        conn.exec_script(
+            "CREATE TABLE IF NOT EXISTS users (" +
+            "  id            INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "  email         TEXT    NOT NULL UNIQUE COLLATE NOCASE," +
+            "  name          TEXT    NOT NULL," +
+            "  password_hash TEXT    NOT NULL," +
+            "  created_at    TEXT    NOT NULL" +
+            ");" +
+            "CREATE TABLE IF NOT EXISTS expenses (" +
+            "  id          INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE," +
+            "  amount      REAL    NOT NULL," +
+            "  category    TEXT    NOT NULL," +
+            "  description TEXT    NOT NULL DEFAULT ''," +
+            "  spent_on    TEXT    NOT NULL," +
+            "  created_at  TEXT    NOT NULL" +
+            ");" +
+            # Every listing filters by user and orders by date, so this index is
+            # what keeps the page fast once the table is not tiny.
+            "CREATE INDEX IF NOT EXISTS idx_expenses_user_date" +
+            "  ON expenses(user_id, spent_on DESC);" +
+            "CREATE INDEX IF NOT EXISTS idx_expenses_category" +
+            "  ON expenses(user_id, category);"
+        )
+        conn.exec("PRAGMA user_version=1")
+        version = 1
+    }
+
+    give version
+}
+
+# Current schema version.
+export task schemaVersion() {
+    give db().scalar("PRAGMA user_version")
+}

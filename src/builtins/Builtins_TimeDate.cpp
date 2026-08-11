@@ -391,11 +391,8 @@ void registerTimeDateBuiltins(RuntimeContext& interp) {
             auto globalEnv = interp.getGlobalEnv();
 
             std::thread([stateWeak, cb, ms, repeat, globalEnv]() {
-                // Same reason as the spawn() worker: the string intern pool is
-                // thread_local, the strings this callback produces outlive the
-                // thread, and destroying the pool at thread exit crashes the
-                // process. See ValueImpl.h.
-                g_stringInternEnabled = false;
+                // Long strings are not interned on this thread: interning is
+                // opt-in and only the main thread opts in. See Runtime.cpp.
 
                 // Register as a mutator for the thread's whole life. The
                 // callback runs EZ code that reads and writes shared objects,

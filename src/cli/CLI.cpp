@@ -356,10 +356,21 @@ void showHelp() {
     std::cout << "  indexOf, slice, print, input" << std::endl;
 }
 
+// Defined in runtime/Runtime.cpp. String interning is opt-in per thread and only
+// the main thread may opt in: the pool is thread_local but the strings it hands
+// out escape the thread, so tearing one down at thread exit crashes the process.
+void ez_enable_string_interning();
+
 int cli_main(int argc, char* argv[]) {
     // Ensure UTF-8 output for emojis and special characters on Windows consoles
     SetConsoleOutputCP(CP_UTF8);
-    
+
+    // This is the main thread; its pool is destroyed at process exit like any
+    // other global, so interning here is safe. Every other thread -- spawn
+    // workers, Timer callbacks, and the web server's threads inside
+    // http_accel.dll -- leaves interning off and allocates strings directly.
+    ez_enable_string_interning();
+
     signal(SIGSEGV, signalHandler);
     signal(SIGABRT, signalHandler);
     std::set_terminate(terminateHandler);

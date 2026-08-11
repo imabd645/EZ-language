@@ -210,11 +210,9 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 // and tear down the CycleCollector while this thread was still
                 // unwinding through it, which faulted at a garbage address,
                 // intermittently and often after the program's last line.
-                // Do not intern long strings on this thread. The pool is
-                // thread_local but the strings it hands out escape to whoever
-                // awaits us, so tearing the pool down at thread exit crashed
-                // the process. See ValueImpl.h.
-                g_stringInternEnabled = false;
+                // Long strings are not interned on this thread: interning is
+                // opt-in and only the main thread opts in, so nothing has to be
+                // switched off here. See Runtime.cpp.
 
                 bool   signalResult = false;
                 bool   failed       = false;

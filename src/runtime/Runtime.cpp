@@ -8,11 +8,33 @@
 #include "runtime/objects/EZShape.h"
 
 // ── Thread-local string interning pool ───────────────────────────────────────
-// Only the main thread interns. Worker threads set g_stringInternEnabled to
-// false so they never populate this map, because destroying it during thread
-// teardown crashed the process -- see the note in ValueImpl.h.
+//
+// Only the main thread interns. Destroying this map during thread teardown
+// crashes the process, because the strings it hands out outlive the thread that
+// made them -- see the long note in ValueImpl.h.
+//
+// Interning is therefore OPT-IN, and exactly one thread opts in:
+// ez_enable_string_interning() is called once from cli_main().
+//
+// It used to default to true, with each thread-creation site responsible for
+// turning it off (spawn() workers did, Timer callbacks did). That only covers
+// threads this codebase creates. The web server's worker threads are created
+// inside http_accel.dll and run EZ code through an FFI callback, so they interned
+// happily and then faulted in ~unordered_map on the way out:
+//     #0  std::unordered_map<...>::~unordered_map()
+//     #1  run_dtor_list (tls_atexit.c)
+//     #8  ntdll!LdrShutdownThread
+//     #11 pthread_create_wrapper  from http_accel.dll
+// Defaulting to false makes every thread safe by construction -- including ones
+// created by a library we do not control, and any added later.
 thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
-thread_local bool g_stringInternEnabled = true;
+thread_local bool g_stringInternEnabled = false;
+
+// Turn interning on for the calling thread. Only ever called for the main
+// thread, whose pool is torn down at process exit like any other global.
+void ez_enable_string_interning() {
+    g_stringInternEnabled = true;
+}
 
 // ── EZFunction::traverse() ───────────────────────────────────────────────────
 // Declared in Value.h; defined here because Environment is not yet complete

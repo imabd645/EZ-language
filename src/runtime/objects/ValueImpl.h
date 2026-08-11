@@ -30,6 +30,14 @@ inline std::vector<uint8_t>& Value::asBuffer() const { try{return std::get<Buffe
 // destroyed at process exit like any other global, keeps the fast path.
 // Interning is a memory optimisation, never an identity guarantee -- nothing
 // compares strings by pointer -- so skipping it changes no behaviour.
+//
+// Interning is OPT-IN (g_stringInternEnabled defaults to false) and cli_main()
+// is the only caller of ez_enable_string_interning(). It was the other way round
+// once -- on by default, with every thread-creation site expected to switch it
+// off -- which only protected threads this codebase creates. The web server's
+// workers live inside http_accel.dll, interned freely, and crashed in this map's
+// destructor on the way out. Opt-in makes a thread safe unless someone has
+// deliberately said otherwise. See Runtime.cpp.
 extern thread_local std::unordered_map<std::string, std::weak_ptr<std::string>> globalStringPool;
 extern thread_local bool g_stringInternEnabled;
 

@@ -21,10 +21,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # event-loop call chain. It worked synchronously only because that path used the
 # un-cloned functions.
 #
-# -O3 -march=native -funroll-loops still applies; the measured throughput
-# difference from dropping LTO here is small, and correct exception handling is
-# not optional for a language with try/catch.
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -fasynchronous-unwind-tables")
+# -O3 -funroll-loops still applies; the measured throughput difference from
+# dropping LTO here is small, and correct exception handling is not optional
+# for a language with try/catch.
+
+# CPU baseline for the produced binary.
+#
+# This was -march=native, which tunes for the CPU of the machine running the
+# build and emits instructions older CPUs lack. Such a binary runs locally and
+# dies with an illegal-instruction crash on any older machine, before main()
+# and with no diagnostic -- invisible until a user reports it. The default is
+# therefore a baseline, not the build host.
+#
+# x86-64-v2 = SSE3/SSSE3/SSE4.1/SSE4.2/POPCNT: Intel Nehalem (2008) and AMD
+# Bulldozer (2011) onward, covering every machine that runs Windows 10 or 11.
+#
+# For a local, non-distributed build:  cmake -DEZ_ARCH=native ..
+set(EZ_ARCH "x86-64-v2" CACHE STRING
+    "Target CPU for -march. Use 'native' only for builds you will not distribute.")
+message(STATUS "Building for -march=${EZ_ARCH}")
+
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=${EZ_ARCH} -funroll-loops -fasynchronous-unwind-tables")
 
 # Defines
 add_definitions(-DCURL_STATICLIB)
@@ -123,5 +140,17 @@ target_link_libraries(ez PRIVATE
 target_link_libraries(ez PRIVATE
     -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
     dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
-    pthread
+)
+
+# MUST STAY LAST. g++ appends libstdc++ and libwinpthread after everything
+# listed here, so whichever -B mode the link line ends in decides how they
+# resolve. Ending on the -Wl,-Bdynamic block above silently defeated the
+# -static-libstdc++ in CMAKE_EXE_LINKER_FLAGS, and ez.exe imported
+# libstdc++-6.dll and libwinpthread-1.dll -- so every built .exe, bundled ones
+# included, needed those two DLLs beside it to start.
+# Verify after changing anything here:
+#   objdump -p ez.exe | grep -i "DLL Name"
+# Only Windows system DLLs should be listed.
+target_link_libraries(ez PRIVATE
+    -Wl,-Bstatic stdc++ winpthread
 )

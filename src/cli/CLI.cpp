@@ -1,4 +1,5 @@
 #include "cli/CLI.h"
+#include "cli/Version.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -338,12 +339,17 @@ bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem) {
 
 #include <set>
 
+void showVersion() {
+    std::cout << "EZ " << EZ_VERSION_STRING << std::endl;
+}
+
 void showHelp() {
-    std::cout << "EZ Language Interpreter" << std::endl;
+    std::cout << "EZ Language Interpreter " << EZ_VERSION_STRING << std::endl;
     std::cout << std::endl;
     std::cout << "Usage:" << std::endl;
     std::cout << "  ez                Run REPL (interactive mode)" << std::endl;
     std::cout << "  ez <file.ez>      Run a script file" << std::endl;
+    std::cout << "  ez --version      Print the interpreter version" << std::endl;
     std::cout << std::endl;
     std::cout << "Packages:" << std::endl;
     std::cout << "  ez install                  Install everything in package.ez" << std::endl;
@@ -453,7 +459,16 @@ int cli_main(int argc, char* argv[]) {
     
     if (argc > 1) {
         std::string cmd = argv[1];
-        
+
+        // Answered from the binary alone, so it is checked before anything
+        // that touches the filesystem. Without this the argument falls through
+        // to the run-a-script branch and fails with
+        // "Could not open file '--version'".
+        if (cmd == "--version" || cmd == "-v" || cmd == "version") {
+            showVersion();
+            return 0;
+        }
+
         if (cmd == "install" || cmd == "i" || cmd == "add") {
             PackageManager pm;
             // Packages install into the shared library root, so --force is what

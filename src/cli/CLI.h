@@ -9,4 +9,5 @@ bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem);
 void compileFileToEzc(const std::string& path);
 void dumpFileToEzasm(const std::string& path);
 void showHelp();
+void showVersion();
 bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui, const std::string& iconPath);

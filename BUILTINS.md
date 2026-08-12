@@ -67,6 +67,29 @@ print("Hello", "World", 42)
 
 **Source**: `src/builtins/Builtins_IO.cpp`
 
+### write
+
+**Signature**: `write(...args: any[]) -> nil`
+
+**Return**: nil
+
+Like `print`, but **without a trailing newline**, and flushed immediately.
+
+This is what makes in-place terminal output possible: write a line, emit a
+carriage return, and the next write overwrites it. `print` cannot do this
+because every call ends the line.
+
+**Example**:
+```ez
+# A progress bar that updates in place
+repeat i = 0 to 100 {
+    write(chr(13) + "Progress: " + str(i) + "%")
+}
+out ""              # end the line when finished
+```
+
+**Source**: `src/builtins/Builtins_IO.cpp`
+
 ### readFile
 
 **Signature**: `readFile(path: string) -> string`

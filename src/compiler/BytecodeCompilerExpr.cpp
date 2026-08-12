@@ -466,7 +466,17 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_UPVALUE),
                           static_cast<uint8_t>(upvalue));
             } else if (globalSlots.count(expr.name) > 0 && !current->isHarvesting) {
-                // Known global — use fast slot path
+                // Known global — use fast slot path.
+                //
+                // This branch is reached even inside a function, because the
+                // name already has a global slot. That is what makes assigning
+                // to a builtin so damaging: `num = 0` in a helper takes this
+                // path instead of the scopeDepth > 0 branch below, so it
+                // overwrites the function for the entire process rather than
+                // creating a local. The failure then appears wherever that
+                // builtin is next called -- typically in unrelated code, with
+                // nothing pointing back to the assignment.
+                warnBuiltinAssignment(expr.name, currentLine);
                 uint16_t slot = globalSlots[expr.name];
                 emitOp(OpCode::STORE_GLOBAL_SLOT);
                 emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
@@ -479,6 +489,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 emitStoreLocal(local);
             } else {
                 // Default to global — allocate a slot
+                warnBuiltinAssignment(expr.name, currentLine);
                 uint16_t slot = globalSlotFor(expr.name);
                 emitOp(OpCode::STORE_GLOBAL_SLOT);
                 emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),

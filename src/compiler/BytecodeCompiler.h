@@ -44,7 +44,21 @@ public:
     
     // Virtual File System for packaged standalone executables
     static std::unordered_map<std::string, std::string> virtualFileSystem;
-    
+
+    // Names of the runtime builtins, so the compiler can warn when a bare
+    // assignment would overwrite one.
+    //
+    // Assigning to a builtin replaces the function for the whole process:
+    // `num = 0` inside any task makes every later num("12") fail with
+    // "Value is not callable: integer", usually in unrelated code that never
+    // touched the variable. The type checker already catches this in a script,
+    // but imported modules are never type-checked -- and library code is
+    // exactly where it does the most damage -- so the compiler warns too.
+    //
+    // Populated once at startup from the VM's global environment; empty in
+    // contexts that never registered builtins, which simply disables the check.
+    static std::unordered_set<std::string> builtinNames;
+
     // Seed existing global slot for eval() to prevent collisions
     void setGlobalSlot(const std::string& name, uint16_t slot);
 
@@ -113,6 +127,9 @@ private:
     
     // Module resolution caches
     std::unordered_set<std::string> compilingModules;
+    // Builtins already warned about, so one mistake is reported once rather
+    // than once per assignment.
+    std::unordered_set<std::string> warnedBuiltins;
     std::unordered_map<std::string, std::vector<StmtPtr>> astCache;
 
     uint16_t globalSlotFor(const std::string& name);
@@ -200,6 +217,7 @@ private:
     size_t identifierConstant(const std::string& name);
     void error(const std::string& message);
     void errorAt(const std::string& message, int line);
+    void warnBuiltinAssignment(const std::string& name, size_t line);
     void emitLoadSelf();
     
     // === Optimizations ===

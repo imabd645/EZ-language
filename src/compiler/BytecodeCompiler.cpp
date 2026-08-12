@@ -11,6 +11,7 @@ namespace fs = std::filesystem;
 #include "parser/Parser.h"
 
 std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem;
+std::unordered_set<std::string> BytecodeCompiler::builtinNames;
 
 // Helper to get directory of a file
 

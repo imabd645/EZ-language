@@ -1812,6 +1812,28 @@ void BytecodeCompiler::error(const std::string& message) {
     }
 }
 
+// Warn that an assignment will overwrite a runtime builtin.
+//
+// A warning rather than an error: replacing a builtin is legal, and a program
+// may do it deliberately. But it is almost never intended inside a helper, so
+// staying silent is worse -- the symptom appears far from the cause.
+//
+// Reported once per name per compilation. `num = num + 1` in a loop is one
+// mistake, not one per line.
+void BytecodeCompiler::warnBuiltinAssignment(const std::string& name, size_t line) {
+    if (builtinNames.find(name) == builtinNames.end()) return;
+    if (!warnedBuiltins.insert(name).second) return;
+
+    std::cerr << "\033[33mWarning\033[0m";
+    if (!currentFile.empty()) std::cerr << " in " << currentFile;
+    std::cerr << " at line " << line << ":\n"
+              << "  assigning to '" << name << "' replaces the builtin of that name\n"
+              << "  for the whole program, so later calls to " << name
+              << "(...) will fail.\n"
+              << "  Hint: rename the variable, or write '" << name
+              << ": <type> = ...' to declare a real local.\n";
+}
+
 void BytecodeCompiler::errorAt(const std::string& message, int line) {
     if (!hadError) {
         hadError = true;

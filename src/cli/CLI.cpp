@@ -98,6 +98,10 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    // Same list the type checker uses, handed to the compiler so it can warn
+    // when a bare assignment would overwrite a builtin. The type checker only
+    // sees the entry script; imported modules reach the compiler alone.
+    BytecodeCompiler::builtinNames.insert(builtins.begin(), builtins.end());
     
     if (!g_disableTypeCheck) {
         TypeChecker typeChecker;
@@ -223,6 +227,10 @@ void compileFileToEzc(const std::string& path) {
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    // Same list the type checker uses, handed to the compiler so it can warn
+    // when a bare assignment would overwrite a builtin. The type checker only
+    // sees the entry script; imported modules reach the compiler alone.
+    BytecodeCompiler::builtinNames.insert(builtins.begin(), builtins.end());
     
     TypeChecker typeChecker;
     if (!typeChecker.check(statements, builtins)) exit(65);
@@ -275,6 +283,10 @@ void dumpFileToEzasm(const std::string& path) {
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
+    // Same list the type checker uses, handed to the compiler so it can warn
+    // when a bare assignment would overwrite a builtin. The type checker only
+    // sees the entry script; imported modules reach the compiler alone.
+    BytecodeCompiler::builtinNames.insert(builtins.begin(), builtins.end());
     
     TypeChecker typeChecker;
     if (!typeChecker.check(statements, builtins)) exit(65);

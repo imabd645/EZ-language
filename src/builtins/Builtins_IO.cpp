@@ -118,6 +118,27 @@ void registerIOBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
+    // write(...) — like print, but WITHOUT a trailing newline.
+    //
+    // This is what makes in-place terminal output possible: a progress bar or
+    // spinner writes its line, emits a carriage return, and overwrites itself
+    // on the next update. print() cannot do that, because every call ends the
+    // line.
+    //
+    // The explicit flush is the part that is easy to miss. std::endl flushes
+    // as a side effect, so print() always appears immediately; without endl
+    // the text sits in the buffer and an animation shows nothing at all until
+    // the program exits, at which point it dumps every frame at once.
+    interp.defineGlobal("write", Value::makeNativeFunction("write", -1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            for (size_t i = 0; i < args.size(); i++) {
+                if (i > 0) std::cout << " ";
+                std::cout << args[i].toString();
+            }
+            std::cout << std::flush;
+            return Value();
+        }));
+
     interp.defineGlobal("readFile", Value::makeNativeFunction("readFile", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "readFile() expects string path", 0, ""); return Value(); }

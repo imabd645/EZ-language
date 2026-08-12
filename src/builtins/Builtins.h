@@ -1,7 +1,24 @@
 #ifndef BUILTINS_H
 #define BUILTINS_H
 
+#include <string>
+#include <vector>
+
 class RuntimeContext;
+
+// Command-line arguments intended for the running script, and the script's
+// own path.
+//
+// The CLI fills these in before the program runs; they become the `argv` and
+// `scriptName` globals. Kept here rather than read from main()'s argv inside
+// a builtin because what counts as a script argument is a CLI decision --
+// interpreter flags such as --trace are consumed there and must not reach the
+// program.
+//
+// Empty when EZ is embedded or running a REPL, so `argv` is always a list and
+// never nil.
+extern std::vector<std::string> g_scriptArgs;
+extern std::string g_scriptName;
 
 void registerBuiltins(RuntimeContext& interp);
 

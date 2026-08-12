@@ -67,6 +67,35 @@ print("Hello", "World", 42)
 
 **Source**: `src/builtins/Builtins_IO.cpp`
 
+### argv
+
+**Signature**: `argv: string[]`
+
+The arguments passed to the running script, as a list of strings.
+
+Interpreter flags are **not** included: `ez app.ez --trace foo` gives the
+script one argument, `"foo"`. Use `--` to pass something through that would
+otherwise be read as an interpreter flag.
+
+Always a list, never nil, so `len(argv)` is safe when no arguments are given.
+
+**Example**:
+```ez
+# ez greet.ez Ali --loud
+out len(argv)        # 2
+out argv[0]          # Ali
+```
+
+**Source**: `src/builtins/Builtins_Core.cpp`
+
+### scriptName
+
+**Signature**: `scriptName: string`
+
+The path the script was invoked as — for usage messages.
+
+**Source**: `src/builtins/Builtins_Core.cpp`
+
 ### write
 
 **Signature**: `write(...args: any[]) -> nil`

@@ -1,5 +1,6 @@
 #include "cli/CLI.h"
 #include "cli/Version.h"
+#include "builtins/Builtins.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -361,6 +362,8 @@ void showHelp() {
     std::cout << "Usage:" << std::endl;
     std::cout << "  ez                Run REPL (interactive mode)" << std::endl;
     std::cout << "  ez <file.ez>      Run a script file" << std::endl;
+    std::cout << "  ez <file.ez> [args...]   Arguments reach the script as argv" << std::endl;
+    std::cout << "  ez <file.ez> -- [args...] Pass args through even if they look like flags" << std::endl;
     std::cout << "  ez --version      Print the interpreter version" << std::endl;
     std::cout << std::endl;
     std::cout << "Packages:" << std::endl;
@@ -461,6 +464,12 @@ int cli_main(int argc, char* argv[]) {
                         BytecodeCompiler::virtualFileSystem[name] = content;
                     }
                     if (BytecodeCompiler::virtualFileSystem.count("__main__.ez")) {
+                        // A bundled program owns the whole command line: there
+                        // is no script path to skip and no interpreter flags to
+                        // strip, so every argument is the program's own.
+                        g_scriptName = exePath;
+                        g_scriptArgs.clear();
+                        for (int i = 1; i < argc; i++) g_scriptArgs.push_back(argv[i]);
                         runFromSource(BytecodeCompiler::virtualFileSystem["__main__.ez"], "__main__.ez");
                         return 0;
                     }
@@ -635,9 +644,22 @@ int cli_main(int argc, char* argv[]) {
             bool traceExecution = false;
             bool compileToEzc = false;
             bool dumpToEzasm = false;
+
+            // Anything that is not an interpreter flag belongs to the script.
+            //
+            // `--` ends interpreter options: everything after it is passed
+            // through verbatim, so a program can accept `--trace` of its own
+            // without the interpreter swallowing it.
+            g_scriptName = cmd;
+            g_scriptArgs.clear();
+            bool passThrough = false;
             for (int i = 2; i < argc; i++) {
                 std::string arg = argv[i];
-                if (arg == "--trace") {
+                if (passThrough) {
+                    g_scriptArgs.push_back(arg);
+                } else if (arg == "--") {
+                    passThrough = true;
+                } else if (arg == "--trace") {
                     traceExecution = true;
                 } else if (arg == "--compile" || arg == "-c" || arg == "--ezc") {
                     compileToEzc = true;
@@ -647,6 +669,8 @@ int cli_main(int argc, char* argv[]) {
                     g_disableContracts = true;
                 } else if (arg == "--no-typecheck") {
                     g_disableTypeCheck = true;
+                } else {
+                    g_scriptArgs.push_back(arg);
                 }
             }
 

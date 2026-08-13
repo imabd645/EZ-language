@@ -328,6 +328,23 @@ struct LocalVarInfo {
 // ============================================================================
 // Bytecode Function (runtime representation)
 // ============================================================================
+// ============================================================================
+// Call Site Debug Info
+// ============================================================================
+//
+// What the source called at each call instruction, so a failed call can name
+// it. The VM sees only a value on the stack: when that value turns out not to
+// be callable it can say "nil is not callable" and nothing more, which sends
+// the reader looking through the whole line for which of three calls it was.
+//
+// Keyed by the code offset immediately AFTER the call instruction and its
+// operands, because that is exactly what frame->ip holds when dispatchCall
+// reports the failure -- no reverse-decoding of variable-length instructions.
+struct CallSiteInfo {
+    uint32_t offset;      // code offset just past the call instruction
+    std::string name;     // "readFile", "user.save", "Config.load"
+};
+
 struct BytecodeFunction {
     std::string name;
     std::string filename;  // Source file this function was defined in
@@ -345,6 +362,24 @@ struct BytecodeFunction {
     
     // Debug info for crash dumps
     std::vector<LocalVarInfo> localVars;
+
+    // What was called at each call site, for error messages. Sorted by offset
+    // as the compiler emits calls in order.
+    std::vector<CallSiteInfo> callSites;
+
+    // The name called at `offset`, or "" if this call site was not recorded
+    // (a computed callee has no name to report).
+    const std::string* calleeNameAt(uint32_t offset) const {
+        size_t low = 0, high = callSites.size();
+        while (low < high) {
+            size_t mid = low + (high - low) / 2;
+            if (callSites[mid].offset < offset) low = mid + 1;
+            else high = mid;
+        }
+        if (low < callSites.size() && callSites[low].offset == offset)
+            return &callSites[low].name;
+        return nullptr;
+    }
     
     // Nested compiled functions referenced by CLOSURE opcodes.
     // CLOSURE operand N → nestedFunctions[N].

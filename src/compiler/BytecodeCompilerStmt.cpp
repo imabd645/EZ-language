@@ -1,6 +1,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <memory>
 namespace fs = std::filesystem;
@@ -721,9 +722,124 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
     }
 }
 
+// ── Module resolution failures ───────────────────────────────────────────────
+//
+// "Could not find module 'htlm'" is true and useless. The three things the
+// reader needs are which name failed, where the compiler looked (EZLIB_PATH
+// moves that between machines), and whether something close is installed --
+// because the answer is a typo far more often than a missing package.
+
+// Edit distance, capped: anything past `limit` is not a suggestion worth
+// making, and stopping early keeps this linear in practice.
+static size_t nameDistance(const std::string& a, const std::string& b, size_t limit) {
+    if (a == b) return 0;
+    if (a.size() > b.size() + limit || b.size() > a.size() + limit) return limit + 1;
+
+    std::vector<size_t> previous(b.size() + 1), current(b.size() + 1);
+    for (size_t j = 0; j <= b.size(); ++j) previous[j] = j;
+    for (size_t i = 1; i <= a.size(); ++i) {
+        current[0] = i;
+        size_t best = current[0];
+        for (size_t j = 1; j <= b.size(); ++j) {
+            size_t cost = (std::tolower((unsigned char)a[i - 1]) ==
+                           std::tolower((unsigned char)b[j - 1])) ? 0 : 1;
+            current[j] = std::min({ previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost });
+            best = std::min(best, current[j]);
+        }
+        if (best > limit) return limit + 1;   // no cell in this row can recover
+        previous = current;
+    }
+    return previous[b.size()];
+}
+
+// Installed package names that are close to what was asked for.
+static std::vector<std::string> similarModules(const std::string& wanted) {
+    std::vector<std::pair<size_t, std::string>> scored;
+    // Two edits for a name of any length, one for a short name where two edits
+    // would match almost anything.
+    size_t limit = wanted.size() <= 4 ? 1 : 2;
+
+    std::error_code ec;
+    for (const std::string& root : { ezLibBase(), std::string("lib/") }) {
+        fs::directory_iterator it(root, ec), end;
+        if (ec) { ec.clear(); continue; }
+        for (; it != end; it.increment(ec)) {
+            if (ec) { ec.clear(); break; }
+            std::string name = it->path().filename().string();
+            if (!name.empty() && name[0] == '.') continue;
+            if (name.size() > 3 && name.substr(name.size() - 3) == ".ez")
+                name = name.substr(0, name.size() - 3);
+            if (name == wanted) continue;
+            size_t d = nameDistance(wanted, name, limit);
+            if (d <= limit) scored.push_back({ d, name });
+        }
+    }
+    std::sort(scored.begin(), scored.end());
+    std::vector<std::string> names;
+    for (const auto& entry : scored) {
+        if (std::find(names.begin(), names.end(), entry.second) == names.end())
+            names.push_back(entry.second);
+        if (names.size() == 3) break;
+    }
+    return names;
+}
+
+std::string BytecodeCompiler::moduleNotFound(const std::string& path,
+                                             const std::vector<std::string>& searched,
+                                             const std::string& directoryHit) {
+    std::string out = "ModuleNotFoundError: no module named '" + path + "'";
+
+    if (!directoryHit.empty()) {
+        // The package directory exists but has no entry point -- a different
+        // problem with a different fix, so say so rather than claiming the
+        // module does not exist.
+        out = "ModuleNotFoundError: '" + path + "' has no entry point\n\n"
+              "  Found the directory:\n    " + directoryHit + "\n"
+              "  but neither " + path + ".ez nor main.ez is inside it.\n\n"
+              "  A package directory needs one of those, and package.ez should\n"
+              "  name it in \"main\".";
+        return out;
+    }
+
+    out += "\n\n  Searched:\n";
+    std::vector<std::string> seen;
+    for (const std::string& candidate : searched) {
+        if (std::find(seen.begin(), seen.end(), candidate) != seen.end()) continue;
+        seen.push_back(candidate);
+        out += "    " + candidate + "\n";
+    }
+
+    std::vector<std::string> similar = similarModules(path);
+    if (!similar.empty()) {
+        out += "\n  Did you mean ";
+        for (size_t i = 0; i < similar.size(); ++i) {
+            if (i) out += (i + 1 == similar.size()) ? " or " : ", ";
+            out += "'" + similar[i] + "'";
+        }
+        out += "?";
+    } else {
+        out += "\n  If it is a published package:  ez install " + path;
+    }
+
+    // A local file must be imported with its extension: a bare relative path
+    // is resolved under package semantics and would hand back an empty
+    // namespace, so the compiler deliberately does not guess.
+    if (path.find(".ez") == std::string::npos && path.find('/') != std::string::npos) {
+        out += "\n  For a file in your project, include the extension:  use \"" + path + ".ez\"";
+    }
+    out += "\n  Search root is EZLIB_PATH (currently " + ezLibBase() + ").";
+    return out;
+}
+
 void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::string path = stmt.path;
     std::string absolutePath = path;
+
+    // Every location tried, in order. A "could not find module 'x'" that does
+    // not say where it looked is unactionable: the reader cannot tell whether
+    // the package is missing, installed somewhere else, or spelled wrong, and
+    // EZLIB_PATH makes the search root vary between machines.
+    std::vector<std::string> searched;
     
     // Resolve relative to current file
     if (!currentFile.empty() && currentFile != "repl" && currentFile != "main") {
@@ -782,9 +898,11 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     }
     
     if (!foundInVFS) {
+        searched.push_back(absolutePath);
         std::ifstream file(absolutePath);
         if (!file.is_open()) {
             // Try exactly as typed
+            searched.push_back(path);
             file.open(path);
             // NOTE: deliberately NOT falling back to `path + ".ez"` here.
             // Whether an import exports everything or only `export`-marked
@@ -799,40 +917,46 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             } else {
                 // Try local lib/ directory
                 std::string localLibPath = "lib/" + path;
+                searched.push_back(localLibPath);
                 file.open(localLibPath);
                 if (file.is_open()) {
                     absolutePath = localLibPath;
                 } else {
                     // Try standard lib path
                     std::string libPath = ezlibBase + path;
+                    searched.push_back(libPath);
                     file.open(libPath);
                     if (file.is_open()) {
                         absolutePath = libPath;
                     } else if (fs::is_directory(libPath)) {
                         // It's a directory, look for [packageName].ez or main.ez
                         std::string pkgEz = libPath + "/" + path + ".ez";
+                        searched.push_back(pkgEz);
                         file.open(pkgEz);
                         if (file.is_open()) {
                             absolutePath = pkgEz;
                         } else {
                             std::string mainEz = libPath + "/main.ez";
+                            searched.push_back(mainEz);
                             file.open(mainEz);
                             if (file.is_open()) {
                                 absolutePath = mainEz;
                             } else {
-                                errorAt("Could not find entry point in module directory '" + libPath + "'", currentLine);
+                                errorAt(moduleNotFound(path, searched, libPath), currentLine);
                                 return;
                             }
                         }
                     } else {
                         // Try .ez extension
                         std::string ezPath = (libPath.find(".ez") == std::string::npos) ? libPath + ".ez" : libPath;
+                        searched.push_back(ezPath);
                         file.open(ezPath);
                         if (file.is_open()) {
                             absolutePath = ezPath;
                         } else {
                             // Try local .ez extension in lib
                             std::string localEzPath = (localLibPath.find(".ez") == std::string::npos) ? localLibPath + ".ez" : localLibPath;
+                            searched.push_back(localEzPath);
                             file.open(localEzPath);
                             if (file.is_open()) {
                                 absolutePath = localEzPath;
@@ -851,7 +975,12 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     }
     
     if (compilingModules.count(absolutePath)) {
-        errorAt("Circular dependency detected when importing '" + absolutePath + "'", currentLine);
+        errorAt(std::string("CircularImportError: '") + absolutePath +
+                "' is already being imported\n"
+                "\n"
+                "  A module cannot import something that is (directly or indirectly)\n"
+                "  importing it. Move the shared code both need into a third module\n"
+                "  that each of them imports.", currentLine);
         return;
     }
     compilingModules.insert(absolutePath);
@@ -877,14 +1006,18 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         Lexer lexer(source, absolutePath);
         auto tokens = lexer.tokenize();
         if (lexer.hasError()) {
-            errorAt("Lexer error in module '" + absolutePath + "'", currentLine);
+            errorAt("SyntaxError: could not tokenize module '" + absolutePath + "'\n"
+                    "\n  The module reported the offending line above; this is the"
+                    "\n  `use` that pulled it in.", currentLine);
             return;
         }
         
         Parser parser(tokens, arena);
         statements = parser.parse();
         if (parser.hasError()) {
-            errorAt("Parser error in module '" + absolutePath + "'", currentLine);
+            errorAt("SyntaxError: could not parse module '" + absolutePath + "'\n"
+                    "\n  The module reported the offending line above; this is the"
+                    "\n  `use` that pulled it in.", currentLine);
             return;
         }
         astCache[absolutePath] = statements;
@@ -1835,11 +1968,49 @@ void BytecodeCompiler::warnBuiltinAssignment(const std::string& name, size_t lin
 }
 
 void BytecodeCompiler::errorAt(const std::string& message, int line) {
-    if (!hadError) {
-        hadError = true;
-        errorMessage = "[" + std::to_string(line) + "] " + message;
-        throw CompilerError(errorMessage); // Throw to immediately abort current compilation path
+    if (hadError) return;
+    hadError = true;
+
+    // "[3] Could not find module 'htmp'" gives a line number with no file, which
+    // in a program spread over several modules is not enough to find. Report the
+    // kind first, then the location, then whatever detail the caller supplied --
+    // the same shape the runtime errors use, so both read alike.
+    std::string headline = message;
+    std::string detail;
+    size_t breakAt = message.find('\n');
+    if (breakAt != std::string::npos) {
+        headline = message.substr(0, breakAt);
+        detail = message.substr(breakAt);          // keeps its leading newline
     }
+
+    // Messages that already name their kind ("ModuleNotFoundError: …") keep it;
+    // everything else gets the generic one so no compile error is untyped.
+    if (headline.find("Error:") == std::string::npos &&
+        headline.find("Warning:") == std::string::npos) {
+        headline = "CompileError: " + headline;
+    }
+
+    std::string where = currentFile.empty() ? std::string("<main>") : currentFile;
+    errorMessage = headline + "\n  at " + where + ":" + std::to_string(line) + detail;
+
+    // Show the offending source line when the file has been registered, which
+    // is what makes a module error point at the `use` rather than at a number.
+    // Declared locally rather than by including the VM header, which includes
+    // this compiler's header in turn.
+    extern const std::string* EZ_GetSourceLine(const std::string&, int);
+    if (const std::string* text = EZ_GetSourceLine(where, line)) {
+        std::string trimmed = *text;
+        size_t first = trimmed.find_first_not_of(" \t");
+        if (first != std::string::npos) trimmed = trimmed.substr(first);
+        if (!trimmed.empty()) {
+            size_t insertAt = errorMessage.find('\n', headline.size() + 1);
+            std::string snippet = "\n      " + trimmed;
+            if (insertAt == std::string::npos) errorMessage += snippet;
+            else errorMessage.insert(insertAt, snippet);
+        }
+    }
+
+    throw CompilerError(errorMessage); // Throw to immediately abort current compilation path
 }
 
 // ============================================================================

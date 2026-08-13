@@ -13,6 +13,99 @@
 // EZ's wrapping integer semantics live in one shared header so that the VM and
 // the compiler's constant folder cannot drift apart (see utils/WrapArith.h).
 #include "utils/WrapArith.h"
+#include <algorithm>
+#include <cctype>
+#include <shared_mutex>
+
+// ── Suggestions for a name that was not found ────────────────────────────────
+//
+// "Property 'lenght' does not exist" is correct and the reader still has to go
+// and look at the model to see what it should have been. A misspelling is by
+// far the most likely cause of a name miss, so the candidates are worth
+// searching: the fix is usually two characters away.
+namespace {
+
+// Edit distance, abandoned as soon as it exceeds `limit`.
+size_t ezNameDistance(const std::string& a, const std::string& b, size_t limit) {
+    if (a == b) return 0;
+    if (a.size() > b.size() + limit || b.size() > a.size() + limit) return limit + 1;
+
+    std::vector<size_t> previous(b.size() + 1), current(b.size() + 1);
+    for (size_t j = 0; j <= b.size(); ++j) previous[j] = j;
+    for (size_t i = 1; i <= a.size(); ++i) {
+        current[0] = i;
+        size_t best = current[0];
+        for (size_t j = 1; j <= b.size(); ++j) {
+            size_t cost = (std::tolower((unsigned char)a[i - 1]) ==
+                           std::tolower((unsigned char)b[j - 1])) ? 0 : 1;
+            current[j] = std::min({ previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost });
+            best = std::min(best, current[j]);
+        }
+        if (best > limit) return limit + 1;
+        previous = current;
+    }
+    return previous[b.size()];
+}
+
+// "  Did you mean 'name'?" for the closest candidates, or "" if none is close
+// enough to be worth guessing at.
+std::string ezDidYouMean(const std::string& wanted, const std::vector<std::string>& candidates) {
+    if (wanted.empty() || candidates.empty()) return "";
+    // One edit for a short name: at two edits, a three-letter name matches
+    // most other three-letter names and the suggestion is noise.
+    size_t limit = wanted.size() <= 4 ? 1 : 2;
+
+    std::vector<std::pair<size_t, std::string>> scored;
+    for (const std::string& candidate : candidates) {
+        if (candidate == wanted || candidate.empty()) continue;
+        if (candidate.rfind("__", 0) == 0) continue;      // internals are not suggestions
+        size_t d = ezNameDistance(wanted, candidate, limit);
+        if (d <= limit) scored.push_back({ d, candidate });
+    }
+    if (scored.empty()) return "";
+    std::sort(scored.begin(), scored.end());
+
+    std::string out = "\n  Did you mean ";
+    size_t shown = std::min<size_t>(scored.size(), 3);
+    for (size_t i = 0; i < shown; ++i) {
+        if (i) out += (i + 1 == shown) ? " or " : ", ";
+        out += "'" + scored[i].second + "'";
+    }
+    return out + "?";
+}
+
+// What an instance actually has: its own fields plus every method it inherits.
+std::vector<std::string> ezInstanceNames(const std::shared_ptr<EZInstance>& inst) {
+    std::vector<std::string> names;
+    if (!inst) return names;
+    if (inst->shape) {
+        std::shared_lock<std::shared_mutex> lk(inst->shape->transition_mutex);
+        for (const auto& entry : inst->shape->propertyOffsets) names.push_back(entry.first);
+    }
+    for (auto klass = inst->klass; klass; klass = klass->parent) {
+        for (const auto& entry : klass->methods) names.push_back(entry.first);
+    }
+    return names;
+}
+
+// Dictionary keys, capped: listing 400 keys buries the message.
+//
+// readMap rather than getMapCopy -- the copy would duplicate every Value in the
+// dictionary just to read its keys, on an error path where the dictionary may
+// be large.
+std::vector<std::string> ezDictNames(const std::shared_ptr<EZDictionary>& dict) {
+    std::vector<std::string> names;
+    if (!dict) return names;
+    dict->readMap([&names](const std::unordered_map<std::string, Value>& entries) {
+        for (const auto& entry : entries) {
+            names.push_back(entry.first);
+            if (names.size() >= 256) break;
+        }
+    });
+    return names;
+}
+
+} // namespace
 using ezarith::wrapAdd;
 using ezarith::wrapSub;
 using ezarith::wrapMul;
@@ -457,7 +550,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                         DISPATCH();
                                     }
                                     SYNC_IP();
-                                    runtimeError("Property or method '" + propName + "' does not exist on instance of '" + inst->klass->name + "'");
+                                    throwException("AttributeError",
+                                        "'" + inst->klass->name + "' has no property or method '" + propName + "'" +
+                                        ezDidYouMean(propName, ezInstanceNames(inst)));
                                     RAISE_FAULT();
                                 }
 
@@ -489,7 +584,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 *stackTop++ = found;
                             } else {
                                 SYNC_IP();
-                                runtimeError("Key or property '" + propName + "' does not exist in dictionary");
+                                throwException("KeyError",
+                                    "no key '" + propName + "' in this dictionary" +
+                                    ezDidYouMean(propName, ezDictNames(dictPtr)) +
+                                    "\n  Hint: has_key(d, \"" + propName + "\") tests for a key without raising.");
                                 RAISE_FAULT();
                             }
                         } else if (obj.isClass()) {
@@ -589,7 +687,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                             if (method.isNil()) {
                                 SYNC_IP();
-                                runtimeError("Method '" + propName + "' does not exist in superclass hierarchy");
+                                throwException("AttributeError",
+                                    "no method '" + propName + "' anywhere in the parent chain");
                                 RAISE_FAULT();
                             }
                             if (method.isFunction() || method.isClosure() || method.isNativeFunction()) *stackTop++ = Value(std::make_shared<EZBoundMethod>(Value(super->instance), method));
@@ -606,7 +705,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         } else {
                             SYNC_IP();
-                            runtimeError("Cannot access property '" + propName + "' on " + obj.typeName());
+                            throwException("TypeError",
+                                "cannot read property '" + propName + "' of " +
+                                (obj.isNil() ? std::string("nil") : "a " + obj.typeName() + " value") +
+                                (obj.isNil() ? "\n  Hint: the value is nil -- check what produced it, not this line."
+                                             : ""));
                             RAISE_FAULT();
                         }
 
@@ -1123,7 +1226,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (a.isInteger() && b.isInteger()) {
                             long long al = a.asInteger();
                             long long bl = b.asInteger();
-                            if (bl == 0) { SYNC_IP(); runtimeError("Division by zero"); RAISE_FAULT(); }
+                            if (bl == 0) { SYNC_IP(); throwException("ZeroDivisionError", "division by zero"); RAISE_FAULT(); }
                             
                             if (al % bl == 0) {
                                 long long res = al / bl;
@@ -1138,7 +1241,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                         } else if (a.isNumber() && b.isNumber()) {
                             double db = b.asNumber();
-                            if (db == 0) { SYNC_IP(); runtimeError("Division by zero"); RAISE_FAULT(); }
+                            if (db == 0) { SYNC_IP(); throwException("ZeroDivisionError", "division by zero"); RAISE_FAULT(); }
                             double res = a.asNumber() / db;
                             stackTop -= 2;
                             *stackTop = Value(res);
@@ -1171,7 +1274,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const Value& a = stackTop[-2];
                         if (a.isInteger() && b.isInteger()) {
                             long long bl = b.asInteger();
-                            if (bl == 0) { SYNC_IP(); runtimeError("Modulo by zero"); RAISE_FAULT(); }
+                            if (bl == 0) { SYNC_IP(); throwException("ZeroDivisionError", "modulo by zero"); RAISE_FAULT(); }
                             long long res = a.asInteger() % bl;
                             stackTop -= 2;
                             *stackTop = Value(res);
@@ -1508,7 +1611,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     // dispatchCall inserts `self` automatically.
                                     Value bound = Value(std::make_shared<EZBoundMethod>(callee, callMethod));
                                     *(stackTop - argCount - 1) = bound;
-                                    if (dispatchCall(bound, argCount)) {
+                                    if (dispatchCall(bound, argCount, false, ip)) {
                                         LOAD_FRAME();
                                     } else {
                                         REFRESH_FRAME();
@@ -1519,7 +1622,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
 
                             if (!handled) {
-                                if (dispatchCall(callee, argCount)) {
+                                if (dispatchCall(callee, argCount, false, ip)) {
                                     LOAD_FRAME();
                                 } else {
                                     REFRESH_FRAME();
@@ -1631,7 +1734,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (!handled) {
                             SYNC_IP();
                             this->stackTop = stackTop;
-                            if (dispatchCall(callee, totalArity)) {
+                            if (dispatchCall(callee, totalArity, false, ip)) {
                                 LOAD_FRAME();
                             } else {
                                 REFRESH_FRAME();
@@ -1707,7 +1810,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                         SYNC_IP();
                         this->stackTop = stackTop;
-                        if (dispatchCall(callee, argCount)) {
+                        if (dispatchCall(callee, argCount, false, ip)) {
                             LOAD_FRAME();
                         } else {
                             REFRESH_FRAME();
@@ -1889,7 +1992,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         // Dispatch the call normally
                         SYNC_IP();
-                        if (dispatchCall(callee, argc)) {
+                        if (dispatchCall(callee, argc, false, ip)) {
                             LOAD_FRAME();
                         } else {
                             REFRESH_FRAME();
@@ -1962,7 +2065,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
                         if (m.isNil()) {
                             SYNC_IP();
-                            runtimeError("Method '" + method + "' not found in superclass");
+                            throwException("AttributeError",
+                                "the parent model has no method '" + method + "'");
                             this->stackTop = stackTop;
                             return;
                         }
@@ -1999,7 +2103,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = Value::makeArray({Value::makeArray(ks), Value(0LL)});
                         } else {
                             SYNC_IP();
-                            runtimeError("Not iterable: " + v.typeName());
+                            throwException("TypeError",
+                                "a " + v.typeName() + " value cannot be looped over"
+                                "\n  Hint: `get x in y` needs an array, dictionary, string or range.");
                             RAISE_FAULT();
                         }
                     }
@@ -2019,7 +2125,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             *stackTop++ = Value::makeArray({Value::makeArray(items), Value(0LL)});
                         } else {
                             SYNC_IP();
-                            runtimeError("Not a dictionary: " + v.typeName());
+                            throwException("TypeError",
+                                "expected a dictionary, got a " + v.typeName() + " value");
                             RAISE_FAULT();
                         }
                     }
@@ -2657,7 +2764,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
 // Call Dispatch Helper
 // ============================================================================
 
-bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck) {
+bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck,
+                              const uint8_t* callSiteIp) {
     if (callee.isNativeFunction()) {
         // Collect args from stack (they sit above the callee)
         Value* oldTop = stackTop;
@@ -2784,12 +2892,41 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
             size_t reportedArgCount = bcFunc->isMethod && argCount > 0 ? argCount - 1 : argCount;
             size_t reportedArity = bcFunc->isMethod && bcFunc->arity > 0 ? bcFunc->arity - 1 : bcFunc->arity;
             
+            // The parameter list is the answer to "what should I have passed",
+            // so print it rather than only a count. A signature makes the fix
+            // obvious; "expected at least 2 args but got 1" does not say which
+            // one is missing.
+            auto signature = [&]() {
+                std::string out = bcFunc->name + "(";
+                size_t start = bcFunc->isMethod ? 1 : 0;   // self is not the caller's to pass
+                // Unsigned: a defaultParamCount above arity would wrap to a huge
+                // number and mark nothing optional, so clamp rather than subtract.
+                size_t firstOptional = bcFunc->defaultParamCount >= bcFunc->arity
+                                     ? 0 : bcFunc->arity - bcFunc->defaultParamCount;
+                for (size_t i = start; i < bcFunc->paramNames.size(); ++i) {
+                    if (i > start) out += ", ";
+                    out += bcFunc->paramNames[i];
+                    if (i >= firstOptional) out += " = ...";
+                }
+                return out + ")";
+            };
+
             if (argCount < minArity) {
-                runtimeError("'" + bcFunc->name + "' expected at least " + std::to_string(reportedMinArity) + " args but got " + std::to_string(reportedArgCount));
+                std::string message = "'" + bcFunc->name + "' needs " +
+                    std::to_string(reportedMinArity) +
+                    (reportedMinArity == 1 ? " argument" : " arguments") + ", got " +
+                    std::to_string(reportedArgCount);
+                if (!bcFunc->paramNames.empty()) message += "\n  Signature: " + signature();
+                throwException("TypeError", message);
                 return false;
             }
             if (argCount > bcFunc->arity) {
-                runtimeError("'" + bcFunc->name + "' expected at most " + std::to_string(reportedArity) + " args but got " + std::to_string(reportedArgCount));
+                std::string message = "'" + bcFunc->name + "' takes at most " +
+                    std::to_string(reportedArity) +
+                    (reportedArity == 1 ? " argument" : " arguments") + ", got " +
+                    std::to_string(reportedArgCount);
+                if (!bcFunc->paramNames.empty()) message += "\n  Signature: " + signature();
+                throwException("TypeError", message);
                 return false;
             }
         }
@@ -2905,14 +3042,62 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         return true;
     }
 
-    runtimeError("Value is not callable: " + callee.typeName());
+    // Name what was called. The bare form -- "Value is not callable: nil" --
+    // says nothing about WHICH call failed, and on a line with three of them
+    // the reader has to guess. The compiler recorded the source spelling of
+    // every call site, keyed by the offset frame->ip is sitting on right now.
+    std::string what = calleeNameAtCallSite(callSiteIp);
+    std::string detail;
+
+    if (what.empty()) {
+        detail = "cannot call a " + callee.typeName() + " value";
+    } else if (callee.isNil()) {
+        // By far the commonest case, and the type alone is actively
+        // misleading: it reads as "the function returned nil" when what
+        // happened is that the name never held a function.
+        detail = "'" + what + "' is nil, so it cannot be called";
+        if (what.find('.') != std::string::npos) {
+            detail += "\n  Hint: check the spelling, and that the object has that method.";
+        } else {
+            detail += "\n  Hint: '" + what + "' is not defined, or was assigned a"
+                      " non-function value that replaced it.";
+        }
+    } else {
+        detail = "'" + what + "' is a " + callee.typeName() + ", not a function";
+    }
+    throwException("TypeError", detail);
     return false;
+}
+
+// The source spelling of the call at `callSiteIp`, or "".
+//
+// The pointer is the one the call opcode held just past the instruction, which
+// is exactly the key the compiler recorded.
+std::string BytecodeVM::calleeNameAtCallSite(const uint8_t* callSiteIp) const {
+    if (!callSiteIp || frames.empty()) return "";
+    const CallFrame& frame = frames.back();
+    if (!frame.function || frame.function->callSites.empty()) return "";
+
+    const std::vector<uint8_t>& code = frame.function->chunk.code;
+    if (code.empty()) return "";
+    const uint8_t* base = code.data();
+    // The pointer must belong to THIS frame's code. A mismatch means the call
+    // already pushed a frame before failing, and indexing another function's
+    // table would name something unrelated.
+    if (callSiteIp < base || callSiteIp > base + code.size()) return "";
+
+    uint32_t offset = static_cast<uint32_t>(callSiteIp - base);
+    if (const std::string* name = frame.function->calleeNameAt(offset)) return *name;
+    return "";
 }
 
 void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
     // Enforce maximum call depth to catch unbounded recursion cleanly
     if (frames.size() >= FRAMES_MAX) {
-        runtimeError("Stack overflow: maximum call depth (" + std::to_string(FRAMES_MAX) + ") exceeded");
+        throwException("RecursionError",
+            "maximum call depth of " + std::to_string(FRAMES_MAX) + " exceeded"
+            "\n  Hint: usually a recursive task with no base case, or one whose"
+            "\n  base case is never reached.");
         return;
     }
 
@@ -3066,8 +3251,8 @@ void BytecodeVM::doMultiply() {
 
 void BytecodeVM::doDivide() {
     Value b = pop(), a = pop();
-    if (b.isInteger() && b.asInteger() == 0) { runtimeError("Division by zero"); return; }
-    if (b.isFloat()   && b.asFloat()   == 0) { runtimeError("Division by zero"); return; }
+    if (b.isInteger() && b.asInteger() == 0) { throwException("ZeroDivisionError", "division by zero"); return; }
+    if (b.isFloat()   && b.asFloat()   == 0) { throwException("ZeroDivisionError", "division by zero"); return; }
     if (a.isInteger() && b.isInteger()) {
         long long ai = a.asInteger();
         long long bi = b.asInteger();
@@ -3085,7 +3270,7 @@ void BytecodeVM::doDivide() {
 void BytecodeVM::doModulo() {
     Value b = pop(), a = pop();
     if (a.isInteger() && b.isInteger()) {
-        if (b.asInteger() == 0) { runtimeError("Modulo by zero"); return; }
+        if (b.asInteger() == 0) { throwException("ZeroDivisionError", "modulo by zero"); return; }
         push(Value(a.asInteger() % b.asInteger()));
         return;
     }
@@ -3154,7 +3339,7 @@ void BytecodeVM::doShiftLeft() {
         // A shift count outside [0,63] is undefined behaviour, as is left-shifting
         // a negative value; reject the former and shift as unsigned for the latter.
         long long shift = b.asInteger();
-        if (shift < 0 || shift > 63) { runtimeError("Shift amount must be between 0 and 63"); return; }
+        if (shift < 0 || shift > 63) { throwException("ValueError", "a shift amount must be between 0 and 63"); return; }
         unsigned long long ua = (unsigned long long)a.asInteger();
         push(Value((long long)(ua << shift)));
         return;
@@ -3165,7 +3350,7 @@ void BytecodeVM::doShiftRight() {
     Value b = pop(), a = pop();
     if (a.isNumber() && b.isNumber()) {
         long long shift = b.asInteger();
-        if (shift < 0 || shift > 63) { runtimeError("Shift amount must be between 0 and 63"); return; }
+        if (shift < 0 || shift > 63) { throwException("ValueError", "a shift amount must be between 0 and 63"); return; }
         push(Value(a.asInteger() >> shift));
         return;
     }
@@ -3201,23 +3386,24 @@ void BytecodeVM::doIndexGet() {
     // nil/string/object index logs to stderr and throws bad_variant_access rather
     // than producing a clean, catchable EZ error.
     if ((obj.isArray() || obj.isTuple() || obj.isString() || obj.isBuffer()) && !idx.isNumber()) {
-        runtimeError("Index must be a number, got " + idx.typeName());
+        throwException("TypeError",
+            "an array index must be a number, got a " + idx.typeName() + " value");
         return;
     }
     if (obj.isArray()) {
         auto& arr = obj.asArray();
         long long i = idx.asInteger();
-        if (!checkBounds(i, arr.size(), "Array index out of bounds")) return;
+        if (!checkBounds(i, arr.size(), "array")) return;
         push(arr[i]);
     } else if (obj.isTuple()) {
         auto& tup = obj.asTuple();
         long long i = idx.asInteger();
-        if (!checkBounds(i, tup.size(), "Tuple index out of bounds")) return;
+        if (!checkBounds(i, tup.size(), "tuple")) return;
         push(tup[i]);
     } else if (obj.isString()) {
         const std::string& s = obj.asString();
         long long i = idx.asInteger();
-        if (!checkBounds(i, s.length(), "String index out of bounds")) return;
+        if (!checkBounds(i, s.length(), "string")) return;
         push(Value(std::string(1, s[i])));
     } else if (obj.isDictionary()) {
         // Single locked O(1) lookup. This used to copy the WHOLE map
@@ -3227,10 +3413,12 @@ void BytecodeVM::doIndexGet() {
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
-        if (!checkBounds(i, buf.size(), "Buffer index out of bounds")) return;
+        if (!checkBounds(i, buf.size(), "buffer")) return;
         push(Value((long long)buf[i]));
     } else {
-        runtimeError("Cannot index " + obj.typeName());
+        throwException("TypeError",
+            "a " + obj.typeName() + " value cannot be indexed"
+            "\n  Hint: [] works on arrays, dictionaries, strings and buffers.");
     }
 }
 
@@ -3239,7 +3427,8 @@ void BytecodeVM::doIndexSet() {
     Value idx = pop();
     Value obj = pop();
     if ((obj.isArray() || obj.isBuffer()) && !idx.isNumber()) {
-        runtimeError("Index must be a number, got " + idx.typeName());
+        throwException("TypeError",
+            "an array index must be a number, got a " + idx.typeName() + " value");
         return;
     }
     if (obj.isArray()) {
@@ -3257,7 +3446,7 @@ void BytecodeVM::doIndexSet() {
     } else if (obj.isBuffer()) {
         auto& buf = obj.asBuffer();
         long long i = idx.asInteger();
-        if (!checkBounds(i, buf.size(), "Buffer index out of bounds")) return;
+        if (!checkBounds(i, buf.size(), "buffer")) return;
         if (!val.isNumber()) { runtimeError("Buffer value must be a number, got " + val.typeName()); return; }
         buf[i] = (uint8_t)val.asInteger();
     } else {

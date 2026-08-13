@@ -142,6 +142,18 @@ private:
     void compileUnary(const UnaryExpr& expr);
     void compileCall(const CallExpr& expr);
     void compileIndex(const IndexExpr& expr);
+
+    // How the source spelled a callee, and the table the VM reads it from when
+    // a call fails. Without this the runtime can only report the value's type,
+    // and "nil is not callable" on a line with three calls names none of them.
+    std::string calleeDisplayName(const ExprPtr& callee);
+    void recordCallSite(const std::string& name);
+
+    // The ModuleNotFoundError text: what was asked for, everywhere the compiler
+    // looked, and the nearest installed names.
+    std::string moduleNotFound(const std::string& path,
+                               const std::vector<std::string>& searched,
+                               const std::string& directoryHit);
     void compileArray(const ArrayExpr& expr);
     void compileAssign(const AssignExpr& expr);
     void compileDestructureAssign(const DestructureAssignExpr& expr);

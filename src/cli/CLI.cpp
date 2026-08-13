@@ -116,7 +116,10 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
-        std::cerr << " Error: " << result.error << std::endl;
+        // The compiler formats its own report -- kind, location, source line,
+        // detail. Prefixing it with " Error: " here would put a second, less
+        // specific label in front of a message that already names its kind.
+        std::cerr << "\n" << result.error << std::endl;
         exit(65);
     }
 
@@ -240,7 +243,10 @@ void compileFileToEzc(const std::string& path) {
     compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
-        std::cerr << " Error: " << result.error << std::endl;
+        // The compiler formats its own report -- kind, location, source line,
+        // detail. Prefixing it with " Error: " here would put a second, less
+        // specific label in front of a message that already names its kind.
+        std::cerr << "\n" << result.error << std::endl;
         exit(65);
     }
     
@@ -296,7 +302,10 @@ void dumpFileToEzasm(const std::string& path) {
     compiler.disableContracts = g_disableContracts;
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
-        std::cerr << " Error: " << result.error << std::endl;
+        // The compiler formats its own report -- kind, location, source line,
+        // detail. Prefixing it with " Error: " here would put a second, less
+        // specific label in front of a message that already names its kind.
+        std::cerr << "\n" << result.error << std::endl;
         exit(65);
     }
     

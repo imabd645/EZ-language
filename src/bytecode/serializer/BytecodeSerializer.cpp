@@ -44,7 +44,10 @@ void BytecodeSerializer::serialize(const std::shared_ptr<BytecodeFunction>& func
     // Magic header
     // EZC2: the CLOSURE upvalue descriptor grew from 2 bytes to 3 (the capture
     // index is now 16-bit), so an EZC1 file cannot be decoded by this VM.
-    out.write("EZC2", 4);
+    // EZC3: each function now carries its call-site name table, so a bundled
+    // program reports "'save' is nil" like a script does instead of falling
+    // back to the bare type.
+    out.write("EZC3", 4);
     
     // Global slot names
     uint32_t slotCount = globalSlotNames.size();
@@ -59,13 +62,21 @@ void BytecodeSerializer::serialize(const std::shared_ptr<BytecodeFunction>& func
 std::shared_ptr<BytecodeFunction> BytecodeSerializer::deserialize(std::istream& in, std::vector<std::string>& outGlobalSlotNames) {
     char magic[4];
     in.read(magic, 4);
-    if (in.gcount() == 4 && std::string(magic, 4) == "EZC1") {
-        throw std::runtime_error(
-            "This .ezc was produced by an older interpreter (format EZC1) and "
-            "cannot be run by this one. Recompile it from the .ez source.");
+    if (in.gcount() != 4) {
+        throw std::runtime_error("Invalid EZC file format: the file is too short to be bytecode");
     }
-    if (in.gcount() != 4 || std::string(magic, 4) != "EZC2") {
-        throw std::runtime_error("Invalid EZC file format");
+    std::string tag(magic, 4);
+    // Naming the version the file actually carries turns "invalid format" into
+    // an instruction: an old bundle needs recompiling, anything else is not a
+    // .ezc at all.
+    if (tag == "EZC1" || tag == "EZC2") {
+        throw std::runtime_error(
+            "This .ezc was produced by an older interpreter (format " + tag +
+            "; this one reads EZC3) and cannot be run by it. "
+            "Recompile it from the .ez source.");
+    }
+    if (tag != "EZC3") {
+        throw std::runtime_error("Invalid EZC file format: expected an EZC3 header");
     }
     
     uint32_t slotCount = readCount(in, "global slot count");
@@ -226,6 +237,22 @@ void BytecodeSerializer::writeFunction(const std::shared_ptr<BytecodeFunction>& 
         out.write(reinterpret_cast<const char*>(&epc), sizeof(epc));
     }
     
+    // Parameter names. Not needed to execute, but the arity error prints the
+    // signature, and without these a bundled program says "needs 2 arguments"
+    // where a script says "needs 2 arguments -- Signature: connect(host, port)".
+    uint32_t paramCount = func->paramNames.size();
+    out.write(reinterpret_cast<const char*>(&paramCount), sizeof(paramCount));
+    for (const auto& param : func->paramNames) writeString(param, out);
+
+    // Call-site names, for error messages. Written after the chunk because it
+    // indexes into the chunk's code offsets.
+    uint32_t callSiteCount = func->callSites.size();
+    out.write(reinterpret_cast<const char*>(&callSiteCount), sizeof(callSiteCount));
+    for (const auto& cs : func->callSites) {
+        out.write(reinterpret_cast<const char*>(&cs.offset), sizeof(cs.offset));
+        writeString(cs.name, out);
+    }
+
     writeChunk(func->chunk, out);
     
     uint32_t nestCount = func->nestedFunctions.size();
@@ -269,6 +296,19 @@ std::shared_ptr<BytecodeFunction> BytecodeSerializer::readFunction(std::istream&
         lv.startPC = readPod<uint32_t>(in, "local startPC");
         lv.endPC   = readPod<uint32_t>(in, "local endPC");
         func->localVars.push_back(lv);
+    }
+
+    uint32_t paramCount = readCount(in, "parameter-name count");
+    func->paramNames.reserve(paramCount);
+    for (uint32_t i = 0; i < paramCount; ++i) func->paramNames.push_back(readString(in));
+
+    uint32_t callSiteCount = readCount(in, "call-site table size");
+    func->callSites.reserve(callSiteCount);
+    for (uint32_t i = 0; i < callSiteCount; ++i) {
+        CallSiteInfo cs;
+        cs.offset = readPod<uint32_t>(in, "call-site offset");
+        cs.name   = readString(in);
+        func->callSites.push_back(std::move(cs));
     }
 
     readChunk(func->chunk, in);

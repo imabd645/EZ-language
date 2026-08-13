@@ -117,6 +117,28 @@ void registerGCBuiltins(RuntimeContext& interp) {
     makeErrorClass("SyntaxError", exceptionClass);
     makeErrorClass("RegexError", exceptionClass);
 
+    // The faults the VM itself raises. Each was previously an untyped string,
+    // so `catch (e)` saw only a message and no program could tell an index
+    // mistake from a missing method -- the two need entirely different fixes.
+    //
+    // ArithmeticError is the parent of the numeric faults so that a caller
+    // guarding a calculation can catch the family in one clause rather than
+    // listing every member.
+    auto arithmeticClass = makeErrorClass("ArithmeticError", exceptionClass);
+    makeErrorClass("ZeroDivisionError", arithmeticClass);
+    makeErrorClass("OverflowError", arithmeticClass);
+
+    makeErrorClass("AttributeError", exceptionClass);
+    makeErrorClass("NameError", exceptionClass);
+    makeErrorClass("RecursionError", exceptionClass);
+    makeErrorClass("NotImplementedError", exceptionClass);
+    makeErrorClass("TimeoutError", exceptionClass);
+    makeErrorClass("AssertionError", exceptionClass);
+    // Raised by the compiler, not the VM -- a `use` is resolved before the
+    // program runs, so this cannot be caught. It is defined anyway so the name
+    // resolves and `throw ModuleNotFoundError(...)` from EZ code works.
+    makeErrorClass("ModuleNotFoundError", exceptionClass);
+
     interp.defineGlobal("clock", Value::makeNativeFunction("clock", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             auto now = std::chrono::system_clock::now();

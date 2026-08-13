@@ -280,6 +280,43 @@ void BytecodeCompiler::compileAwait(const AwaitExpr& expr) {
     emitOp(OpCode::OP_AWAIT);
 }
 
+// How the source spelled the thing being called, for error messages.
+//
+// Returns "" for a callee with no name to report -- an immediately-invoked
+// lambda, an element of an array of handlers. Those are rare, and inventing a
+// name for them would be worse than saying nothing.
+std::string BytecodeCompiler::calleeDisplayName(const ExprPtr& callee) {
+    if (!callee) return "";
+
+    if (auto* id = std::get_if<IdentifierExpr*>(&callee->variant))
+        return (*id)->name;
+
+    if (auto* prop = std::get_if<PropertyAccessExpr*>(&callee->variant)) {
+        std::string owner = calleeDisplayName((*prop)->object);
+        if (owner.empty()) return (*prop)->property;
+        return owner + "." + (*prop)->property;
+    }
+
+    if (std::get_if<SelfExpr*>(&callee->variant)) return "self";
+    if (std::get_if<SuperExpr*>(&callee->variant)) return "super";
+
+    // An index into a table of functions -- handlers["save"](x). The container
+    // is worth naming even though the element is not.
+    if (auto* idx = std::get_if<IndexExpr*>(&callee->variant)) {
+        std::string owner = calleeDisplayName((*idx)->object);
+        if (!owner.empty()) return owner + "[...]";
+    }
+    return "";
+}
+
+// Record what was called, keyed by the offset just past the call instruction,
+// which is what frame->ip holds when a call fails.
+void BytecodeCompiler::recordCallSite(const std::string& name) {
+    if (name.empty()) return;
+    current->function->callSites.push_back(
+        CallSiteInfo{ static_cast<uint32_t>(currentChunk().code.size()), name });
+}
+
 void BytecodeCompiler::compileCall(const CallExpr& expr) {
     // ---- Intercept old(expr) in ensures clauses ----
     // old(expr) is not a real function — it refers to the value captured at function entry.
@@ -344,6 +381,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
         // Emit CALL_KW with positional argument count
         emitBytes(static_cast<uint8_t>(OpCode::CALL_KW),
                   static_cast<uint8_t>(posCount));
+        recordCallSite(calleeDisplayName(expr.callee));
     } else if (!hasSpread) {
         // Fast path for normal calls
         if (expr.arguments.size() > 255) {
@@ -353,6 +391,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
         for (const auto& arg : expr.arguments) compileExpr(arg);
         emitBytes(static_cast<uint8_t>(OpCode::CALL),
                   static_cast<uint8_t>(expr.arguments.size()));
+        recordCallSite(calleeDisplayName(expr.callee));
     } else {
         // Slow path for spread calls: pack all arguments into a single array
         emitBytes(static_cast<uint8_t>(OpCode::MAKE_ARRAY), 0);
@@ -367,6 +406,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
             }
         }
         emitOp(OpCode::CALL_SPREAD);
+        recordCallSite(calleeDisplayName(expr.callee));
     }
 }
 

@@ -209,7 +209,21 @@ private:
 
     // ── Core ──────────────────────────────────────────────────────────────────
     void run(size_t targetFrameCount = 0);
-    bool dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck = false);
+    // `callSiteIp` is the instruction pointer just past the call instruction,
+    // and is supplied ONLY by the bytecode call opcodes. It is how a failed
+    // call names itself.
+    //
+    // The internal callers -- operator overloads, getattr hooks, native code
+    // calling back through callFunction -- pass nothing, deliberately. Their
+    // caller's ip belongs to a different call: a builtin like map(arr, fn)
+    // reaching here with a nil `fn` would otherwise report "'map' is nil",
+    // naming the one function on that line which is fine.
+    bool dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck = false,
+                      const uint8_t* callSiteIp = nullptr);
+
+    // The source spelling of the call at `callSiteIp` ("readFile", "user.save"),
+    // or "" when there is none to report.
+    std::string calleeNameAtCallSite(const uint8_t* callSiteIp) const;
     void pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs);
 
     // ── Stack ─────────────────────────────────────────────────────────────────
@@ -281,12 +295,28 @@ private:
     // ── Utility ──────────────────────────────────────────────────────────────
     void               initBuiltins();
     BytecodeFunctionPtr compileEZFunction(EZFunction* func);
-    inline bool checkBounds(long long index, size_t size, const char* errorMsg) {
-        if (index < 0 || index >= (long long)size) {
-            runtimeError(errorMsg);
-            return false;
+    // `what` names the container kind ("array", "string", …) and appears in the
+    // message, which reports the index AND the length. "Array index out of
+    // bounds" on its own leaves the reader to go and find out how long the
+    // array actually was, and off-by-one is the usual cause -- seeing "index 5,
+    // length 5" answers it on the spot.
+    inline bool checkBounds(long long index, size_t size, const char* what) {
+        if (index >= 0 && index < (long long)size) return true;
+
+        std::string message = std::string(what) + " index " + std::to_string(index) +
+                              " is out of range";
+        if (size == 0) {
+            message += ": it is empty";
+        } else {
+            message += ": valid indices are 0 to " + std::to_string(size - 1) +
+                       " (length " + std::to_string(size) + ")";
         }
-        return true;
+        if (index < 0) {
+            message += "\n  Hint: EZ has no negative indexing -- use "
+                       "x[len(x) - 1] for the last element.";
+        }
+        throwException("IndexError", message);
+        return false;
     }
 
     // Returns true if at least `extra` more Value slots can be pushed onto the

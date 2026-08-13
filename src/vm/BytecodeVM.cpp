@@ -271,7 +271,21 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
             errorType = pendingException.asInstance()->klass->name;
         }
 
-        std::cerr << "\n" << RED << errorType << RESET << ": " << BOLD << message << RESET << "\n";
+        // A message may carry extra lines -- a hint, a signature, a list of
+        // near-miss names. Those belong AFTER the source line rather than
+        // wedged between the headline and the location, so the report reads
+        // what -> where -> the offending code -> what to do about it.
+        std::string headline = message;
+        std::string detail;
+        {
+            size_t breakAt = message.find('\n');
+            if (breakAt != std::string::npos) {
+                headline = message.substr(0, breakAt);
+                detail   = message.substr(breakAt + 1);
+            }
+        }
+
+        std::cerr << "\n" << RED << errorType << RESET << ": " << BOLD << headline << RESET << "\n";
 
         // Ã¢â€â‚¬Ã¢â€â‚¬ Location line Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if (!faultFile.empty() || faultLine > 0) {
@@ -293,6 +307,10 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
                           << srcLine->substr(indent) << "\n";
                 std::cerr << "      " << RED << "^^^" << RESET << "\n";
             }
+        }
+
+        if (!detail.empty()) {
+            std::cerr << YELLOW << detail << RESET << "\n";
         }
 
         // Ã¢â€â‚¬Ã¢â€â‚¬ Stack trace Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬

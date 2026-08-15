@@ -46,6 +46,11 @@
 #include <setjmp.h>
 #include <conio.h>
 #include <shellapi.h>
+#else
+// POSIX: dynamic library loading and crash-guarded FFI
+#include <dlfcn.h>
+#include <signal.h>
+#include <setjmp.h>
 #endif
 
 // EZFuture is Windows-native and must come after windows.h.
@@ -72,12 +77,19 @@ size_t ffiClampToBlock(uintptr_t addr, size_t requested);
 // ── Crash guard ─────────────────────────────────────────────────────────────
 // A bad native call or pointer dereference must surface as a catchable EZ error
 // rather than killing the process. MSVC uses __try/__except directly; MinGW has
-// no SEH, so a vectored handler longjmps back out.
+// no SEH, so a vectored handler longjmps back out. POSIX uses sigaction for
+// SIGSEGV/SIGBUS with sigsetjmp/siglongjmp.
 #ifdef _WIN32
 #ifndef _MSC_VER
 extern thread_local jmp_buf os_call_jmp_env;  // thread_local: safe under concurrent spawn()
 LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo);
 #endif
+#else
+// POSIX crash guard state -- thread_local so concurrent spawn() FFI calls
+// each have their own recovery point.
+extern thread_local sigjmp_buf posix_ffi_jmp_env;
+extern thread_local volatile sig_atomic_t posix_ffi_guard_active;
+void posixFfiInstallHandlers();
 #endif
 
 // One-line guard for the read/write builtins. `retExpr` is what to return on a
@@ -110,7 +122,22 @@ LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo);
     } while(0)
 #endif
 #else
-#define SAFE_MEMORY_OP(interp, op) do { op; } while(0)
+// POSIX: use sigsetjmp/siglongjmp to recover from SIGSEGV/SIGBUS inside FFI
+// memory operations. The signal handler checks posix_ffi_guard_active so it
+// only longjmps when we are inside a guarded region; stray signals outside
+// FFI code re-raise with the default handler.
+#define SAFE_MEMORY_OP(interp, op) \
+    do { \
+        bool __crashed = false; \
+        posix_ffi_guard_active = 1; \
+        if (sigsetjmp(posix_ffi_jmp_env, 1) == 0) { \
+            op; \
+        } else { \
+            __crashed = true; \
+        } \
+        posix_ffi_guard_active = 0; \
+        if (__crashed) { interp.runtimeError("FFI memory access violation", 0, ""); return Value(); } \
+    } while(0)
 #endif
 
 // ── Group registrars ────────────────────────────────────────────────────────

@@ -96,4 +96,34 @@ LONG CALLBACK FfiVectoredHandler(PEXCEPTION_POINTERS ExceptionInfo) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif
+#else
+// ── POSIX crash guard ───────────────────────────────────────────────────────
+// Uses sigaction(SIGSEGV/SIGBUS) + sigsetjmp/siglongjmp to recover from bad
+// pointer dereferences inside FFI memory operations. The guard is only active
+// when posix_ffi_guard_active is set, so normal program crashes still produce
+// the expected core dump / signal termination.
+thread_local sigjmp_buf posix_ffi_jmp_env;
+thread_local volatile sig_atomic_t posix_ffi_guard_active = 0;
+
+static void posixFfiSignalHandler(int sig) {
+    if (posix_ffi_guard_active) {
+        posix_ffi_guard_active = 0;
+        siglongjmp(posix_ffi_jmp_env, 1);
+    }
+    // Not inside a guarded region — re-raise with the default handler so the
+    // process terminates normally (core dump, debugger attachment, etc.).
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+void posixFfiInstallHandlers() {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = posixFfiSignalHandler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGSEGV, &sa, nullptr);
+    sigaction(SIGBUS,  &sa, nullptr);
+}
 #endif
+

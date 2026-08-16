@@ -7,10 +7,13 @@
 // pass a real float or double; os_call_sig takes per-argument types and can.
 // os_call_sig_arr is the same with the arguments as an array, lifting the
 // fixed argument-count ceiling.
+//
+// Cross-platform: the helper functions (type mapping, marshalling, return
+// reading) use only libffi types and are fully portable. Only library loading
+// (LoadLibrary vs dlopen) and the crash guard inside ffi_call_helper have
+// platform-specific branches.
 // ============================================================================
 
-#ifdef _WIN32
-#ifndef _MSC_VER
 // Map an EZ FFI type name to the libffi type used for a RETURN value.
 //
 // Getting this right is what lets libffi widen a sub-register return correctly.
@@ -80,33 +83,44 @@ static intptr_t ffiMarshalIntArg(const Value& v, std::string& tempStr) {
     return 0;
 }
 
+// ── Cross-platform crash-guarded FFI call ───────────────────────────────────
+// Wraps ffi_call with a platform-specific crash guard so that an access
+// violation or segfault inside the native function surfaces as a catchable
+// EZ runtime error rather than killing the interpreter process.
 static bool ffi_call_helper(void* funcPtr, size_t argc, ffi_type** argTypes, void** argValues, ffi_type* retType, void* retBuffer, RuntimeContext& interp) {
     ffi_cif cif;
     if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, (unsigned int)argc, retType, argTypes) == FFI_OK) {
         bool crashed = false;
-        PVOID vehHandler = nullptr;
-#ifndef _MSC_VER
-        vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
-#endif
 
+#ifdef _WIN32
 #ifdef _MSC_VER
         __try {
-#else
-        if (setjmp(os_call_jmp_env) == 0) {
-#endif
             ffi_call(&cif, reinterpret_cast<void(*)()>(funcPtr), retBuffer, argValues);
-#ifdef _MSC_VER
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             crashed = true;
         }
 #else
+        PVOID vehHandler = AddVectoredExceptionHandler(1, FfiVectoredHandler);
+        if (setjmp(os_call_jmp_env) == 0) {
+            ffi_call(&cif, reinterpret_cast<void(*)()>(funcPtr), retBuffer, argValues);
         } else {
             crashed = true;
         }
         RemoveVectoredExceptionHandler(vehHandler);
 #endif
+#else
+        // POSIX: use sigsetjmp/siglongjmp via the same guard as SAFE_MEMORY_OP.
+        posix_ffi_guard_active = 1;
+        if (sigsetjmp(posix_ffi_jmp_env, 1) == 0) {
+            ffi_call(&cif, reinterpret_cast<void(*)()>(funcPtr), retBuffer, argValues);
+        } else {
+            crashed = true;
+        }
+        posix_ffi_guard_active = 0;
+#endif
+
         if (crashed) {
-            interp.runtimeError("os_call: Access violation or fatal memory fault inside external DLL.", 0, "");
+            interp.runtimeError("os_call: Access violation or fatal memory fault inside native library.", 0, "");
             return false;
         }
         return true;
@@ -114,38 +128,47 @@ static bool ffi_call_helper(void* funcPtr, size_t argc, ffi_type** argTypes, voi
     interp.runtimeError("os_call: Failed to prepare FFI CIF", 0, "");
     return false;
 }
-#endif
-#endif
 
 void registerFFICall(RuntimeContext& interp) {
+    // ── os_load_lib ─────────────────────────────────────────────────────────
+    // Load a shared library by name. Returns the handle as an integer.
+    // Windows: LoadLibraryA  |  POSIX: dlopen
     interp.defineGlobal("os_load_lib", Value::makeNativeFunction("os_load_lib", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
             if (!args[0].isString()) return Value();
+#ifdef _WIN32
             HMODULE handle = LoadLibraryA(args[0].asString().c_str());
             return Value((long long)(reinterpret_cast<uintptr_t>(handle)));
 #else
-            return Value();
+            void* handle = dlopen(args[0].asString().c_str(), RTLD_LAZY);
+            return Value((long long)(reinterpret_cast<uintptr_t>(handle)));
 #endif
         }));
 
 
+    // ── os_get_func ─────────────────────────────────────────────────────────
+    // Look up a function symbol in a loaded library. Returns the pointer as an integer.
+    // Windows: GetProcAddress  |  POSIX: dlsym
     interp.defineGlobal("os_get_func", Value::makeNativeFunction("os_get_func", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isString()) return Value();
+#ifdef _WIN32
             HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asNumber());
             FARPROC proc = GetProcAddress(handle, args[1].asString().c_str());
             return Value((long long)(reinterpret_cast<uintptr_t>(proc)));
 #else
-            return Value();
+            void* handle = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+            void* proc = dlsym(handle, args[1].asString().c_str());
+            return Value((long long)(reinterpret_cast<uintptr_t>(proc)));
 #endif
         }));
 
 
+    // ── os_call ─────────────────────────────────────────────────────────────
+    // Call a native function pointer. All arguments are passed as integer/pointer
+    // register slots (no floating-point); use os_call_sig for float parameters.
     interp.defineGlobal("os_call", Value::makeNativeFunction("os_call", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
             if (args.size() < 2 || !args[0].isNumber() || !args[1].isString()) return Value();
             void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
             if (!funcPtr) {
@@ -177,15 +200,14 @@ void registerFFICall(RuntimeContext& interp) {
                 return Value();
             }
             return ffiReadReturn(retType, retBuffer);
-#else
-            return Value();
-#endif
         }));
 
 
+    // ── os_call_sig ─────────────────────────────────────────────────────────
+    // Call a native function with per-argument type specification, allowing
+    // proper floating-point register passing.
     interp.defineGlobal("os_call_sig", Value::makeNativeFunction("os_call_sig", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
             if (args.size() < 3 || !args[0].isNumber() || !args[1].isString() || !args[2].isArray()) return Value();
             void* funcPtr = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
             if (!funcPtr) {
@@ -231,15 +253,14 @@ void registerFFICall(RuntimeContext& interp) {
                 return Value();
             }
             return ffiReadReturn(retType, retBuffer);
-#else
-            return Value();
-#endif
         }));
 
 
+    // ── os_call_sig_arr ─────────────────────────────────────────────────────
+    // Same as os_call_sig but with arguments passed as an array, lifting the
+    // fixed argument-count ceiling.
     interp.defineGlobal("os_call_sig_arr", Value::makeNativeFunction("os_call_sig_arr", 4,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-#ifdef _WIN32
             if (!args[0].isNumber() || !args[1].isString() || !args[2].isArray() || !args[3].isArray()) {
                 interp.runtimeError("os_call_sig_arr expects (ptr, retType, sigArray, argsArray)", 0, "");
                 return Value();
@@ -279,8 +300,5 @@ void registerFFICall(RuntimeContext& interp) {
             if (!ffi_call_helper(funcPtr, argc, argTypes.data(), argValues.data(), rType, &retBuffer, interp))
                 return Value();
             return ffiReadReturn(retType, retBuffer);
-#else
-            return Value();
-#endif
         }));
 }

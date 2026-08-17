@@ -28,7 +28,7 @@ See [BUILD.md](BUILD.md) for detailed build instructions.
 
 **Quick start:**
 ```bash
-git clone <repository-url>
+git clone https://github.com/imabd645/EZ-language.git
 cd EZ-language
 build.bat
 ```
@@ -48,7 +48,22 @@ ez.exe Test/test.ez
 5. **Update documentation** if needed
 6. **Commit** with clear messages
 7. **Push** to your fork
-8. **Create a pull request**
+8. **Create a pull request** using the provided [PR template](.github/PULL_REQUEST_TEMPLATE.md)
+
+All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+If you're filing a bug or requesting a feature, please use the
+[issue templates](.github/ISSUE_TEMPLATE/) — they help make sure reports include
+the details needed to act on them (affected component, repro steps, environment).
+
+**Security vulnerabilities are the one exception to "open an issue/PR":** do not
+file those publicly. See [SECURITY.md](SECURITY.md) for how to report them
+privately.
+
+If you're proposing a larger feature or architectural change, check
+[ROADMAP.md](ROADMAP.md) first — it lists what's planned, in progress, or
+already explored and deliberately deferred (e.g. JIT compilation), so you don't
+duplicate effort on something already ruled out.
 
 ## Code Style Guidelines
 
@@ -283,6 +298,7 @@ interp.defineGlobal("MyClass", Value(myClass));
 - Changing architecture → Update `ARCHITECTURE.md`
 - Changing build process → Update `BUILD.md`
 - Changing conventions → Update `AGENTS.md`
+- Any user-facing change → Add an entry under `[Unreleased]` in `CHANGELOG.md`
 
 ### BUILTINS.md Guidelines
 
@@ -357,9 +373,12 @@ Reverses a string using std::reverse.
 1. **Update documentation** if needed
 2. **Add tests** for new functionality
 3. **Run full test suite** to ensure no regressions
-4. **Update CHANGELOG.md** (if exists)
-5. **Create PR** with clear description
+4. **Update `CHANGELOG.md`** under the `[Unreleased]` section
+5. **Create PR** using the [PR template](.github/PULL_REQUEST_TEMPLATE.md), with a clear description
 6. **Reference related issues**
+
+Note: as the sole maintainer is listed in [CODEOWNERS](.github/CODEOWNERS), you'll
+automatically get a review request on your PR — no need to ping separately.
 
 ### Code Review
 
@@ -400,6 +419,10 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 ```
 
 **This prevents access violations from crashing the interpreter.**
+
+If you believe you've found an FFI bug with actual security impact (memory
+corruption, exploitable crash, etc.) rather than an ordinary bug, please follow
+[SECURITY.md](SECURITY.md) instead of filing a public issue or PR.
 
 ### Threading Safety
 
@@ -444,6 +467,9 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 - Better error messages
 - More comprehensive test coverage
 
+See [ROADMAP.md](ROADMAP.md) for more detail on which of these are actively
+planned versus explored-and-deferred.
+
 ## Getting Help
 
 ### Resources
@@ -452,9 +478,12 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 - [AGENTS.md](AGENTS.md) - AI agent guidelines
 - [BUILTINS.md](BUILTINS.md) - Builtin function catalog
 - [BUILD.md](BUILD.md) - Build instructions
+- [ROADMAP.md](ROADMAP.md) - Planned, in-progress, and deferred work
+- [SECURITY.md](SECURITY.md) - How to report vulnerabilities
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - Community standards
 - `docs/` directory - Language documentation
 
- Asking Questions
+### Asking Questions
 
 - Check existing documentation first
 - Search for similar issues in the repository
@@ -462,7 +491,9 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 
 ## License
 
-By contributing to this project, you agree that your contributions will be licensed under the same license as the project.
+By contributing to this project, you agree that your contributions will be
+licensed under the [MIT License](LICENSE), the same license that covers the
+rest of the EZ Language project.
 
 ## Thank You
 

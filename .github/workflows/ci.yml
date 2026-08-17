@@ -46,22 +46,29 @@ jobs:
         cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . -j4
 
-    # ez.exe links libstdc++ and libwinpthread dynamically, so it only starts
-    # when MinGW's bin directory is reachable. The test runner below is
-    # PowerShell, which does not inherit the msys2 shell's PATH -- without this
-    # every test dies with 0xC0000135 (STATUS_DLL_NOT_FOUND) and the job reports
-    # "N tests failed" while saying nothing about the real cause.
+    # ez.exe may link libstdc++ / libwinpthread dynamically depending on the
+    # current build configuration. When it does, the binary only starts when
+    # MinGW's bin directory is reachable, and the test runner below is
+    # PowerShell, which does not inherit the msys2 shell's PATH -- without the
+    # DLLs alongside the exe, every test would die with 0xC0000135
+    # (STATUS_DLL_NOT_FOUND) and the job would report "N tests failed" while
+    # saying nothing about the real cause.
     #
-    # Copying the two DLLs next to the binary makes it self-contained, which
-    # also matters for the artifact uploaded at the end.
+    # Copying the resolved DLLs next to the binary makes it self-contained,
+    # which also matters for the artifact uploaded at the end. If the build is
+    # statically linked, ez.exe's import table has no MinGW runtime DLLs to
+    # find, so this step intentionally becomes a no-op rather than failing --
+    # a static build with zero bundled DLLs is a valid, expected outcome, not
+    # a broken one.
     - name: Bundle runtime DLLs
       shell: msys2 {0}
       run: |
         set -e
         # Resolved from the binary rather than hardcoded, and followed
-        # transitively: ez.exe imports only libstdc++-6 and libwinpthread-1, but
-        # libstdc++ itself pulls in libgcc_s_seh-1, and missing that one fails
-        # exactly like missing the others.
+        # transitively: on a dynamically-linked build ez.exe imports
+        # libstdc++-6 and libwinpthread-1, but libstdc++ itself pulls in
+        # libgcc_s_seh-1, and missing that one fails exactly like missing the
+        # others.
         copy_deps() {
           objdump -p "$1" 2>/dev/null \
             | grep "DLL Name:" | sed 's/.*DLL Name: *//' \
@@ -73,7 +80,18 @@ jobs:
               done
         }
         copy_deps build/ez.exe
-        ls -l build/ez.exe build/*.dll
+
+        # nullglob so an empty match expands to nothing instead of the literal
+        # "build/*.dll" -- otherwise `ls` fails on a genuinely static build and
+        # takes the whole job down over a non-problem.
+        shopt -s nullglob
+        dlls=(build/*.dll)
+        if [ ${#dlls[@]} -gt 0 ]; then
+          ls -l build/ez.exe "${dlls[@]}"
+        else
+          echo "ez.exe has no MinGW runtime DLLs to bundle (statically linked build)."
+          ls -l build/ez.exe
+        fi
 
     # Put MinGW's bin on PATH for every later step.
     #
@@ -159,6 +177,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ez-windows-x64
+        # *.dll matches nothing on a statically-linked build; upload-artifact
+        # skips unmatched globs rather than failing, so this is safe either way.
         path: |
           build/ez.exe
           build/*.dll

@@ -274,7 +274,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
     dispatch_start:
     try {
         INTERPRET_LOOP {
-            SYNC_IP();
                 CASE_CODE(LOAD_CONST) {
                     uint16_t idx = READ_SHORT();
                     // Guard against a corrupt/hostile bytecode constant index
@@ -2675,22 +2674,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(END) {
                     running = false;
-#if defined(__GNUC__) && !defined(__clang__)
                     goto end_run;
-#else
-                    break;
-#endif
                 }
             } // closes switch body
 #if !defined(__GNUC__) || defined(__clang__)
             } // closes while loop body from INTERPRET_LOOP
 #endif
 
-#if defined(__GNUC__) && !defined(__clang__)
             end_run:
             SYNC_IP();
             this->stackTop = stackTop;
-#endif
 
     } catch (const RuntimeError& e) {
         if (ownsTryBlock()) {

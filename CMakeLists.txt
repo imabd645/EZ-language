@@ -74,6 +74,16 @@ else()
                     "set -DMSYS2_PREFIX=<path-to>/mingw64 if the build cannot find libffi/libuv/curl.")
 endif()
 
+if(APPLE)
+    if(EXISTS "/opt/homebrew/include")
+        include_directories("/opt/homebrew/include")
+        link_directories("/opt/homebrew/lib")
+    endif()
+    if(EXISTS "/usr/local/include")
+        include_directories("/usr/local/include")
+        link_directories("/usr/local/lib")
+    endif()
+endif()
 # Gather all source files explicitly
 set(SOURCES
     src/main.cpp

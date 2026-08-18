@@ -26,7 +26,19 @@ task check(name, actual, expected) {
 out "=== FFI return types & argument marshalling ==="
 
 lib = os_load_lib("winsqlite3.dll")
-check("winsqlite3.dll loads", lib != 0, true)
+when lib == 0 or type(lib) == "nil" {
+    lib = os_load_lib("libsqlite3.so.0")
+}
+when lib == 0 or type(lib) == "nil" {
+    lib = os_load_lib("libsqlite3.so")
+}
+when lib == 0 or type(lib) == "nil" {
+    lib = os_load_lib("libsqlite3.dylib")
+}
+when lib == 0 or type(lib) == "nil" {
+    lib = os_load_lib("sqlite3.dll")
+}
+check("sqlite3 / winsqlite3 library loads", lib != 0, true)
 
 f_open      = os_get_func(lib, "sqlite3_open_v2")
 f_prepare   = os_get_func(lib, "sqlite3_prepare_v2")

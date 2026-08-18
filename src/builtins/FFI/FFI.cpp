@@ -6,6 +6,13 @@
 // ============================================================================
 
 void registerFFIBuiltins(RuntimeContext& interp) {
+#ifndef _WIN32
+    static bool handlersInstalled = false;
+    if (!handlersInstalled) {
+        posixFfiInstallHandlers();
+        handlersInstalled = true;
+    }
+#endif
     registerFFIMemory(interp);
     registerFFICall(interp);
     registerFFIStruct(interp);

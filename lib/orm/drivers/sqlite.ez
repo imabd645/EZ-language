@@ -13,10 +13,19 @@ export model SQLiteDriver {
             self._lib = os_load_lib("libsqlite3-0.dll")
         }
         when self._lib == 0 or type(self._lib) == "nil" {
-            self._lib = os_load_lib("dlls\\libsqlite3-0.dll")
+            self._lib = os_load_lib("libsqlite3.so.0")
         }
         when self._lib == 0 or type(self._lib) == "nil" {
-            throw DriverError("sqlite3.dll or libsqlite3-0.dll not found. Place it in your project or system PATH.")
+            self._lib = os_load_lib("libsqlite3.so")
+        }
+        when self._lib == 0 or type(self._lib) == "nil" {
+            self._lib = os_load_lib("libsqlite3.dylib")
+        }
+        when self._lib == 0 or type(self._lib) == "nil" {
+            self._lib = os_load_lib("sqlite3")
+        }
+        when self._lib == 0 or type(self._lib) == "nil" {
+            throw DriverError("sqlite3 library not found. Place sqlite3.dll/libsqlite3.so in your project or system PATH.")
         }
 
         # ── Core API ────────────────────────────────────────────────

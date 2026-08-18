@@ -103,6 +103,14 @@ $Excluded = @(
                                                  # nothing
 )
 
+if (-not $IsWindows) {
+    # Exclude tests that explicitly depend on Windows-specific DLLs (Kernel32/User32/MSVCRT)
+    $Excluded += @(
+        'test_os.ez',                   # Uses Windows Kernel32/User32/MSVCRT DLLs directly
+        'test_ffi_callback_throw.ez'    # Uses User32.dll EnumWindows
+    )
+}
+
 # ── Pre-existing failures (tracked, do not break the build) ──────────────────
 # Add an entry here only for a failure that is understood and deliberately
 # deferred; a quarantined test that starts passing is reported as FIXED so this

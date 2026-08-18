@@ -191,7 +191,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
 #define READ_INT()    (ip += 4, (uint32_t)((ip[-4] << 24) | (ip[-3] << 16) | (ip[-2] << 8) | ip[-1]))
 #define READ_CONST()  (frame->function->chunk.getConstant(READ_SHORT()))
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
     static void* dispatchTable[] = {
         &&handle_LOAD_CONST, &&handle_LOAD_LOCAL, &&handle_STORE_LOCAL, &&handle_LOAD_UPVALUE,
         &&handle_STORE_UPVALUE, &&handle_LOAD_GLOBAL, &&handle_STORE_GLOBAL, &&handle_LOAD_PROPERTY,
@@ -2675,18 +2675,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                 CASE_CODE(END) {
                     running = false;
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
                     goto end_run;
 #else
                     break;
 #endif
                 }
             } // closes switch body
-#ifndef __GNUC__
+#if !defined(__GNUC__) || defined(__clang__)
             } // closes while loop body from INTERPRET_LOOP
 #endif
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
             end_run:
             SYNC_IP();
             this->stackTop = stackTop;

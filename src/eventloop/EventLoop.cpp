@@ -84,6 +84,7 @@ void EventLoop::run() {
     } guard{isRunning};
 
     while (!stopRequested) {
+        asyncCallback(&asyncTaskHandle);
         bool hasTasks = false;
         {
             std::lock_guard<std::mutex> lock(queueMutex);

@@ -39,9 +39,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # For a local, non-distributed build:  cmake -DEZ_ARCH=native ..
 set(EZ_ARCH "x86-64-v2" CACHE STRING
     "Target CPU for -march. Use 'native' only for builds you will not distribute.")
-message(STATUS "Building for -march=${EZ_ARCH}")
 
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=${EZ_ARCH} -funroll-loops -fasynchronous-unwind-tables")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|AMD64|amd64)")
+    message(STATUS "Building for -march=${EZ_ARCH}")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=${EZ_ARCH} -funroll-loops -fasynchronous-unwind-tables")
+else()
+    message(STATUS "Building for ${CMAKE_SYSTEM_PROCESSOR} (skipping -march=${EZ_ARCH})")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -funroll-loops -fasynchronous-unwind-tables")
+endif()
 
 # Defines
 add_definitions(-DCURL_STATICLIB)

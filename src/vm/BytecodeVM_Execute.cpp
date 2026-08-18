@@ -2309,7 +2309,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                         
                                         if (!sharedVM->isYielded && sharedVM->taskFuture) {
                                             if (!sharedVM->running && !sharedVM->frames.empty()) {
-                                                std::string errMsg = sharedVM->pendingException.isString() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
+                                                std::string errMsg = !sharedVM->pendingException.isNil() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
                                                 sharedVM->taskFuture->setError(errMsg);
                                             } else {
                                                 Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
@@ -2959,7 +2959,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                         
                         if (!taskVM->isYielded) {
                             if (!taskVM->running && !taskVM->frames.empty()) {
-                                std::string errMsg = taskVM->pendingException.isString() ? taskVM->pendingException.toString() : "Async task failed with an exception";
+                                std::string errMsg = !taskVM->pendingException.isNil() ? taskVM->pendingException.toString() : "Async task failed with an exception";
                                 ezFut->setError(errMsg);
                             } else {
                                 Value result = (taskVM->stackTop > taskVM->stack.data()) ? *(taskVM->stackTop - 1) : Value();

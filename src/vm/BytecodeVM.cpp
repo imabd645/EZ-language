@@ -442,23 +442,27 @@ void BytecodeVM::initBuiltins() {
         auto snap = std::make_shared<EZDictionary>();
         CycleCollector::instance().track(snap, ValueType::DICTIONARY);
         {
-            for (const auto& [k, v] : inst->getPropertiesCopy()) snap->modifyMap([&](auto& m) { m[k] = v; });
+            for (const auto& pair : inst->getPropertiesCopy()) {
+                const auto& k = pair.first;
+                const auto& v = pair.second;
+                snap->modifyMap([&](auto& m) { m[k] = v; });
+            }
         }
         return Value(snap);
     }));
 
-    // rollback(obj, snap) Ã¢â€ â€™ restore properties from snapshot dict
+    // rollback(obj, snap) -> restore properties from snapshot dict
     defineGlobal("rollback", Value::makeNativeFunction("rollback", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isInstance()) { ctx.runtimeError("rollback() expects a model instance"); return Value(); }
         auto inst = args[0].asInstance();
         if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("rollback() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
         if (!args[1].isDictionary()) { ctx.runtimeError("rollback() second argument must be a snapshot dict"); return Value(); }
         auto snap = args[1].asDictionaryPtr();
-        for (const auto& [k, v] : snap->getMapCopy()) inst->setProperty(k, v);
+        for (const auto& pair : snap->getMapCopy()) inst->setProperty(pair.first, pair.second);
         return Value();
     }));
 
-    // snapshot_diff(a, b) Ã¢â€ â€™ dict of changed fields {was, now}
+    // snapshot_diff(a, b) -> dict of changed fields {was, now}
     defineGlobal("snapshot_diff", Value::makeNativeFunction("snapshot_diff", 2, [](RuntimeContext& ctx, std::vector<Value> args) -> Value {
         if (!args[0].isDictionary() || !args[1].isDictionary()) {
             ctx.runtimeError("snapshot_diff() expects two snapshot dicts"); return Value();
@@ -470,7 +474,9 @@ void BytecodeVM::initBuiltins() {
         // Fix 2.4: take both map copies once — previous code called getMapCopy() O(n) times inside the loop
         auto aMap = a->getMapCopy();
         auto bMap = b->getMapCopy();
-        for (const auto& [k, vb] : bMap) {
+        for (const auto& pair : bMap) {
+            const auto& k = pair.first;
+            const auto& vb = pair.second;
             auto it = aMap.find(k);
             Value va = (it != aMap.end()) ? it->second : Value();
             if (va.toString() != vb.toString()) {

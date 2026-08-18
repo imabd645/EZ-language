@@ -251,7 +251,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
     #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \
-        switch (static_cast<OpCode>(instruction)) \
+        switch (static_cast<OpCode>(instruction))
     #define CASE_CODE(name) case OpCode::name:
 #endif
 

@@ -20,8 +20,10 @@
 #include "cli/PackageManager.h"
 #ifdef _WIN32
 #include <windows.h>
-#endif
-#ifndef _WIN32
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <unistd.h>
+#else
 #include <unistd.h>
 #endif
 #include <cstdint>
@@ -179,6 +181,11 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     bool hasPath = false;
 #ifdef _WIN32
     hasPath = GetModuleFileNameA(NULL, exePath, 4096) != 0;
+#elif defined(__APPLE__)
+    uint32_t pathBufSize = 4096;
+    if (_NSGetExecutablePath(exePath, &pathBufSize) == 0) {
+        hasPath = true;
+    }
 #else
     ssize_t count = readlink("/proc/self/exe", exePath, 4096);
     if (count > 0) {
@@ -326,6 +333,13 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
 #endif
     }
     
+#ifndef _WIN32
+    std::error_code permEc;
+    std::filesystem::permissions(outputExe,
+        std::filesystem::perms::owner_all | std::filesystem::perms::group_read | std::filesystem::perms::group_exec | std::filesystem::perms::others_read | std::filesystem::perms::others_exec,
+        std::filesystem::perm_options::add, permEc);
+#endif
+
     std::cout << "\nSuccess! Created standalone executable: " << outputExe << std::endl;
     return true;
 }

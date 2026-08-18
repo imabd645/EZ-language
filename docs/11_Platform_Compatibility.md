@@ -89,7 +89,45 @@ Scripts that make direct FFI calls (`os_load_lib`, `os_bind_sym`) targeting Wind
 
 ---
 
-## 3. Writing Cross-Platform EZ Code
+## 3. Feasibility Analysis: Porting Remaining Features to POSIX
+
+Other than the native Win32 GUI subsystem, all other Windows-specific features can be ported to Linux and macOS with relatively minimal effort:
+
+```
+┌──────────────────────────────────────┬────────────────────────┬──────────────────────────────────────────┐
+│ Feature                              │ Porting Difficulty     │ Cross-Platform Implementation Strategy   │
+├──────────────────────────────────────┼────────────────────────┼──────────────────────────────────────────┤
+│ 1. Console Utilities & Colors        │ 🟢 Trivial (Near 100%) │ Pure ANSI/VT100 & termios (already live) │
+│ 2. Desktop Notifications (notify.ez) │ 🟢 Easy                │ notify-send (Linux) / osascript (macOS)  │
+│ 3. Executable Packager (ez package)  │ 🟡 Moderate            │ Binary append + chmod +x (ELF & Mach-O)  │
+│ 4. System File Associations          │ 🟢 Easy                │ XDG Desktop Entry (Linux) / duti (macOS) │
+│ 5. Native GUI Framework              │ 🔴 Complex             │ Requires Webview / SDL / Skia / Qt / GTK │
+└──────────────────────────────────────┴────────────────────────┴──────────────────────────────────────────┘
+```
+
+### 3.1 Console Utilities (`Builtins_Console.cpp`) — *Near Complete*
+* **Current Status**: `clear`, `color`, `reset`, `gotoxy`, and `getch` already have built-in POSIX/VT100 and `termios` fallback implementations.
+* **Remaining**: Window resizing query using `ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)` and setting terminal titles via ANSI OSC `\033]0;Title\007`.
+
+### 3.2 Desktop Notifications (`lib/notify.ez`) — *Easy*
+* `lib/notify.ez` is written purely in user-space EZ code using dynamic FFI.
+* **Linux**: Invoke `notify-send` via standard system process or bind `libnotify.so`.
+* **macOS**: Invoke `osascript -e 'display notification ...'` or bind `NSUserNotificationCenter` via `libobjc.dylib`.
+
+### 3.3 Standalone Executable Packager (`src/cli/Packager.cpp`) — *Moderate*
+* The core packager already uses a platform-neutral payload format: it concatenates the base runtime binary with serialized bytecode using the trailing footer `EZ_MAGIC_PACK`.
+* **Linux / macOS**: Copy the local `ez` binary, append the bytecode payload, and set executable permissions (`chmod +x` / `0755`). Only Windows `.ico` icon injection (`BeginUpdateResourceA`) is Windows-specific.
+
+### 3.4 Native GUI Framework (`src/gui/`) — *Complex*
+* The Win32 GUI layer is deeply coupled to Windows window handles (`HWND`), Windows message loops (`GetMessage`, `DispatchMessage`), GDI device contexts (`HDC`), and Windows Common Controls (`comctl32`).
+* Making the GUI cross-platform requires either:
+  1. A multi-platform webview layer (e.g. native Webview bindings).
+  2. A lightweight cross-platform rendering backend (e.g. SDL3 / Skia / Dear ImGui).
+  3. Platform-specific backends (Win32 for Windows, GTK for Linux, Cocoa for macOS).
+
+---
+
+## 4. Writing Cross-Platform EZ Code
 
 To ensure your EZ programs run seamlessly across Windows, Linux, and macOS:
 

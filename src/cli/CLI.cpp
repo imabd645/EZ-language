@@ -22,8 +22,11 @@
 #include "cli/PackageManager.h"
 #ifdef _WIN32
 #include <windows.h>
-#endif
-#ifndef _WIN32
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <termios.h>
+#include <unistd.h>
+#else
 #include <termios.h>
 #include <unistd.h>
 #endif
@@ -474,6 +477,11 @@ int cli_main(int argc, char* argv[]) {
     bool hasPath = false;
 #ifdef _WIN32
     hasPath = GetModuleFileNameA(NULL, exePath, 4096) != 0;
+#elif defined(__APPLE__)
+    uint32_t pathBufSize = 4096;
+    if (_NSGetExecutablePath(exePath, &pathBufSize) == 0) {
+        hasPath = true;
+    }
 #else
     ssize_t count = readlink("/proc/self/exe", exePath, 4096);
     if (count > 0) {

@@ -134,8 +134,8 @@ void registerConsoleBuiltins(RuntimeContext& interp) {
     auto hideCursorFn = Value::makeNativeFunction("console_hide_cursor", -1,
         [](RuntimeContext&, const std::vector<Value>& args) -> Value {
             bool hide = true;
-            if (!args.empty() && args[0].isBoolean()) {
-                hide = args[0].asBoolean();
+            if (!args.empty() && args[0].isBool()) {
+                hide = args[0].asBool();
             }
 #ifdef _WIN32
             HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);

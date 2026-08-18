@@ -165,5 +165,5 @@ if(WIN32)
         -Wl,-Bstatic stdc++ winpthread
     )
 else()
-    target_link_libraries(ez PRIVATE sqlite3 ffi uv curl dl pthread)
+    target_link_libraries(ez PRIVATE sqlite3 ffi uv curl ssl crypto dl pthread)
 endif()

@@ -22,7 +22,8 @@ model notify {
     }
 
     static task showWithIcon(title, message, iconType) {
-        when OS == "windows" {
+        currentOs = os()
+        when currentOs == "windows" {
             try {
                 k32 = os_load_lib("Kernel32.dll")
                 u32 = os_load_lib("User32.dll")
@@ -59,11 +60,11 @@ model notify {
             } catch e {
                 give nil
             }
-        } when OS == "macos" {
+        } when currentOs == "macos" {
             cmd = "osascript -e 'display notification \"" + str(message) + "\" with title \"" + str(title) + "\"'"
             system(cmd)
             give nil
-        } when OS == "linux" {
+        } when currentOs == "linux" {
             urgency = "normal"
             when iconType == notify.WARNING { urgency = "normal" }
             when iconType == notify.ERROR   { urgency = "critical" }

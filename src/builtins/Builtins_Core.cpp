@@ -48,15 +48,20 @@ void registerCoreBuiltins(RuntimeContext& interp) {
             return interp.eval(args[0].asString(), "<eval>");
         }));
 
+    auto osFn = Value::makeNativeFunction("os", 0,
+        [](RuntimeContext&, const std::vector<Value>&) -> Value {
 #if defined(_WIN32)
-    interp.defineGlobal("OS", Value("windows"));
+            return Value("windows");
 #elif defined(__APPLE__)
-    interp.defineGlobal("OS", Value("macos"));
+            return Value("macos");
 #elif defined(__linux__)
-    interp.defineGlobal("OS", Value("linux"));
+            return Value("linux");
 #else
-    interp.defineGlobal("OS", Value("posix"));
+            return Value("posix");
 #endif
+        });
+    interp.defineGlobal("os", osFn);
+    interp.defineGlobal("get_os", osFn);
 
     interp.defineGlobal("system", Value::makeNativeFunction("system", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {

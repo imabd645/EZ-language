@@ -33,6 +33,39 @@ panic("Fatal error occurred")
 
 **Source**: `src/builtins/Builtins_Core.cpp`
 
+### os / get_os
+
+**Signature**: `os() -> string`, `get_os() -> string`
+
+**Return**: Current operating system name (`"windows"`, `"macos"`, `"linux"`, or `"posix"`)
+
+**Tier**: Confirmed
+
+**Example**:
+```ez
+current_platform = os()
+when current_platform == "windows" {
+    out "Running on Windows"
+}
+```
+
+**Source**: `src/builtins/Builtins_Core.cpp`
+
+### system
+
+**Signature**: `system(command: string) -> integer`
+
+**Return**: Exit code of the executed shell command
+
+**Tier**: Confirmed
+
+**Example**:
+```ez
+code = system("echo Hello from EZ")
+```
+
+**Source**: `src/builtins/Builtins_Core.cpp`
+
 ---
 
 ## I/O Builtins

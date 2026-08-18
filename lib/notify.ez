@@ -1,17 +1,7 @@
 # ============================================================================
-# Notify - Native Windows Notification Library for EZ
-# Decoupled from C++, uses raw FFI and Kernel32/Shell32
+# Notify - Cross-Platform Desktop Notification Library for EZ
+# Supports Windows (Shell32 FFI), macOS (osascript), and Linux (notify-send)
 # ============================================================================
-
-__k32 = os_load_lib("Kernel32.dll")
-__u32 = os_load_lib("User32.dll")
-__s32 = os_load_lib("Shell32.dll")
-
-model NotifyFFI {
-    static getConsoleWindow = os_get_func(__k32, "GetConsoleWindow")
-    static loadIcon = os_get_func(__u32, "LoadIconA")
-    static shellNotifyIcon = os_get_func(__s32, "Shell_NotifyIconA")
-}
 
 model notify {
     # Icon Types
@@ -32,40 +22,57 @@ model notify {
     }
 
     static task showWithIcon(title, message, iconType) {
-        # NOTIFYICONDATAA struct (64-bit alignment)
-        # Size for V3 (Windows 2000 and later)
-        size = 508
-        buf = os_alloc(size)
-        
-        # Zero the buffer
-        repeat i = 0 to size {
-            os_write_byte(buf, i, 0)
+        when OS == "windows" {
+            try {
+                k32 = os_load_lib("Kernel32.dll")
+                u32 = os_load_lib("User32.dll")
+                s32 = os_load_lib("Shell32.dll")
+                getConsoleWindow = os_get_func(k32, "GetConsoleWindow")
+                loadIcon = os_get_func(u32, "LoadIconA")
+                shellNotifyIcon = os_get_func(s32, "Shell_NotifyIconA")
+
+                # NOTIFYICONDATAA struct (64-bit alignment)
+                size = 508
+                buf = os_alloc(size)
+                repeat i = 0 to size {
+                    os_write_byte(buf, i, 0)
+                }
+
+                hWnd = os_call(getConsoleWindow, "ptr")
+                hIcon = os_call(loadIcon, "ptr", 0, 32512) # IDI_APPLICATION = 32512
+
+                # Fill struct
+                notify._write32(buf, 0, size)        # cbSize
+                os_write_uint64(buf, 8, hWnd)        # hWnd
+                notify._write32(buf, 16, 1234)       # uID
+                notify._write32(buf, 20, 22)         # uFlags (NIF_ICON | NIF_TIP | NIF_INFO = 2+4+16=22)
+                os_write_uint64(buf, 32, hIcon)      # hIcon
+                os_write_string(buf, 40, str(title))
+                os_write_string(buf, 176, str(message))
+                os_write_string(buf, 440, str(title))
+                notify._write32(buf, 504, iconType)  # dwInfoFlags
+
+                os_call(shellNotifyIcon, "int", 0, buf)
+                os_call(shellNotifyIcon, "int", 1, buf)
+                os_free(buf)
+                give nil
+            } catch e {
+                give nil
+            }
+        } when OS == "macos" {
+            cmd = "osascript -e 'display notification \"" + str(message) + "\" with title \"" + str(title) + "\"'"
+            system(cmd)
+            give nil
+        } when OS == "linux" {
+            urgency = "normal"
+            when iconType == notify.WARNING { urgency = "normal" }
+            when iconType == notify.ERROR   { urgency = "critical" }
+            cmd = "notify-send -u " + urgency + " \"" + str(title) + "\" \"" + str(message) + "\" 2>/dev/null || true"
+            system(cmd)
+            give nil
+        } other {
+            out "[" + str(title) + "] " + str(message)
+            give nil
         }
-
-        hWnd = os_call(NotifyFFI.getConsoleWindow, "ptr")
-        hIcon = os_call(NotifyFFI.loadIcon, "ptr", 0, 32512) # IDI_APPLICATION = 32512
-        
-        # Fill struct
-        notify._write32(buf, 0, size)        # cbSize
-        os_write_uint64(buf, 8, hWnd)        # hWnd
-        notify._write32(buf, 16, 1234)       # uID
-        notify._write32(buf, 20, 22)         # uFlags (NIF_ICON | NIF_TIP | NIF_INFO = 2+4+16=22)
-        os_write_uint64(buf, 32, hIcon)      # hIcon
-        
-        # szTip (usually used for mouse hover)
-        os_write_string(buf, 40, str(title))
-        
-        # szInfo (message) offset 176
-        os_write_string(buf, 176, str(message))
-        # szInfoTitle (title) offset 440
-        os_write_string(buf, 440, str(title))
-        notify._write32(buf, 504, iconType)   # dwInfoFlags
-
-        # NIM_ADD = 0
-        os_call(NotifyFFI.shellNotifyIcon, "int", 0, buf)
-        # NIM_MODIFY = 1
-        os_call(NotifyFFI.shellNotifyIcon, "int", 1, buf)
-        
-        os_free(buf)
     }
 }

@@ -48,4 +48,23 @@ void registerCoreBuiltins(RuntimeContext& interp) {
             return interp.eval(args[0].asString(), "<eval>");
         }));
 
+#if defined(_WIN32)
+    interp.defineGlobal("OS", Value("windows"));
+#elif defined(__APPLE__)
+    interp.defineGlobal("OS", Value("macos"));
+#elif defined(__linux__)
+    interp.defineGlobal("OS", Value("linux"));
+#else
+    interp.defineGlobal("OS", Value("posix"));
+#endif
+
+    interp.defineGlobal("system", Value::makeNativeFunction("system", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isString()) {
+                interp.runtimeError("system() expects a command string", 0, "");
+                return Value();
+            }
+            int res = std::system(args[0].asString().c_str());
+            return Value(static_cast<long long>(res));
+        }));
 }

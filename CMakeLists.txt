@@ -122,26 +122,27 @@ set(SOURCES
 # Create the executable
 add_executable(ez ${SOURCES})
 
-# Static linking flags
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++ -Wl,--subsystem,console")
-
-# Link directories
-link_directories(C:/msys64/mingw64/lib)
-
-# Basic libraries
-target_link_libraries(ez PRIVATE sqlite3 ffi uv)
-
-# Static libraries (curl and dependencies)
-target_link_libraries(ez PRIVATE
-    -Wl,-Bstatic curl ssh2 nghttp2 ngtcp2 ngtcp2_crypto_ossl nghttp3 brotlidec brotlicommon zstd idn2 psl iconv unistring ssl crypto z
-)
-
-# Dynamic Windows libraries (Windows only)
 if(WIN32)
+    # Static linking flags
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -static-libgcc -static-libstdc++ -Wl,--subsystem,console")
+
+    # Link directories
+    link_directories(C:/msys64/mingw64/lib)
+
+    # Basic libraries
+    target_link_libraries(ez PRIVATE sqlite3 ffi uv)
+
+    # Static libraries (curl and dependencies)
+    target_link_libraries(ez PRIVATE
+        -Wl,-Bstatic curl ssh2 nghttp2 ngtcp2 ngtcp2_crypto_ossl nghttp3 brotlidec brotlicommon zstd idn2 psl iconv unistring ssl crypto z
+    )
+
+    # Dynamic Windows libraries (Windows only)
     target_link_libraries(ez PRIVATE
         -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
         dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
     )
+    
     # Add GUI sources
     target_sources(ez PRIVATE
         src/gui/GUI_Core.cpp
@@ -150,19 +151,19 @@ if(WIN32)
         src/gui/GUI_Menu.cpp
         src/gui/GUI_Widgets.cpp
     )
-else()
-    target_link_libraries(ez PRIVATE dl pthread)
-endif()
 
-# MUST STAY LAST. g++ appends libstdc++ and libwinpthread after everything
-# listed here, so whichever -B mode the link line ends in decides how they
-# resolve. Ending on the -Wl,-Bdynamic block above silently defeated the
-# -static-libstdc++ in CMAKE_EXE_LINKER_FLAGS, and ez.exe imported
-# libstdc++-6.dll and libwinpthread-1.dll -- so every built .exe, bundled ones
-# included, needed those two DLLs beside it to start.
-# Verify after changing anything here:
-#   objdump -p ez.exe | grep -i "DLL Name"
-# Only Windows system DLLs should be listed.
-target_link_libraries(ez PRIVATE
-    -Wl,-Bstatic stdc++ winpthread
-)
+    # MUST STAY LAST. g++ appends libstdc++ and libwinpthread after everything
+    # listed here, so whichever -B mode the link line ends in decides how they
+    # resolve. Ending on the -Wl,-Bdynamic block above silently defeated the
+    # -static-libstdc++ in CMAKE_EXE_LINKER_FLAGS, and ez.exe imported
+    # libstdc++-6.dll and libwinpthread-1.dll -- so every built .exe, bundled ones
+    # included, needed those two DLLs beside it to start.
+    # Verify after changing anything here:
+    #   objdump -p ez.exe | grep -i "DLL Name"
+    # Only Windows system DLLs should be listed.
+    target_link_libraries(ez PRIVATE
+        -Wl,-Bstatic stdc++ winpthread
+    )
+else()
+    target_link_libraries(ez PRIVATE sqlite3 ffi uv curl dl pthread)
+endif()

@@ -101,11 +101,6 @@ set(SOURCES
     src/compiler/BytecodeCompilerStmt.cpp
     src/eventloop/EventLoop.cpp
     src/gc/CycleCollector.cpp
-    src/gui/GUI_Core.cpp
-    src/gui/GUI_Dialogs.cpp
-    src/gui/GUI_Drawing.cpp
-    src/gui/GUI_Menu.cpp
-    src/gui/GUI_Widgets.cpp
     src/lexer/Lexer.cpp
     src/parser/Parser.cpp
     src/parser/ParserExpr.cpp
@@ -136,11 +131,23 @@ target_link_libraries(ez PRIVATE
     -Wl,-Bstatic curl ssh2 nghttp2 ngtcp2 ngtcp2_crypto_ossl nghttp3 brotlidec brotlicommon zstd idn2 psl iconv unistring ssl crypto z
 )
 
-# Dynamic Windows libraries
-target_link_libraries(ez PRIVATE
-    -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
-    dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
-)
+# Dynamic Windows libraries (Windows only)
+if(WIN32)
+    target_link_libraries(ez PRIVATE
+        -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
+        dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
+    )
+    # Add GUI sources
+    target_sources(ez PRIVATE
+        src/gui/GUI_Core.cpp
+        src/gui/GUI_Dialogs.cpp
+        src/gui/GUI_Drawing.cpp
+        src/gui/GUI_Menu.cpp
+        src/gui/GUI_Widgets.cpp
+    )
+else()
+    target_link_libraries(ez PRIVATE dl pthread)
+endif()
 
 # MUST STAY LAST. g++ appends libstdc++ and libwinpthread after everything
 # listed here, so whichever -B mode the link line ends in decides how they

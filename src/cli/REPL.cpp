@@ -19,7 +19,9 @@ extern bool g_disableTypeCheck;
 #include "compiler/BytecodeCompiler.h"
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include "cli/PackageManager.h"
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <cstdint>
 
 

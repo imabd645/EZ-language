@@ -20,9 +20,14 @@
 #include "compiler/BytecodeCompiler.h"
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include "cli/PackageManager.h"
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#ifndef _WIN32
+#include <termios.h>
+#include <unistd.h>
+#endif
 #include <cstdint>
-
 bool g_disableContracts = false;
 bool g_disableTypeCheck = false;
 
@@ -33,6 +38,7 @@ bool g_disableTypeCheck = false;
  */
 static std::string readHiddenLine() {
     std::string line;
+#ifdef _WIN32
     HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode = 0;
     if (in != INVALID_HANDLE_VALUE && GetConsoleMode(in, &mode)) {
@@ -43,6 +49,19 @@ static std::string readHiddenLine() {
     } else {
         std::getline(std::cin, line);
     }
+#else
+    struct termios oldt, newt;
+    if (tcgetattr(STDIN_FILENO, &oldt) == 0) {
+        newt = oldt;
+        newt.c_lflag &= ~ECHO;
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        std::getline(std::cin, line);
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        std::cout << std::endl;
+    } else {
+        std::getline(std::cin, line);
+    }
+#endif
     return line;
 }
 
@@ -61,6 +80,7 @@ void terminateHandler() {
     _exit(140);
 }
 
+#ifdef _WIN32
 static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
     DWORD code = pExInfo->ExceptionRecord->ExceptionCode;
     if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION) {
@@ -73,6 +93,7 @@ static LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS pExInfo) {
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 
 void runFromSource(const std::string& source, const std::string& path, bool traceExecution = false) {
     // Register source for error reporting (line snippets)
@@ -430,7 +451,9 @@ void ez_enable_string_interning();
 
 int cli_main(int argc, char* argv[]) {
     // Ensure UTF-8 output for emojis and special characters on Windows consoles
+#ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
+#endif
 
     // This is the main thread; its pool is destroyed at process exit like any
     // other global, so interning here is safe. Every other thread -- spawn
@@ -441,11 +464,24 @@ int cli_main(int argc, char* argv[]) {
     signal(SIGSEGV, signalHandler);
     signal(SIGABRT, signalHandler);
     std::set_terminate(terminateHandler);
+#ifdef _WIN32
     AddVectoredExceptionHandler(1, VectoredHandler);
+#endif
+
     
     // Check for appended VFS payload
-    char exePath[MAX_PATH];
-    if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+    char exePath[4096];
+    bool hasPath = false;
+#ifdef _WIN32
+    hasPath = GetModuleFileNameA(NULL, exePath, 4096) != 0;
+#else
+    ssize_t count = readlink("/proc/self/exe", exePath, 4096);
+    if (count > 0) {
+        exePath[count] = '\0';
+        hasPath = true;
+    }
+#endif
+    if (hasPath) {
         std::ifstream exeFile(exePath, std::ios::binary | std::ios::ate);
         if (exeFile.is_open()) {
             std::streamsize size = exeFile.tellg();

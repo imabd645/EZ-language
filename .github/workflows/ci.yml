@@ -177,9 +177,83 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ez-windows-x64
-        # *.dll matches nothing on a statically-linked build; upload-artifact
         # skips unmatched globs rather than failing, so this is safe either way.
         path: |
           build/ez.exe
           build/*.dll
+        retention-days: 14
+
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libffi-dev libuv1-dev libcurl4-openssl-dev libsqlite3-dev
+
+    - name: Configure and build
+      run: |
+        set -e
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake --build . -j4
+
+    - name: Smoke test
+      run: |
+        echo 'out "hello from CI"' > smoke.ez
+        ./build/ez smoke.ez
+
+    - name: Run test suite
+      shell: pwsh
+      run: ./scripts/run_tests.ps1 -IncludeHandwritten -TimeoutSec 60
+
+    - name: Upload interpreter
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ez-linux-x64
+        path: build/ez
+        retention-days: 14
+
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        brew install libffi libuv curl sqlite
+
+    - name: Configure and build
+      run: |
+        set -e
+        mkdir -p build
+        cd build
+        # brew curl and libffi might not be linked by default.
+        export CMAKE_PREFIX_PATH="$(brew --prefix curl);$(brew --prefix libffi);$(brew --prefix sqlite)"
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        cmake --build . -j4
+
+    - name: Smoke test
+      run: |
+        echo 'out "hello from CI"' > smoke.ez
+        ./build/ez smoke.ez
+
+    - name: Run test suite
+      shell: pwsh
+      run: ./scripts/run_tests.ps1 -IncludeHandwritten -TimeoutSec 60
+
+    - name: Upload interpreter
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ez-macos-x64
+        path: build/ez
         retention-days: 14

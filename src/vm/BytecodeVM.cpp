@@ -10,18 +10,20 @@
 #include "parser/Parser.h"
 #include "ast/ASTArena.h"
 #include "builtins/Builtins.h"
+#ifdef _WIN32
 #include "gui/GUIBuiltins.h"
+#endif
 #include "eventloop/EventLoop.h"
 #include "runtime/EZFuture.h"
 #include <thread>
 #include <sqlite3.h>
 
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
 #define NOMINMAX 1
 #endif
 #define NOCOMM
-#ifdef _WIN32
 #include <windows.h>
 #endif
 // The Windows COM headers define INTERFACE as a macro used for vtable
@@ -374,7 +376,9 @@ void BytecodeVM::throwException(const std::string& className, const std::string&
 
 void BytecodeVM::initBuiltins() {
     registerBuiltins(*this);
+#ifdef _WIN32
     registerGUIBuiltins(*this);
+#endif
 
     // Ã¢â€â‚¬ Decorator builtins Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 

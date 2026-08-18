@@ -18,9 +18,13 @@
 #include "compiler/BytecodeCompiler.h"
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include "cli/PackageManager.h"
+#ifdef _WIN32
 #include <windows.h>
+#endif
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include <cstdint>
-
 
 
 
@@ -117,6 +121,7 @@ struct EZ_GRPICONDIRENTRY {
 };
 #pragma pack(pop)
 
+#ifdef _WIN32
 bool injectIcon(const std::string& exePath, const std::string& iconPath) {
     std::ifstream file(iconPath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) return false;
@@ -162,10 +167,26 @@ bool injectIcon(const std::string& exePath, const std::string& iconPath) {
     }
     return true;
 }
+#else
+bool injectIcon(const std::string& exePath, const std::string& iconPath) {
+    std::cerr << "Warning: Custom icon injection is only supported on Windows.\n";
+    return false;
+}
+#endif
 
 bool bundleFile(const std::string& entryScript, const std::string& outputExe, bool isGui, const std::string& iconPath) {
-    char exePath[MAX_PATH];
-    if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+    char exePath[4096];
+    bool hasPath = false;
+#ifdef _WIN32
+    hasPath = GetModuleFileNameA(NULL, exePath, 4096) != 0;
+#else
+    ssize_t count = readlink("/proc/self/exe", exePath, 4096);
+    if (count > 0) {
+        exePath[count] = '\0';
+        hasPath = true;
+    }
+#endif
+    if (!hasPath) {
         std::cerr << "Error: Could not determine executable path." << std::endl;
         return false;
     }
@@ -272,7 +293,11 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     while (retries > 0) {
         outFile.open(outputExe, std::ios::binary | std::ios::app);
         if (outFile.is_open()) break;
+#ifdef _WIN32
         Sleep(100);
+#else
+        usleep(100000);
+#endif
         retries--;
     }
     
@@ -289,12 +314,16 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     
     // 6. Patch PE Header if GUI mode is requested
     if (isGui) {
+#ifdef _WIN32
         // 2 = IMAGE_SUBSYSTEM_WINDOWS_GUI
         if (patchPESubsystem(outputExe, 2)) {
             std::cout << "  -> Patched PE Subsystem for GUI Mode (Console Hidden)\n";
         } else {
             std::cout << "  -> Warning: Failed to patch PE Subsystem\n";
         }
+#else
+        std::cout << "  -> Warning: GUI mode bundling is only supported on Windows.\n";
+#endif
     }
     
     std::cout << "\nSuccess! Created standalone executable: " << outputExe << std::endl;

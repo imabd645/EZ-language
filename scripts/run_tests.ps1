@@ -68,9 +68,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 # ── Locate the interpreter ───────────────────────────────────────────────────
 $candidates = if ($Interpreter) { @((Resolve-Path -LiteralPath $Interpreter -ErrorAction SilentlyContinue).Path) }
-              else { @(
                   (Join-Path $repoRoot 'build\ez.exe'),
-                  (Join-Path $repoRoot 'ez.exe')
+                  (Join-Path $repoRoot 'ez.exe'),
+                  (Join-Path $repoRoot 'build\ez'),
+                  (Join-Path $repoRoot 'ez')
               ) }
 $ez = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $ez) {

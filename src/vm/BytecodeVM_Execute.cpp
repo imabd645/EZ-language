@@ -251,7 +251,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
         break; \
     }
-    #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
+    #define INTERPRET_LOOP while (running && !frames.empty() && frames.size() >= startingFrameCount) { \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction))
@@ -1854,7 +1854,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         frameUpvalues.pop_back();
                         frames.pop_back();
 
-                        if (frames.size() < startingFrameCount) {
+                        if (frames.empty() || frames.size() < startingFrameCount) {
                             this->stackTop = targetSlots - 1;
                             *(this->stackTop) = result;
                             this->stackTop++;

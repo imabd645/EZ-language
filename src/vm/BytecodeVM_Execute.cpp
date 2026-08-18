@@ -247,7 +247,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
     #define INTERPRET_LOOP DISPATCH();
     #define CASE_CODE(name) handle_##name:
 #else
-    #define DISPATCH() break
+    #define DISPATCH() { \
+        if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
+        break; \
+    }
     #define INTERPRET_LOOP while (running && frames.size() >= startingFrameCount) { \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \

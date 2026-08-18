@@ -121,7 +121,7 @@ void posixFfiInstallHandlers() {
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = posixFfiSignalHandler;
     sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
+    sa.sa_flags = SA_NODEFER;
     sigaction(SIGSEGV, &sa, nullptr);
     sigaction(SIGBUS,  &sa, nullptr);
 }

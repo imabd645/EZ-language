@@ -29,7 +29,7 @@ extern bool g_disableTypeCheck;
 
 
 void runRepl(bool traceExecution) {
-    std::cout << "EZ Language Interpreter v1.0 (Bytecode Mode)" << std::endl;
+    std::cout << "EZ Language Interpreter" << std::endl;
     std::cout << "Type 'exit' to quit" << std::endl;
     std::cout << std::endl;
     

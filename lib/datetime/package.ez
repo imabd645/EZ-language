@@ -1,0 +1,11 @@
+{
+  "name": "datetime",
+  "version": "1.1.0",
+  "description": "Date and time for EZ. Timestamps, components, formatting and arithmetic, plus real time zones with DST, ISO 8601 parsing, calendar maths and relative time.",
+  "author": "Abdullah Masood",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/EZ",
+  "keywords": ["date", "time", "datetime", "timezone", "dst", "iso8601", "parse", "format"],
+  "license": "MIT",
+  "dependencies": {}
+}

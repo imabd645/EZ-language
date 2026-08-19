@@ -1,0 +1,197 @@
+# ============================================================================
+# FS - Advanced Native File System Library for EZ Language
+# Entirely decoupled from C++ std::filesystem, relying natively on Kernel32 FFI
+# ============================================================================
+
+__k32 = os_load_lib("Kernel32.dll")
+
+export model FSFFI {
+    static getFileAttr = os_get_func(__k32, "GetFileAttributesA")
+    static createDir = os_get_func(__k32, "CreateDirectoryA")
+    static removeDir = os_get_func(__k32, "RemoveDirectoryA")
+    static copyFile = os_get_func(__k32, "CopyFileA")
+    static moveFile = os_get_func(__k32, "MoveFileA")
+    static deleteFile = os_get_func(__k32, "DeleteFileA")
+    static findFirstFile = os_get_func(__k32, "FindFirstFileA")
+    static findNextFile = os_get_func(__k32, "FindNextFileA")
+    static findClose = os_get_func(__k32, "FindClose")
+}
+
+# GetFileAttributesA reports a missing path as INVALID_FILE_ATTRIBUTES, which is
+# 0xFFFFFFFF. The FFI hands that back as the UNSIGNED value 4294967295, never as
+# -1, so every `attr != -1` test below used to succeed for paths that do not
+# exist. The damage was not limited to exists() returning true for everything:
+# 0xFFFFFFFF also has the directory bit set, so isDir() claimed any missing path
+# was a directory, and remove() consequently called RemoveDirectoryA on ordinary
+# files and always failed. Normalising to -1 here keeps the comparisons honest.
+_FS_INVALID_ATTR = 4294967295
+
+task _attrOf(path) {
+    raw = os_call(FSFFI.getFileAttr, "int", path)
+    when raw == _FS_INVALID_ATTR { give -1 }
+    give raw
+}
+
+# Creates a new directory at the specified path.
+# Returns `true` if successful, `false` otherwise.
+# Example: `fs.mkdir("C:\\temp\\new_folder")`
+export task mkdir(path) { 
+    give os_call(FSFFI.createDir, "int", path, 0) != 0 
+}
+
+# Checks if a file or directory exists at the given path.
+# Returns `true` if it exists, `false` if it cannot be found.
+export task exists(path) { 
+    attr = _attrOf(path)
+    give attr != -1
+}
+
+# Determines if the specified path points to a directory.
+# Returns `true` if it is a directory, `false` if it is a file or doesn't exist.
+export task isDir(path) { 
+    attr = _attrOf(path)
+    when attr == -1 { give false }
+    give (attr & 16) != 0 # FILE_ATTRIBUTE_DIRECTORY
+}
+
+# Lists all files and directories inside the given path.
+# Returns an array of strings representing the names of the contents.
+# The special `.` and `..` directories are automatically excluded.
+export task listDir(path) {
+    query = path + "\\*"
+    buf = os_alloc(320) # Extrapolated WIN32_FIND_DATAA structure heap byte offset
+    hFind = os_call(FSFFI.findFirstFile, "ptr", query, buf)
+    
+    when hFind == -1 { 
+        os_free(buf)
+        give [] 
+    }
+    
+    arr = []
+    nameOffset = 44 # WIN32_FIND_DATAA.cFileName starts at relative offset 44
+    
+    while true {
+        name = os_read_string_ptr(buf + nameOffset)
+        when name != "." and name != ".." {
+            push(arr, name)
+        }
+        
+        res = os_call(FSFFI.findNextFile, "int", hFind, buf)
+        when res == 0 { escape }
+    }
+    
+    os_call(FSFFI.findClose, "int", hFind)
+    os_free(buf)
+    give arr
+}
+
+# Copies a file from `src` to `dest`.
+# If `dest` already exists, it will be overwritten.
+# Returns `true` on success, `false` on failure.
+export task copy(src, dest) {
+    # copyFile arguments: source, dest, failIfExists (0 = overwrite)
+    give os_call(FSFFI.copyFile, "int", src, dest, 0) != 0
+}
+
+# Moves a file or directory from `src` to `dest`.
+# Can also be used to rename files.
+# Returns `true` on success, `false` on failure.
+export task move(src, dest) {
+    give os_call(FSFFI.moveFile, "int", src, dest) != 0
+}
+
+# Deletes a file or an empty directory at the given path.
+# Returns `true` if successfully deleted, `false` otherwise.
+# Deletes a file or directory, and also keeps the builtin's array form.
+#
+# `remove` is a builtin that drops an element from a list. Defining it here
+# took the name over for the whole process, so `use "fs"` broke every later
+# remove(array, index) -- including inside other packages.
+export task remove(path, index = nil) {
+    when typeOf(path) == "array" {
+        kept = []
+        at = 0
+        get item in path {
+            when at != index { push(kept, item) }
+            at = at + 1
+        }
+        # The builtin mutates in place and returns the list.
+        while len(path) > 0 { pop(path) }
+        get item in kept { push(path, item) }
+        give path
+    }
+    attr = _attrOf(path)
+    when attr != -1 {
+        when (attr & 16) != 0 {
+            give os_call(FSFFI.removeDir, "int", path) != 0
+        } other {
+            give os_call(FSFFI.deleteFile, "int", path) != 0
+        }
+    }
+    give false
+}
+
+# Gets the size of the file in bytes.
+# Returns the file size as an integer, or `-1` if the file doesn't exist.
+export task size(path) {
+    buf = os_alloc(320)
+    hFind = os_call(FSFFI.findFirstFile, "ptr", path, buf)
+    when hFind != -1 {
+        os_call(FSFFI.findClose, "int", hFind)
+        
+        # Extract 32-bit File Size chunks securely from heap
+        lowObj = os_read_uint64(buf, 32)
+        # FFI primitive os_read_uint64 doesn't support 32-bit mask implicitly, so isolate it manually utilizing bitwise math logic natively.
+        low = lowObj & 4294967295
+        
+        highObj = os_read_uint64(buf, 28)
+        high = highObj & 4294967295
+        
+        sizeVal = (high * 4294967296) + low
+        os_free(buf)
+        give sizeVal
+    }
+    os_free(buf)
+    give -1
+}
+
+# Gets the last modified time of the file.
+# Returns the time in milliseconds since the Unix epoch (1970).
+export task modifiedTime(path) {
+    buf = os_alloc(320)
+    hFind = os_call(FSFFI.findFirstFile, "ptr", path, buf)
+    when hFind != -1 {
+        os_call(FSFFI.findClose, "int", hFind)
+        
+        # ftLastWriteTime exists identically formatted at exact offset 20.
+        # Convert 100-nanosecond Windows epoch (1601) integer mapping locally to standardized Unix (1970).
+        windowsTicks = os_read_uint64(buf, 20)
+        unixTicks = windowsTicks - 116444736000000000
+        epochMs = unixTicks / 10000
+        
+        os_free(buf)
+        give epochMs
+    }
+    os_free(buf)
+    give -1
+}
+
+# readFile / writeFile / appendFile are deliberately NOT re-exported here.
+#
+# They used to be, as pass-through wrappers:
+#
+#     export task readFile(path) { give readFile(path) }
+#
+# Defining a task with the name of an existing builtin takes over that name for
+# the whole process, so the body called ITSELF. `use "fs"` therefore replaced
+# readFile, writeFile and appendFile with three functions that recurse until
+# the process dies -- and because `os` depends on this package, `use "os"` did
+# the same. A program that read a file after either import simply hung.
+#
+# The builtins are global already; there was never anything to re-export. Use
+# them directly:
+#
+#     content = readFile(path)
+#     writeFile(path, content)
+#     appendFile(path, content)
+

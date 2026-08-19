@@ -1,0 +1,457 @@
+# ============================================================================
+# datetime/tz.ez — real time zones, with DST
+#
+# Version 1.0 of this library was UTC with a manual WHOLE-HOUR offset. That
+# cannot express India (+05:30) or Nepal (+05:45) at all, and it has no idea
+# that a zone's offset changes twice a year -- so "9am in London" was wrong for
+# seven months of every year.
+#
+# This uses the zone database Windows already ships and keeps updated, through
+# SystemTimeToTzSpecificLocalTimeEx. That means the DST rules are the real
+# ones, including historical changes: a date in 2019 uses the rules that were
+# in force in 2019, not today's.
+#
+# Nothing is downloaded and no tzdata file is bundled. 141 zones on a current
+# Windows 11.
+# ============================================================================
+
+use "datetime/civil.ez"
+
+SYSTEMTIME_SIZE = 16
+# DYNAMIC_TIME_ZONE_INFORMATION: bias(4) + standardName(64) + standardDate(16)
+# + standardBias(4) + daylightName(64) + daylightDate(16) + daylightBias(4)
+# + timeZoneKeyName(256) + disabled(4)
+TZI_SIZE = 432
+TZI_KEYNAME_OFFSET = 172
+
+_lib = nil
+_fnEnum = nil
+_fnToLocal = nil
+_fnToUtc = nil
+_zones = nil
+_ready = false
+_probed = false
+
+task probe() {
+    when _probed { give _ready }
+    _probed = true
+    try {
+        # EnumDynamicTimeZoneInformation is exported from KernelBase, not
+        # kernel32 -- kernel32 only forwards the other two.
+        _lib = os_load_lib("kernelbase.dll")
+        when _lib == nil or _lib == 0 { give false }
+        _fnEnum = os_get_func(_lib, "EnumDynamicTimeZoneInformation")
+        _fnToLocal = os_get_func(_lib, "SystemTimeToTzSpecificLocalTimeEx")
+        _fnToUtc = os_get_func(_lib, "TzSpecificLocalTimeToSystemTimeEx")
+        when _fnEnum == nil or _fnEnum == 0 { give false }
+        when _fnToLocal == nil or _fnToLocal == 0 { give false }
+        _ready = true
+    }
+    catch (e) { _ready = false }
+    give _ready
+}
+
+export task isAvailable() { give probe() }
+
+# Enumerated once and kept as raw bytes, so a conversion is two allocations
+# rather than a walk through 141 zones.
+task loadZones() {
+    when _zones != nil { give _zones }
+    _zones = {}
+    when probe() == false { give _zones }
+    buf = os_alloc(TZI_SIZE)
+    index = 0
+    looping = true
+    while looping {
+        rc = os_call(_fnEnum, "u32", index, buf)
+        when rc != 0 { looping = false }
+        other {
+            name = readWide(buf, TZI_KEYNAME_OFFSET, 128)
+            bytes = []
+            repeat b = 0 to TZI_SIZE - 1 { push(bytes, os_read_byte(buf, b)) }
+            when name != "" { _zones[name] = bytes }
+            index = index + 1
+        }
+    }
+    os_free(buf)
+    give _zones
+}
+
+task readWide(buf, offset, maxChars) {
+    result = ""
+    i = 0
+    while i < maxChars {
+        code = os_read_uint16(buf, offset + i * 2)
+        when code == 0 { give result }
+        when code < 128 { result = result + chr(code) }
+        other { result = result + "?" }
+        i = i + 1
+    }
+    give result
+}
+
+task writeSystemTime(buf, y, mo, d, h, mi, s, ms) {
+    os_write_uint16(buf, 0, y)
+    os_write_uint16(buf, 2, mo)
+    os_write_uint16(buf, 4, 0)
+    os_write_uint16(buf, 6, d)
+    os_write_uint16(buf, 8, h)
+    os_write_uint16(buf, 10, mi)
+    os_write_uint16(buf, 12, s)
+    os_write_uint16(buf, 14, ms)
+    give nil
+}
+
+task readSystemTime(buf) {
+    give {
+        "year": os_read_uint16(buf, 0), "month": os_read_uint16(buf, 2),
+        "day": os_read_uint16(buf, 6), "hour": os_read_uint16(buf, 8),
+        "minute": os_read_uint16(buf, 10), "second": os_read_uint16(buf, 12),
+        "millisecond": os_read_uint16(buf, 14)
+    }
+}
+
+# ── zone names ──────────────────────────────────────────────────────────────
+
+export task listZones() { give sort(keys(loadZones())) }
+
+export task zoneCount() { give len(keys(loadZones())) }
+
+# Accepts an IANA name ("Asia/Kolkata"), a Windows name ("India Standard
+# Time"), "UTC", or a fixed offset ("+05:30", "-0800").
+export task resolveZone(name) {
+    when name == nil { throw Exception("datetime: no time zone given") }
+    body = trim(str(name))
+    when body == "" { throw Exception("datetime: the time zone name is empty") }
+    when upper(body) == "UTC" or upper(body) == "GMT" or upper(body) == "Z" { give "UTC" }
+
+    # A fixed offset is not a zone at all -- it has no DST rules -- so it is
+    # kept as a distinct kind rather than matched to a zone that happens to
+    # share today's offset.
+    when startsWith(body, "+") or startsWith(body, "-") { give body }
+
+    zones = loadZones()
+    when has_key(zones, body) { give body }
+    when has_key(IANA_TO_WINDOWS, body) { give IANA_TO_WINDOWS[body] }
+
+    # Case-insensitive, because nobody types "GMT Standard Time" exactly.
+    lowered = lower(body)
+    get candidate in keys(IANA_TO_WINDOWS) {
+        when lower(candidate) == lowered { give IANA_TO_WINDOWS[candidate] }
+    }
+    get candidate in keys(zones) {
+        when lower(candidate) == lowered { give candidate }
+    }
+    throw Exception(`datetime: unknown time zone '{name}' -- use an IANA name like 'Europe/Paris', a Windows name like 'GMT Standard Time', 'UTC', or a fixed offset like '+05:30'`)
+}
+
+export task zoneExists(name) {
+    try {
+        resolveZone(name)
+        give true
+    }
+    catch (e) { give false }
+}
+
+task isFixedOffset(zone) { give startsWith(zone, "+") or startsWith(zone, "-") }
+
+# "+05:30", "+0530" and "+5" all mean the same thing.
+task fixedOffsetMinutes(zone) {
+    sign = 1
+    when startsWith(zone, "-") { sign = -1 }
+    body = substr(zone, 1, len(zone) - 1)
+    hours = 0
+    minutes = 0
+    when contains(body, ":") {
+        halves = split(body, ":")
+        hours = num(halves[0])
+        minutes = num(halves[1])
+    }
+    other when len(body) == 4 {
+        hours = num(substr(body, 0, 2))
+        minutes = num(substr(body, 2, 2))
+    }
+    other { hours = num(body) }
+    when str(hours) == "nan" or str(minutes) == "nan" {
+        throw Exception(`datetime: '{zone}' is not a valid offset -- try '+05:30'`)
+    }
+    give sign * (hours * 60 + minutes)
+}
+
+# ── conversion ──────────────────────────────────────────────────────────────
+
+# The offset in MINUTES that applies in `zone` at the instant `utcMs`.
+# Positive is east of Greenwich. This is the function everything else uses:
+# it is DST-aware because it asks about a specific instant, not about a zone
+# in the abstract.
+export task offsetAt(utcMs, zone) {
+    resolved = resolveZone(zone)
+    when resolved == "UTC" { give 0 }
+    when isFixedOffset(resolved) { give fixedOffsetMinutes(resolved) }
+    local = wallClockOf(utcMs, resolved)
+    give floorDivide(local - utcMs, 60000)
+}
+
+# The wall-clock reading in `zone`, expressed as a timestamp.
+#
+# This is NOT an instant: it is what a clock on the wall there would show,
+# encoded so the existing component and formatting functions can read it.
+# Never subtract two of these across a DST boundary and never store one as a
+# time -- store the UTC value.
+export task wallClockOf(utcMs, zone) {
+    resolved = resolveZone(zone)
+    when resolved == "UTC" { give utcMs }
+    when isFixedOffset(resolved) { give utcMs + fixedOffsetMinutes(resolved) * 60000 }
+    when probe() == false {
+        throw Exception("datetime: time zone conversion needs Windows")
+    }
+
+    zones = loadZones()
+    when has_key(zones, resolved) == false {
+        throw Exception(`datetime: the system has no zone data for '{resolved}'`)
+    }
+
+    parts = componentsUtc(utcMs)
+    tzi = os_alloc(TZI_SIZE)
+    bytes = zones[resolved]
+    repeat b = 0 to TZI_SIZE - 1 { os_write_byte(tzi, b, bytes[b]) }
+    source = os_alloc(SYSTEMTIME_SIZE)
+    target = os_alloc(SYSTEMTIME_SIZE)
+    writeSystemTime(source, parts["year"], parts["month"], parts["day"],
+                    parts["hour"], parts["minute"], parts["second"], parts["millisecond"])
+    ok = os_call(_fnToLocal, "int", tzi, source, target)
+    result = nil
+    when ok != 0 {
+        local = readSystemTime(target)
+        result = timestampUtc(local["year"], local["month"], local["day"],
+                              local["hour"], local["minute"], local["second"], local["millisecond"])
+    }
+    os_free(tzi)
+    os_free(source)
+    os_free(target)
+    when result == nil {
+        throw Exception(`datetime: could not convert to '{resolved}'`)
+    }
+    give result
+}
+
+# A wall-clock reading in `zone` back to a real instant.
+#
+# Two hours a year are genuinely ambiguous or missing: when the clocks go back
+# 01:30 happens twice, and when they go forward it never happens at all.
+# Windows resolves both; which way is not something a caller should depend on,
+# so schedule in UTC if it matters.
+export task instantOf(localMs, zone) {
+    resolved = resolveZone(zone)
+    when resolved == "UTC" { give localMs }
+    when isFixedOffset(resolved) { give localMs - fixedOffsetMinutes(resolved) * 60000 }
+    when probe() == false or _fnToUtc == nil or _fnToUtc == 0 {
+        throw Exception("datetime: time zone conversion needs Windows")
+    }
+
+    zones = loadZones()
+    when has_key(zones, resolved) == false {
+        throw Exception(`datetime: the system has no zone data for '{resolved}'`)
+    }
+
+    parts = componentsUtc(localMs)
+    tzi = os_alloc(TZI_SIZE)
+    bytes = zones[resolved]
+    repeat b = 0 to TZI_SIZE - 1 { os_write_byte(tzi, b, bytes[b]) }
+    source = os_alloc(SYSTEMTIME_SIZE)
+    target = os_alloc(SYSTEMTIME_SIZE)
+    writeSystemTime(source, parts["year"], parts["month"], parts["day"],
+                    parts["hour"], parts["minute"], parts["second"], parts["millisecond"])
+    ok = os_call(_fnToUtc, "int", tzi, source, target)
+    result = nil
+    when ok != 0 {
+        utc = readSystemTime(target)
+        result = timestampUtc(utc["year"], utc["month"], utc["day"],
+                              utc["hour"], utc["minute"], utc["second"], utc["millisecond"])
+    }
+    os_free(tzi)
+    os_free(source)
+    os_free(target)
+    when result == nil {
+        throw Exception(`datetime: could not convert from '{resolved}'`)
+    }
+    give result
+}
+
+# Build an instant from a wall-clock reading in a zone: "09:00 on the 3rd of
+# March, in Paris" as a real point in time.
+export task instantIn(zone, y, mo, d, h, mi, s, ms = 0) {
+    give instantOf(timestampUtc(y, mo, d, h, mi, s, ms), zone)
+}
+
+# Is daylight saving in force there at that moment? Compared against the
+# zone's own January and July offsets rather than a hardcoded hemisphere
+# assumption, so the southern hemisphere works.
+export task isDst(utcMs, zone) {
+    resolved = resolveZone(zone)
+    when resolved == "UTC" or isFixedOffset(resolved) { give false }
+    parts = componentsUtc(utcMs)
+    winter = offsetAt(timestampUtc(parts["year"], 1, 15, 12, 0, 0, 0), resolved)
+    summer = offsetAt(timestampUtc(parts["year"], 7, 15, 12, 0, 0, 0), resolved)
+    standard = winter
+    when summer < winter { standard = summer }
+    give offsetAt(utcMs, resolved) != standard
+}
+
+# Does this zone observe daylight saving at all?
+export task hasDst(zone) {
+    resolved = resolveZone(zone)
+    when resolved == "UTC" or isFixedOffset(resolved) { give false }
+    year = componentsUtc(nowMs())["year"]
+    winter = offsetAt(timestampUtc(year, 1, 15, 12, 0, 0, 0), resolved)
+    summer = offsetAt(timestampUtc(year, 7, 15, 12, 0, 0, 0), resolved)
+    give winter != summer
+}
+
+# ── formatting an offset ────────────────────────────────────────────────────
+
+# "+05:30", "-08:00", "Z". Minutes matter: the whole reason the old API could
+# not express India.
+export task offsetString(minutes, useZforUtc = true) {
+    when minutes == 0 and useZforUtc { give "Z" }
+    sign = "+"
+    total = minutes
+    when total < 0 {
+        sign = "-"
+        total = 0 - total
+    }
+    hours = floorDivide(total, 60)
+    rest = total % 60
+    give sign + pad2(hours) + ":" + pad2(rest)
+}
+
+task pad2(value) {
+    when value < 10 { give "0" + str(value) }
+    give str(value)
+}
+
+# ── the machine's own zone ──────────────────────────────────────────────────
+
+export task localZone() {
+    when probe() == false { give "UTC" }
+    fn = os_get_func(_lib, "GetDynamicTimeZoneInformation")
+    when fn == nil or fn == 0 { give "UTC" }
+    buf = os_alloc(TZI_SIZE)
+    os_call(fn, "u32", buf)
+    name = readWide(buf, TZI_KEYNAME_OFFSET, 128)
+    os_free(buf)
+    when name == "" { give "UTC" }
+    give name
+}
+
+export task localOffset() { give offsetAt(nowMs(), localZone()) }
+
+# ── IANA names ──────────────────────────────────────────────────────────────
+
+# Windows names its zones differently from everyone else ("India Standard
+# Time", not "Asia/Kolkata"). Anything arriving from a browser, a database or
+# an API will be IANA, so those are mapped here. Windows names still work
+# directly, and an unmapped IANA name gives a clear error rather than a silent
+# wrong offset.
+export IANA_TO_WINDOWS = {
+    "Africa/Abidjan": "Greenwich Standard Time",
+    "Africa/Accra": "Greenwich Standard Time",
+    "Africa/Algiers": "W. Central Africa Standard Time",
+    "Africa/Cairo": "Egypt Standard Time",
+    "Africa/Casablanca": "Morocco Standard Time",
+    "Africa/Johannesburg": "South Africa Standard Time",
+    "Africa/Lagos": "W. Central Africa Standard Time",
+    "Africa/Nairobi": "E. Africa Standard Time",
+    "Africa/Tripoli": "Libya Standard Time",
+    "Africa/Tunis": "W. Central Africa Standard Time",
+    "America/Anchorage": "Alaskan Standard Time",
+    "America/Argentina/Buenos_Aires": "Argentina Standard Time",
+    "America/Bogota": "SA Pacific Standard Time",
+    "America/Caracas": "Venezuela Standard Time",
+    "America/Chicago": "Central Standard Time",
+    "America/Denver": "Mountain Standard Time",
+    "America/Edmonton": "Mountain Standard Time",
+    "America/Halifax": "Atlantic Standard Time",
+    "America/Havana": "Cuba Standard Time",
+    "America/Lima": "SA Pacific Standard Time",
+    "America/Los_Angeles": "Pacific Standard Time",
+    "America/Mexico_City": "Central Standard Time (Mexico)",
+    "America/Montevideo": "Montevideo Standard Time",
+    "America/New_York": "Eastern Standard Time",
+    "America/Phoenix": "US Mountain Standard Time",
+    "America/Santiago": "Pacific SA Standard Time",
+    "America/Sao_Paulo": "E. South America Standard Time",
+    "America/St_Johns": "Newfoundland Standard Time",
+    "America/Toronto": "Eastern Standard Time",
+    "America/Vancouver": "Pacific Standard Time",
+    "America/Winnipeg": "Central Standard Time",
+    "Asia/Almaty": "Central Asia Standard Time",
+    "Asia/Amman": "Jordan Standard Time",
+    "Asia/Baghdad": "Arabic Standard Time",
+    "Asia/Baku": "Azerbaijan Standard Time",
+    "Asia/Bangkok": "SE Asia Standard Time",
+    "Asia/Beirut": "Middle East Standard Time",
+    "Asia/Colombo": "Sri Lanka Standard Time",
+    "Asia/Dhaka": "Bangladesh Standard Time",
+    "Asia/Dubai": "Arabian Standard Time",
+    "Asia/Ho_Chi_Minh": "SE Asia Standard Time",
+    "Asia/Hong_Kong": "China Standard Time",
+    "Asia/Jakarta": "SE Asia Standard Time",
+    "Asia/Jerusalem": "Israel Standard Time",
+    "Asia/Kabul": "Afghanistan Standard Time",
+    "Asia/Karachi": "Pakistan Standard Time",
+    "Asia/Kathmandu": "Nepal Standard Time",
+    "Asia/Kolkata": "India Standard Time",
+    "Asia/Calcutta": "India Standard Time",
+    "Asia/Kuala_Lumpur": "Singapore Standard Time",
+    "Asia/Kuwait": "Arab Standard Time",
+    "Asia/Manila": "Singapore Standard Time",
+    "Asia/Riyadh": "Arab Standard Time",
+    "Asia/Seoul": "Korea Standard Time",
+    "Asia/Shanghai": "China Standard Time",
+    "Asia/Singapore": "Singapore Standard Time",
+    "Asia/Taipei": "Taipei Standard Time",
+    "Asia/Tashkent": "West Asia Standard Time",
+    "Asia/Tehran": "Iran Standard Time",
+    "Asia/Tokyo": "Tokyo Standard Time",
+    "Asia/Yangon": "Myanmar Standard Time",
+    "Atlantic/Azores": "Azores Standard Time",
+    "Atlantic/Reykjavik": "Greenwich Standard Time",
+    "Australia/Adelaide": "Cen. Australia Standard Time",
+    "Australia/Brisbane": "E. Australia Standard Time",
+    "Australia/Darwin": "AUS Central Standard Time",
+    "Australia/Melbourne": "AUS Eastern Standard Time",
+    "Australia/Perth": "W. Australia Standard Time",
+    "Australia/Sydney": "AUS Eastern Standard Time",
+    "Europe/Amsterdam": "W. Europe Standard Time",
+    "Europe/Athens": "GTB Standard Time",
+    "Europe/Belgrade": "Central Europe Standard Time",
+    "Europe/Berlin": "W. Europe Standard Time",
+    "Europe/Brussels": "Romance Standard Time",
+    "Europe/Bucharest": "GTB Standard Time",
+    "Europe/Budapest": "Central Europe Standard Time",
+    "Europe/Copenhagen": "Romance Standard Time",
+    "Europe/Dublin": "GMT Standard Time",
+    "Europe/Helsinki": "FLE Standard Time",
+    "Europe/Istanbul": "Turkey Standard Time",
+    "Europe/Kyiv": "FLE Standard Time",
+    "Europe/Kiev": "FLE Standard Time",
+    "Europe/Lisbon": "GMT Standard Time",
+    "Europe/London": "GMT Standard Time",
+    "Europe/Madrid": "Romance Standard Time",
+    "Europe/Moscow": "Russian Standard Time",
+    "Europe/Oslo": "W. Europe Standard Time",
+    "Europe/Paris": "Romance Standard Time",
+    "Europe/Prague": "Central Europe Standard Time",
+    "Europe/Rome": "W. Europe Standard Time",
+    "Europe/Stockholm": "W. Europe Standard Time",
+    "Europe/Vienna": "W. Europe Standard Time",
+    "Europe/Warsaw": "Central European Standard Time",
+    "Europe/Zurich": "W. Europe Standard Time",
+    "Pacific/Auckland": "New Zealand Standard Time",
+    "Pacific/Fiji": "Fiji Standard Time",
+    "Pacific/Honolulu": "Hawaiian Standard Time",
+    "UTC": "UTC"
+}
+
+export task ianaNames() { give sort(keys(IANA_TO_WINDOWS)) }

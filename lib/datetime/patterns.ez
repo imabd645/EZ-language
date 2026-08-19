@@ -1,0 +1,280 @@
+# ============================================================================
+# datetime/patterns.ez — printing and parsing
+#
+# Version 1.0 could print exactly one layout. This adds a pattern formatter and
+# a parser, including full ISO 8601 with offsets -- which is what any database,
+# API or log line will hand you, and what version 1.0 could not read at all.
+# ============================================================================
+
+use "datetime/civil.ez"
+
+export MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+                      "July", "August", "September", "October", "November", "December"]
+export DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+# Longest first: YYYY must be matched before YY, and ZZ before Z.
+TOKEN_ORDER = ["YYYY", "MMMM", "dddd", "SSS", "MMM", "ddd", "YY", "MM", "DD",
+               "HH", "hh", "mm", "ss", "ZZ", "M", "D", "d", "H", "h", "m", "s", "A", "a", "Z"]
+
+task pad(value, width) {
+    body = str(floor(value))
+    negative = false
+    when body != "" and startsWith(body, "-") {
+        negative = true
+        body = substr(body, 1, len(body) - 1)
+    }
+    while len(body) < width { body = "0" + body }
+    when negative { give "-" + body }
+    give body
+}
+
+# Formats components with a pattern. Longest tokens are matched first, so YYYY
+# is not read as YY followed by YY.
+#
+#   YYYY  2026     MMMM  August    dddd  Wednesday   HH  14    mm  05
+#   YY    26       MMM   Aug       ddd   Wed         hh  02    ss  09
+#   MM    08       M     8         DD    12          A   PM    SSS 123
+#   D     12       d     3 (weekday number)          a   pm
+#
+# `offsetMinutes` supplies ZZ (+05:30) and Z (+0530); with nil they print as
+# "Z", because a time with no zone stated is UTC by convention here.
+export task formatParts(parts, pattern, offsetMinutes = nil) {
+    result = ""
+    body = str(pattern)
+    i = 0
+    while i < len(body) {
+        matched = false
+        get token in TOKEN_ORDER {
+            size = len(token)
+            when matched == false and i + size <= len(body) and substr(body, i, size) == token {
+                result = result + expand(token, parts, offsetMinutes)
+                i = i + size
+                matched = true
+            }
+        }
+        when matched == false {
+            ch = substr(body, i, 1)
+            # A backslash escapes the next character, so a literal "T" or a
+            # word containing a token letter can still be printed.
+            when ch == "\\" and i + 1 < len(body) {
+                result = result + substr(body, i + 1, 1)
+                i = i + 2
+            }
+            other {
+                result = result + ch
+                i = i + 1
+            }
+        }
+    }
+    give result
+}
+
+task expand(token, parts, offsetMinutes) {
+    when token == "YYYY" { give pad(parts["year"], 4) }
+    when token == "YY" { give pad(positiveMod(parts["year"], 100), 2) }
+    when token == "MMMM" { give MONTH_NAMES[parts["month"] - 1] }
+    when token == "MMM" { give substr(MONTH_NAMES[parts["month"] - 1], 0, 3) }
+    when token == "MM" { give pad(parts["month"], 2) }
+    when token == "M" { give str(parts["month"]) }
+    when token == "DD" { give pad(parts["day"], 2) }
+    when token == "D" { give str(parts["day"]) }
+    when token == "dddd" { give DAY_NAMES[parts["weekday"]] }
+    when token == "ddd" { give substr(DAY_NAMES[parts["weekday"]], 0, 3) }
+    when token == "d" { give str(parts["weekday"]) }
+    when token == "HH" { give pad(parts["hour"], 2) }
+    when token == "H" { give str(parts["hour"]) }
+    when token == "hh" { give pad(twelveHour(parts["hour"]), 2) }
+    when token == "h" { give str(twelveHour(parts["hour"])) }
+    when token == "mm" { give pad(parts["minute"], 2) }
+    when token == "m" { give str(parts["minute"]) }
+    when token == "ss" { give pad(parts["second"], 2) }
+    when token == "s" { give str(parts["second"]) }
+    when token == "SSS" { give pad(parts["millisecond"], 3) }
+    when token == "A" {
+        when parts["hour"] < 12 { give "AM" }
+        give "PM"
+    }
+    when token == "a" {
+        when parts["hour"] < 12 { give "am" }
+        give "pm"
+    }
+    when token == "ZZ" { give offsetText(offsetMinutes, true) }
+    when token == "Z" { give offsetText(offsetMinutes, false) }
+    give token
+}
+
+# Midnight is 12, not 0, on a twelve-hour clock.
+task twelveHour(hour) {
+    when hour == 0 { give 12 }
+    when hour > 12 { give hour - 12 }
+    give hour
+}
+
+task offsetText(minutes, withColon) {
+    when minutes == nil or minutes == 0 { give "Z" }
+    sign = "+"
+    total = minutes
+    when total < 0 {
+        sign = "-"
+        total = 0 - total
+    }
+    separator = ""
+    when withColon { separator = ":" }
+    give sign + pad(floorDivide(total, 60), 2) + separator + pad(total % 60, 2)
+}
+
+# ── parsing ─────────────────────────────────────────────────────────────────
+
+# ISO 8601, which covers what a database, an API or a log line will hand you:
+#
+#   2026-08-12                    2026-08-12T14:30:00
+#   2026-08-12T14:30:00Z          2026-08-12T14:30:00.123Z
+#   2026-08-12 14:30:00+05:30     2026-08-12T14:30:00-0800
+#
+# Returns milliseconds UTC. An offset in the text is applied, so the result is
+# always a real instant. Throws rather than guessing.
+export task parseIso(text) {
+    when text == nil { throw Exception("datetime: nothing to parse") }
+    body = trim(str(text))
+    when body == "" { throw Exception("datetime: the timestamp is empty") }
+
+    working = replace(body, "T", " ")
+    offsetMinutes = 0
+    hasOffset = false
+
+    when endsWith(working, "Z") {
+        working = substr(working, 0, len(working) - 1)
+        hasOffset = true
+    }
+    other {
+        # Only a sign in the TIME half is an offset; the ones in the date are
+        # separators.
+        marker = lastSignPosition(working)
+        when marker > 0 {
+            zoneSuffix = substr(working, marker, len(working) - marker)
+            offsetMinutes = parseOffset(zoneSuffix, body)
+            working = substr(working, 0, marker)
+            hasOffset = true
+        }
+    }
+
+    working = trim(working)
+    datePart = working
+    timePart = ""
+    when contains(working, " ") {
+        at = indexOf(working, " ")
+        datePart = substr(working, 0, at)
+        timePart = trim(substr(working, at + 1, len(working) - at - 1))
+    }
+
+    pieces = split(datePart, "-")
+    when len(pieces) != 3 {
+        throw Exception(`datetime: '{body}' is not a date this understands -- try '2026-08-12' or '2026-08-12T14:30:00Z'`)
+    }
+    year = wholeNumber(pieces[0], body)
+    month = wholeNumber(pieces[1], body)
+    day = wholeNumber(pieces[2], body)
+    when month < 1 or month > 12 { throw Exception(`datetime: month {month} in '{body}' is out of range`) }
+    when day < 1 or day > daysInMonthOf(year, month) {
+        throw Exception(`datetime: '{body}' has no day {day} in that month`)
+    }
+
+    hour = 0
+    minute = 0
+    second = 0
+    milli = 0
+    when timePart != "" {
+        fraction = ""
+        when contains(timePart, ".") {
+            at = indexOf(timePart, ".")
+            fraction = substr(timePart, at + 1, len(timePart) - at - 1)
+            timePart = substr(timePart, 0, at)
+        }
+        other when contains(timePart, ",") {
+            at = indexOf(timePart, ",")
+            fraction = substr(timePart, at + 1, len(timePart) - at - 1)
+            timePart = substr(timePart, 0, at)
+        }
+        fields = split(timePart, ":")
+        hour = wholeNumber(fields[0], body)
+        when len(fields) > 1 { minute = wholeNumber(fields[1], body) }
+        when len(fields) > 2 { second = wholeNumber(fields[2], body) }
+        when fraction != "" {
+            # Milliseconds, whether the source wrote 3 digits or 6.
+            digits = fraction
+            while len(digits) < 3 { digits = digits + "0" }
+            milli = wholeNumber(substr(digits, 0, 3), body)
+        }
+        # 24:00:00 is a legal ISO 8601 way of writing the end of a day.
+        when hour == 24 and minute == 0 and second == 0 {
+            give timestampUtc(year, month, day, 0, 0, 0, 0) + MS_PER_DAY
+        }
+        when hour > 23 { throw Exception(`datetime: hour {hour} in '{body}' is out of range`) }
+        when minute > 59 { throw Exception(`datetime: minute {minute} in '{body}' is out of range`) }
+        # 60 is a leap second; it is accepted and clamped rather than refused.
+        when second > 60 { throw Exception(`datetime: second {second} in '{body}' is out of range`) }
+        when second == 60 { second = 59 }
+    }
+
+    give timestampUtc(year, month, day, hour, minute, second, milli) - offsetMinutes * MS_PER_MINUTE
+}
+
+# nil instead of a throw, for input you do not control.
+export task tryParseIso(text) {
+    try { give parseIso(text) }
+    catch (e) { give nil }
+}
+
+# The last + or - that sits in the TIME half of the string.
+#
+# A bare date has no time half at all, and its own hyphens are separators --
+# scanning the whole string would read "2026-08-12" as the 12th of August with
+# a -12:00 offset.
+task lastSignPosition(working) {
+    when contains(working, " ") == false { give -1 }
+    timeStart = indexOf(working, " ")
+    found = -1
+    repeat i = timeStart to len(working) - 1 {
+        ch = substr(working, i, 1)
+        when ch == "+" or ch == "-" { found = i }
+    }
+    give found
+}
+
+task parseOffset(text, original) {
+    sign = 1
+    when startsWith(text, "-") { sign = -1 }
+    body = substr(text, 1, len(text) - 1)
+    hours = 0
+    minutes = 0
+    when contains(body, ":") {
+        halves = split(body, ":")
+        hours = wholeNumber(halves[0], original)
+        minutes = wholeNumber(halves[1], original)
+    }
+    other when len(body) == 4 {
+        hours = wholeNumber(substr(body, 0, 2), original)
+        minutes = wholeNumber(substr(body, 2, 2), original)
+    }
+    other when len(body) == 2 { hours = wholeNumber(body, original) }
+    other { throw Exception(`datetime: '{text}' in '{original}' is not a valid offset`) }
+    give sign * (hours * 60 + minutes)
+}
+
+task wholeNumber(text, original) {
+    body = trim(str(text))
+    when body == "" { throw Exception(`datetime: '{original}' is incomplete`) }
+    negative = false
+    when startsWith(body, "-") {
+        negative = true
+        body = substr(body, 1, len(body) - 1)
+    }
+    get ch in split(body, "") {
+        when indexOf("0123456789", ch) < 0 {
+            throw Exception(`datetime: '{original}' contains '{ch}' where a number was expected`)
+        }
+    }
+    value = num(body)
+    when negative { give 0 - value }
+    give value
+}

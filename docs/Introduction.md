@@ -13,7 +13,7 @@ consisting of:
 - a **stack-based virtual machine** with computed-goto dispatch,
 - a **cycle-collecting garbage collector** (Bacon & Rajan algorithm) layered on
   top of reference counting,
-- a **native FFI** for calling arbitrary Windows DLL exports,
+- a **native FFI** for calling shared-library exports,
 - a **Win32 GUI binding**, and
 - a package manager / bundler (`ez install`, `ez bundle`) for distributing
   programs as standalone `.exe` files.
@@ -70,10 +70,10 @@ server framework, GUI wrappers, and a game loop library.
    upvalue semantics, cycle-collecting GC, and a genuine (if Windows-only)
    FFI layer capable of calling arbitrary DLL exports and receiving native
    callbacks.
-5. **Honesty about scope.** The project's own documentation is unusually
-   candid about what is *not* implemented (see
-   [Known Gaps & Caveats](features.md#known-gaps--caveats) in `features.md`)
-   rather than implying feature parity with Python or JavaScript.
+5. **Honesty about scope.** The project's own documentation is candid about
+    what is and is not implemented. See the [FAQ](faq.md) and the
+    [API reference](api.md) for the current native runtime surface rather than
+    assuming feature parity with Python or JavaScript.
 
 ## A guided first look
 
@@ -122,13 +122,13 @@ just the entry script.
 
 | I want to... | Read |
 |---|---|
-| See what EZ can do, end to end | [features.md](features.md) |
+| See what EZ can do, end to end | [README](../README.md) |
 | Install and run my first script | [getting-started.md](getting-started.md) |
-| Learn the full grammar, keywords, and operators | [syntax.md](syntax.md) |
+| Learn the full grammar, keywords, and operators | [SYNTAX.md](../SYNTAX.md) |
 | Look up a specific builtin function | [api.md](api.md) |
 | Understand classes, interfaces, structs, enums | [object-oriented-programming.md](object-oriented-programming.md) |
-| Understand `async`/`await`, threads, and channels | [concurrency.md](concurrency.md) |
-| Call native Windows DLLs or build a GUI | [ffi-and-gui.md](ffi-and-gui.md) |
-| Understand how the interpreter itself works internally | [architecture.md](architecture.md) |
-| See the `ezlib` package ecosystem | [standard-library.md](standard-library.md) |
+| Understand `async`/`await`, threads, and channels | [08_Modules_and_Concurrency.md](08_Modules_and_Concurrency.md) |
+| Call native libraries or build a GUI | [gui_readme.md](gui_readme.md) |
+| Understand how the interpreter itself works internally | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| See the `ezlib` package ecosystem | [09_Builtin_Libraries.md](09_Builtin_Libraries.md) |
 | Get quick answers to common questions | [faq.md](faq.md) |

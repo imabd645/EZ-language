@@ -1,0 +1,338 @@
+# ============================================================================
+# datetime — test suite
+#   ez test.ez
+#
+# The timestamps used as anchors below can all be checked by hand, because
+# every other assertion depends on the calendar being right. The time-zone
+# section deliberately tests both January and July for the same zone: a zone's
+# offset is not a property of the zone, it is a property of the instant.
+# ============================================================================
+
+# One import. Everything the package offers is exported from the root -- the
+# submodules are how the code is organised, not how it is used.
+use "datetime"
+
+PASS = 0
+FAIL = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) { PASS = PASS + 1 }
+    other {
+        FAIL = FAIL + 1
+        out `  FAIL {label}`
+        out `    expected: {expected}`
+        out `    actual:   {actual}`
+    }
+}
+task throws(label, fn) {
+    try {
+        fn()
+        FAIL = FAIL + 1
+        out `  FAIL {label} (expected a throw)`
+    }
+    catch (e) { PASS = PASS + 1 }
+}
+task throwsSaying(label, fragment, fn) {
+    try {
+        fn()
+        FAIL = FAIL + 1
+        out `  FAIL {label} (expected a throw)`
+    }
+    catch (e) {
+        when contains(str(e.message), fragment) { PASS = PASS + 1 }
+        other {
+            FAIL = FAIL + 1
+            out `  FAIL {label}`
+            out `    expected the message to mention: {fragment}`
+            out `    actual:   {e.message}`
+        }
+    }
+}
+
+out "datetime tests"
+
+# ── version 1.0 behaviour, unchanged ────────────────────────────────────────
+check("format", format(1786538985123), "2026-08-12 12:49:45")
+check("dateStr", dateStr(1786538985123), "2026-08-12")
+check("timeStr", timeStr(1786538985123), "12:49:45")
+check("makeTimestamp", makeTimestamp(2026, 8, 12, 12, 49, 45), 1786538985000)
+check("the epoch", makeTimestamp(1970, 1, 1, 0, 0, 0), 0)
+check("addTime", addTime(0, 1, 2, 3, 4), 93784000)
+check("diffMs", diffMs(500, 200), 300)
+check("diffDays", diffDays(86400000 * 3, 0), 3)
+check("isLeap 2000", isLeap(2000), true)
+check("isLeap 1900", isLeap(1900), false)
+check("daysInMonth February", daysInMonth(2024, 2), 29)
+check("padZero", padZero(5), "05")
+check("padZero of two digits", padZero(12), "12")
+# Components are still reachable by dot, which is how 1.0 documented them.
+old = getComponents(1786538985123)
+check("components by dot access", str(old.year) + "/" + str(old.month), "2026/8")
+check("weekday", old.weekday, 3)
+
+# ── the pre-1970 fix ────────────────────────────────────────────────────────
+# 1.0 counted forward from 1970 a year at a time, so a negative timestamp fell
+# through both loops and produced day 0 of January.
+check("one millisecond before the epoch", format(-1), "1969-12-31 23:59:59")
+check("a day before the epoch", dateStr(-86400000), "1969-12-31")
+check("a date well before", dateStr(makeTimestamp(1900, 6, 15, 0, 0, 0)), "1900-06-15")
+check("and it round trips", format(makeTimestamp(1900, 6, 15, 12, 30, 45)), "1900-06-15 12:30:45")
+check("floorDiv now floors", floorDiv(-1, 1000), -1)
+check("floorDiv is unchanged for positives", floorDiv(100, 7), 14)
+check("negative components decompose", getComponents(-1)["day"], 31)
+check("and the hour", getComponents(-1)["hour"], 23)
+
+# ── anchors that can be checked by hand ─────────────────────────────────────
+check("y2k", makeTimestamp(2000, 1, 1, 0, 0, 0), 946684800000)
+check("a leap day", makeTimestamp(2024, 2, 29, 0, 0, 0), 1709164800000)
+check("the 2038 overflow", makeTimestamp(2038, 1, 19, 3, 14, 7), 2147483647000)
+check("the epoch was a Thursday", getComponents(0)["weekday"], 4)
+check("2100 is not a leap year", isLeap(2100), false)
+check("so the calendar steps over it", dateStr(makeTimestamp(2100, 3, 1, 0, 0, 0)), "2100-03-01")
+check("day of year", getComponents(makeTimestamp(2026, 1, 1, 0, 0, 0))["dayOfYear"], 1)
+check("day of year at the end", getComponents(makeTimestamp(2026, 12, 31, 0, 0, 0))["dayOfYear"], 365)
+check("and in a leap year", getComponents(makeTimestamp(2024, 12, 31, 0, 0, 0))["dayOfYear"], 366)
+
+# ── formatting ──────────────────────────────────────────────────────────────
+sample = makeTimestamp(2026, 8, 12, 14, 5, 9, 123)
+check("iso", toIso(sample), "2026-08-12T14:05:09.123Z")
+check("iso to the second", toIsoSeconds(sample), "2026-08-12T14:05:09Z")
+check("iso date", toIsoDate(sample), "2026-08-12")
+check("http date", toHttpDate(sample), "Wed, 12 Aug 2026 14:05:09 GMT")
+check("a pattern", formatWith(sample, "YYYY/MM/DD"), "2026/08/12")
+check("month name", formatWith(sample, "MMMM"), "August")
+check("short month", formatWith(sample, "MMM"), "Aug")
+check("day name", formatWith(sample, "dddd"), "Wednesday")
+check("short day", formatWith(sample, "ddd"), "Wed")
+check("unpadded", formatWith(sample, "D/M/YYYY"), "12/8/2026")
+check("two-digit year", formatWith(sample, "YY"), "26")
+check("milliseconds", formatWith(sample, "SSS"), "123")
+# YYYY must not be read as YY twice.
+check("longest token wins", formatWith(sample, "YYYY"), "2026")
+# Midnight is 12 on a twelve-hour clock, not 0.
+check("twelve-hour midnight", formatWith(makeTimestamp(2026, 1, 1, 0, 30, 0), "hh:mm A"), "12:30 AM")
+check("twelve-hour noon", formatWith(makeTimestamp(2026, 1, 1, 12, 30, 0), "hh:mm A"), "12:30 PM")
+check("twelve-hour afternoon", formatWith(sample, "hh:mm a"), "02:05 pm")
+check("literal text passes through", formatWith(sample, "on DD"), "on 12")
+# A backslash escapes a token letter that is meant literally.
+check("escaping", formatWith(sample, "\\D\\D=DD"), "DD=12")
+
+# ── parsing ─────────────────────────────────────────────────────────────────
+check("a bare date", toIso(parse("2026-08-12")), "2026-08-12T00:00:00.000Z")
+check("with a time", toIso(parse("2026-08-12T14:30:00")), "2026-08-12T14:30:00.000Z")
+check("with a Z", toIso(parse("2026-08-12T14:30:00Z")), "2026-08-12T14:30:00.000Z")
+check("with milliseconds", toIso(parse("2026-08-12T14:30:00.456Z")), "2026-08-12T14:30:00.456Z")
+check("with a space instead of T", toIso(parse("2026-08-12 14:30:00")), "2026-08-12T14:30:00.000Z")
+# The offset is applied, so the result is a real instant.
+check("a positive offset is applied", toIso(parse("2026-08-12T14:30:00+05:30")), "2026-08-12T09:00:00.000Z")
+check("a negative offset is applied", toIso(parse("2026-08-12T14:30:00-08:00")), "2026-08-12T22:30:00.000Z")
+check("an offset with no colon", toIso(parse("2026-08-12T14:30:00-0800")), "2026-08-12T22:30:00.000Z")
+check("hours and minutes only", toIso(parse("2026-08-12T14:30")), "2026-08-12T14:30:00.000Z")
+# Microseconds from Postgres get truncated to milliseconds rather than refused.
+check("more than three fraction digits", toIso(parse("2026-08-12T14:30:00.123456Z")),
+      "2026-08-12T14:30:00.123Z")
+check("a comma as the decimal separator", toIso(parse("2026-08-12T14:30:00,5Z")),
+      "2026-08-12T14:30:00.500Z")
+# 24:00:00 is a legal way to write the end of a day.
+check("24:00 is the next midnight", toIso(parse("2026-08-12T24:00:00Z")), "2026-08-13T00:00:00.000Z")
+# A leap second is clamped rather than rejected.
+check("a leap second", toIso(parse("2016-12-31T23:59:60Z")), "2016-12-31T23:59:59.000Z")
+check("round trips", toIso(parse(toIso(sample))), toIso(sample))
+check("before 1970", toIso(parse("1969-07-20T20:17:00Z")), "1969-07-20T20:17:00.000Z")
+
+throwsSaying("nonsense is refused", "not a date", || parse("not a date"))
+throwsSaying("an impossible month", "out of range", || parse("2026-13-01"))
+throwsSaying("an impossible day", "no day", || parse("2026-02-30"))
+throwsSaying("an impossible hour", "out of range", || parse("2026-01-01T25:00:00"))
+throwsSaying("letters where numbers belong", "where a number", || parse("2026-ab-01"))
+throws("empty", || parse(""))
+throws("nil", || parse(nil))
+check("tryParse gives nil instead", tryParse("rubbish"), nil)
+check("tryParse still parses", tryParse("2026-08-12") != nil, true)
+check("isValidDate", isValidDate("2026-08-12"), true)
+check("isValidDate rejects", isValidDate("2026-02-30"), false)
+# 29 February only exists in a leap year.
+check("a leap day is valid in a leap year", isValidDate("2024-02-29"), true)
+check("and invalid otherwise", isValidDate("2026-02-29"), false)
+
+# ── time zones ──────────────────────────────────────────────────────────────
+check("the zone database is present", isAvailable(), true)
+check("there are many zones", zoneCount() > 100, true)
+
+winter = makeTimestamp(2026, 1, 15, 12, 0, 0)
+summer = makeTimestamp(2026, 7, 15, 12, 0, 0)
+
+# Half-hour and quarter-hour offsets, which the 1.0 whole-hour API could not
+# express at all.
+check("India is +05:30", offsetIn(summer, "Asia/Kolkata"), 330)
+check("Nepal is +05:45", offsetIn(summer, "Asia/Kathmandu"), 345)
+check("India does not change in winter", offsetIn(winter, "Asia/Kolkata"), 330)
+check("India's clock reading", formatIn(summer, "Asia/Kolkata", "HH:mm"), "17:30")
+check("Nepal's clock reading", formatIn(summer, "Asia/Kathmandu", "HH:mm"), "17:45")
+
+# The point of the whole exercise: a zone's offset depends on the instant.
+check("Los Angeles in winter", offsetIn(winter, "America/New_York"), -300)
+check("New York in summer", offsetIn(summer, "America/New_York"), -240)
+check("London in winter", offsetIn(winter, "Europe/London"), 0)
+check("London in summer", offsetIn(summer, "Europe/London"), 60)
+check("Paris in winter", offsetIn(winter, "Europe/Paris"), 60)
+check("Paris in summer", offsetIn(summer, "Europe/Paris"), 120)
+# The southern hemisphere has it the other way round.
+check("Sydney in January", offsetIn(winter, "Australia/Sydney"), 660)
+check("Sydney in July", offsetIn(summer, "Australia/Sydney"), 600)
+
+check("dst in summer in London", isDst(summer, "Europe/London"), true)
+check("no dst in winter in London", isDst(winter, "Europe/London"), false)
+check("dst in January in Sydney", isDst(winter, "Australia/Sydney"), true)
+check("India never has dst", isDst(summer, "Asia/Kolkata"), false)
+check("hasDst for London", hasDst("Europe/London"), true)
+check("hasDst for India", hasDst("Asia/Kolkata"), false)
+
+check("UTC is zero", offsetIn(summer, "UTC"), 0)
+check("a fixed offset", offsetIn(summer, "+05:30"), 330)
+check("a negative fixed offset", offsetIn(summer, "-08:00"), -480)
+check("a fixed offset with no colon", offsetIn(summer, "+0530"), 330)
+# A fixed offset is not a zone: it has no DST rules, in either season.
+check("a fixed offset does not shift", offsetIn(winter, "+01:00"), offsetIn(summer, "+01:00"))
+
+# Windows names work directly, and so do IANA names.
+check("a Windows zone name", offsetIn(summer, "India Standard Time"), 330)
+check("case does not matter", offsetIn(summer, "asia/kolkata"), 330)
+check("an alias", offsetIn(summer, "Asia/Calcutta"), 330)
+check("zoneExists", zoneExists("Europe/Paris"), true)
+check("zoneExists rejects", zoneExists("Middle/Earth"), false)
+throwsSaying("an unknown zone explains itself", "unknown time zone", || offsetIn(summer, "Middle/Earth"))
+
+check("describeIn", describeIn(summer, "Asia/Kolkata"), "2026-07-15 17:30:00 +05:30 (India Standard Time)")
+check("isoIn carries the offset", isoIn(summer, "Asia/Kolkata"), "2026-07-15T17:30:00.000+05:30")
+check("dateStrIn", dateStrIn(summer, "Asia/Kolkata"), "2026-07-15")
+check("timeStrIn", timeStrIn(summer, "Asia/Kolkata"), "17:30:00")
+# Late evening UTC is already the next day further east.
+check("the date can differ from UTC",
+      dateStrIn(makeTimestamp(2026, 7, 15, 22, 0, 0), "Asia/Tokyo"), "2026-07-16")
+check("and the other way",
+      dateStrIn(makeTimestamp(2026, 7, 15, 2, 0, 0), "America/Los_Angeles"), "2026-07-14")
+
+# A wall-clock reading in a zone, back to a real instant.
+check("instantIn", toIso(instantIn("Asia/Kolkata", 2026, 7, 15, 17, 30, 0)),
+      "2026-07-15T12:00:00.000Z")
+check("and it round trips", formatIn(instantIn("Europe/Paris", 2026, 7, 1, 9, 0, 0), "Europe/Paris", "HH:mm"), "09:00")
+check("parseIn reads a local time", toIso(parseIn("2026-07-15 17:30:00", "Asia/Kolkata")),
+      "2026-07-15T12:00:00.000Z")
+check("offsetString", offsetString(330), "+05:30")
+check("a negative one", offsetString(-480), "-08:00")
+check("zero is Z", offsetString(0), "Z")
+check("the local zone is known", len(localZone()) > 0, true)
+
+# ── calendar arithmetic ─────────────────────────────────────────────────────
+check("addDays", dateStr(addDays(makeTimestamp(2026, 8, 12, 0, 0, 0), 5)), "2026-08-17")
+check("addDays across a month", dateStr(addDays(makeTimestamp(2026, 8, 30, 0, 0, 0), 5)), "2026-09-04")
+check("addWeeks", dateStr(addWeeks(makeTimestamp(2026, 8, 12, 0, 0, 0), 2)), "2026-08-26")
+check("addHours", timeStr(addHours(makeTimestamp(2026, 8, 12, 22, 0, 0), 3)), "01:00:00")
+
+# A month is not a fixed number of milliseconds, so the day is clamped.
+check("31 January plus a month", dateStr(addMonths(makeTimestamp(2026, 1, 31, 0, 0, 0), 1)), "2026-02-28")
+check("and in a leap year", dateStr(addMonths(makeTimestamp(2024, 1, 31, 0, 0, 0), 1)), "2024-02-29")
+check("31 March minus a month", dateStr(addMonths(makeTimestamp(2026, 3, 31, 0, 0, 0), -1)), "2026-02-28")
+check("across a year", dateStr(addMonths(makeTimestamp(2026, 11, 15, 0, 0, 0), 3)), "2027-02-15")
+check("backwards across a year", dateStr(addMonths(makeTimestamp(2026, 2, 15, 0, 0, 0), -3)), "2025-11-15")
+check("a normal month keeps its day", dateStr(addMonths(makeTimestamp(2026, 8, 15, 0, 0, 0), 1)), "2026-09-15")
+check("29 February plus a year", dateStr(addYears(makeTimestamp(2024, 2, 29, 0, 0, 0), 1)), "2025-02-28")
+check("addYears", dateStr(addYears(makeTimestamp(2026, 8, 12, 0, 0, 0), 2)), "2028-08-12")
+
+check("startOfDay", format(startOfDay(sample)), "2026-08-12 00:00:00")
+check("endOfDay", format(endOfDay(sample)), "2026-08-12 23:59:59")
+check("startOfMonth", dateStr(startOfMonth(sample)), "2026-08-01")
+check("endOfMonth", dateStr(endOfMonth(sample)), "2026-08-31")
+check("endOfMonth in February", dateStr(endOfMonth(makeTimestamp(2026, 2, 5, 0, 0, 0))), "2026-02-28")
+check("endOfMonth in a leap February", dateStr(endOfMonth(makeTimestamp(2024, 2, 5, 0, 0, 0))), "2024-02-29")
+check("startOfYear", dateStr(startOfYear(sample)), "2026-01-01")
+check("endOfYear", dateStr(endOfYear(sample)), "2026-12-31")
+# 2026-08-12 is a Wednesday; weeks start on Monday.
+check("startOfWeek", dateStr(startOfWeek(sample)), "2026-08-10")
+check("endOfWeek", dateStr(endOfWeek(sample)), "2026-08-16")
+check("a Sunday belongs to the week before", dateStr(startOfWeek(makeTimestamp(2026, 8, 16, 0, 0, 0))), "2026-08-10")
+check("startOfWeek on Sunday", dateStr(startOfWeek(sample, 0)), "2026-08-09")
+
+# ── comparison ──────────────────────────────────────────────────────────────
+check("isSameDay", isSameDay(sample, makeTimestamp(2026, 8, 12, 23, 0, 0)), true)
+check("not the next day", isSameDay(sample, makeTimestamp(2026, 8, 13, 0, 0, 0)), false)
+check("isSameMonth", isSameMonth(sample, makeTimestamp(2026, 8, 1, 0, 0, 0)), true)
+check("isSameYear", isSameYear(sample, makeTimestamp(2026, 1, 1, 0, 0, 0)), true)
+check("isBefore", isBefore(1, 2), true)
+check("isAfter", isAfter(2, 1), true)
+check("isBetween", isBetween(5, 1, 10), true)
+check("isBetween is inclusive", isBetween(10, 1, 10), true)
+check("isBetween excludes outside", isBetween(11, 1, 10), false)
+check("isWeekend on a Saturday", isWeekend(makeTimestamp(2026, 8, 15, 0, 0, 0)), true)
+check("isWeekend on a Sunday", isWeekend(makeTimestamp(2026, 8, 16, 0, 0, 0)), true)
+check("not on a Wednesday", isWeekend(sample), false)
+check("isWeekday", isWeekday(sample), true)
+check("earliest", earliest([5, 1, 9]), 1)
+check("latest", latest([5, 1, 9]), 9)
+check("earliest of nothing", earliest([]), nil)
+
+# Whole calendar days, which is what "how many days until" means -- not the
+# millisecond difference divided by a day.
+check("daysBetween", daysBetween(makeTimestamp(2026, 8, 12, 23, 0, 0), makeTimestamp(2026, 8, 13, 1, 0, 0)), 1)
+check("daysBetween ignores the time", daysBetween(makeTimestamp(2026, 8, 12, 0, 0, 0), makeTimestamp(2026, 8, 20, 0, 0, 0)), 8)
+check("daysBetween backwards", daysBetween(makeTimestamp(2026, 8, 20, 0, 0, 0), makeTimestamp(2026, 8, 12, 0, 0, 0)), -8)
+# Monday to Friday is four business days.
+check("businessDaysBetween", businessDaysBetween(makeTimestamp(2026, 8, 10, 0, 0, 0), makeTimestamp(2026, 8, 14, 0, 0, 0)), 4)
+check("a whole week is five", businessDaysBetween(makeTimestamp(2026, 8, 10, 0, 0, 0), makeTimestamp(2026, 8, 17, 0, 0, 0)), 5)
+check("addBusinessDays skips the weekend", dateStr(addBusinessDays(makeTimestamp(2026, 8, 14, 0, 0, 0), 1)), "2026-08-17")
+check("addBusinessDays backwards", dateStr(addBusinessDays(makeTimestamp(2026, 8, 17, 0, 0, 0), -1)), "2026-08-14")
+
+check("age", age(makeTimestamp(2000, 6, 15, 0, 0, 0), makeTimestamp(2026, 8, 12, 0, 0, 0)), 26)
+# The birthday has not happened yet this year.
+check("age before the birthday", age(makeTimestamp(2000, 10, 15, 0, 0, 0), makeTimestamp(2026, 8, 12, 0, 0, 0)), 25)
+check("age on the birthday", age(makeTimestamp(2000, 8, 12, 0, 0, 0), makeTimestamp(2026, 8, 12, 0, 0, 0)), 26)
+check("quarter", quarterOf(makeTimestamp(2026, 8, 12, 0, 0, 0)), 3)
+check("first quarter", quarterOf(makeTimestamp(2026, 1, 1, 0, 0, 0)), 1)
+check("last quarter", quarterOf(makeTimestamp(2026, 12, 31, 0, 0, 0)), 4)
+
+# ISO weeks: the week containing the first Thursday is week 1, so early January
+# can belong to the year before.
+check("an ISO week", weekOf(makeTimestamp(2026, 8, 12, 0, 0, 0))["week"], 33)
+check("1 January 2026 is week 1", weekOf(makeTimestamp(2026, 1, 1, 0, 0, 0))["week"], 1)
+check("1 January 2027 belongs to 2026", weekOf(makeTimestamp(2027, 1, 1, 0, 0, 0))["year"], 2026)
+check("and is week 53", weekOf(makeTimestamp(2027, 1, 1, 0, 0, 0))["week"], 53)
+
+# ── durations ───────────────────────────────────────────────────────────────
+check("milliseconds", humanDuration(450), "450ms")
+check("seconds", humanDuration(45000), "45s")
+check("minutes", humanDuration(120000), "2m")
+check("minutes and seconds", humanDuration(135000), "2m 15s")
+check("hours", humanDuration(7200000), "2h")
+check("hours and minutes", humanDuration(9000000), "2h 30m")
+check("days", humanDuration(172800000), "2d")
+check("days and hours", humanDuration(93784000), "1d 2h")
+check("a negative duration reads the same", humanDuration(-450), "450ms")
+
+reference = makeTimestamp(2026, 8, 12, 12, 0, 0)
+check("just now", relativeTime(reference, reference), "just now")
+check("seconds ago", relativeTime(reference - 30000, reference), "30 seconds ago")
+check("a minute ago", relativeTime(reference - 60000, reference), "1 minute ago")
+check("hours ago", relativeTime(reference - 3600000 * 3, reference), "3 hours ago")
+check("in the future", relativeTime(reference + 3600000 * 2, reference), "in 2 hours")
+check("days ago", relativeTime(reference - 86400000 * 3, reference), "3 days ago")
+check("weeks ago", relativeTime(reference - 86400000 * 14, reference), "2 weeks ago")
+check("months ago", relativeTime(reference - 86400000 * 60, reference), "2 months ago")
+check("years ago", relativeTime(reference - 86400000 * 800, reference), "2 years ago")
+check("singular", relativeTime(reference - 86400000, reference), "1 day ago")
+
+parts = breakDuration(93784567)
+check("duration days", parts["days"], 1)
+check("duration hours", parts["hours"], 2)
+check("duration minutes", parts["minutes"], 3)
+check("duration seconds", parts["seconds"], 4)
+check("duration milliseconds", parts["milliseconds"], 567)
+check("a negative duration is flagged", breakDuration(-1000)["negative"], true)
+
+timed = timeIt(|| 1 + 1)
+check("timeIt returns the result", timed["result"], 2)
+check("and a duration", timed["ms"] >= 0, true)
+
+out ""
+out `  passed {PASS}   failed {FAIL}`
+when FAIL > 0 { exit(1) }

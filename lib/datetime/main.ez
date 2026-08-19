@@ -1,0 +1,405 @@
+# ============================================================================
+# datetime — dates, times and time zones for EZ
+#
+# Timestamps are milliseconds since 1970-01-01T00:00:00 UTC, as before.
+#
+#   use "datetime"
+#
+#   now()                                  1786538985123
+#   toIso(now())                           "2026-08-12T12:49:45.123Z"
+#   parse("2026-08-12T14:30:00+05:30")     an instant, offset applied
+#   formatIn(now(), "Asia/Kolkata", "YYYY-MM-DD HH:mm ZZ")
+#   relativeTime(then, now())              "3 hours ago"
+#
+# Everything from version 1.0 still works and still means the same thing. What
+# is new is time zones with real DST rules, parsing, pattern formatting,
+# calendar arithmetic, and correct results before 1970.
+# ============================================================================
+
+use "datetime/civil.ez"
+use "datetime/patterns.ez"
+use "datetime/tz.ez"
+
+# Kept from version 1.0.
+MS_PER_SEC = 1000
+MS_PER_MIN = 60000
+MS_PER_HOUR = 3600000
+MS_PER_DAY = 86400000
+
+# ============================================================================
+# Version 1.0 surface — unchanged behaviour
+# ============================================================================
+
+# Floor division.
+#
+# The 1.0 implementation truncated towards zero rather than flooring, so it
+# disagreed with its own name for negative inputs -- floorDiv(-1, 1000) gave 0
+# where flooring gives -1. That is what made every pre-1970 timestamp decompose
+# into a negative day number. Results for non-negative inputs are unchanged.
+export task floorDiv(a, b) { give floorDivide(a, b) }
+
+export task isLeap(year) { give isLeapYear(year) }
+
+export task padZero(num) {
+    s = str(num)
+    when len(s) == 1 { give "0" + s }
+    give s
+}
+
+export task daysInMonth(year, month) { give daysInMonthOf(year, month) }
+
+# The current system time in milliseconds.
+export task now() { give clock() }
+
+# Decomposes a timestamp into year, month, day, hour, minute, second,
+# millisecond and weekday.
+#
+# Also carries dayOfYear and days (days since the epoch), which the 1.0 version
+# did not, and is now correct for timestamps before 1970.
+export task getComponents(ts) { give componentsUtc(ts) }
+
+# Builds a timestamp from components. Milliseconds are optional, and years
+# before 1970 work.
+export task makeTimestamp(y, m, d, h, mn, s, ms = 0) {
+    give timestampUtc(y, m, d, h, mn, s, ms)
+}
+
+# "YYYY-MM-DD HH:MM:SS"
+export task format(ts) {
+    c = componentsUtc(ts)
+    give str(c["year"]) + "-" + padZero(c["month"]) + "-" + padZero(c["day"]) + " " +
+         padZero(c["hour"]) + ":" + padZero(c["minute"]) + ":" + padZero(c["second"])
+}
+
+export task dateStr(ts) {
+    c = componentsUtc(ts)
+    give str(c["year"]) + "-" + padZero(c["month"]) + "-" + padZero(c["day"])
+}
+
+export task timeStr(ts) {
+    c = componentsUtc(ts)
+    give padZero(c["hour"]) + ":" + padZero(c["minute"]) + ":" + padZero(c["second"])
+}
+
+export task addTime(ts, days, hours, mins, secs) {
+    give ts + (days * MS_PER_DAY) + (hours * MS_PER_HOUR) + (mins * MS_PER_MIN) + (secs * MS_PER_SEC)
+}
+
+export task diffMs(ts1, ts2) { give ts1 - ts2 }
+
+export task diffDays(ts1, ts2) { give floorDivide(ts1 - ts2, MS_PER_DAY) }
+
+export task dateTime(x) { give format(addTime(now(), 0, x, 0, 0)) }
+
+export task dateNow() { give dateStr(now()) }
+
+export task timeNow(x = 0) { give timeStr(addTime(now(), 0, x, 0, 0)) }
+
+# ============================================================================
+# Formatting
+# ============================================================================
+
+# A pattern, in UTC. See format.ez for the tokens; the common ones are
+# YYYY MM DD HH mm ss, MMMM for the month name and dddd for the day name.
+export task formatWith(ts, pattern) { give formatParts(componentsUtc(ts), pattern, 0) }
+
+# ISO 8601, which is what to write into a database or an API.
+export task toIso(ts) { give formatParts(componentsUtc(ts), "YYYY-MM-DDTHH:mm:ss.SSSZZ", 0) }
+
+export task toIsoSeconds(ts) { give formatParts(componentsUtc(ts), "YYYY-MM-DDTHH:mm:ssZZ", 0) }
+
+export task toIsoDate(ts) { give formatParts(componentsUtc(ts), "YYYY-MM-DD", 0) }
+
+# RFC 1123, the format HTTP headers use.
+export task toHttpDate(ts) {
+    give formatParts(componentsUtc(ts), "ddd, DD MMM YYYY HH:mm:ss", 0) + " GMT"
+}
+
+# ============================================================================
+# Parsing
+# ============================================================================
+
+export task parse(text) { give parseIso(text) }
+
+export task tryParse(text) { give tryParseIso(text) }
+
+# Reads a wall-clock string as a time in `zone`, which is what a form field or
+# a user's typed input actually is.
+export task parseIn(text, zone) { give instantOf(parseIso(text), zone) }
+
+export task isValidDate(text) { give tryParseIso(text) != nil }
+
+# ============================================================================
+# Time zones
+# ============================================================================
+
+export task nowIn(zone) { give componentsIn(now(), zone) }
+
+# The components a clock in `zone` would show, plus the offset that applied at
+# that instant and whether daylight saving was in force.
+export task componentsIn(ts, zone) {
+    parts = componentsUtc(wallClockOf(ts, zone))
+    parts["offsetMinutes"] = offsetAt(ts, zone)
+    parts["zone"] = resolveZone(zone)
+    parts["isDst"] = isDst(ts, zone)
+    give parts
+}
+
+export task formatIn(ts, zone, pattern) {
+    give formatParts(componentsUtc(wallClockOf(ts, zone)), pattern, offsetAt(ts, zone))
+}
+
+export task isoIn(ts, zone) { give formatIn(ts, zone, "YYYY-MM-DDTHH:mm:ss.SSSZZ") }
+
+export task dateStrIn(ts, zone) { give formatIn(ts, zone, "YYYY-MM-DD") }
+
+export task timeStrIn(ts, zone) { give formatIn(ts, zone, "HH:mm:ss") }
+
+# "2026-08-12 18:19:45 +05:30 (India Standard Time)"
+export task describeIn(ts, zone) {
+    resolved = resolveZone(zone)
+    give formatIn(ts, zone, "YYYY-MM-DD HH:mm:ss ZZ") + " (" + resolved + ")"
+}
+
+export task offsetIn(ts, zone) { give offsetAt(ts, zone) }
+
+# ============================================================================
+# Calendar arithmetic
+# ============================================================================
+
+export task addDays(ts, days) { give ts + days * MS_PER_DAY }
+export task addHours(ts, hours) { give ts + hours * MS_PER_HOUR }
+export task addMinutes(ts, minutes) { give ts + minutes * MS_PER_MIN }
+export task addSeconds(ts, seconds) { give ts + seconds * MS_PER_SEC }
+export task addWeeks(ts, weeks) { give ts + weeks * 7 * MS_PER_DAY }
+
+# Months are not a fixed number of milliseconds, so this moves the month field
+# and clamps the day: 31 January plus one month is 28 February, not 3 March.
+export task addMonths(ts, months) {
+    c = componentsUtc(ts)
+    total = (c["year"] * 12) + (c["month"] - 1) + months
+    year = floorDivide(total, 12)
+    month = positiveMod(total, 12) + 1
+    day = c["day"]
+    limit = daysInMonthOf(year, month)
+    when day > limit { day = limit }
+    give timestampUtc(year, month, day, c["hour"], c["minute"], c["second"], c["millisecond"])
+}
+
+# Clamps for the same reason: 29 February plus one year is 28 February.
+export task addYears(ts, years) { give addMonths(ts, years * 12) }
+
+export task startOfDay(ts) {
+    c = componentsUtc(ts)
+    give timestampUtc(c["year"], c["month"], c["day"], 0, 0, 0, 0)
+}
+
+export task endOfDay(ts) { give startOfDay(ts) + MS_PER_DAY - 1 }
+
+# Weeks start on Monday, as ISO 8601 has them.
+export task startOfWeek(ts, firstDay = 1) {
+    c = componentsUtc(ts)
+    shift = positiveMod(c["weekday"] - firstDay, 7)
+    give startOfDay(ts) - shift * MS_PER_DAY
+}
+
+export task endOfWeek(ts, firstDay = 1) {
+    give startOfWeek(ts, firstDay) + 7 * MS_PER_DAY - 1
+}
+
+export task startOfMonth(ts) {
+    c = componentsUtc(ts)
+    give timestampUtc(c["year"], c["month"], 1, 0, 0, 0, 0)
+}
+
+export task endOfMonth(ts) {
+    c = componentsUtc(ts)
+    give timestampUtc(c["year"], c["month"], daysInMonthOf(c["year"], c["month"]), 23, 59, 59, 999)
+}
+
+export task startOfYear(ts) {
+    give timestampUtc(componentsUtc(ts)["year"], 1, 1, 0, 0, 0, 0)
+}
+
+export task endOfYear(ts) {
+    give timestampUtc(componentsUtc(ts)["year"], 12, 31, 23, 59, 59, 999)
+}
+
+# ============================================================================
+# Comparison
+# ============================================================================
+
+export task isSameDay(a, b) { give startOfDay(a) == startOfDay(b) }
+export task isSameMonth(a, b) { give startOfMonth(a) == startOfMonth(b) }
+export task isSameYear(a, b) { give startOfYear(a) == startOfYear(b) }
+export task isBefore(a, b) { give a < b }
+export task isAfter(a, b) { give a > b }
+export task isBetween(ts, from, until) { give ts >= from and ts <= until }
+export task isPast(ts) { give ts < now() }
+export task isFuture(ts) { give ts > now() }
+export task isToday(ts) { give isSameDay(ts, now()) }
+
+export task isWeekend(ts) {
+    day = componentsUtc(ts)["weekday"]
+    give day == 0 or day == 6
+}
+
+export task isWeekday(ts) { give isWeekend(ts) == false }
+
+export task earliest(items) {
+    best = nil
+    get item in items {
+        when best == nil or item < best { best = item }
+    }
+    give best
+}
+
+export task latest(items) {
+    best = nil
+    get item in items {
+        when best == nil or item > best { best = item }
+    }
+    give best
+}
+
+# Whole calendar days between two dates, ignoring the time of day -- which is
+# what "how many days until Friday" means, and not what dividing by 86400000
+# gives you when the times differ.
+export task daysBetween(a, b) { give floorDivide(startOfDay(b) - startOfDay(a), MS_PER_DAY) }
+
+# Days excluding Saturdays and Sundays.
+export task businessDaysBetween(a, b) {
+    from = startOfDay(a)
+    until = startOfDay(b)
+    sign = 1
+    when until < from {
+        swap = from
+        from = until
+        until = swap
+        sign = -1
+    }
+    count = 0
+    cursor = from
+    while cursor < until {
+        when isWeekend(cursor) == false { count = count + 1 }
+        cursor = cursor + MS_PER_DAY
+    }
+    give count * sign
+}
+
+export task addBusinessDays(ts, days) {
+    cursor = ts
+    remaining = days
+    direction = 1
+    when days < 0 {
+        direction = -1
+        remaining = 0 - days
+    }
+    while remaining > 0 {
+        cursor = cursor + direction * MS_PER_DAY
+        when isWeekend(cursor) == false { remaining = remaining - 1 }
+    }
+    give cursor
+}
+
+# Whole years, decremented when this year's birthday has not happened yet.
+export task age(birth, at = nil) {
+    moment = at
+    when moment == nil { moment = now() }
+    b = componentsUtc(birth)
+    c = componentsUtc(moment)
+    years = c["year"] - b["year"]
+    when c["month"] < b["month"] { years = years - 1 }
+    other when c["month"] == b["month"] and c["day"] < b["day"] { years = years - 1 }
+    give years
+}
+
+export task weekOf(ts) { give isoWeek(ts) }
+
+export task quarterOf(ts) { give floorDivide(componentsUtc(ts)["month"] - 1, 3) + 1 }
+
+# ============================================================================
+# Durations
+# ============================================================================
+
+# "2h 15m", "3d 4h", "450ms". Compact, for logs and timings.
+export task humanDuration(ms) {
+    total = floor(ms)
+    when total < 0 { total = 0 - total }
+    when total < 1000 { give str(total) + "ms" }
+    seconds = floorDivide(total, 1000)
+    when seconds < 60 { give str(seconds) + "s" }
+    minutes = floorDivide(seconds, 60)
+    when minutes < 60 {
+        rest = seconds % 60
+        when rest == 0 { give str(minutes) + "m" }
+        give str(minutes) + "m " + str(rest) + "s"
+    }
+    hours = floorDivide(minutes, 60)
+    when hours < 24 {
+        rest = minutes % 60
+        when rest == 0 { give str(hours) + "h" }
+        give str(hours) + "h " + str(rest) + "m"
+    }
+    days = floorDivide(hours, 24)
+    rest = hours % 24
+    when rest == 0 { give str(days) + "d" }
+    give str(days) + "d " + str(rest) + "h"
+}
+
+# "3 hours ago", "in 2 days". For anything a person reads.
+export task relativeTime(ts, from = nil) {
+    reference = from
+    when reference == nil { reference = now() }
+    difference = ts - reference
+    past = difference < 0
+    total = difference
+    when past { total = 0 - total }
+
+    phrase = "just now"
+    seconds = floorDivide(total, 1000)
+    when seconds >= 5 {
+        minutes = floorDivide(seconds, 60)
+        hours = floorDivide(minutes, 60)
+        days = floorDivide(hours, 24)
+        when seconds < 60 { phrase = plural(seconds, "second") }
+        other when minutes < 60 { phrase = plural(minutes, "minute") }
+        other when hours < 24 { phrase = plural(hours, "hour") }
+        other when days < 7 { phrase = plural(days, "day") }
+        other when days < 31 { phrase = plural(floorDivide(days, 7), "week") }
+        other when days < 365 { phrase = plural(floorDivide(days, 30), "month") }
+        other { phrase = plural(floorDivide(days, 365), "year") }
+    }
+    when phrase == "just now" { give phrase }
+    when past { give phrase + " ago" }
+    give "in " + phrase
+}
+
+task plural(count, noun) {
+    whole = floor(count)
+    when whole == 1 { give "1 " + noun }
+    give str(whole) + " " + noun + "s"
+}
+
+# Milliseconds broken into days, hours, minutes, seconds and milliseconds, for
+# building a countdown.
+export task breakDuration(ms) {
+    total = floor(ms)
+    negative = total < 0
+    when negative { total = 0 - total }
+    give {
+        "days": floorDivide(total, MS_PER_DAY),
+        "hours": floorDivide(total % MS_PER_DAY, MS_PER_HOUR),
+        "minutes": floorDivide(total % MS_PER_HOUR, MS_PER_MIN),
+        "seconds": floorDivide(total % MS_PER_MIN, 1000),
+        "milliseconds": total % 1000,
+        "negative": negative
+    }
+}
+
+# Times an action, returning { result, ms }.
+export task timeIt(action) {
+    started = clock()
+    value = action()
+    give { "result": value, "ms": clock() - started }
+}

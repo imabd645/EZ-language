@@ -1,0 +1,121 @@
+# ============================================================================
+# datetime/civil.ez — the calendar arithmetic everything else is built on
+#
+# Version 1.0 converted a timestamp to a date by counting forward from 1970 a
+# year at a time, then a month at a time. That is O(years) per call, and it is
+# simply wrong for anything before 1970: with a negative day count neither loop
+# runs and the result comes out as a negative day number in January.
+#
+#   getComponents(-1)   ->  1969-12-31 23:59:59   (this file)
+#                       ->  1970-01-00 23:59:59   (the old loop)
+#
+# Replaced here with Howard Hinnant's civil-from-days algorithm: closed-form
+# integer arithmetic, exact for any year, no table and no accumulated error.
+# The results are identical to the old code for every date after 1970, so
+# nothing that already worked changes.
+# ============================================================================
+
+export MS_PER_SECOND = 1000
+export MS_PER_MINUTE = 60000
+export MS_PER_HOUR = 3600000
+export MS_PER_DAY = 86400000
+
+# Floors towards negative infinity, which is what the algorithms below assume
+# and what `/` does not do.
+export task floorDivide(a, b) {
+    quotient = a / b
+    whole = floor(quotient)
+    give whole
+}
+
+# A modulo that is never negative, so times before 1970 decompose correctly.
+export task positiveMod(a, b) {
+    remainder = a % b
+    when remainder < 0 { give remainder + b }
+    give remainder
+}
+
+export task isLeapYear(year) {
+    when year % 4 != 0 { give false }
+    when year % 100 != 0 { give true }
+    give year % 400 == 0
+}
+
+export task daysInMonthOf(year, month) {
+    when month == 2 {
+        when isLeapYear(year) { give 29 }
+        give 28
+    }
+    when month == 4 or month == 6 or month == 9 or month == 11 { give 30 }
+    give 31
+}
+
+# Days since 1970-01-01 for a proleptic Gregorian date.
+export task daysFromCivil(year, month, day) {
+    y = year
+    when month <= 2 { y = y - 1 }
+    era = floorDivide(y, 400)
+    yoe = y - era * 400
+    shifted = month - 3
+    when month <= 2 { shifted = month + 9 }
+    doy = floorDivide(153 * shifted + 2, 5) + day - 1
+    doe = yoe * 365 + floorDivide(yoe, 4) - floorDivide(yoe, 100) + doy
+    give era * 146097 + doe - 719468
+}
+
+export task civilFromDays(days) {
+    z = days + 719468
+    era = floorDivide(z, 146097)
+    doe = z - era * 146097
+    yoe = floorDivide(doe - floorDivide(doe, 1460) + floorDivide(doe, 36524) - floorDivide(doe, 146096), 365)
+    y = yoe + era * 400
+    doy = doe - (365 * yoe + floorDivide(yoe, 4) - floorDivide(yoe, 100))
+    mp = floorDivide(5 * doy + 2, 153)
+    d = doy - floorDivide(153 * mp + 2, 5) + 1
+    m = mp + 3
+    when mp >= 10 { m = mp - 9 }
+    when m <= 2 { y = y + 1 }
+    give { "year": y, "month": m, "day": d }
+}
+
+# 0 = Sunday. 1970-01-01 was a Thursday.
+export task weekdayFromDays(days) { give positiveMod(days + 4, 7) }
+
+# A millisecond timestamp into its parts, correct on both sides of the epoch.
+export task componentsUtc(ms) {
+    total = floor(ms)
+    days = floorDivide(total, MS_PER_DAY)
+    intoDay = total - days * MS_PER_DAY
+    date = civilFromDays(days)
+    date["hour"] = floorDivide(intoDay, MS_PER_HOUR)
+    date["minute"] = floorDivide(positiveMod(intoDay, MS_PER_HOUR), MS_PER_MINUTE)
+    date["second"] = floorDivide(positiveMod(intoDay, MS_PER_MINUTE), MS_PER_SECOND)
+    date["millisecond"] = positiveMod(intoDay, MS_PER_SECOND)
+    date["weekday"] = weekdayFromDays(days)
+    date["dayOfYear"] = days - daysFromCivil(date["year"], 1, 1) + 1
+    date["days"] = days
+    give date
+}
+
+export task timestampUtc(y, mo, d, h, mi, s, ms = 0) {
+    give daysFromCivil(y, mo, d) * MS_PER_DAY + h * MS_PER_HOUR +
+         mi * MS_PER_MINUTE + s * MS_PER_SECOND + ms
+}
+
+export task nowMs() { give clock() }
+
+# ISO 8601 week number. The week containing the year's first Thursday is week
+# 1, so the first days of January can belong to week 52 or 53 of the year
+# before -- which is why this is not just "day of year over seven".
+export task isoWeek(ms) {
+    parts = componentsUtc(ms)
+    # Monday = 0 for this purpose.
+    weekday = positiveMod(parts["weekday"] + 6, 7)
+    thursday = parts["days"] - weekday + 3
+    thursdayYear = civilFromDays(thursday)["year"]
+    firstThursdayJan = daysFromCivil(thursdayYear, 1, 1)
+    firstWeekday = positiveMod(weekdayFromDays(firstThursdayJan) + 6, 7)
+    week1Monday = firstThursdayJan - firstWeekday
+    when firstWeekday > 3 { week1Monday = week1Monday + 7 }
+    give { "year": thursdayYear, "week": floorDivide(thursday - week1Monday, 7) + 1 }
+}

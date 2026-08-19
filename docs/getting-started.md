@@ -13,13 +13,7 @@ client, SQLite/FFI layer all build and run on Windows, Linux, and macOS —
 
 **The native GUI framework (`gui_*` builtins, `src/gui/`) is Windows-only** —
 it's built directly on Win32/GDI and its sources are only compiled into the
-executable when `WIN32` is set. A handful of other things are Windows-only
-or Windows-enhanced too: the standalone-`.exe` packager's icon injection and
-PE subsystem patching, Windows Registry file-association helpers, and some
-low-level console APIs (`SetConsoleCursorPosition`, `_kbhit`/`_getch`, etc.)
-— these fall back to plain ANSI/VT100 escapes and `termios` on POSIX rather
-than disappearing outright. See
-[architecture.md](architecture.md#platform-support) for the full breakdown.
+executable when `WIN32` is set. The core interpreter and all other builtins are fully cross-platform.
 
 | Dependency | Purpose |
 |---|---|

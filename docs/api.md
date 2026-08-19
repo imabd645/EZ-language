@@ -8,8 +8,7 @@ hashing, etc.), see [09_Builtin_Libraries.md](09_Builtin_Libraries.md) — those
 in the external `ezlib` package registry, written in EZ itself.
 
 Platform note: everything below is cross-platform **except** the `gui_*`
-family, which is Windows-only, and a few Windows-enhanced console functions
-noted inline (they still work on POSIX via ANSI/VT100 fallback).
+family, which is Windows-only.
 
 ## Output, input & console
 

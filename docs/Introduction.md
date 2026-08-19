@@ -66,8 +66,7 @@ server framework, GUI wrappers, and a game loop library.
    primitives, in the external `ezlib` registry, rather than baked into the
    interpreter itself.
 4. **Real VM, not a toy interpreter.** EZ compiles to bytecode and executes it
-   on a stack machine with tail-call optimization, closures with proper
-   upvalue semantics, cycle-collecting GC, and a genuine (if Windows-only)
+   upvalue semantics, cycle-collecting GC, and a genuine native
    FFI layer capable of calling arbitrary DLL exports and receiving native
    callbacks.
 5. **Honesty about scope.** The project's own documentation is candid about

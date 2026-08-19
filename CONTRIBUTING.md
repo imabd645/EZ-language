@@ -17,7 +17,7 @@ Thank you for your interest in contributing to the EZ language interpreter! This
 
 ### Prerequisites
 
-- Windows 10 or later (project is Windows-only)
+- Windows 10 or later, Linux, or macOS
 - MinGW-w64 with g++ (MSYS2 recommended)
 - CMake 3.10+ (optional)
 - Git
@@ -389,9 +389,9 @@ automatically get a review request on your PR — no need to ping separately.
 
 ## Platform Considerations
 
-### Windows-Only Development
+### Cross-Platform Development
 
-The EZ interpreter is currently Windows-only. When adding features:
+The EZ interpreter core is fully cross-platform (GUI is Windows-only). When adding features:
 
 **Consider:**
 - Is this feature Windows-specific?
@@ -451,7 +451,7 @@ corruption, exploitable crash, etc.) rather than an ordinary bug, please follow
 
 ### Current Limitations
 
-- **Windows-only**: No Linux/macOS support
+- **Cross-platform**: Support for Windows, Linux, and macOS (GUI is Windows-only)
 - **No JIT**: Interpreted bytecode only
 - **Single-threaded VM**: Each VM instance must run on its thread
 - **Manual GC**: Cycle collection is automatic but can be disabled

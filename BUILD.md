@@ -2,11 +2,11 @@
 
 ## Prerequisites
 ## Never compile the interpreter Yourself
-### Windows Environment
+### Environment
 
-The EZ language interpreter is currently **Windows-only**. You need:
+The EZ language interpreter core is **cross-platform**, while the native GUI framework remains Windows-only. You need:
 
-- **Windows 10 or later** (for console color support and modern Windows APIs)
+- **Windows 10 or later** / **macOS** / **Linux**
 - **MinGW-w64** with g++ (MSYS2 recommended)
   - Installation path: `C:\msys64\mingw64\`
   - Required: `g++.exe`, `ar.exe`, `windres.exe`
@@ -264,25 +264,19 @@ build_cmake.bat
 
 ### Current Status
 
-**Windows**: Fully supported (primary platform)
-**Linux**: Not supported (hard Windows dependencies)
-**macOS**: Not supported (hard Windows dependencies)
+**Windows**: Fully supported
+**Linux**: Fully supported (except native GUI)
+**macOS**: Fully supported (except native GUI)
 
 ### Porting Challenges
 
-To port EZ to other platforms, the following would need to be addressed:
-
-1. **Console Functions**: Replace Windows console API with platform-specific equivalents
-2. **FFI SEH**: Replace Windows SEH with Unix signal handlers
-3. **Futures**: Replace Windows Events with pthread condition variables
-4. **GUI**: Windows GUI builtins would need complete rewrite
-5. **Paths**: Hardcoded "C:/ezlib" path needs platform detection
-6. **DLL Loading**: Replace LoadLibrary with dlopen
+Historically, EZ had Windows-specific dependencies that have now been ported or abstracted. 
+1. **GUI**: Windows GUI builtins (`gui_*`) remain Windows-only.
 
 ### Platform-Specific Code Locations
 
 - `src/builtins/Builtins_FFI.cpp`: Extensive `#ifdef _WIN32` and `#ifdef _MSC_VER`
-- `src/builtins/Builtins_Console.cpp`: Windows-only console functions
+- `src/builtins/Builtins_Console.cpp`: Console functions
 - `src/builtins/Builtins_Net.cpp`: Winsock2 includes
 - `src/eventloop/EventLoop.h`: Windows macro undefs for libuv
 - `src/vm/BytecodeVM.cpp`: Windows console color support
@@ -417,7 +411,7 @@ Remove `-static -static-libgcc -static-libstdc++` flags.
 - **Alternative build**: `build_cmake.bat` (CMake)
 - **Output**: `ez.exe` (~17MB)
 - **Dependencies**: 25 DLLs in `dlls/` directory
-- **Platform**: Windows-only
+- **Platform**: Cross-platform (GUI is Windows-only)
 - **C++ Standard**: C++17
 - **Optimization**: Aggressive (-O3 -march=native -flto)
 - **Linking**: Static by default

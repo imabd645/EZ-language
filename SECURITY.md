@@ -27,7 +27,7 @@ When reporting, please include:
 - A clear description of the vulnerability and its impact
 - Steps to reproduce, or a minimal `.ez` script / proof-of-concept that triggers it
 - The affected component (VM, GC, FFI, a specific stdlib/ezlib package, the package manager/bundler, etc.)
-- Your platform details (EZ is currently Windows-only)
+- Your OS version and compiler details
 - Any suggested fix or mitigation, if you have one
 
 ### What to expect

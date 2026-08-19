@@ -40,10 +40,9 @@ No — the core language (lexer, parser, type checker, compiler, VM, GC,
 event loop, threading, standard builtins, file I/O, HTTP client,
 SQLite/FFI) is cross-platform and builds on Windows, Linux, and macOS.
 `CMakeLists.txt` has a dedicated link path for non-Windows targets. **The
-native GUI (`gui_*` builtins) is Windows-only**, along with the standalone
-`.exe` icon/PE-subsystem step of the bundler, Windows Registry integration,
-and a handful of low-level console APIs (which fall back to ANSI/VT100 on
-POSIX). See [architecture.md](architecture.md#platform-support) for the
+native GUI (`gui_*` builtins) is Windows-only**. All other parts of the
+interpreter and standard library are fully cross-platform. See 
+[architecture.md](architecture.md#platform-support) for the
 full breakdown.
 
 ### Can I build a GUI app on Linux or macOS?

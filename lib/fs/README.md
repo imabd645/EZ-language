@@ -3,13 +3,13 @@
 > **Version:** 1.0  
 > **Import:** `use "fs"`  
 > **File:** `C:\ezlib\fs\main.ez`  
-> **Requires:** `Kernel32.dll` (Windows, always available)
+> **Requires:** Native FFI support
 
 ---
 
 ## Overview
 
-`fs` is a native file system library for EZ built entirely on top of the Windows `Kernel32.dll` API through FFI. It exposes a clean `fs` dictionary object with operations for:
+`fs` is a native file system library for EZ built on top of the native OS APIs through FFI. It exposes a clean `fs` dictionary object with operations for:
 
 - Checking file/directory existence and type
 - Creating and removing directories and files
@@ -281,8 +281,8 @@ out fs.readFile("log.txt")
 
 ## Edge Cases & Important Notes
 
-### Windows-Only
-`fs` is built exclusively on `Kernel32.dll` and is **Windows-only**. It will not work on Linux or macOS.
+### Cross-Platform
+`fs` is cross-platform and will work on Windows, Linux, and macOS.
 
 ### Paths: Backslashes
 Windows paths use `\` separators. In EZ strings, use `\\` to escape:

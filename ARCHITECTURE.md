@@ -220,19 +220,13 @@ carries just what genuinely crosses a file boundary.
 
 ### Windows-Only Features
 
-The EZ interpreter is currently Windows-only with the following platform-specific dependencies:
+The GUI framework is the only component of EZ that is currently Windows-only:
 
-1. **Build System**: Requires MinGW g++ or MSVC on Windows
-2. **Console Functions**: `color()`, `gotoxy()`, `getch()` use Windows console API
-3. **FFI Memory Operations**: SEH-based crash protection only on Windows
-4. **Futures**: Windows Event-based synchronization
-5. **GUI**: Native Windows GUI integration
-6. **Paths**: Hardcoded "C:/ezlib" for ezlib on Windows
+1. **GUI**: Native Windows GUI integration requires the Win32 API.
 
 ### Platform-Specific Code Locations
 
 - `src/builtins/FFI/`: Extensive `#ifdef _WIN32` and `#ifdef _MSC_VER`
-- `src/builtins/Builtins_Console.cpp`: Windows-only console functions
 - `src/builtins/Builtins_Net.cpp`: Winsock2 includes
 - `src/eventloop/EventLoop.h`: Windows macro undefs for libuv compatibility
 - `src/vm/BytecodeVM.cpp`: Windows console color support
@@ -273,14 +267,14 @@ The EZ interpreter is currently Windows-only with the following platform-specifi
 
 ## Known Constraints and Tradeoffs
 
-1. **Windows-Only**: No Unix/Linux support due to Windows-specific APIs
+1. **GUI is Windows-Only**: No Unix/Linux support for native GUI features.
 2. **Static Linking**: Large executable size (~17MB ez.exe) due to static linking
 3. **No JIT**: Interpreted bytecode only, no JIT compilation
 4. **Single-Threaded VM**: Each VM instance must run on its owning thread; cross-thread calls marshal through EventLoop
 5. **Manual GC**: Cycle collection is automatic but can be disabled; no generational GC
 6. **SEH Overhead**: FFI crash protection adds runtime overhead on Windows
 7. **Ezlib Path**: Hardcoded paths for library location
-8. **No CI/CD**: No automated testing or continuous integration visible in repo
+
 
 ## Threading Model
 

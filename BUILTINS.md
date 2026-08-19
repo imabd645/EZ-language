@@ -1445,7 +1445,7 @@ exists = hasattr(myDict, "name")
 
 ---
 
-## FFI Builtins (Windows-Only)
+## FFI Builtins
 
 ### os_alloc
 
@@ -2396,7 +2396,7 @@ e.init("Something went wrong")
 
 ---
 
-## Console Builtins (Windows-Only)
+## Console Builtins
 
 ### clear
 

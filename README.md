@@ -15,7 +15,7 @@
 **and an optional static type checker.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
+[![Platform](https://img.shields.io/badge/platform-Cross--Platform-lightgrey.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
 [![Language](https://img.shields.io/badge/written%20in-C%2B%2B17-orange.svg?style=flat-square)](https://github.com/imabd645/EZ-language)
 
 [Quick Start](#-quick-start) · [Syntax Guide](#-language-syntax) · [Type Checker](#-optional-static-type-checker) · [Built-ins](#-built-in-functions-c-runtime) · [OOP](#-object-oriented-programming) · [Async](#-async--concurrency) · [Native FFI](#-native-ffi) · [GUI](#-gui-framework) · [Bundling](#-bundling-standalone-executables)
@@ -1556,7 +1556,7 @@ A summary of places where this repository's source diverges from commonly-circul
 - **No `md5`, `sha256`, or `hmac_sha256` builtins exist in C++** — general hashing lives in the `ezlib` `crypto` package. Base64 is partly covered: `b64url_encode`/`b64url_decode` (URL-safe alphabet) and `hex_to_bytes` are builtins, but standard-alphabet `base64_encode`/`base64_decode` are not.
 - **No `listDir`, `getenv`, `setenv`, or `exec` builtins exist in C++.** File deletion, renaming and existence checks are available as statics on the `File` class (`File.remove`, `File.rename`, `File.exists`, `File.size`) rather than as free functions; directory listing and process control must come from an `ezlib` package or the FFI.
 - **No `http_put`, `http_delete`, or `startServer`** C++ builtins — only `http_get`, `http_post`, and `fetch`.
-- **Windows-only** — the code directly includes `<windows.h>` and Win32-specific structures (PE header patching, icon resources, `HMODULE`/`FARPROC` FFI), so it cannot be built on Linux/macOS as-is.
+- **GUI is Windows-only** — the native GUI framework builtins require Win32-specific structures.
 - **`match` arms support only equality comparison** against literal/expression patterns plus an `other` default — no ranges, guards, or destructuring.
 - **Hard limits.** Call depth is capped at **4096** frames; exceeding it raises a catchable "maximum call depth exceeded" rather than crashing. A function may hold up to **65535** locals and capture up to **255** distinct outer variables. EZ frames live in a heap vector rather than on the C stack, so deep recursion does not consume native stack.
 - **Interned strings are per-thread.** Strings of 14+ characters are deduplicated on the main thread only; worker threads allocate directly. This is a memory optimisation with no observable behavioural difference.
@@ -1570,7 +1570,7 @@ A summary of places where this repository's source diverges from commonly-circul
 
 - Open an issue on [GitHub Issues](https://github.com/imabd645/EZ-language/issues)
 - Include a minimal reproducing `.ez` script
-- State your Windows version and compiler (MinGW / MSVC)
+- State your OS version and compiler (MinGW / MSVC / GCC / Clang)
 
 ### Pull Requests
 

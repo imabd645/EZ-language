@@ -115,7 +115,12 @@ private:
     
     // Global slot table: name -> slot index (Issue C optimization)
     std::unordered_map<std::string, uint16_t> globalSlots;
-    uint16_t nextGlobalSlot = 0;
+    // Widened beyond uint16_t so the overflow check in globalSlotFor() can
+    // actually observe a value above 65535 before it would wrap; keeping this
+    // as uint16_t made `nextGlobalSlot > 65535` always false (caught by
+    // -Wtype-limits) and let a 65536th global silently alias slot 0 instead
+    // of reporting "Too many global variables".
+    uint32_t nextGlobalSlot = 0;
     
     // Current function's contract clauses (threaded from compileFunction → compileGive)
     const std::vector<std::pair<ExprPtr, std::string>>* currentEnsuresClauses = nullptr;

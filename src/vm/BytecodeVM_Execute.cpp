@@ -1333,7 +1333,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.isInstance()) {
+                        if (a.m_data.index() == b.m_data.index()) {
+                            bool res;
+                            if (a.isInteger()) res = (a.asInteger() != b.asInteger());
+                            else if (a.isFloat()) res = (a.asFloat() != b.asFloat());
+                            else if (a.isBool()) res = (a.asBool() != b.asBool());
+                            else if (a.isNil()) res = false;
+                            else { SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                            stackTop -= 2;
+                            *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isInstance()) {
                             bool handled = false;
                             {
                                 Value method = a.asInstance()->getProperty("!=");

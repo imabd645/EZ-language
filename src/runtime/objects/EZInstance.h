@@ -70,7 +70,14 @@ public:
             propertyValues[offset] = value;
         } else {
             shape = shape->transition(name);
-            shape->getOffset(name, offset);
+            // transition() always adds `name` to the new shape, so this can't
+            // fail in practice, but the return value was previously discarded
+            // (offset was left genuinely uninitialized on any failure path,
+            // -Wmaybe-uninitialized). Guard it explicitly instead of relying
+            // on that invariant silently.
+            if (!shape->getOffset(name, offset)) {
+                return;
+            }
             if (offset >= propertyValues.size()) {
                 propertyValues.resize(offset + 1);
             }

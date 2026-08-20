@@ -716,9 +716,7 @@ Value BytecodeVM::callFunction(const Value& callee,
             return Value();
         }
         throw RuntimeError(
-            propagated.isDictionary() && propagated.asDictionaryPtr()->has("message")
-                ? propagated.asDictionaryPtr()->get("message").toString()
-                : propagated.toString(),
+            describeException(propagated),
             0, propagated);
     }
 
@@ -752,6 +750,19 @@ Value BytecodeVM::instantiate(std::shared_ptr<EZClass> klass,
     }
 
     return instVal;
+}
+
+std::string BytecodeVM::describeException(const Value& exc) const {
+    if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
+        return exc.asDictionaryPtr()->get("message").toString();
+    }
+    if (exc.isInstance()) {
+        auto inst = exc.asInstance();
+        if (inst->hasProperty("message")) {
+            return inst->getProperty("message").toString();
+        }
+    }
+    return exc.toString();
 }
 
 void BytecodeVM::printStackTrace() const {

@@ -39,6 +39,15 @@ public:
     explicit BytecodeVM(std::shared_ptr<Environment> globalEnv, size_t stackSize = 256 * 1024);
     ~BytecodeVM();
 
+    // The human-readable text of a thrown value, preferring an instance's or
+    // dictionary's "message" field over the generic "<instance>"/toString()
+    // fallback. Shared by every site that turns a caught Value back into a
+    // string -- the top-level uncaught-exception report and the async/FFI
+    // callback boundary both need this, and used to each carry their own
+    // copy, which is how one of the two missed instances (only dictionaries)
+    // for a while.
+    std::string describeException(const Value& exc) const;
+
     // Execute compiled bytecode
     Value execute(BytecodeFunctionPtr function);
     Value execute(BytecodeFunctionPtr function, const std::vector<Value>& args);

@@ -151,22 +151,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
         return !tryStack.empty() && tryStack.back().frameIdx + 1 >= startingFrameCount;
     };
 
-    // The human-readable text of a thrown value, preferring a dictionary's
-    // "message" field. Exception (and anything extending it) stores the text
-    // as an instance property of the same name rather than a dictionary key
-    // -- without this branch every uncaught `throw Exception(...)` printed
-    // the generic "<instance>" instead of the message that was thrown.
-    auto exceptionMessage = [](const Value& exc) -> std::string {
-        if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
-            return exc.asDictionaryPtr()->get("message").toString();
-        }
-        if (exc.isInstance()) {
-            auto inst = exc.asInstance();
-            if (inst->hasProperty("message")) {
-                return inst->getProperty("message").toString();
-            }
-        }
-        return exc.toString();
+    // The human-readable text of a thrown value -- see BytecodeVM::describeException
+    // for what it prefers and why (this local alias just keeps every call
+    // site below unchanged).
+    auto exceptionMessage = [this](const Value& exc) -> std::string {
+        return describeException(exc);
     };
 
 #define SYNC_IP() { if (!frames.empty()) frame->ip = ip; this->stackTop = stackTop; }
@@ -2225,9 +2214,36 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
 
                 CASE_CODE(PRINT) {
+                    bool handled = false;
                     {
-                        Value v = *(--stackTop);
-                        std::cout << v.toString() << std::endl;
+                        // Same dispatch TO_STRING uses (interpolation, string
+                        // concat) -- `out obj` used to skip it and always
+                        // print the bare "<instance>", so `out e` and `` `{e}` ``
+                        // on the same value printed two different things.
+                        Value v = *(stackTop - 1);
+                        if (v.isInstance()) {
+                            auto inst = v.asInstance();
+                            Value method = inst->getProperty("toString");
+                            if (method.isCallable()) {
+                                SYNC_IP();
+                                this->stackTop = stackTop;
+                                Value bound = inst->hasProperty("toString")
+                                    ? method
+                                    : Value(std::make_shared<EZBoundMethod>(v, method));
+                                *(stackTop - 1) = bound;
+                                if (dispatchCall(bound, 0)) {
+                                    LOAD_FRAME();
+                                } else {
+                                    REFRESH_FRAME();
+                                }
+                                stackTop = this->stackTop;
+                                std::cout << (*(--stackTop)).toString() << std::endl;
+                                handled = true;
+                            }
+                        }
+                        if (!handled) {
+                            std::cout << (*(--stackTop)).toString() << std::endl;
+                        }
                     }
                     DISPATCH();
                 }

@@ -152,10 +152,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
     };
 
     // The human-readable text of a thrown value, preferring a dictionary's
-    // "message" field.
+    // "message" field. Exception (and anything extending it) stores the text
+    // as an instance property of the same name rather than a dictionary key
+    // -- without this branch every uncaught `throw Exception(...)` printed
+    // the generic "<instance>" instead of the message that was thrown.
     auto exceptionMessage = [](const Value& exc) -> std::string {
         if (exc.isDictionary() && exc.asDictionaryPtr()->has("message")) {
             return exc.asDictionaryPtr()->get("message").toString();
+        }
+        if (exc.isInstance()) {
+            auto inst = exc.asInstance();
+            if (inst->hasProperty("message")) {
+                return inst->getProperty("message").toString();
+            }
         }
         return exc.toString();
     };

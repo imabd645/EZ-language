@@ -1,7 +1,6 @@
 # BUILD.md - Build Instructions for EZ Language
 
 ## Prerequisites
-## Never compile the interpreter Yourself
 ### Environment
 
 The EZ language interpreter core is **cross-platform**, while the native GUI framework remains Windows-only. You need:

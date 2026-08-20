@@ -33,6 +33,11 @@
 #include <cstdint>
 bool g_disableContracts = false;
 bool g_disableTypeCheck = false;
+// Set by --debug. Gates the "Local variables:" dump on an uncaught
+// exception's traceback -- off by default because those values can include
+// things a script's own output never would (passwords, tokens, request
+// bodies), not just because the trace is noisy.
+bool g_debugMode = false;
 
 /**
  * Read a line without echoing it, so a password never appears on screen or in
@@ -120,6 +125,7 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     auto globalEnv = std::make_shared<Environment>();
     auto vm = std::make_shared<BytecodeVM>(globalEnv);
     vm->traceExecution = traceExecution;
+    vm->debugMode = g_debugMode;
     
     std::vector<std::string> builtins;
     for (const auto& pair : globalEnv->variables) builtins.push_back(pair.first);
@@ -182,6 +188,7 @@ void runFile(const std::string& path, bool traceExecution) {
         auto globalEnv = std::make_shared<Environment>();
         auto vm = std::make_shared<BytecodeVM>(globalEnv);
         vm->traceExecution = traceExecution;
+        vm->debugMode = g_debugMode;
         vm->initGlobalSlots(globalSlots);
         
         try {
@@ -422,6 +429,7 @@ void showHelp() {
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "  --trace           Trace bytecode execution" << std::endl;
+    std::cout << "  --debug           Show local variables in an uncaught exception's traceback" << std::endl;
     std::cout << "  --no-typecheck    Disable the static type checker" << std::endl;
     std::cout << "  --no-contracts    Disable contract enforcement" << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
@@ -714,6 +722,8 @@ int cli_main(int argc, char* argv[]) {
                     passThrough = true;
                 } else if (arg == "--trace") {
                     traceExecution = true;
+                } else if (arg == "--debug") {
+                    g_debugMode = true;
                 } else if (arg == "--compile" || arg == "-c" || arg == "--ezc") {
                     compileToEzc = true;
                 } else if (arg == "--dump" || arg == "-d" || arg == "--ezasm") {
@@ -743,6 +753,8 @@ int cli_main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--trace") {
             traceExecution = true;
+        } else if (arg == "--debug") {
+            g_debugMode = true;
         } else if (arg == "--no-contracts") {
             g_disableContracts = true;
         } else if (arg == "--no-typecheck") {

@@ -28,6 +28,13 @@ const std::string* EZ_GetSourceLine(const std::string& filename, int line);
 class BytecodeVM : public RuntimeContext, public std::enable_shared_from_this<BytecodeVM> {
 public:
     bool traceExecution = false;
+    // When false (the default), an uncaught-exception traceback prints file,
+    // line and source snippet per frame but omits the "Local variables:"
+    // dump -- that dump can include field values a script's own output
+    // never would (raw passwords, tokens, request bodies caught while
+    // debugging someone else's error), so it's opt-in via `ez --debug`,
+    // not printed to every user's console by default.
+    bool debugMode = false;
     BytecodeVM(size_t stackSize = 256 * 1024);
     explicit BytecodeVM(std::shared_ptr<Environment> globalEnv, size_t stackSize = 256 * 1024);
     ~BytecodeVM();

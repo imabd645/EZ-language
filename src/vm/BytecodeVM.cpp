@@ -776,7 +776,7 @@ void BytecodeVM::printStackTrace() const {
         }
         
         std::vector<std::pair<std::string, std::string>> activeLocals;
-        if (it->function) {
+        if (debugMode && it->function) {
             for (const auto& var : it->function->localVars) {
                 if (var.startPC <= pc && pc <= var.endPC) {
                     // Make sure the slot is within the currently accessible stack frame
@@ -807,8 +807,9 @@ void BytecodeVM::printStackTrace() const {
                 std::cerr << "    " << srcLine->substr(indent) << "\n";
             }
         }
-        // Dump local variables
-        if (!tit->locals.empty()) {
+        // Dump local variables -- only with --debug (see debugMode's comment
+        // in BytecodeVM.h for why this isn't unconditional).
+        if (debugMode && !tit->locals.empty()) {
             std::cerr << "    Local variables:\n";
             for (const auto& local : tit->locals) {
                 std::cerr << "      " << local.first << " = " << local.second << "\n";

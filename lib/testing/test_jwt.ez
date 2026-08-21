@@ -1,0 +1,50 @@
+use "jwt"
+
+out "=== Testing JWT Package ==="
+
+SECRET = "super-secret-key-123!"
+
+payload = {
+    "user_id": 42,
+    "role": "admin",
+    "name": "Alice"
+}
+
+out "\n1. Encoding Token..."
+token = JWT.encode(payload, SECRET)
+out "Token: " + token
+
+out "\n2. Decoding Token..."
+decoded = JWT.decode(token, SECRET)
+out "Decoded user_id: " + str(decoded["user_id"])
+out "Decoded role:    " + decoded["role"]
+out "Decoded name:    " + decoded["name"]
+
+when decoded["user_id"] != 42 {
+    out "FAIL: user_id mismatch!"
+} other {
+    out "PASS: payload matched"
+}
+
+out "\n3. Testing Tampered Token..."
+parts = split(token, ".")
+# Tamper payload
+parts[1] = parts[1] + "a"
+tampered = parts[0] + "." + parts[1] + "." + parts[2]
+
+try {
+    JWT.decode(tampered, SECRET)
+    out "FAIL: Should have thrown an error for tampered token"
+} catch e {
+    out "PASS: Caught expected error -> " + str(e)
+}
+
+out "\n4. Testing Wrong Secret..."
+try {
+    JWT.decode(token, "wrong-secret")
+    out "FAIL: Should have thrown an error for wrong secret"
+} catch e {
+    out "PASS: Caught expected error -> " + str(e)
+}
+
+out "\n=== All Tests Finished ==="

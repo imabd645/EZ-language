@@ -1,0 +1,84 @@
+// ============================================================================
+// ezsqlite -- SQLite for EZ, over pure FFI.
+//
+//   use "sqlite"
+//
+//   db = connect("app.db")
+//   db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+//   db.exec("INSERT INTO users (name) VALUES (?)", ["ana"])
+//   rows = db.query("SELECT * FROM users WHERE name = ?", ["ana"])
+//   db.close()
+//
+// This file is the public surface and nothing else. The work lives in src/, one
+// concern per file:
+//
+//   src/ffi.ez         the only file that touches os_load_lib/os_call/os_alloc
+//   src/errors.ez      result codes -> diagnosable errors
+//   src/types.ez       the EZ <-> SQLite value boundary (and the reason binding,
+//                      not string-formatting, is the only way to pass a value)
+//   src/statement.ez   prepared statements and handle lifetime
+//   src/connection.ez  the Database model: exec/query/transactions
+//   src/migrate.ez     schema migrations
+//
+// There is no C++ in this package. It calls the SQLite C API directly.
+// ============================================================================
+
+use "src/ffi.ez"
+use "src/errors.ez"
+use "src/types.ez"
+use "src/statement.ez"
+use "src/connection.ez"
+use "src/migrate.ez"
+
+// Open a database. `path` may be a filename, ":memory:", or a file: URI.
+//
+//   db = connect("app.db")
+//   db = connect(":memory:")
+//   db = connect("app.db", {"wal": true, "busy_timeout": 10000})
+//
+// See Database.init in src/connection.ez for the full option list.
+export task connect(path, options = nil) {
+    // Declared with a type so it is a genuine LOCAL. A bare `db = ...` assigns
+    // to an existing outer binding when the caller happens to have one, and the
+    // caller's global would be silently replaced by this connection -- a program
+    // with its own `db()` helper had that helper overwritten by the Database
+    // instance the first time it opened a connection, and every later call died
+    // with "Value is not callable: instance".
+    db: Database = Database(path, options)
+    // Database.init cannot throw: an exception escaping a model's init() crashes
+    // the interpreter (access violation at shutdown). It records the failure
+    // instead, and this -- outside the constructor -- is where it is raised.
+    // Always open through connect() rather than Database() for that reason.
+    when typeOf(db._init_error) != "nil" { throw db._init_error }
+    give db
+}
+
+// Open, run `fn(db)`, and close -- even if `fn` throws.
+//
+//   rows = with_db("app.db", |db| { give db.query("SELECT * FROM users") })
+//
+// Written without relying on `finally`, which does NOT run when a `give` leaves
+// the block in this language; the close would simply be skipped.
+export task with_db(path, fn, options = nil) {
+    db = connect(path, options)
+    result = nil
+    failure = nil
+    caught = false
+    try {
+        result = fn(db)
+    } catch (e) {
+        failure = e
+        caught = true
+    }
+    db.close()
+    when caught { throw failure }
+    give result
+}
+
+// The SQLite version in use, e.g. "3.51.1".
+export task version() { give sqlite_version() }
+
+// Which DLL backed this session: a user-supplied "sqlite3.dll", or
+// "winsqlite3.dll (system)" -- the copy Windows ships, which is why this package
+// needs no install step.
+export task backend() { give sqlite_backend() }

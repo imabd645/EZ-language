@@ -1,4 +1,4 @@
-use "../lib/crypto.ez"
+use "crypto"
 
 out "===================================="
 out "     EZ Crypto Library Test         "

@@ -1,0 +1,374 @@
+// Regression tests for the ezsqlite package.
+// Run:  ez test_sqlite.ez     (from C:\ezlib\sqlite)
+
+use "sqlite"
+
+passes = 0
+fails = 0
+
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+// Assert that `fn` throws, and that the message mentions `needle`.
+task check_throws(name, needle, fn) {
+    threw = false
+    msg = ""
+    try {
+        fn()
+    } catch (e) {
+        threw = true
+        msg = str(e)
+    }
+    when not threw {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected a throw, got none"
+    } other when len(needle) > 0 and indexOf(msg, needle) == -1 {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  threw but message lacked '" + needle + "': " + msg
+    } other {
+        passes = passes + 1
+        out "  [PASS] " + name
+    }
+}
+
+out "=== ezsqlite regression tests ==="
+out "  backend: " + backend() + "   sqlite " + version()
+
+// --- Connection -------------------------------------------------------------
+db = connect(":memory:")
+check("connect gives a Database", typeOf(db), "instance")
+check("new connection is open", db.is_closed(), false)
+
+// --- Types round-trip -------------------------------------------------------
+// The value boundary is the part most worth pinning: if a float comes back as a
+// string, everything above it is subtly wrong.
+db.exec("CREATE TABLE t (k TEXT PRIMARY KEY, v)")
+
+task roundtrip(key, val) {
+    db.exec("INSERT OR REPLACE INTO t (k, v) VALUES (?, ?)", [key, val])
+    give db.scalar("SELECT v FROM t WHERE k = ?", [key])
+}
+
+check("nil round-trips as nil", typeOf(roundtrip("nil", nil)), "nil")
+check("integer round-trips", roundtrip("int", 42), 42)
+check("negative integer round-trips", roundtrip("neg", -7), -7)
+check("zero round-trips", roundtrip("zero", 0), 0)
+check("float round-trips", roundtrip("float", 93.5), 93.5)
+check("negative float round-trips", roundtrip("negf", -0.25), -0.25)
+check("string round-trips", roundtrip("str", "hello"), "hello")
+check("empty string round-trips", roundtrip("empty", ""), "")
+check("unicode round-trips", roundtrip("uni", "héllo → 世界"), "héllo → 世界")
+// A quote in a value must be data, never syntax.
+check("quote in value round-trips", roundtrip("quote", "O'Brien \"x\""), "O'Brien \"x\"")
+
+check("integer stays integer", typeOf(roundtrip("t1", 42)), "integer")
+check("float stays float", typeOf(roundtrip("t2", 1.5)), "float")
+check("string stays string", typeOf(roundtrip("t3", "s")), "string")
+
+// The full signed 64-bit range binds AND reads back exactly. The interpreter's
+// FFI used to marshal integer arguments through a double, so anything past 2^53
+// was rounded in transit (9007199254740993 -> ...992, int64 max -> int64 MIN) and
+// the library refused it. Integer args now go through asInteger(), so binding is
+// exact and the guard is gone.
+check("2^53 binds exactly", roundtrip("big", 9007199254740992), 9007199254740992)
+check("-2^53 binds exactly", roundtrip("negbig", -9007199254740992), -9007199254740992)
+check("2^53+1 binds exactly (was rounded)", roundtrip("big1", 9007199254740993), 9007199254740993)
+check("int64 max binds exactly (was int64 MIN)", roundtrip("imax", 9223372036854775807), 9223372036854775807)
+check("large negative binds exactly", roundtrip("ineg", -9223372036854775807), -9223372036854775807)
+
+// Reading is exact too, whether the value was bound or computed in SQL.
+db.exec("INSERT OR REPLACE INTO t (k, v) VALUES ('read_min', -9223372036854775808)")
+check("int64 min reads back exactly", db.scalar("SELECT v FROM t WHERE k = 'read_min'"), -9223372036854775808)
+
+// SQLite has no boolean type: booleans are stored as 0/1 and read back as integers.
+check("true stores as 1", roundtrip("bt", true), 1)
+check("false stores as 0", roundtrip("bf", false), 0)
+
+// Blobs: the point is that an embedded NUL survives, which no C string can do.
+b = buffer(4)
+buf_fill(b, 0)
+check("blob round-trips as buffer", typeOf(roundtrip("blob", b)), "buffer")
+check("blob keeps its length", buf_size(roundtrip("blob", b)), 4)
+
+// A type with no SQLite equivalent must be refused, not silently stringified.
+check_throws("binding a dictionary is refused", "cannot bind", || {
+    db.exec("INSERT OR REPLACE INTO t (k, v) VALUES (?, ?)", ["bad", {"a": 1}])
+})
+check_throws("binding an array is refused", "cannot bind", || {
+    db.exec("INSERT OR REPLACE INTO t (k, v) VALUES (?, ?)", ["bad", [1, 2]])
+})
+
+// --- Parameter binding ------------------------------------------------------
+db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, age INTEGER)")
+db.exec("INSERT INTO users (name, age) VALUES (?, ?)", ["ana", 30])
+db.exec("INSERT INTO users (name, age) VALUES (:name, :age)", {"name": "bob", "age": 25})
+// The colon is optional on the EZ side.
+db.exec("INSERT INTO users (name, age) VALUES (:name, :age)", {":name": "cat", ":age": 41})
+
+check("positional bind", db.scalar("SELECT age FROM users WHERE name = ?", ["ana"]), 30)
+check("named bind", db.scalar("SELECT age FROM users WHERE name = :n", {"n": "bob"}), 25)
+check("named bind with colon", db.scalar("SELECT age FROM users WHERE name = :n", {":n": "cat"}), 41)
+check("single scalar param", db.scalar("SELECT age FROM users WHERE name = ?", "ana"), 30)
+
+// Wrong counts must fail loudly. SQLite leaves an unbound parameter as NULL, so
+// without this check the query silently returns nothing and looks like "no rows".
+check_throws("too few params rejected", "expected 2", || {
+    db.exec("INSERT INTO users (name, age) VALUES (?, ?)", ["x"])
+})
+check_throws("too many params rejected", "expected 2", || {
+    db.exec("INSERT INTO users (name, age) VALUES (?, ?)", ["x", 1, 2])
+})
+check_throws("unknown named param rejected", "no parameter named", || {
+    db.query("SELECT * FROM users WHERE name = :n", {"wrong": "x"})
+})
+check_throws("missing named param rejected", "missing value", || {
+    db.query("SELECT * FROM users WHERE name = :n AND age = :a", {"n": "ana"})
+})
+
+// --- SQL injection ----------------------------------------------------------
+// The classic payload is DATA here, not syntax: it must match no row and, above
+// all, must not drop the table.
+evil = "ana'; DROP TABLE users; --"
+rows = db.query("SELECT * FROM users WHERE name = ?", [evil])
+check("injection payload matches nothing", len(rows), 0)
+check("injection did not drop the table", db.table_exists("users"), true)
+check("table still has its rows", db.scalar("SELECT count(*) FROM users"), 3)
+// ...and it stores as a literal string.
+db.exec("INSERT INTO users (name) VALUES (?)", [evil])
+check("payload stored verbatim", db.scalar("SELECT name FROM users WHERE name = ?", [evil]), evil)
+db.exec("DELETE FROM users WHERE name = ?", [evil])
+
+// --- Queries ----------------------------------------------------------------
+all_rows = db.query("SELECT id, name, age FROM users ORDER BY id")
+check("query returns every row", len(all_rows), 3)
+check("row is a dictionary keyed by column", all_rows[0]["name"], "ana")
+check("query_arrays returns arrays", db.query_arrays("SELECT name FROM users ORDER BY id")[0][0], "ana")
+check("one returns the first row", db.one("SELECT name FROM users ORDER BY id")["name"], "ana")
+check("one returns nil when no match", typeOf(db.one("SELECT * FROM users WHERE id = ?", [999])), "nil")
+check("scalar returns nil when no match", typeOf(db.scalar("SELECT name FROM users WHERE id = ?", [999])), "nil")
+check("query with no rows gives empty array", len(db.query("SELECT * FROM users WHERE id = ?", [999])), 0)
+check("exec reports changes", db.exec("UPDATE users SET age = age + 1"), 3)
+check("last_insert_id", typeOf(db.last_insert_id()), "integer")
+
+// Duplicate column names must not silently collapse into one key.
+dup = db.one("SELECT 1 AS x, 2 AS x")
+check("duplicate columns are kept distinct", len(keys(dup)), 2)
+
+// --- Errors -----------------------------------------------------------------
+check_throws("bad SQL reports the sqlite message", "no such table", || {
+    db.query("SELECT * FROM nope")
+})
+check_throws("bad SQL names the code", "SQLITE_ERROR", || {
+    db.query("SELECT * FROM nope")
+})
+check_throws("syntax error is reported", "syntax error", || { db.exec("SELCT 1") })
+// The extended code is what distinguishes UNIQUE from FOREIGN KEY, both plain 19.
+check_throws("unique violation names the constraint", "SQLITE_CONSTRAINT_UNIQUE", || {
+    db.exec("INSERT INTO users (name) VALUES (?)", ["ana"])
+})
+check_throws("not-null violation is reported", "NOTNULL", || {
+    db.exec("INSERT INTO users (name) VALUES (NULL)")
+})
+check("code_name maps a known code", code_name(19), "SQLITE_CONSTRAINT")
+check("code_name handles the unknown", indexOf(code_name(4242), "UNKNOWN") != -1, true)
+check("is_retryable(BUSY)", is_retryable(SQLITE_BUSY), true)
+check("is_retryable(ERROR)", is_retryable(SQLITE_ERROR), false)
+check("is_constraint_violation on extended code", is_constraint_violation(2067), true)
+
+// --- Statements -------------------------------------------------------------
+st = db.prepare("SELECT name FROM users ORDER BY id")
+check("prepare gives a Statement", typeOf(st), "instance")
+check("column_count", st.column_count(), 1)
+check("column_names", st.column_names()[0], "name")
+check("next advances to a row", st.next(), true)
+check("row_dict reads the row", st.row_dict()["name"], "ana")
+check("row_array reads the row", st.row_array()[0], "ana")
+st.reset()
+check("reset re-runs the statement", st.all()[0]["name"], "ana")
+check("finalize returns OK", st.finalize(), 0)
+check("finalize is idempotent", typeOf(st.finalize()), "nil")
+check("is_finalized", st.is_finalized(), true)
+check_throws("using a finalized statement is refused", "finalized", || { st.next() })
+
+// --- exec_many --------------------------------------------------------------
+db.exec("CREATE TABLE nums (n INTEGER)")
+total = db.exec_many("INSERT INTO nums (n) VALUES (?)", [[1], [2], [3], [4]])
+check("exec_many inserts every set", db.scalar("SELECT count(*) FROM nums"), 4)
+check("exec_many totals the changes", total, 4)
+check("exec_many values are correct", db.scalar("SELECT sum(n) FROM nums"), 10)
+check_throws("exec_many needs an array", "array of parameter sets", || {
+    db.exec_many("INSERT INTO nums (n) VALUES (?)", "nope")
+})
+
+// --- exec_script ------------------------------------------------------------
+// prepare_v2 compiles ONE statement, so a multi-statement string through exec()
+// would silently run only the first. exec_script must run them all.
+n = db.exec_script("CREATE TABLE s1 (a); CREATE TABLE s2 (b); INSERT INTO s1 VALUES (1);")
+check("exec_script runs every statement", n, 3)
+check("exec_script created the first table", db.table_exists("s1"), true)
+check("exec_script created the last table", db.table_exists("s2"), true)
+// A semicolon inside a string literal is data, not a separator.
+db.exec_script("INSERT INTO s1 VALUES ('a;b'); INSERT INTO s1 VALUES ('c');")
+check("semicolon inside a literal is not a split", db.scalar("SELECT a FROM s1 WHERE a LIKE 'a%'"), "a;b")
+check("statement after that literal still ran", db.scalar("SELECT count(*) FROM s1"), 3)
+// ...and so is one inside a comment.
+db.exec_script("INSERT INTO s1 VALUES ('d'); -- trailing ; comment\n")
+check("semicolon in a comment is not a split", db.scalar("SELECT count(*) FROM s1"), 4)
+
+// --- Transactions -----------------------------------------------------------
+check("not in a transaction initially", db.in_transaction(), false)
+
+r = db.transaction(|d| {
+    d.exec("INSERT INTO nums (n) VALUES (?)", [100])
+    give "committed"
+})
+check("transaction returns the block's value", r, "committed")
+check("transaction commits", db.scalar("SELECT count(*) FROM nums WHERE n = 100"), 1)
+check("transaction closed afterwards", db.in_transaction(), false)
+
+// The whole point: a throw must undo the work.
+check_throws("transaction re-raises the error", "boom", || {
+    db.transaction(|d| {
+        d.exec("INSERT INTO nums (n) VALUES (?)", [200])
+        throw "boom"
+    })
+})
+check("transaction rolled the insert back", db.scalar("SELECT count(*) FROM nums WHERE n = 200"), 0)
+check("no transaction left dangling after a rollback", db.in_transaction(), false)
+
+// A failing statement inside a transaction must roll back too.
+check_throws("sql error inside a transaction propagates", "SQLITE_CONSTRAINT", || {
+    db.transaction(|d| {
+        d.exec("INSERT INTO nums (n) VALUES (?)", [300])
+        d.exec("INSERT INTO users (name) VALUES (?)", ["ana"])   // duplicate
+    })
+})
+check("...and rolled back its earlier work", db.scalar("SELECT count(*) FROM nums WHERE n = 300"), 0)
+
+// Nested transactions use SAVEPOINTs: an inner failure undoes only inner work.
+db.transaction(|d| {
+    d.exec("INSERT INTO nums (n) VALUES (?)", [400])
+    try {
+        d.transaction(|d2| {
+            d2.exec("INSERT INTO nums (n) VALUES (?)", [500])
+            throw "inner boom"
+        })
+    } catch (e) { }
+    give nil
+})
+check("outer transaction committed", db.scalar("SELECT count(*) FROM nums WHERE n = 400"), 1)
+check("inner savepoint rolled back", db.scalar("SELECT count(*) FROM nums WHERE n = 500"), 0)
+
+// A committed inner savepoint survives with the outer one.
+db.transaction(|d| {
+    d.transaction(|d2| { d2.exec("INSERT INTO nums (n) VALUES (?)", [600])  give nil })
+    give nil
+})
+check("committed nested savepoint persists", db.scalar("SELECT count(*) FROM nums WHERE n = 600"), 1)
+
+// --- Introspection ----------------------------------------------------------
+check("tables lists user tables", indexOf(str(db.tables()), "users") != -1, true)
+check("tables hides sqlite internals", indexOf(str(db.tables()), "sqlite_"), -1)
+check("table_exists is false for the unknown", db.table_exists("nope"), false)
+cols = db.columns("users")
+check("columns describes the table", len(cols), 3)
+check("columns names the column", cols[0]["name"], "id")
+check_throws("columns refuses an unknown table", "no such table", || { db.columns("nope") })
+
+// --- Closing ----------------------------------------------------------------
+db.close()
+check("close marks it closed", db.is_closed(), true)
+check("close is idempotent", db.close(), 0)
+check_throws("using a closed database is refused", "closed", || { db.query("SELECT 1") })
+
+// --- with_db ----------------------------------------------------------------
+// with_db must close even when the block throws -- `finally` cannot be used here,
+// because a `give` inside try/catch skips it in this language.
+res = with_db(":memory:", |d| {
+    d.exec("CREATE TABLE x (a)")
+    d.exec("INSERT INTO x VALUES (1)")
+    give d.scalar("SELECT a FROM x")
+})
+check("with_db returns the block's value", res, 1)
+
+// The handle is stashed in a dictionary rather than a plain variable: assigning
+// an outer variable from inside a nested lambda does not propagate out, but a
+// dictionary is shared by reference.
+holder = {}
+check_throws("with_db re-raises", "inner", || {
+    with_db(":memory:", |d| { holder["db"] = d  throw "inner" })
+})
+check("with_db closed the db despite the throw", holder["db"].is_closed(), true)
+
+// --- Migrations -------------------------------------------------------------
+mdb = connect(":memory:")
+check("fresh database is at version 0", schema_version(mdb), 0)
+
+migrations = [
+    {"version": 1, "name": "users", "up": |d| { d.exec("CREATE TABLE m_users (id INTEGER PRIMARY KEY)") }},
+    {"version": 2, "name": "email", "up": |d| { d.exec("ALTER TABLE m_users ADD COLUMN email TEXT") }}
+]
+
+check("pending lists both", len(pending(mdb, migrations)), 2)
+applied = migrate(mdb, migrations)
+check("migrate applies both", len(applied), 2)
+check("migrate bumps the version", schema_version(mdb), 2)
+check("migration 1 ran", mdb.table_exists("m_users"), true)
+check("migration 2 ran", len(mdb.columns("m_users")), 2)
+check("nothing pending now", len(pending(mdb, migrations)), 0)
+// Safe to call on every startup.
+check("migrate is idempotent", len(migrate(mdb, migrations)), 0)
+
+// Adding a later migration applies only the new one.
+push(migrations, {"version": 3, "name": "age", "up": |d| { d.exec("ALTER TABLE m_users ADD COLUMN age INTEGER") }})
+check("only the new migration applies", str(migrate(mdb, migrations)), "[3]")
+check("version is now 3", schema_version(mdb), 3)
+
+// Out-of-order input must still apply in ascending order.
+mdb2 = connect(":memory:")
+unordered = [
+    {"version": 2, "up": |d| { d.exec("ALTER TABLE o ADD COLUMN b TEXT") }},
+    {"version": 1, "up": |d| { d.exec("CREATE TABLE o (a)") }}
+]
+migrate(mdb2, unordered)
+check("migrations run in version order", mdb2.table_exists("o"), true)
+mdb2.close()
+
+// A failing migration must leave the version untouched, not half-applied.
+mdb3 = connect(":memory:")
+bad = [{"version": 1, "up": |d| { d.exec("CREATE TABLE ok1 (a)")  throw "migration failed" }}]
+check_throws("a failing migration propagates", "migration failed", || { migrate(mdb3, bad) })
+check("failed migration left version at 0", schema_version(mdb3), 0)
+check("failed migration rolled back its table", mdb3.table_exists("ok1"), false)
+mdb3.close()
+
+check_throws("duplicate versions rejected", "duplicate migration version", || {
+    migrate(mdb, [{"version": 1, "up": |d| {}}, {"version": 1, "up": |d| {}}])
+})
+check_throws("version 0 rejected", "must be > 0", || {
+    migrate(mdb, [{"version": 0, "up": |d| {}}])
+})
+check_throws("missing up rejected", "missing an 'up'", || {
+    migrate(mdb, [{"version": 9}])
+})
+check_throws("non-integer version rejected", "must be an integer", || {
+    migrate(mdb, [{"version": "1", "up": |d| {}}])
+})
+mdb.close()
+
+// --- Open failures ----------------------------------------------------------
+check_throws("opening a missing file readonly fails", "cannot open", || {
+    connect("C:/nonexistent-dir-xyz/nope.db", {"readonly": true})
+})
+
+out ""
+out "========================================"
+out " passed: " + str(passes) + "   failed: " + str(fails)
+out "========================================"

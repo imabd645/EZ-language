@@ -1,0 +1,263 @@
+// ============================================================================
+// ezsqlite / ffi.ez -- the binding layer.
+//
+// This is the ONLY file that is allowed to touch os_load_lib / os_get_func /
+// os_call / os_alloc. Everything above it works in EZ values. If SQLite's C API
+// or EZ's FFI ever changes shape, this file absorbs it.
+//
+// There is no C++ shim: this calls the SQLite C API directly.
+// ============================================================================
+
+// ── Loading ─────────────────────────────────────────────────────────────────
+// Prefer a real sqlite3.dll if the user has one (their build, their version,
+// their compile options). Fall back to winsqlite3.dll, which ships in System32
+// on every modern Windows and exports the full standard API -- that fallback is
+// what makes this library work with no install step at all.
+__sqlite_lib = os_load_lib("sqlite3.dll")
+__sqlite_which = "sqlite3.dll"
+when typeOf(__sqlite_lib) == "nil" or __sqlite_lib == 0 {
+    __sqlite_lib = os_load_lib("winsqlite3.dll")
+    __sqlite_which = "winsqlite3.dll (system)"
+}
+when typeOf(__sqlite_lib) == "nil" or __sqlite_lib == 0 {
+    throw "ezsqlite: could not load sqlite3.dll or winsqlite3.dll. Put a 64-bit sqlite3.dll on PATH (a 32-bit one will not load into a 64-bit process)."
+}
+
+export task sqlite_backend() { give __sqlite_which }
+
+// ── Result codes ────────────────────────────────────────────────────────────
+export SQLITE_OK = 0
+export SQLITE_ERROR = 1
+export SQLITE_BUSY = 5
+export SQLITE_LOCKED = 6
+export SQLITE_NOMEM = 7
+export SQLITE_READONLY = 8
+export SQLITE_INTERRUPT = 9
+export SQLITE_IOERR = 10
+export SQLITE_CORRUPT = 11
+export SQLITE_NOTFOUND = 12
+export SQLITE_FULL = 13
+export SQLITE_CANTOPEN = 14
+export SQLITE_CONSTRAINT = 19
+export SQLITE_MISMATCH = 20
+export SQLITE_MISUSE = 21
+export SQLITE_AUTH = 23
+export SQLITE_RANGE = 25
+export SQLITE_NOTADB = 26
+export SQLITE_ROW = 100
+export SQLITE_DONE = 101
+
+// ── Open flags ──────────────────────────────────────────────────────────────
+export SQLITE_OPEN_READONLY = 1
+export SQLITE_OPEN_READWRITE = 2
+export SQLITE_OPEN_CREATE = 4
+export SQLITE_OPEN_URI = 64
+export SQLITE_OPEN_MEMORY = 128
+export SQLITE_OPEN_NOMUTEX = 32768
+export SQLITE_OPEN_FULLMUTEX = 65536
+
+// ── Column types ────────────────────────────────────────────────────────────
+export SQLITE_INTEGER = 1
+export SQLITE_FLOAT = 2
+export SQLITE_TEXT = 3
+export SQLITE_BLOB = 4
+export SQLITE_NULL = 5
+
+// SQLITE_TRANSIENT. Tells SQLite to take its OWN copy of a bound string/blob.
+// Our buffer is a temporary that dies when the os_call returns, so binding with
+// SQLITE_STATIC instead would leave SQLite reading freed memory.
+export SQLITE_TRANSIENT = -1
+
+export model Fn {
+    static libversion       = os_get_func(__sqlite_lib, "sqlite3_libversion")
+    static open_v2          = os_get_func(__sqlite_lib, "sqlite3_open_v2")
+    static close_v2         = os_get_func(__sqlite_lib, "sqlite3_close_v2")
+    static errmsg           = os_get_func(__sqlite_lib, "sqlite3_errmsg")
+    static errcode          = os_get_func(__sqlite_lib, "sqlite3_errcode")
+    static extended_errcode = os_get_func(__sqlite_lib, "sqlite3_extended_errcode")
+    static busy_timeout     = os_get_func(__sqlite_lib, "sqlite3_busy_timeout")
+    static changes          = os_get_func(__sqlite_lib, "sqlite3_changes")
+    static total_changes    = os_get_func(__sqlite_lib, "sqlite3_total_changes")
+    static last_insert_rowid = os_get_func(__sqlite_lib, "sqlite3_last_insert_rowid")
+    static get_autocommit   = os_get_func(__sqlite_lib, "sqlite3_get_autocommit")
+
+    static prepare_v2       = os_get_func(__sqlite_lib, "sqlite3_prepare_v2")
+    static stmt_step        = os_get_func(__sqlite_lib, "sqlite3_step")
+    static reset            = os_get_func(__sqlite_lib, "sqlite3_reset")
+    static clear_bindings   = os_get_func(__sqlite_lib, "sqlite3_clear_bindings")
+    static finalize         = os_get_func(__sqlite_lib, "sqlite3_finalize")
+    static sql              = os_get_func(__sqlite_lib, "sqlite3_sql")
+
+    static bind_null        = os_get_func(__sqlite_lib, "sqlite3_bind_null")
+    static bind_int64       = os_get_func(__sqlite_lib, "sqlite3_bind_int64")
+    static bind_double      = os_get_func(__sqlite_lib, "sqlite3_bind_double")
+    static bind_text        = os_get_func(__sqlite_lib, "sqlite3_bind_text")
+    static bind_blob        = os_get_func(__sqlite_lib, "sqlite3_bind_blob")
+    static bind_parameter_count = os_get_func(__sqlite_lib, "sqlite3_bind_parameter_count")
+    static bind_parameter_index = os_get_func(__sqlite_lib, "sqlite3_bind_parameter_index")
+    static bind_parameter_name  = os_get_func(__sqlite_lib, "sqlite3_bind_parameter_name")
+
+    static column_count     = os_get_func(__sqlite_lib, "sqlite3_column_count")
+    static column_name      = os_get_func(__sqlite_lib, "sqlite3_column_name")
+    static column_type      = os_get_func(__sqlite_lib, "sqlite3_column_type")
+    static column_int64     = os_get_func(__sqlite_lib, "sqlite3_column_int64")
+    static column_double    = os_get_func(__sqlite_lib, "sqlite3_column_double")
+    static column_text      = os_get_func(__sqlite_lib, "sqlite3_column_text")
+    static column_blob      = os_get_func(__sqlite_lib, "sqlite3_column_blob")
+    static column_bytes     = os_get_func(__sqlite_lib, "sqlite3_column_bytes")
+}
+
+// ── Calling conventions ─────────────────────────────────────────────────────
+//
+// Two EZ FFI facts shape every wrapper below, both learned the hard way:
+//
+//  1. os_call(fn, "int", ...) reads the FULL 64-bit return register, so it is the
+//     correct type for an int64 return. os_call's "i64" is NOT implemented and
+//     silently returns nil -- only os_call_sig understands it.
+//
+//  2. A 32-bit `int` return only defines the low half of that register, so a
+//     NEGATIVE int comes back as a large positive number (-7 -> 4294967289), and
+//     os_call_sig's "i32" does not fix it either. Every SQLite function called
+//     with "int" below returns a non-negative value (result codes, counts, type
+//     tags), so this is safe -- but it is why sqlite3_column_int is never used
+//     anywhere in this library. Integers always come back via column_int64.
+
+export task sqlite_version() {
+    give os_read_string_ptr(os_call(Fn.libversion, "ptr"))
+}
+
+// Open a database. Returns the sqlite3* handle, or 0.
+// `ppDb` is an out-parameter (sqlite3**), so it needs a real 8-byte cell.
+export task raw_open(path, flags) {
+    ppDb = os_alloc(8)
+    when ppDb == 0 { throw "ezsqlite: out of memory allocating a database handle" }
+    rc = os_call(Fn.open_v2, "int", str(path), ppDb, flags, 0)
+    handle = os_read_uint64(ppDb, 0)
+    os_free(ppDb)
+    // On failure SQLite still hands back a handle so the error can be read off
+    // it, so return both and let the caller decide.
+    give { "rc": rc, "db": handle }
+}
+
+export task raw_close(db) { give os_call(Fn.close_v2, "int", db) }
+
+export task raw_errmsg(db) {
+    when db == 0 { give "" }
+    p = os_call(Fn.errmsg, "ptr", db)
+    when p == 0 { give "" }
+    give os_read_string_ptr(p)
+}
+
+export task raw_errcode(db) {
+    when db == 0 { give SQLITE_ERROR }
+    give os_call(Fn.errcode, "int", db)
+}
+
+export task raw_extended_errcode(db) {
+    when db == 0 { give SQLITE_ERROR }
+    give os_call(Fn.extended_errcode, "int", db)
+}
+
+// Compile one SQL statement. Returns the stmt handle plus the rc.
+//
+// nByte = -1 means "read to the NUL". pzTail is passed as 0: this library
+// compiles ONE statement per prepare, and connection.exec_script handles
+// multi-statement SQL explicitly rather than silently running only the first.
+export task raw_prepare(db, sql) {
+    ppStmt = os_alloc(8)
+    when ppStmt == 0 { throw "ezsqlite: out of memory allocating a statement handle" }
+    rc = os_call(Fn.prepare_v2, "int", db, str(sql), -1, ppStmt, 0)
+    st = os_read_uint64(ppStmt, 0)
+    os_free(ppStmt)
+    give { "rc": rc, "stmt": st }
+}
+
+// (Fn.stmt_step, not Fn.step: `step` is a reserved word in EZ.)
+export task raw_step(st) { give os_call(Fn.stmt_step, "int", st) }
+export task raw_reset(st) { give os_call(Fn.reset, "int", st) }
+export task raw_clear_bindings(st) { give os_call(Fn.clear_bindings, "int", st) }
+export task raw_finalize(st) { give os_call(Fn.finalize, "int", st) }
+export task raw_busy_timeout(db, ms) { give os_call(Fn.busy_timeout, "int", db, ms) }
+export task raw_changes(db) { give os_call(Fn.changes, "int", db) }
+export task raw_total_changes(db) { give os_call(Fn.total_changes, "int", db) }
+export task raw_get_autocommit(db) { give os_call(Fn.get_autocommit, "int", db) }
+
+// int64 return: "int" reads all 64 bits, which is exactly what we want here.
+export task raw_last_insert_rowid(db) { give os_call(Fn.last_insert_rowid, "int", db) }
+
+export task raw_sql(st) {
+    p = os_call(Fn.sql, "ptr", st)
+    when p == 0 { give "" }
+    give os_read_string_ptr(p)
+}
+
+// ── Binding ─────────────────────────────────────────────────────────────────
+export task raw_bind_null(st, idx) { give os_call(Fn.bind_null, "int", st, idx) }
+
+export task raw_bind_int64(st, idx, v) { give os_call(Fn.bind_int64, "int", st, idx, v) }
+
+// A double MUST go through os_call_sig. Plain os_call types every argument as a
+// pointer, so the value would be passed in a general-purpose register and never
+// reach the XMM register the ABI requires -- SQLite would store garbage.
+export task raw_bind_double(st, idx, v) {
+    give os_call_sig(Fn.bind_double, "int", ["ptr", "ptr", "double"], st, idx, v)
+}
+
+export task raw_bind_text(st, idx, v) {
+    give os_call(Fn.bind_text, "int", st, idx, str(v), -1, SQLITE_TRANSIENT)
+}
+
+// Blobs go by address+length, so an embedded NUL survives (a NUL is exactly what
+// makes a blob unrepresentable as a C string).
+export task raw_bind_blob(st, idx, buf) {
+    addr = os_buffer_addr(buf)
+    n = buf_size(buf)
+    when n == 0 {
+        // A zero-length blob still needs a non-null pointer to be distinct from
+        // NULL; bind an empty text-free blob via a 1-byte dummy address.
+        give os_call(Fn.bind_blob, "int", st, idx, addr, 0, SQLITE_TRANSIENT)
+    }
+    give os_call(Fn.bind_blob, "int", st, idx, addr, n, SQLITE_TRANSIENT)
+}
+
+export task raw_bind_parameter_count(st) { give os_call(Fn.bind_parameter_count, "int", st) }
+
+// 1-based index of a named parameter (":name"/"@name"/"$name"), or 0 if absent.
+export task raw_bind_parameter_index(st, name) {
+    give os_call(Fn.bind_parameter_index, "int", st, str(name))
+}
+
+export task raw_bind_parameter_name(st, idx) {
+    p = os_call(Fn.bind_parameter_name, "ptr", st, idx)
+    when p == 0 { give nil }
+    give os_read_string_ptr(p)
+}
+
+// ── Reading columns ─────────────────────────────────────────────────────────
+export task raw_column_count(st) { give os_call(Fn.column_count, "int", st) }
+
+export task raw_column_name(st, i) {
+    p = os_call(Fn.column_name, "ptr", st, i)
+    when p == 0 { give "" }
+    give os_read_string_ptr(p)
+}
+
+export task raw_column_type(st, i) { give os_call(Fn.column_type, "int", st, i) }
+export task raw_column_int64(st, i) { give os_call(Fn.column_int64, "int", st, i) }
+export task raw_column_double(st, i) { give os_call(Fn.column_double, "double", st, i) }
+export task raw_column_bytes(st, i) { give os_call(Fn.column_bytes, "int", st, i) }
+
+export task raw_column_text(st, i) {
+    p = os_call(Fn.column_text, "ptr", st, i)
+    when p == 0 { give nil }
+    give os_read_string_ptr(p)
+}
+
+// Returns a buffer, or nil. column_bytes MUST be read after column_blob: calling
+// them in the other order can force a type conversion that changes the length.
+export task raw_column_blob(st, i) {
+    p = os_call(Fn.column_blob, "ptr", st, i)
+    n = os_call(Fn.column_bytes, "int", st, i)
+    when p == 0 or n <= 0 { give buffer(0) }
+    give os_buffer_from_ptr(p, n)
+}

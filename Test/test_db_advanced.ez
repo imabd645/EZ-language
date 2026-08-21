@@ -1,8 +1,16 @@
-use "lib/db.ez" as db
-use "lib/unittest.ez" as *
+use "db" as db
+use "testing" as *
 
 describe("Database Production Features", || {
-    conn = db.Database(":memory:")
+    conn = nil
+
+    beforeAll(|| {
+        conn = db.Database(":memory:")
+    })
+
+    afterAll(|| {
+        when conn != nil { conn.close() }
+    })
 
     it("should handle parameterized queries", || {
         conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER, bio BLOB)", nil)
@@ -68,8 +76,6 @@ describe("Database Production Features", || {
         conn.execute("UPDATE logs SET msg = 'World'", nil)
         assertEquals(conn.changes(), 1, "Changes should be 1")
     })
-
-    conn.close()
 })
 
 testSummary()

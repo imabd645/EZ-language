@@ -1,0 +1,154 @@
+// ============================================================================
+// ezsqlite / errors.ez -- turning result codes into something diagnosable.
+//
+// SQLite reports failure as a small integer. On its own "rc=19" tells a caller
+// nothing; the useful information is the code's name, SQLite's own message, and
+// the extended code -- which is the part that distinguishes "UNIQUE constraint
+// failed" from "FOREIGN KEY constraint failed", both of which are plain 19.
+// ============================================================================
+
+use "ffi.ez"
+
+// Primary result code -> name.
+__CODE_NAMES = {
+    "0": "SQLITE_OK",
+    "1": "SQLITE_ERROR",
+    "2": "SQLITE_INTERNAL",
+    "3": "SQLITE_PERM",
+    "4": "SQLITE_ABORT",
+    "5": "SQLITE_BUSY",
+    "6": "SQLITE_LOCKED",
+    "7": "SQLITE_NOMEM",
+    "8": "SQLITE_READONLY",
+    "9": "SQLITE_INTERRUPT",
+    "10": "SQLITE_IOERR",
+    "11": "SQLITE_CORRUPT",
+    "12": "SQLITE_NOTFOUND",
+    "13": "SQLITE_FULL",
+    "14": "SQLITE_CANTOPEN",
+    "15": "SQLITE_PROTOCOL",
+    "16": "SQLITE_EMPTY",
+    "17": "SQLITE_SCHEMA",
+    "18": "SQLITE_TOOBIG",
+    "19": "SQLITE_CONSTRAINT",
+    "20": "SQLITE_MISMATCH",
+    "21": "SQLITE_MISUSE",
+    "22": "SQLITE_NOLFS",
+    "23": "SQLITE_AUTH",
+    "24": "SQLITE_FORMAT",
+    "25": "SQLITE_RANGE",
+    "26": "SQLITE_NOTADB",
+    "27": "SQLITE_NOTICE",
+    "28": "SQLITE_WARNING",
+    "100": "SQLITE_ROW",
+    "101": "SQLITE_DONE"
+}
+
+// The extended codes worth naming: each one answers "which constraint?" or
+// "which I/O step?", which is the question you actually have at 3am.
+__EXTENDED_NAMES = {
+    "266": "SQLITE_IOERR_READ",
+    "267": "SQLITE_IOERR_SHORT_READ",
+    "778": "SQLITE_IOERR_WRITE",
+    "1034": "SQLITE_IOERR_FSYNC",
+    "2570": "SQLITE_IOERR_DELETE",
+    "3082": "SQLITE_IOERR_BLOCKED",
+    "261": "SQLITE_BUSY_RECOVERY",
+    "517": "SQLITE_BUSY_SNAPSHOT",
+    "262": "SQLITE_LOCKED_SHAREDCACHE",
+    "264": "SQLITE_READONLY_RECOVERY",
+    "520": "SQLITE_READONLY_CANTLOCK",
+    "776": "SQLITE_READONLY_ROLLBACK",
+    "1032": "SQLITE_READONLY_DBMOVED",
+    "279": "SQLITE_CONSTRAINT_CHECK",
+    "531": "SQLITE_CONSTRAINT_COMMITHOOK",
+    "787": "SQLITE_CONSTRAINT_FOREIGNKEY",
+    "1043": "SQLITE_CONSTRAINT_FUNCTION",
+    "1299": "SQLITE_CONSTRAINT_NOTNULL",
+    "1555": "SQLITE_CONSTRAINT_PRIMARYKEY",
+    "1811": "SQLITE_CONSTRAINT_TRIGGER",
+    "2067": "SQLITE_CONSTRAINT_UNIQUE",
+    "2323": "SQLITE_CONSTRAINT_VTAB",
+    "2579": "SQLITE_CONSTRAINT_ROWID",
+    "14": "SQLITE_CANTOPEN",
+    "1038": "SQLITE_CANTOPEN_FULLPATH",
+    "1294": "SQLITE_CANTOPEN_ISDIR"
+}
+
+export task code_name(rc) {
+    k = str(rc)
+    when has_key(__CODE_NAMES, k) { give __CODE_NAMES[k] }
+    give "SQLITE_UNKNOWN(" + k + ")"
+}
+
+export task extended_code_name(rc) {
+    k = str(rc)
+    when has_key(__EXTENDED_NAMES, k) { give __EXTENDED_NAMES[k] }
+    // An extended code's low 8 bits are the primary code.
+    give code_name(rc % 256)
+}
+
+export task is_ok(rc) { give rc == SQLITE_OK }
+
+// True for codes that may succeed if simply retried: the database was locked by
+// another connection. Nothing else is worth a blind retry.
+export task is_retryable(rc) {
+    give rc == SQLITE_BUSY or rc == SQLITE_LOCKED
+}
+
+export task is_constraint_violation(rc) {
+    give rc == SQLITE_CONSTRAINT or (rc % 256) == SQLITE_CONSTRAINT
+}
+
+// Build the error object thrown by everything in this library.
+//
+// It is a dictionary rather than a bare string so callers can branch on `code`
+// (retry on BUSY, report a duplicate on CONSTRAINT_UNIQUE) instead of matching
+// on message text, which is not a stable API.
+export task make_error(rc, message, sql = nil, extended = nil) {
+    e = {
+        "error": "SqliteError",
+        "code": rc,
+        "code_name": code_name(rc),
+        "message": str(message)
+    }
+    when typeOf(extended) != "nil" and extended != rc {
+        e["extended_code"] = extended
+        e["extended_name"] = extended_code_name(extended)
+    }
+    when typeOf(sql) != "nil" { e["sql"] = str(sql) }
+    give e
+}
+
+// Human-readable one-liner. `throw` stringifies, so this is what a user sees when
+// they do not catch: it must carry the code name, SQLite's message, and the SQL.
+export task format_error(e) {
+    when typeOf(e) != "dictionary" { give str(e) }
+    when not has_key(e, "code_name") { give str(e) }
+    s = "ezsqlite: " + e["code_name"]
+    when has_key(e, "extended_name") { s = s + "/" + e["extended_name"] }
+    s = s + ": " + e["message"]
+    when has_key(e, "sql") { s = s + "  [sql: " + e["sql"] + "]" }
+    give s
+}
+
+// Raise a failure, reading SQLite's own message off the connection.
+//
+// db may be 0 (a failure with no connection to ask), in which case only the code
+// is reported.
+export task raise_db_error(db, rc, sql = nil) {
+    msg = "unknown error"
+    ext = rc
+    when db != 0 {
+        m = raw_errmsg(db)
+        when len(m) > 0 { msg = m }
+        ext = raw_extended_errcode(db)
+    } other {
+        msg = code_name(rc)
+    }
+    throw format_error(make_error(rc, msg, sql, ext))
+}
+
+export task raise_error(rc, message, sql = nil) {
+    throw format_error(make_error(rc, message, sql))
+}

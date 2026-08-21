@@ -1,0 +1,19 @@
+{
+  "name": "db",
+  "version": "1.1.0",
+  "description": "SQLite for EZ with CRUD helpers, query building and transactions, over the sqlite package.",
+  "author": "Abdullah Masood",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/EZ",
+  "keywords": [
+    "database",
+    "sqlite",
+    "orm",
+    "crud",
+    "query"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "sqlite": "^1.0.0"
+  }
+}

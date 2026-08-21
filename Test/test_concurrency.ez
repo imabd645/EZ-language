@@ -1,4 +1,4 @@
-use "lib/unittest.ez"
+use "testing"
 
 # Shared state across spawn()ed threads must live in a shared_ptr-based value --
 # a model instance, array or dictionary. Per README, "Notes on `spawn`": spawn

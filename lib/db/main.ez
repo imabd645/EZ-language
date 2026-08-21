@@ -1,0 +1,145 @@
+// ============================================================================
+// db -- SQLite with CRUD helpers, over the `sqlite` package.
+//
+//   use "db"
+//
+//   d = Database("app.db")
+//   d.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+//   d.execute("INSERT INTO users (name) VALUES (?)", ["ana"])
+//   rows = d.query("SELECT * FROM users")
+//   d.close()
+//
+// This used to carry its own copy of the SQLite C binding -- twenty-three
+// os_get_func calls, its own handle management, its own row reader. The
+// `sqlite` package already does all of that, so this is now a thin layer over
+// it and the duplicate binding is gone.
+//
+// Three things changed for the better as a result:
+//
+//   * Floats are stored as REAL. The old binder sent them through
+//     sqlite3_bind_text as str(val), so 9.5 landed in the column as the TEXT
+//     "9.500000" -- and every numeric comparison against it then followed
+//     SQLite's text rules instead of its numeric ones. sqlite3_bind_double was
+//     resolved but never called.
+//   * No DLL to install. The old code needed sqlite3.dll or libsqlite3-0.dll
+//     on the path; `sqlite` falls back to winsqlite3.dll, which Windows ships.
+//   * Errors say which statement failed, because `sqlite` carries the SQL into
+//     its error type.
+//
+// The public API is unchanged.
+// ============================================================================
+
+use "sqlite"
+
+// A prepared statement. Kept because prepareStatement() returns one; it now
+// wraps the `sqlite` Statement rather than a raw handle.
+model DbStatement {
+    init(stmt) {
+        self.stmt = stmt
+        self.handle = stmt
+    }
+
+    // Binds an array of parameters to the ? placeholders, positionally.
+    task bind(params) {
+        when type(params) == "nil" { give self }
+        self.stmt.bind(params)
+        give self
+    }
+
+    // True if a row is available, false when the statement is finished.
+    task step() { give self.stmt.next() }
+
+    // The current row as a dictionary of column name to value.
+    task getRow() { give self.stmt.row_dict() }
+
+    task reset() {
+        self.stmt.reset(false)
+        give self
+    }
+
+    task clearBindings() {
+        self.stmt.reset(true)
+        give self
+    }
+
+    task finalize() {
+        when self.stmt != nil {
+            self.stmt.finalize()
+            self.stmt = nil
+            self.handle = nil
+        }
+    }
+}
+
+export model Database {
+    init(path, options = nil) {
+        self.path = path
+        self.db = connect(path, options)
+        self.handle = self.db
+    }
+
+    // Compiles SQL into a DbStatement.
+    task prepareStatement(sql) { give DbStatement(self.db.prepare(sql)) }
+
+    // A SELECT, as an array of row dictionaries.
+    task query(sql, params = nil) { give self.db.query(sql, params) }
+
+    // An INSERT, UPDATE or DELETE. Returns true, as it always has.
+    task execute(sql, params = nil) {
+        self.db.exec(sql, params)
+        give true
+    }
+
+    // The same, but returning how many rows it actually touched -- which
+    // execute() cannot report without changing what it returns.
+    task executeCounting(sql, params = nil) { give self.db.exec(sql, params) }
+
+    task lastRowId() { give self.db.last_insert_id() }
+
+    task changes() { give self.db.changes() }
+
+    task begin() { self.db.begin() }
+    task commit() { self.db.commit() }
+    task rollback() { self.db.rollback() }
+
+    // Runs `actions()` inside a transaction, rolling back if it throws.
+    task transaction(actions) { give self.db.transaction(|d| { give actions() }) }
+
+    // The first column of the first row -- for COUNT(*), MAX(id) and friends.
+    task fetchScalar(sql, params = nil) { give self.db.scalar(sql, params) }
+
+    // ── passed through from `sqlite`, because they were always wanted here ──
+
+    task one(sql, params = nil) { give self.db.one(sql, params) }
+    task execMany(sql, paramSets) { give self.db.exec_many(sql, paramSets) }
+    task execScript(sql) { give self.db.exec_script(sql) }
+    task tables() { give self.db.tables() }
+    task tableExists(name) { give self.db.table_exists(name) }
+    task columns(table) { give self.db.columns(table) }
+    task inTransaction() { give self.db.in_transaction() }
+
+    task close() {
+        when self.db != nil and self.db.is_closed() == false { self.db.close() }
+    }
+
+    task isClosed() {
+        when self.db == nil { give true }
+        give self.db.is_closed()
+    }
+}
+
+// Open, run fn(d), close -- even if fn throws.
+export task withDatabase(path, fn, options = nil) {
+    d = Database(path, options)
+    result = nil
+    failure = nil
+    caught = false
+    try { result = fn(d) }
+    catch (e) {
+        failure = e
+        caught = true
+    }
+    d.close()
+    when caught { throw failure }
+    give result
+}

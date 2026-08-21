@@ -2,7 +2,7 @@
 # EZ Regex Engine Test
 # ============================================================================
 
-use "lib/unittest.ez"
+use "testing"
 
 describe("Regex Engine (Raw Strings)", || {
 

@@ -1,0 +1,63 @@
+---
+# Style config for the EZ language C++ source (src/).
+#
+# This mirrors the codebase's existing hand-written conventions rather than
+# imposing a stock style, so a first run should look like a cleanup, not a
+# rewrite:
+#   - 4-space indent, no tabs (already universal in src/)
+#   - opening braces attached to the same line (K&R-ish, already universal)
+#   - left-aligned pointers/references: `Value* v`, not `Value *v`
+#   - includes are NEVER reordered: several files depend on include order
+#     (e.g. windows.h must precede EZFuture.h -- see FFI_Internal.h) and
+#     sorting would silently break the build without a compiler error at
+#     format time.
+#   - no forced line-wrapping: the VM dispatch loop and several long,
+#     deliberate comments run well past 100 columns on purpose.
+BasedOnStyle: Google
+
+Language: Cpp
+Standard: c++17
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: None
+
+BreakBeforeBraces: Attach
+Cpp11BracedListStyle: true
+AllowShortFunctionsOnASingleLine: Empty
+# The codebase leans heavily (100+ call sites) on single-line guard clauses
+# like `if (a == b) return 0;`. Forcing these onto two lines (clang-format's
+# Google/LLVM default) would turn nearly every file into a wall of noise
+# unrelated to actual formatting problems, so keep them collapsed.
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+# Do not reorder or regroup #include lines -- see note above.
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# The dispatch loop and many comments intentionally run long; don't rewrap.
+ColumnLimit: 0
+
+AlignTrailingComments: true
+AlignConsecutiveDeclarations: false
+AlignConsecutiveAssignments: false
+AlignAfterOpenBracket: Align
+
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpaceAfterTemplateKeyword: true
+IndentCaseLabels: true
+IndentPPDirectives: None
+
+SortUsingDeclarations: false
+FixNamespaceComments: false

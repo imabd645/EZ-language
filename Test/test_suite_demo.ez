@@ -1,9 +1,9 @@
 # ============================================================================
 # EZ Test Suite Demo
-# Demonstrates use of lib/unittest.ez
+# Demonstrates use of testing.ez
 # ============================================================================
 
-use "lib/unittest.ez"
+use "testing"
 
 describe("EZ Core Features", || {
     

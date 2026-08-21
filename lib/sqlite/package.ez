@@ -1,0 +1,8 @@
+{
+    "name": "sqlite",
+    "version": "1.0.0",
+    "description": "SQLite for EZ over pure FFI -- prepared statements, transactions, migrations. No C++.",
+    "author": "Abdullah Masood",
+    "main": "main.ez",
+    "dependencies": {}
+}

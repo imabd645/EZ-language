@@ -83,7 +83,7 @@ check("column_int(INT32_MIN) via i32", os_call(f_col_int, "i32", st, 0), -214748
 os_call(f_finalize, "int", st)
 
 # --- "float" return means a 64-bit double (regression guard) ---------------
-# EZ's number type is a double, and every caller (e.g. lib/db.ez reading
+# EZ's number type is a double, and every caller (e.g. db reading
 # sqlite3_column_double as "float") relies on "float" meaning 64-bit. Mapping it
 # to a 32-bit ffi_type made every REAL column read back 0.
 st = prep("SELECT 45000.50")

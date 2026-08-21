@@ -1,0 +1,134 @@
+// ============================================================================
+// ezsqlite / migrate.ez -- schema migrations.
+//
+// A schema evolves; a production database cannot be dropped and recreated. This
+// tracks which migrations a given file has already had applied and applies only
+// the rest, in order, each in its own transaction.
+//
+// Uses SQLite's own `PRAGMA user_version` -- an integer stored in the database
+// header -- rather than a bookkeeping table, so an empty database is already at
+// version 0 with nothing to set up.
+// ============================================================================
+
+use "errors.ez"
+use "ffi.ez"
+use "connection.ez"
+
+export task schema_version(db) {
+    give db.scalar("PRAGMA user_version")
+}
+
+export task set_schema_version(db, v) {
+    // PRAGMA will not take a bound parameter, so the value is inlined. It must
+    // therefore be proven to be an integer rather than assumed to be one.
+    when typeOf(v) != "integer" {
+        raise_error(SQLITE_MISUSE, "schema version must be an integer, got " + typeOf(v))
+    }
+    when v < 0 { raise_error(SQLITE_MISUSE, "schema version cannot be negative") }
+    give db.exec("PRAGMA user_version = " + str(v))
+}
+
+// Apply any migrations the database has not seen yet.
+//
+// `migrations` is an array of dictionaries:
+//   { "version": 1, "name": "create users", "up": |db| { db.exec("...") } }
+//
+// Rules enforced here, each because the alternative fails quietly:
+//   - versions must be integers > 0, unique, and are applied in ascending order
+//   - each migration runs inside a transaction WITH its version bump, so a failure
+//     leaves the database exactly where it started rather than half-migrated
+//   - a migration whose version <= the current one is skipped, making migrate()
+//     safe to call on every startup
+//
+// Returns the list of versions applied this run.
+export task migrate(db, migrations, on_apply = nil) {
+    when typeOf(migrations) != "array" {
+        raise_error(SQLITE_MISUSE, "migrate expects an array of migrations")
+    }
+
+    // Validate the whole set BEFORE applying any of it: discovering a malformed
+    // migration halfway through means the database is left at an intermediate
+    // version that no longer matches the code.
+    seen = {}
+    get m in migrations {
+        when typeOf(m) != "dictionary" {
+            raise_error(SQLITE_MISUSE, "each migration must be a dictionary")
+        }
+        when not has_key(m, "version") {
+            raise_error(SQLITE_MISUSE, "migration is missing 'version'")
+        }
+        v = m["version"]
+        when typeOf(v) != "integer" {
+            raise_error(SQLITE_MISUSE, "migration version must be an integer, got " + typeOf(v))
+        }
+        when v <= 0 {
+            raise_error(SQLITE_MISUSE, "migration version must be > 0 (0 means 'fresh database')")
+        }
+        when has_key(seen, str(v)) {
+            raise_error(SQLITE_MISUSE, "duplicate migration version " + str(v))
+        }
+        seen[str(v)] = true
+        when not has_key(m, "up") or typeOf(m["up"]) != "function" {
+            raise_error(SQLITE_MISUSE,
+                "migration " + str(v) + " is missing an 'up' function |db| { ... }")
+        }
+    }
+
+    // Ascending order by version. keys() is hash order, and the input array may
+    // be in any order, so sort explicitly rather than trusting either.
+    ordered = _sort_by_version(migrations)
+
+    current = schema_version(db)
+    applied = []
+
+    get m in ordered {
+        v = m["version"]
+        when v > current {
+            name = ""
+            when has_key(m, "name") { name = str(m["name"]) }
+            // The version bump goes INSIDE the transaction with the migration's
+            // own work. If they were separate, a crash between them would leave
+            // the schema changed but the version stale, and the next run would
+            // apply the same migration twice.
+            db.transaction(|d| {
+                fn = m["up"]
+                fn(d)
+                set_schema_version(d, v)
+                give nil
+            })
+            push(applied, v)
+            when typeOf(on_apply) != "nil" { on_apply(v, name) }
+        }
+    }
+    give applied
+}
+
+// Insertion sort by version. The list is short and already nearly ordered in
+// practice, and this avoids depending on sort()'s comparator semantics.
+task _sort_by_version(migrations) {
+    out_list = []
+    get m in migrations {
+        inserted = false
+        i = 0
+        while i < len(out_list) {
+            when not inserted and m["version"] < out_list[i]["version"] {
+                insert(out_list, i, m)
+                inserted = true
+                i = len(out_list)
+            }
+            i = i + 1
+        }
+        when not inserted { push(out_list, m) }
+    }
+    give out_list
+}
+
+// The versions this database has already applied, i.e. everything <= user_version.
+export task pending(db, migrations) {
+    current = schema_version(db)
+    todo = []
+    get m in _sort_by_version(migrations) {
+        when m["version"] > current { push(todo, m["version"]) }
+    }
+    give todo
+}

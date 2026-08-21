@@ -9,7 +9,7 @@
 #   typeOf("ab" + "cd")        -> "unknown"   (concatenated)
 #   typeOf("...15+ chars...")  -> "string"
 #
-# That silently broke value dispatch written in EZ. lib/db.ez binds a query
+# That silently broke value dispatch written in EZ. db binds a query
 # parameter with `when typeOf(val) == "string"`, so text parameters were never
 # bound, the column stored NULL, and reading it back gave nil -- surfacing as
 # test_sqlite_ffi's "Name mismatch" and test_db_advanced finding 0 rows for a

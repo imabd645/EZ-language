@@ -10,7 +10,7 @@
 # This one does: parallel workers hammer a shared Atomic and the total must be
 # exact, which a non-atomic read-modify-write would not achieve.
 
-use "lib/unittest.ez" as *
+use "testing" as *
 
 describe("Atomic Operations", || {
 

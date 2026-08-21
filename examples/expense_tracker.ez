@@ -1,5 +1,5 @@
 use "lib/web.ez"
-use "lib/db.ez"
+use "db"
 
 # Initialize SQLite Database
 db = Database("expenses.db")

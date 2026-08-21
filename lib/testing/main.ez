@@ -1,0 +1,753 @@
+# ============================================================================
+# EZ Test Framework (v1.0.0)
+# Production-ready unit testing for EZ Language
+# Features: Assertions, test suites, hooks, mocks, spies, colored reporting
+# ============================================================================
+
+# --- Color Constants ---
+COLOR_RESET = 0
+COLOR_GREEN = 10
+COLOR_RED = 12
+COLOR_YELLOW = 14
+COLOR_BLUE = 9
+COLOR_MAGENTA = 13
+COLOR_CYAN = 11
+COLOR_WHITE = 15
+
+# --- Test State ---
+__testState = {
+    "suites": [],
+    "currentSuite": nil,
+    "currentTest": nil,
+    "passCount": 0,
+    "failCount": 0,
+    "skipCount": 0,
+    "totalCount": 0,
+    "startTime": 0,
+    "inHook": false,
+    "silent": false
+}
+
+# --- Internal Utility Functions ---
+
+# Format a value for display
+task __formatValue(val) {
+    t = typeOf(val)
+    when t == "string" { give "'" + val + "'" }
+    when t == "nil" { give "nil" }
+    when t == "boolean" { give str(val) }
+    when t == "number" { give str(val) }
+    when t == "array" { give str(val) }
+    when t == "dictionary" { give str(val) }
+    when t == "model" { give "<model>" }
+    when t == "function" { give "<function>" }
+    give str(val)
+}
+
+# Check deep equality
+task __deepEqual(a, b) {
+    when typeOf(a) != typeOf(b) { give false }
+    
+    t = typeOf(a)
+    when t == "array" {
+        when len(a) != len(b) { give false }
+        i = 0
+        while i < len(a) {
+            when not __deepEqual(a[i], b[i]) { give false }
+            i = i + 1
+        }
+        give true
+    }
+    when t == "dictionary" {
+        keysA = keys(a)
+        keysB = keys(b)
+        when len(keysA) != len(keysB) { give false }
+        get k in keysA {
+            when not (k in b) { give false }
+            when not __deepEqual(a[k], b[k]) { give false }
+        }
+        give true
+    }
+    give a == b
+}
+
+# Print with color
+task __printColor(msg, colorCode) {
+    when not __testState["silent"] {
+        color(colorCode)
+        out msg
+        reset()
+    }
+}
+
+# Print without color
+task __print(msg) {
+    when not __testState["silent"] {
+        out msg
+    }
+}
+
+# --- Core Assertion Functions ---
+
+# Assert that value is truthy
+export task assert(value, message = nil) {
+    when not value {
+        msg = message
+        when not msg { msg = "Expected truthy value, got: " + __formatValue(value) }
+        throw msg
+    }
+    give true
+}
+
+# Assert that value is falsy
+export task assertFalse(value, message = nil) {
+    when value {
+        msg = message
+        when not msg { msg = "Expected falsy value, got: " + __formatValue(value) }
+        throw msg
+    }
+    give true
+}
+
+# Assert equality (==)
+export task assertEqual(actual, expected, message = nil) {
+    when actual != expected {
+        msg = message
+        when not msg { 
+            msg = "Expected " + __formatValue(expected) + ", got: " + __formatValue(actual) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert deep equality (for arrays/objects)
+export task assertDeepEqual(actual, expected, message = nil) {
+    when not __deepEqual(actual, expected) {
+        msg = message
+        when not msg { 
+            msg = "Expected deep equal to " + __formatValue(expected) + ", got: " + __formatValue(actual) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert inequality (!=)
+export task assertNotEqual(actual, notExpected, message = nil) {
+    when actual == notExpected {
+        msg = message
+        when not msg { 
+            msg = "Expected value to not equal " + __formatValue(notExpected) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert null
+export task assertNull(value, message = nil) {
+    when value != nil {
+        msg = message
+        when not msg { msg = "Expected null, got: " + __formatValue(value) }
+        throw msg
+    }
+    give true
+}
+
+# Assert not null
+export task assertNotNull(value, message = nil) {
+    when value == nil {
+        msg = message
+        when not msg { msg = "Expected non-null value" }
+        throw msg
+    }
+    give true
+}
+
+# Assert that value is of specific type
+export task assertType(value, expectedType, message = nil) {
+    actualType = typeOf(value)
+    when actualType != expectedType {
+        msg = message
+        when not msg { 
+            msg = "Expected type '" + expectedType + "', got: '" + actualType + "'" 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert that string contains substring
+export task assertContains(haystack, needle, message = nil) {
+    when typeOf(haystack) != "string" {
+        throw "assertContains expects string haystack, got: " + typeOf(haystack)
+    }
+    when indexOf(haystack, needle) == -1 {
+        msg = message
+        when not msg { 
+            msg = "Expected '" + haystack + "' to contain '" + needle + "'" 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert that array contains value
+export task assertInArray(array, value, message = nil) {
+    when typeOf(array) != "array" {
+        throw "assertInArray expects array, got: " + typeOf(array)
+    }
+    found = false
+    get item in array {
+        when item == value {
+            found = true
+            escape
+        }
+    }
+    when not found {
+        msg = message
+        when not msg { 
+            msg = "Expected array to contain " + __formatValue(value) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert throws an error
+export task assertThrows(fn, expectedMessage = nil, message = nil) {
+    threw = false
+    errorMsg = ""
+    
+    try {
+        fn()
+    } catch e {
+        threw = true
+        errorMsg = str(e)
+    }
+    
+    when not threw {
+        msg = message
+        when not msg { msg = "Expected function to throw an error" }
+        throw msg
+    }
+    
+    when expectedMessage {
+        when indexOf(errorMsg, expectedMessage) == -1 {
+            msg = message
+            when not msg { 
+                msg = "Expected error containing '" + expectedMessage + "', got: '" + errorMsg + "'" 
+            }
+            throw msg
+        }
+    }
+    
+    give true
+}
+
+# Assert does not throw
+export task assertDoesNotThrow(fn, message = nil) {
+    try {
+        fn()
+    } catch e {
+        msg = message
+        when not msg { msg = "Expected no error, but threw: " + str(e) }
+        throw msg
+    }
+    give true
+}
+
+# Assert approximate equality (for floating point)
+export task assertApproxEqual(actual, expected, tolerance = nil, message = nil) {
+    when not tolerance { tolerance = 0.0001 }
+    diff = abs(actual - expected)
+    when diff > tolerance {
+        msg = message
+        when not msg { 
+            msg = "Expected ~" + str(expected) + " (tolerance: " + str(tolerance) + "), got: " + str(actual) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert greater than
+export task assertGreaterThan(value, threshold, message = nil) {
+    when value <= threshold {
+        msg = message
+        when not msg { 
+            msg = "Expected value > " + str(threshold) + ", got: " + str(value) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# Assert less than
+export task assertLessThan(value, threshold, message = nil) {
+    when value >= threshold {
+        msg = message
+        when not msg { 
+            msg = "Expected value < " + str(threshold) + ", got: " + str(value) 
+        }
+        throw msg
+    }
+    give true
+}
+
+# --- Mock/Spy System ---
+
+export model Spy {
+    init(targetFn = nil) {
+        self.targetFn = targetFn
+        self.calls = []
+        self.returnValue = nil
+        # With no target there is nothing to call through TO, so a bare spy()
+        # records calls and returns its configured value instead of invoking nil.
+        self.callThrough = targetFn != nil
+    }
+    
+    # Call the spy
+    task call(args) {
+        callInfo = {
+            "args": args,
+            "timestamp": clock()
+        }
+        push(self.calls, callInfo)
+        
+        when self.callThrough {
+            give self.targetFn(args)
+        }
+        give self.returnValue
+    }
+    
+    # Get number of calls
+    task callCount() {
+        give len(self.calls)
+    }
+    
+    # Get call at index
+    task getCall(index) {
+        when index >= 0 and index < len(self.calls) {
+            give self.calls[index]
+        }
+        give nil
+    }
+    
+    # Check if called with specific args
+    task calledWith(args) {
+        get call in self.calls {
+            when __deepEqual(call["args"], args) {
+                give true
+            }
+        }
+        give false
+    }
+    
+    # Reset spy
+    task reset() {
+        self.calls = []
+    }
+    
+    # Set return value (for stubbing)
+    task returns(val) {
+        self.returnValue = val
+        self.callThrough = false
+        give self
+    }
+}
+
+# Create a spy function
+export task spy(targetFn = nil) {
+    s = Spy(targetFn)
+    give |args| { give s.call(args) }
+}
+
+# Create a stub function
+export task stub(returnValue = nil) {
+    s = Spy(|args| { give nil })
+    s.returns(returnValue)
+    give |args| { give s.call(args) }
+}
+
+# Create a mock function
+export task mock() {
+    give spy(|args| { give nil })
+}
+
+# --- Test Suite System ---
+
+# Define a test suite
+export task describe(suiteName, suiteFn) {
+    suite = {
+        "name": suiteName,
+        "tests": [],
+        "beforeEach": nil,
+        "afterEach": nil,
+        "beforeAll": nil,
+        "afterAll": nil,
+        "parent": __testState["currentSuite"]
+    }
+    
+    # Save and set current suite
+    prevSuite = __testState["currentSuite"]
+    __testState["currentSuite"] = suite
+    
+    # Execute suite function to collect tests
+    suiteFn()
+    
+    # Restore previous suite
+    __testState["currentSuite"] = prevSuite
+    
+    # Add to suites list or parent
+    when suite["parent"] {
+        push(suite["parent"]["tests"], suite)
+    } other {
+        push(__testState["suites"], suite)
+    }
+}
+
+# Alias for describe
+export task suite(name, fn) {
+    describe(name, fn)
+}
+
+# Define a test case
+export task it(testName, testFn) {
+    test = {
+        "name": testName,
+        "fn": testFn,
+        "suite": __testState["currentSuite"]
+    }
+    
+    when __testState["currentSuite"] {
+        push(__testState["currentSuite"]["tests"], test)
+    } other {
+        push(__testState["suites"], test)
+    }
+}
+
+# Alias for it - use testCase to avoid naming conflict with test object
+export task testCase(name, fn) {
+    it(name, fn)
+}
+
+# Define a skipped test
+export task skipe(name, fn) {
+    test = {
+        "name": name,
+        "fn": fn,
+        "suite": __testState["currentSuite"],
+        "skipped": true
+    }
+    
+    when __testState["currentSuite"] {
+        push(__testState["currentSuite"]["tests"], test)
+    } other {
+        push(__testState["suites"], test)
+    }
+}
+
+# --- Hooks ---
+
+# Run before each test in suite
+export task beforeEach(fn) {
+    when __testState["currentSuite"] {
+        __testState["currentSuite"]["beforeEach"] = fn
+    }
+}
+
+# Run after each test in suite
+export task afterEach(fn) {
+    when __testState["currentSuite"] {
+        __testState["currentSuite"]["afterEach"] = fn
+    }
+}
+
+# Run before all tests in suite
+export task beforeAll(fn) {
+    when __testState["currentSuite"] {
+        __testState["currentSuite"]["beforeAll"] = fn
+    }
+}
+
+# Run after all tests in suite
+export task afterAll(fn) {
+    when __testState["currentSuite"] {
+        __testState["currentSuite"]["afterAll"] = fn
+    }
+}
+
+# --- Test Runner ---
+
+# Run a single test
+task __runTest(test) {
+    __testState["totalCount"] = __testState["totalCount"] + 1
+    __testState["currentTest"] = test
+    
+    # Check if skipped
+    when has_key(test, "skipped") and test["skipped"] {
+        __testState["skipCount"] = __testState["skipCount"] + 1
+        __printColor("  - " + test["name"], COLOR_YELLOW)
+        __print(" [SKIPPED]")
+        give "skipped"
+    }
+    
+    # Named owningSuite, not suite: a bare `suite = ...` would replace this
+    # module's own suite() task process-wide the first time a test ran.
+    owningSuite = test["suite"]
+    
+    # Run beforeEach
+    when owningSuite and owningSuite["beforeEach"] {
+        try {
+            owningSuite["beforeEach"]()
+        } catch e {
+            __printColor("  ✗ " + test["name"], COLOR_RED)
+            __print(" [beforeEach failed: " + str(e) + "]")
+            __testState["failCount"] = __testState["failCount"] + 1
+            give "fail"
+        }
+    }
+    
+    # Run the test
+    passed = true
+    errorMsg = ""
+    
+    try {
+        test["fn"]()
+    } catch e {
+        passed = false
+        errorMsg = str(e)
+    }
+    
+    # Run afterEach
+    when owningSuite and owningSuite["afterEach"] {
+        try {
+            owningSuite["afterEach"]()
+        } catch e {
+            # Don't override test failure, but log afterEach error
+            when passed {
+                passed = false
+                errorMsg = "afterEach failed: " + str(e)
+            }
+        }
+    }
+    
+    # Report result
+    when passed {
+        __testState["passCount"] = __testState["passCount"] + 1
+        __printColor("  ✓ " + test["name"], COLOR_GREEN)
+        give "pass"
+    } other {
+        __testState["failCount"] = __testState["failCount"] + 1
+        __printColor("  ✗ " + test["name"], COLOR_RED)
+        __print("\n    " + errorMsg)
+        give "fail"
+    }
+}
+
+# Recursively run all tests in a suite
+task __runSuite(suite, level) {
+    indent = ""
+    repeat i = 0 to level {
+        indent = indent + "  "
+    }
+    
+    __print(indent + suite["name"])
+    
+    # Run beforeAll
+    when suite["beforeAll"] {
+        try {
+            suite["beforeAll"]()
+        } catch e {
+            __printColor(indent + "  beforeAll failed: " + str(e), COLOR_RED)
+            give
+        }
+    }
+    
+    # Run tests and nested suites
+    get item in suite["tests"] {
+        when has_key(item, "tests") {
+            # Nested suite
+            __runSuite(item, level + 1)
+        } other {
+            # Test case
+            __runTest(item)
+        }
+    }
+    
+    # Run afterAll
+    when suite["afterAll"] {
+        try {
+            suite["afterAll"]()
+        } catch e {
+            __printColor(indent + "  afterAll failed: " + str(e), COLOR_RED)
+        }
+    }
+}
+
+# Run all tests
+export task runTests(options = nil) {
+    when not options { options = {} }
+    when has_key(options, "silent") {
+        __testState["silent"] = options["silent"]
+    }
+    
+    __testState["startTime"] = clock()
+    __testState["passCount"] = 0
+    __testState["failCount"] = 0
+    __testState["skipCount"] = 0
+    __testState["totalCount"] = 0
+    
+    __print("")
+    __printColor("═══ EZ Test Framework ═══", COLOR_CYAN)
+    __print("")
+    
+    # Run all top-level suites/tests
+    get item in __testState["suites"] {
+        when has_key(item, "tests") {
+            # It's a suite
+            __runSuite(item, 0)
+        } other {
+            # It's a standalone test
+            __runTest(item)
+        }
+    }
+    
+    # Calculate duration
+    duration = clock() - __testState["startTime"]
+    
+    # Print summary
+    __print("")
+    __printColor("═══════════════════════════════", COLOR_CYAN)
+    
+    passStr = str(__testState["passCount"]) + " passed"
+    failStr = str(__testState["failCount"]) + " failed"
+    skipStr = str(__testState["skipCount"]) + " skipped"
+    
+    __printColor("  " + passStr, COLOR_GREEN)
+    when __testState["failCount"] > 0 {
+        __printColor("  " + failStr, COLOR_RED)
+    }
+    when __testState["skipCount"] > 0 {
+        __printColor("  " + skipStr, COLOR_YELLOW)
+    }
+    
+    __print("")
+    __print("  Duration: " + str(duration) + "ms")
+    __printColor("═══════════════════════════════", COLOR_CYAN)
+    __print("")
+    
+    # Return summary for programmatic use
+    give {
+        "passed": __testState["passCount"],
+        "failed": __testState["failCount"],
+        "skipped": __testState["skipCount"],
+        "total": __testState["totalCount"],
+        "duration": duration,
+        "success": __testState["failCount"] == 0
+    }
+}
+
+# Run and exit with appropriate code
+export task run() {
+    results = runTests({})
+    when not results["success"] {
+        # Exit with error code 1
+        exit(1)
+    }
+    give results
+}
+
+# Clear all tests (for reloading)
+export task clear() {
+    __testState["suites"] = []
+    __testState["currentSuite"] = nil
+    __testState["currentTest"] = nil
+    __testState["passCount"] = 0
+    __testState["failCount"] = 0
+    __testState["skipCount"] = 0
+    __testState["totalCount"] = 0
+}
+
+# --- Main Test Object ---
+# Exports everything in a namespace
+export test = {}
+test["run"] = run
+test["runTests"] = runTests
+test["clear"] = clear
+test["describe"] = describe
+test["suite"] = suite
+test["it"] = it
+test["test"] = testCase
+test["skip"] = skipe
+test["beforeEach"] = beforeEach
+test["afterEach"] = afterEach
+test["beforeAll"] = beforeAll
+test["afterAll"] = afterAll
+test["assert"] = assert
+test["assertFalse"] = assertFalse
+test["assertEqual"] = assertEqual
+test["assertDeepEqual"] = assertDeepEqual
+test["assertNotEqual"] = assertNotEqual
+test["assertNull"] = assertNull
+test["assertNotNull"] = assertNotNull
+test["assertType"] = assertType
+test["assertContains"] = assertContains
+test["assertInArray"] = assertInArray
+test["assertThrows"] = assertThrows
+test["assertDoesNotThrow"] = assertDoesNotThrow
+test["assertApproxEqual"] = assertApproxEqual
+test["assertGreaterThan"] = assertGreaterThan
+test["assertLessThan"] = assertLessThan
+test["spy"] = spy
+test["stub"] = stub
+test["mock"] = mock
+test["Spy"] = Spy
+test["silent"] = |b| { __testState["silent"] = b }
+
+# --- Global Exports ---
+# Allow using without test. prefix
+
+# Assertions
+export tAssert = test["assert"]
+export tAssertFalse = test["assertFalse"]
+export tAssertEqual = test["assertEqual"]
+export tAssertDeepEqual = test["assertDeepEqual"]
+export tAssertNotEqual = test["assertNotEqual"]
+export tAssertNull = test["assertNull"]
+export tAssertNotNull = test["assertNotNull"]
+export tAssertType = test["assertType"]
+export tAssertContains = test["assertContains"]
+export tAssertInArray = test["assertInArray"]
+export tAssertThrows = test["assertThrows"]
+export tAssertDoesNotThrow = test["assertDoesNotThrow"]
+export tAssertApproxEqual = test["assertApproxEqual"]
+export tAssertGreaterThan = test["assertGreaterThan"]
+export tAssertLessThan = test["assertLessThan"]
+
+# Suite definition
+export tDescribe = test["describe"]
+export tSuite = test["suite"]
+export tIt = test["it"]
+export tTestCase = test["test"]
+export tSkip = test["skip"]
+
+# Hooks
+export tBeforeEach = test["beforeEach"]
+export tAfterEach = test["afterEach"]
+export tBeforeAll = test["beforeAll"]
+export tAfterAll = test["afterAll"]
+
+# Runner
+export tRun = test["run"]
+export tRunTests = test["runTests"]
+export tClear = test["clear"]
+
+# Mocks
+export tSpy = test["spy"]
+export tStub = test["stub"]
+export tMock = test["mock"]
+
+# tAssertionError removed - EZ uses string throws, not error objects

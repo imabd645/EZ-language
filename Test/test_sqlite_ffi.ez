@@ -1,5 +1,5 @@
 // Test Suite for SQLite FFI Library
-use "lib/db.ez" as *
+use "db" as *
 
 out "=== SQLite FFI Test Suite ==="
 

@@ -1,0 +1,188 @@
+// ============================================================================
+// ezsqlite / statement.ez -- prepared statements.
+//
+// A Statement owns one compiled sqlite3_stmt. Its whole job is the step/row/reset
+// lifecycle and making sure the handle is finalized exactly once.
+//
+// RESOURCE RULE (this is why the code below looks the way it does):
+// `finally` does NOT run when a `give` leaves the block -- verified: a
+// `try { give x } finally { cleanup() }` skips cleanup entirely, and so does
+// `catch (e) { give y } finally { ... }`. Only a try/catch that falls off the end
+// runs its finally. So nothing here relies on finally to release a handle.
+// Instead: capture the result and the error, clean up, then re-throw or return.
+// Getting this wrong leaks a sqlite3_stmt and keeps a write lock open.
+// ============================================================================
+
+use "ffi.ez"
+use "errors.ez"
+use "types.ez"
+
+export model Statement {
+    // Prepared by Database.prepare -- do not construct directly.
+    init(db, handle, sql) {
+        self.db = db
+        self.handle = handle
+        self.sql = sql
+        self.finalized = false
+        // Guards the "no more rows" state so step() after DONE cannot walk off
+        // the end of the result set.
+        self.done = false
+    }
+
+    task _check_live() {
+        when self.finalized {
+            raise_error(SQLITE_MISUSE, "statement has been finalized", self.sql)
+        }
+    }
+
+    // Bind parameters (array, dictionary, or single value). Returns self so calls
+    // can chain.
+    task bind(params) {
+        self._check_live()
+        bind_params(self.handle, params, self.sql)
+        give self
+    }
+
+    // Advance to the next row. Returns true if a row is available, false when the
+    // statement is finished.
+    //
+    // Named next(), not step(): `step` is a reserved word in EZ.
+    task next() {
+        self._check_live()
+        rc = raw_step(self.handle)
+        when rc == SQLITE_ROW { give true }
+        when rc == SQLITE_DONE { self.done = true  give false }
+        // Any other code is a real failure. Reset first so the connection is not
+        // left mid-statement, then report -- reset() returns the same error, so
+        // its value is deliberately ignored here.
+        raw_reset(self.handle)
+        raise_db_error(self.db, rc, self.sql)
+    }
+
+    task column_count() {
+        self._check_live()
+        give raw_column_count(self.handle)
+    }
+
+    task column_names() {
+        self._check_live()
+        n = raw_column_count(self.handle)
+        names = []
+        i = 0
+        while i < n {
+            push(names, raw_column_name(self.handle, i))
+            i = i + 1
+        }
+        give names
+    }
+
+    // The current row as an array of values, in column order.
+    task row_array() {
+        self._check_live()
+        n = raw_column_count(self.handle)
+        vals = []
+        i = 0
+        while i < n {
+            push(vals, read_column(self.handle, i))
+            i = i + 1
+        }
+        give vals
+    }
+
+    // The current row as a dictionary keyed by column name.
+    //
+    // Duplicate column names (`SELECT a.id, b.id ...`) would silently collapse
+    // into one key, so the second occurrence is suffixed rather than dropped.
+    // Alias your columns if you care which is which.
+    task row_dict() {
+        self._check_live()
+        n = raw_column_count(self.handle)
+        row = {}
+        i = 0
+        while i < n {
+            name = raw_column_name(self.handle, i)
+            key = name
+            suffix = 1
+            while has_key(row, key) {
+                key = name + ":" + str(suffix)
+                suffix = suffix + 1
+            }
+            row[key] = read_column(self.handle, i)
+            i = i + 1
+        }
+        give row
+    }
+
+    // Every remaining row, as dictionaries. Materialises the whole result set:
+    // for a large table, step() through it instead.
+    task all() {
+        rows = []
+        while self.next() { push(rows, self.row_dict()) }
+        give rows
+    }
+
+    task all_arrays() {
+        rows = []
+        while self.next() { push(rows, self.row_array()) }
+        give rows
+    }
+
+    // The first row, or nil. Does not read the rest.
+    task one() {
+        when not self.next() { give nil }
+        give self.row_dict()
+    }
+
+    // The first column of the first row, or nil. For `SELECT count(*)`.
+    task scalar() {
+        when not self.next() { give nil }
+        when raw_column_count(self.handle) == 0 { give nil }
+        give read_column(self.handle, 0)
+    }
+
+    // Re-run the same compiled statement. Bindings survive a reset (that is
+    // SQLite's behaviour, not an oversight); pass clear_bindings = true to drop
+    // them so a following partial bind cannot silently reuse a stale value.
+    task reset(clear_bindings = false) {
+        self._check_live()
+        // reset() returns the error from the LAST step, which the caller has
+        // already been told about. Re-reporting it here would turn a handled
+        // error into a second, confusing one.
+        raw_reset(self.handle)
+        when clear_bindings { raw_clear_bindings(self.handle) }
+        self.done = false
+        give self
+    }
+
+    // Release the handle. Safe to call twice; the second call does nothing.
+    // Until this runs, the statement can hold a read transaction open and block
+    // writers.
+    task finalize() {
+        when self.finalized { give nil }
+        self.finalized = true
+        rc = raw_finalize(self.handle)
+        self.handle = 0
+        give rc
+    }
+
+    task is_finalized() { give self.finalized }
+}
+
+// Run `fn(stmt)` and finalize the statement afterwards, whatever happens.
+//
+// This is the guarded pattern the whole library uses internally, written out once
+// because `finally` cannot be trusted to run (see the note at the top).
+export task with_statement(stmt, fn) {
+    result = nil
+    failure = nil
+    caught = false
+    try {
+        result = fn(stmt)
+    } catch (e) {
+        failure = e
+        caught = true
+    }
+    stmt.finalize()
+    when caught { throw failure }
+    give result
+}

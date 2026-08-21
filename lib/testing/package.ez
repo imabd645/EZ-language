@@ -1,0 +1,11 @@
+{
+  "name": "testing",
+  "version": "1.0.1",
+  "description": "Unit testing for EZ. Assertions, suites, hooks, spies and stubs, with coloured reporting.",
+  "author": "Abdullah Masood",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/EZ",
+  "keywords": ["testing", "test", "assert", "unit-test", "mock", "spy"],
+  "license": "MIT",
+  "dependencies": {}
+}

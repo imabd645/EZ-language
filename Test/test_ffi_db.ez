@@ -1,5 +1,5 @@
-use "lib/db.ez" as db
-use "lib/unittest.ez" as *
+use "db" as db
+use "testing" as *
 
 describe("Database (Native FFI)", || {
     it("should create and query a table", || {

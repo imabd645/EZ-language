@@ -1,0 +1,141 @@
+// ============================================================================
+// ezsqlite / types.ez -- the value boundary.
+//
+// Every EZ value that goes INTO the database and every column that comes OUT
+// passes through here, and nowhere else. Keeping it in one file is what makes
+// "how does a float round-trip?" a question with a single answer.
+//
+// This is also where SQL injection is actually prevented: values are BOUND, never
+// formatted into SQL text. There is deliberately no "quote this value for me"
+// helper -- offering one invites building SQL by concatenation.
+// ============================================================================
+
+use "ffi.ez"
+use "errors.ez"
+
+// Bind one EZ value to a 1-based parameter slot.
+//
+// The mapping is total: every EZ value either binds to a SQLite type or raises.
+// It never falls back to str(v), because silently stringifying a dictionary would
+// store "<dictionary>" and call it success.
+export task bind_value(st, idx, v, sql = nil) {
+    t = typeOf(v)
+
+    when t == "nil" { give raw_bind_null(st, idx) }
+    // bool before integer: SQLite has no boolean type, and stores them as 0/1.
+    when t == "bool" {
+        n = 0
+        when v { n = 1 }
+        give raw_bind_int64(st, idx, n)
+    }
+    // The full signed 64-bit range binds exactly: the interpreter's FFI now
+    // marshals integer arguments through asInteger(), not a double, so values
+    // beyond 2^53 are no longer rounded in transit.
+    when t == "integer" { give raw_bind_int64(st, idx, v) }
+    when t == "float" { give raw_bind_double(st, idx, v) }
+    when t == "string" { give raw_bind_text(st, idx, v) }
+    when t == "buffer" { give raw_bind_blob(st, idx, v) }
+
+    raise_error(SQLITE_MISMATCH,
+        "cannot bind a value of type '" + t + "' to parameter " + str(idx) +
+        " (bind nil, bool, integer, float, string or buffer; serialise anything else yourself, e.g. with to_json)",
+        sql)
+}
+
+// Read column `i` of the current row as an EZ value.
+//
+// Dispatches on SQLite's ACTUAL column type for this row, not on the declared
+// column type. SQLite is dynamically typed: a column declared TEXT can hold an
+// integer, and in a query like `SELECT 1` there is no declared type at all.
+export task read_column(st, i) {
+    t = raw_column_type(st, i)
+
+    when t == SQLITE_NULL { give nil }
+    when t == SQLITE_INTEGER { give raw_column_int64(st, i) }
+    when t == SQLITE_FLOAT { give raw_column_double(st, i) }
+    when t == SQLITE_TEXT { give raw_column_text(st, i) }
+    when t == SQLITE_BLOB { give raw_column_blob(st, i) }
+    // Unreachable for a well-behaved SQLite, but a wrong value is worse than a
+    // loud failure in the one place that decides what your data means.
+    raise_error(SQLITE_MISMATCH, "unknown SQLite column type tag: " + str(t))
+}
+
+export task type_name(t) {
+    when t == SQLITE_INTEGER { give "integer" }
+    when t == SQLITE_FLOAT { give "float" }
+    when t == SQLITE_TEXT { give "text" }
+    when t == SQLITE_BLOB { give "blob" }
+    when t == SQLITE_NULL { give "null" }
+    give "unknown"
+}
+
+// Bind a whole parameter set.
+//
+// `params` may be:
+//   nil              -- nothing to bind
+//   array            -- positional, bound to ?1, ?2, ... in order
+//   dictionary       -- named, bound to :name / @name / $name
+//   a single value   -- convenience for exactly one positional parameter
+export task bind_params(st, params, sql = nil) {
+    when typeOf(params) == "nil" { give nil }
+
+    when typeOf(params) == "array" {
+        expected = raw_bind_parameter_count(st)
+        // Catching this here turns a silent NULL (SQLite leaves unbound
+        // parameters as NULL) into an error that names both counts.
+        when len(params) != expected {
+            raise_error(SQLITE_RANGE,
+                "expected " + str(expected) + " parameter(s), got " + str(len(params)),
+                sql)
+        }
+        i = 0
+        while i < len(params) {
+            bind_value(st, i + 1, params[i], sql)   // SQLite parameters are 1-based
+            i = i + 1
+        }
+        give nil
+    }
+
+    when typeOf(params) == "dictionary" {
+        ks = keys(params)
+        get k in ks {
+            // Accept "name" as well as ":name", since writing the colon twice is
+            // the obvious mistake and costs nothing to allow.
+            idx = raw_bind_parameter_index(st, k)
+            when idx == 0 { idx = raw_bind_parameter_index(st, ":" + str(k)) }
+            when idx == 0 { idx = raw_bind_parameter_index(st, "@" + str(k)) }
+            when idx == 0 { idx = raw_bind_parameter_index(st, "$" + str(k)) }
+            when idx == 0 {
+                raise_error(SQLITE_RANGE,
+                    "no parameter named '" + str(k) + "' in this statement", sql)
+            }
+            bind_value(st, idx, params[k], sql)
+        }
+        // Every parameter must be given a value: a missing one would bind as NULL
+        // and quietly change what the query means.
+        n = raw_bind_parameter_count(st)
+        i = 1
+        while i <= n {
+            nm = raw_bind_parameter_name(st, i)
+            when typeOf(nm) == "nil" {
+                raise_error(SQLITE_RANGE,
+                    "statement mixes named and positional parameters; use one style", sql)
+            }
+            bare = substr(nm, 1, len(nm) - 1)
+            when not has_key(params, nm) and not has_key(params, bare) {
+                raise_error(SQLITE_RANGE, "missing value for parameter '" + nm + "'", sql)
+            }
+            i = i + 1
+        }
+        give nil
+    }
+
+    // Single scalar.
+    expected = raw_bind_parameter_count(st)
+    when expected != 1 {
+        raise_error(SQLITE_RANGE,
+            "expected " + str(expected) + " parameter(s), got 1", sql)
+    }
+    bind_value(st, 1, params, sql)
+    give nil
+}

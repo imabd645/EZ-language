@@ -146,6 +146,20 @@ void registerFFICall(RuntimeContext& interp) {
         }));
 
 
+        interp.defineGlobal("os_free_lib", Value::makeNativeFunction("os_free_lib", 1,
+    [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+        if (!args[0].isNumber()) return Value();
+#ifdef _WIN32
+        HMODULE handle = reinterpret_cast<HMODULE>((uintptr_t)args[0].asNumber());
+        FreeLibrary(handle);
+#else
+        void* handle = reinterpret_cast<void*>((uintptr_t)args[0].asNumber());
+        dlclose(handle);
+#endif
+        return Value();
+    }));
+
+
     // ── os_get_func ─────────────────────────────────────────────────────────
     // Look up a function symbol in a loaded library. Returns the pointer as an integer.
     // Windows: GetProcAddress  |  POSIX: dlsym

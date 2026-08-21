@@ -48,6 +48,18 @@ public:
     // for a while.
     std::string describeException(const Value& exc) const;
 
+    // A local variable's value for the "Local variables:" traceback dump --
+    // deliberately separate from Value::toString(), which the rest of the
+    // language relies on for `out`/string interpolation and is NOT safe to
+    // change here. In non-debug mode a container just says "<array>" /
+    // "<dictionary>" the way a dictionary already does everywhere else in
+    // the language, because a local can be anything a script builds --
+    // including a password or token buried three levels into a list of
+    // dicts, the exact shape of a JSON-RPC call's positional args. In debug
+    // mode both expand fully and recursively, since showing real values is
+    // the entire point of asking for them.
+    std::string describeLocalValue(const Value& v) const;
+
     // Execute compiled bytecode
     Value execute(BytecodeFunctionPtr function);
     Value execute(BytecodeFunctionPtr function, const std::vector<Value>& args);

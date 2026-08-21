@@ -765,6 +765,49 @@ std::string BytecodeVM::describeException(const Value& exc) const {
     return exc.toString();
 }
 
+std::string BytecodeVM::describeLocalValue(const Value& v) const {
+    if (v.isArray()) {
+        if (!debugMode) return "<array>";
+        EZToStringFrame frame(v.asArrayPtr().get());
+        if (frame.blocked()) return "[...]";
+        const auto& arr = v.asArray();
+        std::string result = "[";
+        for (size_t i = 0; i < arr.size(); i++) {
+            if (i > 0) result += ", ";
+            if (arr[i].isString()) {
+                result += "\"" + describeLocalValue(arr[i]) + "\"";
+            } else {
+                result += describeLocalValue(arr[i]);
+            }
+        }
+        result += "]";
+        return result;
+    }
+    if (v.isDictionary()) {
+        if (!debugMode) return "<dictionary>";
+        auto dict = v.asDictionaryPtr();
+        EZToStringFrame frame(dict.get());
+        if (frame.blocked()) return "{...}";
+        std::string result = "{";
+        bool first = true;
+        dict->readMap([&](const std::unordered_map<std::string, Value>& map) {
+            for (const auto& [key, value] : map) {
+                if (!first) result += ", ";
+                first = false;
+                result += "\"" + key + "\": ";
+                if (value.isString()) {
+                    result += "\"" + describeLocalValue(value) + "\"";
+                } else {
+                    result += describeLocalValue(value);
+                }
+            }
+        });
+        result += "}";
+        return result;
+    }
+    return v.toString();
+}
+
 void BytecodeVM::printStackTrace() const {
     // Collect frames innermost-first, skip duplicate <main> frames
     struct TraceEntry { 
@@ -792,7 +835,7 @@ void BytecodeVM::printStackTrace() const {
                 if (var.startPC <= pc && pc <= var.endPC) {
                     // Make sure the slot is within the currently accessible stack frame
                     if (var.slot < (size_t)(stackTop - it->slots)) {
-                        activeLocals.push_back({var.name, (it->slots + var.slot)->toString()});
+                        activeLocals.push_back({var.name, describeLocalValue(*(it->slots + var.slot))});
                     }
                 }
             }

@@ -725,9 +725,9 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
 // ── Module resolution failures ───────────────────────────────────────────────
 //
 // "Could not find module 'htlm'" is true and useless. The three things the
-// reader needs are which name failed, where the compiler looked (EZLIB_PATH
-// moves that between machines), and whether something close is installed --
-// because the answer is a typo far more often than a missing package.
+// reader needs are which name failed, where the compiler looked, and whether
+// something close is installed -- because the answer is a typo far more often
+// than a missing package.
 
 // Edit distance, capped: anything past `limit` is not a suggestion worth
 // making, and stopping early keeps this linear in practice.
@@ -753,6 +753,7 @@ static size_t nameDistance(const std::string& a, const std::string& b, size_t li
 }
 
 // Installed package names that are close to what was asked for.
+// Only scans <exe_dir>/lib/ — the single canonical library root.
 static std::vector<std::string> similarModules(const std::string& wanted) {
     std::vector<std::pair<size_t, std::string>> scored;
     // Two edits for a name of any length, one for a short name where two edits
@@ -760,9 +761,8 @@ static std::vector<std::string> similarModules(const std::string& wanted) {
     size_t limit = wanted.size() <= 4 ? 1 : 2;
 
     std::error_code ec;
-    for (const std::string& root : { ezLibBase(), std::string("lib/") }) {
-        fs::directory_iterator it(root, ec), end;
-        if (ec) { ec.clear(); continue; }
+    fs::directory_iterator it(ezLibBase(), ec), end;
+    if (!ec) {
         for (; it != end; it.increment(ec)) {
             if (ec) { ec.clear(); break; }
             std::string name = it->path().filename().string();
@@ -827,151 +827,156 @@ std::string BytecodeCompiler::moduleNotFound(const std::string& path,
     if (path.find(".ez") == std::string::npos && path.find('/') != std::string::npos) {
         out += "\n  For a file in your project, include the extension:  use \"" + path + ".ez\"";
     }
-    out += "\n  Search root is EZLIB_PATH (currently " + ezLibBase() + ").";
+    out += "\n  Library root: " + ezLibBase();
     return out;
+}
+
+// ── Python-style module resolution ───────────────────────────────────────────
+//
+// Resolution order (like Python's sys.path):
+//   1. Relative to the importing file   (for use "sub/file.ez")
+//   2. Virtual File System               (bundled executables only)
+//   3. <exe_dir>/lib/                    (THE canonical library root)
+//
+// Within step 3, for a bare name like `use "http"`:
+//   a) lib/<name>.ez               — single-file module
+//   b) lib/<name>/                 — directory package:
+//        i)   read package.ez → "main" field → that file
+//        ii)  <name>/<name>.ez
+//        iii) <name>/main.ez
+
+// Helper: try to read "main" from a package.ez manifest inside a directory.
+static std::string resolvePackageEntry(const std::string& dirPath) {
+    std::string pkgFile = dirPath + "/package.ez";
+    std::ifstream pf(pkgFile);
+    if (!pf.is_open()) return "";
+    std::stringstream buf;
+    buf << pf.rdbuf();
+    std::string content = buf.str();
+    // Minimal JSON parse: find "main": "someFile.ez"
+    size_t mainKey = content.find("\"main\"");
+    if (mainKey == std::string::npos) return "";
+    size_t colon = content.find(':', mainKey + 6);
+    if (colon == std::string::npos) return "";
+    size_t qStart = content.find('"', colon + 1);
+    if (qStart == std::string::npos) return "";
+    size_t qEnd = content.find('"', qStart + 1);
+    if (qEnd == std::string::npos) return "";
+    return content.substr(qStart + 1, qEnd - qStart - 1);
 }
 
 void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::string path = stmt.path;
     std::string absolutePath = path;
 
-    // Every location tried, in order. A "could not find module 'x'" that does
-    // not say where it looked is unactionable: the reader cannot tell whether
-    // the package is missing, installed somewhere else, or spelled wrong, and
-    // EZLIB_PATH makes the search root vary between machines.
+    // Every location tried, in order, for diagnostics.
     std::vector<std::string> searched;
-    
-    // Resolve relative to current file
+
+    // ── Step 0: Resolve relative to current file ──
     if (!currentFile.empty() && currentFile != "repl" && currentFile != "main") {
         std::string dir = getDirectoryName(currentFile);
         if (dir != ".") {
             absolutePath = dir + "/" + path;
         }
     }
-    
+
     std::string source;
-    
-    // Shared resolver so the compiler, bundler and package manager all agree on
-    // where the stdlib lives (see src/utils/EzLibPath.h).
     std::string ezlibBase = ezLibBase();
-    
-    // 1. Check Virtual File System first
+
+    // ── Step 1: Virtual File System (bundled executables) ──
     bool foundInVFS = false;
-    std::string vfsSearchPath = absolutePath;
-    
-    // Normalize path separators for VFS check
-    std::replace(vfsSearchPath.begin(), vfsSearchPath.end(), '\\', '/');
-    if (vfsSearchPath.size() > 2 && vfsSearchPath[1] == ':') {
-        // If it's an absolute windows path, we can't easily match VFS, but usually VFS paths are relative like "lib/gui.ez"
-        // In the packager, we store them as relative paths
+
+    // VFS keys to try, in priority order
+    std::vector<std::string> vfsKeys = {
+        path,
+        path + ".ez",
+        "lib/" + path + ".ez",
+        "lib/" + path + "/" + path + ".ez",
+        "lib/" + path + "/main.ez",
+        ezlibBase + path,
+        ezlibBase + path + ".ez",
+        ezlibBase + path + "/" + path + ".ez",
+        ezlibBase + path + "/main.ez"
+    };
+    for (const auto& key : vfsKeys) {
+        if (virtualFileSystem.count(key)) {
+            source = virtualFileSystem[key];
+            absolutePath = key;
+            foundInVFS = true;
+            break;
+        }
     }
-    
-    // Check various common formats in VFS
-    if (virtualFileSystem.count(path)) {
-        source = virtualFileSystem[path];
-        absolutePath = path;
-        foundInVFS = true;
-    } else if (virtualFileSystem.count(path + ".ez")) {
-        source = virtualFileSystem[path + ".ez"];
-        absolutePath = path + ".ez";
-        foundInVFS = true;
-    } else if (virtualFileSystem.count("lib/" + path + ".ez")) {
-        source = virtualFileSystem["lib/" + path + ".ez"];
-        absolutePath = "lib/" + path + ".ez";
-        foundInVFS = true;
-    } else if (virtualFileSystem.count("lib/" + path + "/main.ez")) {
-        source = virtualFileSystem["lib/" + path + "/main.ez"];
-        absolutePath = "lib/" + path + "/main.ez";
-        foundInVFS = true;
-    } else if (virtualFileSystem.count(ezlibBase + path)) {
-        source = virtualFileSystem[ezlibBase + path];
-        absolutePath = ezlibBase + path;
-        foundInVFS = true;
-    } else if (virtualFileSystem.count(ezlibBase + path + ".ez")) {
-        source = virtualFileSystem[ezlibBase + path + ".ez"];
-        absolutePath = ezlibBase + path + ".ez";
-        foundInVFS = true;
-    } else if (virtualFileSystem.count(ezlibBase + path + "/main.ez")) {
-        source = virtualFileSystem[ezlibBase + path + "/main.ez"];
-        absolutePath = ezlibBase + path + "/main.ez";
-        foundInVFS = true;
-    }
-    
+
+    // ── Step 2: Filesystem resolution ──
     if (!foundInVFS) {
-        searched.push_back(absolutePath);
-        std::ifstream file(absolutePath);
-        if (!file.is_open()) {
-            // Try exactly as typed
-            searched.push_back(path);
-            file.open(path);
-            // NOTE: deliberately NOT falling back to `path + ".ez"` here.
-            // Whether an import exports everything or only `export`-marked
-            // declarations is decided further down by whether the path was
-            // spelled with a .ez extension (file inclusion vs package import).
-            // Resolving a bare relative path to a local file would therefore
-            // load it under package semantics and hand back an empty namespace
-            // -- a silent, confusing failure. A local file is imported as
-            // `use "Test/lib_a.ez"`.
-            if (file.is_open()) {
-                absolutePath = path;
-            } else {
-                // Try local lib/ directory
-                std::string localLibPath = "lib/" + path;
-                searched.push_back(localLibPath);
-                file.open(localLibPath);
-                if (file.is_open()) {
-                    absolutePath = localLibPath;
-                } else {
-                    // Try standard lib path
-                    std::string libPath = ezlibBase + path;
-                    searched.push_back(libPath);
-                    file.open(libPath);
-                    if (file.is_open()) {
-                        absolutePath = libPath;
-                    } else if (fs::is_directory(libPath)) {
-                        // It's a directory, look for [packageName].ez or main.ez
-                        std::string pkgEz = libPath + "/" + path + ".ez";
-                        searched.push_back(pkgEz);
-                        file.open(pkgEz);
-                        if (file.is_open()) {
-                            absolutePath = pkgEz;
-                        } else {
-                            std::string mainEz = libPath + "/main.ez";
-                            searched.push_back(mainEz);
-                            file.open(mainEz);
-                            if (file.is_open()) {
-                                absolutePath = mainEz;
-                            } else {
-                                errorAt(moduleNotFound(path, searched, libPath), currentLine);
-                                return;
-                            }
-                        }
-                    } else {
-                        // Try .ez extension
-                        std::string ezPath = (libPath.find(".ez") == std::string::npos) ? libPath + ".ez" : libPath;
-                        searched.push_back(ezPath);
-                        file.open(ezPath);
-                        if (file.is_open()) {
-                            absolutePath = ezPath;
-                        } else {
-                            // Try local .ez extension in lib
-                            std::string localEzPath = (localLibPath.find(".ez") == std::string::npos) ? localLibPath + ".ez" : localLibPath;
-                            searched.push_back(localEzPath);
-                            file.open(localEzPath);
-                            if (file.is_open()) {
-                                absolutePath = localEzPath;
-                            } else {
-                                errorAt("Could not find module '" + path + "'", currentLine);
-                                return;
-                            }
-                        }
-                    }
+        // Helper: try opening a candidate path and claim it if it works.
+        bool found = false;
+        auto tryPath = [&](const std::string& candidate) -> bool {
+            searched.push_back(candidate);
+            std::ifstream f(candidate);
+            if (f.is_open()) {
+                absolutePath = candidate;
+                std::stringstream buf;
+                buf << f.rdbuf();
+                source = buf.str();
+                found = true;
+                return true;
+            }
+            return false;
+        };
+
+        // 2a. Relative to importing file (absolutePath was set in step 0)
+        if (absolutePath != path) {
+            tryPath(absolutePath);
+        }
+
+        // 2b. Exact path as typed (for absolute paths or use "file.ez")
+        if (!found) {
+            tryPath(path);
+        }
+
+        // 2c. <exe_dir>/lib/ — the single canonical library root
+        if (!found) {
+            std::string libPath = ezlibBase + path;
+
+            // Try exact match in lib (e.g. lib/somefile)
+            if (!found) tryPath(libPath);
+
+            // Try with .ez extension (e.g. lib/http.ez)
+            if (!found && path.find(".ez") == std::string::npos) {
+                tryPath(libPath + ".ez");
+            }
+
+            // Try as a directory package
+            if (!found && fs::is_directory(libPath)) {
+                // i) Check package.ez for "main" field
+                std::string pkgEntry = resolvePackageEntry(libPath);
+                if (!pkgEntry.empty()) {
+                    tryPath(libPath + "/" + pkgEntry);
+                }
+
+                // ii) <name>/<name>.ez
+                if (!found) {
+                    tryPath(libPath + "/" + path + ".ez");
+                }
+
+                // iii) <name>/main.ez
+                if (!found) {
+                    tryPath(libPath + "/main.ez");
+                }
+
+                // Directory exists but no entry point found
+                if (!found) {
+                    errorAt(moduleNotFound(path, searched, libPath), currentLine);
+                    return;
                 }
             }
+
+            if (!found) {
+                errorAt(moduleNotFound(path, searched, ""), currentLine);
+                return;
+            }
         }
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        source = buffer.str();
     }
     
     if (compilingModules.count(absolutePath)) {

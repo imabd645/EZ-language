@@ -72,12 +72,11 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
             
             // Try resolving usePath
             std::vector<std::string> searchPaths = {
-                baseDir + "/lib/" + usePath + ".ez",
-                baseDir + "/lib/" + usePath + "/main.ez",
-                ezLibBase() + usePath + ".ez",
-                ezLibBase() + usePath + "/main.ez",
                 usePath,
-                usePath + ".ez"
+                usePath + ".ez",
+                ezLibBase() + usePath + ".ez",
+                ezLibBase() + usePath + "/" + usePath + ".ez",
+                ezLibBase() + usePath + "/main.ez"
             };
             
             for (const auto& sp : searchPaths) {
@@ -245,12 +244,11 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
             std::string usePath;
             try { usePath = std::get<std::string>(tokens[i+1].literal); } catch(...) { continue; }
             std::vector<std::string> searchPaths = {
-                baseDir + "/lib/" + usePath + ".ez",
-                baseDir + "/lib/" + usePath + "/main.ez",
-                ezLibBase() + usePath + ".ez",
-                ezLibBase() + usePath + "/main.ez",
                 usePath,
-                usePath + ".ez"
+                usePath + ".ez",
+                ezLibBase() + usePath + ".ez",
+                ezLibBase() + usePath + "/" + usePath + ".ez",
+                ezLibBase() + usePath + "/main.ez"
             };
             for (const auto& sp : searchPaths) {
                 if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {

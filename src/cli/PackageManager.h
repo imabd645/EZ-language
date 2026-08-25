@@ -394,18 +394,11 @@ private:
     }
 
     /**
-     * Where installed packages live.
+     * Where installed packages live: <exe_dir>/lib/
      *
      * This is the SAME directory the compiler resolves `use "name"` from
-     * (see src/utils/EzLibPath.h), so anything installed is immediately
-     * importable from every project on the machine -- which is how the EZ
-     * ecosystem works: one shared library root, not a per-project tree.
-     *
-     * Installing into a project-local ./lib would be actively harmful here,
-     * because lib/ is searched BEFORE the library root: a local copy silently
-     * shadows the real one, and the package is invisible to every other
-     * project. Honouring EZLIB_PATH also means a custom/portable stdlib
-     * location keeps `ez install` and `use` pointing at the same place.
+     * (see src/utils/EzLibPath.h). Python-style: one interpreter, one
+     * library folder. Everything installed is immediately importable.
      */
     static fs::path installBase() { return fs::path(ezLibBaseNoSlash()); }
 

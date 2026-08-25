@@ -873,7 +873,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::vector<std::string> searched;
 
     // ── Step 0: Resolve relative to current file ──
-    if (!currentFile.empty() && currentFile != "repl" && currentFile != "main") {
+    if (!currentFile.empty() && currentFile != "repl" && currentFile != "main" && currentFile != "<string>" && currentFile != "-c") {
         std::string dir = getDirectoryName(currentFile);
         if (dir != ".") {
             absolutePath = dir + "/" + path;

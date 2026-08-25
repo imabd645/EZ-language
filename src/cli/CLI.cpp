@@ -402,7 +402,9 @@ void showHelp() {
     std::cout << "Usage:" << std::endl;
     std::cout << "  ez                Run REPL (interactive mode)" << std::endl;
     std::cout << "  ez <file.ez>      Run a script file" << std::endl;
+    std::cout << "  ez -c <code>      Run code passed in as a string" << std::endl;
     std::cout << "  ez <file.ez> [args...]   Arguments reach the script as argv" << std::endl;
+    std::cout << "  ez -c <code> [args...]   Arguments reach the code as argv" << std::endl;
     std::cout << "  ez <file.ez> -- [args...] Pass args through even if they look like flags" << std::endl;
     std::cout << "  ez --version      Print the interpreter version" << std::endl;
     std::cout << std::endl;
@@ -548,6 +550,39 @@ int cli_main(int argc, char* argv[]) {
         // "Could not open file '--version'".
         if (cmd == "--version" || cmd == "-v" || cmd == "version") {
             showVersion();
+            return 0;
+        }
+
+        if (cmd == "-c" || cmd == "--eval" || cmd == "-e") {
+            if (argc < 3) {
+                std::cerr << "Argument expected for the -c option" << std::endl;
+                std::cerr << "Usage: ez -c <code> [args...]" << std::endl;
+                return 1;
+            }
+            std::string code = argv[2];
+            g_scriptName = "-c";
+            g_scriptArgs.clear();
+            bool traceExecution = false;
+            bool passThrough = false;
+            for (int i = 3; i < argc; i++) {
+                std::string arg = argv[i];
+                if (passThrough) {
+                    g_scriptArgs.push_back(arg);
+                } else if (arg == "--") {
+                    passThrough = true;
+                } else if (arg == "--trace") {
+                    traceExecution = true;
+                } else if (arg == "--debug") {
+                    g_debugMode = true;
+                } else if (arg == "--no-contracts") {
+                    g_disableContracts = true;
+                } else if (arg == "--no-typecheck") {
+                    g_disableTypeCheck = true;
+                } else {
+                    g_scriptArgs.push_back(arg);
+                }
+            }
+            runFromSource(code, "<string>", traceExecution);
             return 0;
         }
 
@@ -724,7 +759,7 @@ int cli_main(int argc, char* argv[]) {
                     traceExecution = true;
                 } else if (arg == "--debug") {
                     g_debugMode = true;
-                } else if (arg == "--compile" || arg == "-c" || arg == "--ezc") {
+                } else if (arg == "--compile" || arg == "--ezc") {
                     compileToEzc = true;
                 } else if (arg == "--dump" || arg == "-d" || arg == "--ezasm") {
                     dumpToEzasm = true;

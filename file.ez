@@ -1,0 +1,16 @@
+# Test module imports from <exe_dir>/lib/
+out "=== Testing Python-style Module System ==="
+
+use "testing" as t
+use "datetime" as dt
+use "fs" as fs
+use "crypto" as crypto
+use "Test/lib_a.ez" as local_lib
+
+out "Testing module loaded: " + str(t != nil)
+out "Datetime module loaded: " + str(dt != nil)
+out "FS module loaded: " + str(fs != nil)
+out "Crypto module loaded: " + str(crypto != nil)
+out "Local relative import result: " + local_lib.foo()
+
+out "=== All Module Imports Succeeded! ==="

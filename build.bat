@@ -90,6 +90,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/typechecker/TypeChecker.cpp ^
     src/typechecker/TypeCheckerExpr.cpp ^
     src/typechecker/TypeCheckerStmt.cpp ^
+    src/utils/EzLibPath.cpp ^
     src/vm/BytecodeVM.cpp ^
     src/vm/BytecodeVM_Execute.cpp ^
     src/vm/BytecodeVM_Objects.cpp ^

@@ -126,9 +126,6 @@ static const char* opcodeName(OpCode op) {
     switch (op) {
         case OpCode::LOAD_CONST: return "LOAD_CONST";
         case OpCode::LOAD_LOCAL: return "LOAD_LOCAL";
-        case OpCode::LOAD_LOCAL_W: return "LOAD_LOCAL_W";
-        case OpCode::STORE_LOCAL_W: return "STORE_LOCAL_W";
-        case OpCode::MEMBER_IN:     return "IN";
         case OpCode::STORE_LOCAL: return "STORE_LOCAL";
         case OpCode::LOAD_UPVALUE: return "LOAD_UPVALUE";
         case OpCode::STORE_UPVALUE: return "STORE_UPVALUE";
@@ -146,6 +143,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::LOAD_ONE: return "LOAD_ONE";
         case OpCode::LOAD_EMPTY_STR: return "LOAD_EMPTY_STR";
         case OpCode::INC_LOCAL: return "INC_LOCAL";
+        case OpCode::DEC_LOCAL: return "DEC_LOCAL";
         case OpCode::ADD: return "ADD";
         case OpCode::SUB: return "SUB";
         case OpCode::MUL: return "MUL";
@@ -169,6 +167,8 @@ static const char* opcodeName(OpCode op) {
         case OpCode::JUMP: return "JUMP";
         case OpCode::JUMP_IF_FALSE: return "JUMP_IF_FALSE";
         case OpCode::JUMP_IF_TRUE: return "JUMP_IF_TRUE";
+        case OpCode::JUMP_IF_NIL: return "JUMP_IF_NIL";
+        case OpCode::JUMP_IF_NOT_NIL: return "JUMP_IF_NOT_NIL";
         case OpCode::LOOP: return "LOOP";
         case OpCode::CALL: return "CALL";
         case OpCode::TAIL_CALL: return "TAIL_CALL";
@@ -177,6 +177,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::CLOSURE: return "CLOSURE";
         case OpCode::CLOSE_UPVALUE: return "CLOSE_UPVALUE";
         case OpCode::MAKE_ARRAY: return "MAKE_ARRAY";
+        case OpCode::BUILD_TUPLE: return "BUILD_TUPLE";
         case OpCode::MAKE_DICT: return "MAKE_DICT";
         case OpCode::INDEX_GET: return "INDEX_GET";
         case OpCode::INDEX_SET: return "INDEX_SET";
@@ -185,6 +186,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::CALL_SPREAD: return "CALL_SPREAD";
         case OpCode::NEW_INSTANCE: return "NEW_INSTANCE";
         case OpCode::GET_METHOD: return "GET_METHOD";
+        case OpCode::SUPER: return "SUPER";
         case OpCode::SUPER_CALL: return "SUPER_CALL";
         case OpCode::GET_ITER: return "GET_ITER";
         case OpCode::GET_DICT_ITER: return "GET_DICT_ITER";
@@ -193,9 +195,16 @@ static const char* opcodeName(OpCode op) {
         case OpCode::TRY_START: return "TRY_START";
         case OpCode::TRY_END: return "TRY_END";
         case OpCode::THROW: return "THROW";
+        case OpCode::FINALLY_START: return "FINALLY_START";
+        case OpCode::FINALLY_END: return "FINALLY_END";
+        case OpCode::TO_STRING: return "TO_STRING";
         case OpCode::PRINT: return "PRINT";
         case OpCode::CLOCK: return "CLOCK";
         case OpCode::TYPE_OF: return "TYPE_OF";
+        case OpCode::IS_INSTANCE_OF: return "IS_INSTANCE_OF";
+        case OpCode::OP_AWAIT: return "AWAIT";
+        case OpCode::MAKE_INTERFACE: return "MAKE_INTERFACE";
+        case OpCode::MAKE_CLASS: return "MAKE_CLASS";
         case OpCode::BREAKPOINT: return "BREAKPOINT";
         case OpCode::LINE: return "LINE";
         case OpCode::HAS_GLOBAL: return "HAS_GLOBAL";
@@ -207,6 +216,9 @@ static const char* opcodeName(OpCode op) {
         case OpCode::RATELIMIT_CHECK: return "RATELIMIT_CHECK";
         case OpCode::GET_CACHED_RESULT: return "GET_CACHED_RESULT";
         case OpCode::STORE_CACHED_RESULT: return "STORE_CACHED_RESULT";
+        case OpCode::LOAD_LOCAL_W: return "LOAD_LOCAL_W";
+        case OpCode::STORE_LOCAL_W: return "STORE_LOCAL_W";
+        case OpCode::MEMBER_IN: return "IN";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -278,8 +290,6 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
     switch (op) {
         case OpCode::LOAD_LOCAL_W:
         case OpCode::STORE_LOCAL_W: {
-            // 16-bit slot, so this is 3 bytes wide rather than the 2 the narrow
-            // local ops below occupy.
             uint16_t slot = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
             std::cout << std::setw(4) << (int)slot << " ";
             std::cout << std::endl;
@@ -289,24 +299,81 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
         case OpCode::STORE_LOCAL:
         case OpCode::LOAD_UPVALUE:
         case OpCode::STORE_UPVALUE:
-        case OpCode::NEW_INSTANCE:
         case OpCode::MAKE_ARRAY:
+        case OpCode::BUILD_TUPLE:
         case OpCode::MAKE_DICT:
         case OpCode::INC_LOCAL:
-        case OpCode::DEC_LOCAL: {
+        case OpCode::DEC_LOCAL:
+        case OpCode::CALL:
+        case OpCode::TAIL_CALL:
+        case OpCode::CALL_KW:
+        case OpCode::CLOSE_UPVALUE: {
             uint8_t idx = code[offset + 1];
             std::cout << std::setw(4) << (int)idx << " ";
             std::cout << std::endl;
             return offset + 2;
+        }
+
+        case OpCode::NEW_INSTANCE: {
+            uint16_t nameIdx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint8_t argc = code[offset + 3];
+            std::cout << std::setw(4) << (int)nameIdx;
+            if (nameIdx < constants.size()) {
+                std::cout << " (";
+                printConstant(constants[nameIdx]);
+                std::cout << ")";
+            }
+            std::cout << " argc=" << (int)argc << std::endl;
+            return offset + 4;
+        }
+
+        case OpCode::SUPER_CALL: {
+            uint16_t nameIdx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint8_t argc = code[offset + 3];
+            std::cout << std::setw(4) << (int)nameIdx;
+            if (nameIdx < constants.size()) {
+                std::cout << " (";
+                printConstant(constants[nameIdx]);
+                std::cout << ")";
+            }
+            std::cout << " argc=" << (int)argc << std::endl;
+            return offset + 4;
+        }
+
+        case OpCode::MAKE_INTERFACE: {
+            uint16_t nameIdx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint8_t methodCount = code[offset + 3];
+            std::cout << std::setw(4) << (int)nameIdx;
+            if (nameIdx < constants.size()) {
+                std::cout << " (";
+                printConstant(constants[nameIdx]);
+                std::cout << ")";
+            }
+            std::cout << " methods=" << (int)methodCount << std::endl;
+            return offset + 4;
+        }
+
+        case OpCode::MAKE_CLASS: {
+            uint16_t nameIdx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint8_t memberCount = code[offset + 3];
+            uint8_t ifCount = code[offset + 4];
+            uint8_t valCount = code[offset + 5];
+            std::cout << std::setw(4) << (int)nameIdx;
+            if (nameIdx < constants.size()) {
+                std::cout << " (";
+                printConstant(constants[nameIdx]);
+                std::cout << ")";
+            }
+            std::cout << " members=" << (int)memberCount
+                      << " interfaces=" << (int)ifCount
+                      << " validators=" << (int)valCount << std::endl;
+            return offset + 6;
         }
         
         case OpCode::CLOSURE: {
             uint16_t idx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
             std::cout << std::setw(4) << (int)idx << std::endl;
             size_t newOffset = offset + 3;
-            // The compiler emits 3 bytes for every upvalue captured by the
-            // closure: a flag byte, then a 16-bit slot in the enclosing frame.
-            // We need to look up the function to know how many upvalues to skip.
             if (nestedFunctions && idx < nestedFunctions->size()) {
                 size_t upvalueCount = (*nestedFunctions)[idx]->upvalues.size();
                 for (size_t i = 0; i < upvalueCount; ++i) {
@@ -357,6 +424,8 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
         case OpCode::JUMP:
         case OpCode::JUMP_IF_FALSE:
         case OpCode::JUMP_IF_TRUE:
+        case OpCode::JUMP_IF_NIL:
+        case OpCode::JUMP_IF_NOT_NIL:
         case OpCode::TRY_START: {
             uint32_t jump = (code[offset + 1] << 24) | (code[offset + 2] << 16) | (code[offset + 3] << 8) | code[offset + 4];
             std::cout << std::setw(4) << (int)jump << " -> " << (offset + 5 + jump) << std::endl;
@@ -386,15 +455,6 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             uint32_t jump = (code[offset + 1] << 24) | (code[offset + 2] << 16) | (code[offset + 3] << 8) | code[offset + 4];
             std::cout << std::setw(4) << (int)jump << " -> " << (offset + 5 + jump) << std::endl;
             return offset + 5;
-        }
-        
-        case OpCode::CALL:
-        case OpCode::TAIL_CALL:
-        case OpCode::CALL_KW:
-        case OpCode::CLOSE_UPVALUE: {
-            uint8_t count = code[offset + 1];
-            std::cout << std::setw(4) << (int)count << std::endl;
-            return offset + 2;
         }
         
         case OpCode::LINE: {

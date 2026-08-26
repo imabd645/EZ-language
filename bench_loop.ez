@@ -1,0 +1,18 @@
+start = clock()
+total = 0
+repeat i = 0 to 100000 {
+    total += i
+}
+elapsed = clock() - start
+out "Global loop (100,000 iterations): " + str(elapsed) + " ms, total = " + str(total)
+
+task localTest() {
+    s = clock()
+    t = 0
+    repeat i = 0 to 100000 {
+        t += i
+    }
+    e = clock() - s
+    out "Local loop (100,000 iterations):  " + str(e) + " ms, total = " + str(t)
+}
+localTest()

@@ -431,7 +431,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(LOAD_GLOBAL_SLOT) {
                     {
                         uint16_t slot = READ_SHORT();
-                        std::shared_lock<std::shared_mutex> lk(globalEnv->slotMutex);
                         if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
                             *stackTop++ = globalEnv->globalSlots[slot];
                         } else {
@@ -444,7 +443,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(STORE_GLOBAL_SLOT) {
                     {
                         uint16_t slot = READ_SHORT();
-                        std::unique_lock<std::shared_mutex> lk(globalEnv->slotMutex);
                         if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
                             globalEnv->globalSlots[slot] = *(stackTop - 1);
                         }

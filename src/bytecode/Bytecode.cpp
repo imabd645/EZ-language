@@ -219,6 +219,11 @@ static const char* opcodeName(OpCode op) {
         case OpCode::LOAD_LOCAL_W: return "LOAD_LOCAL_W";
         case OpCode::STORE_LOCAL_W: return "STORE_LOCAL_W";
         case OpCode::MEMBER_IN: return "IN";
+        case OpCode::ADD_LOCAL_LOCAL: return "ADD_LOCAL_LOCAL";
+        case OpCode::SUB_LOCAL_LOCAL: return "SUB_LOCAL_LOCAL";
+        case OpCode::INC_LOCAL_BY: return "INC_LOCAL_BY";
+        case OpCode::ADD_GLOBAL_LOCAL: return "ADD_GLOBAL_LOCAL";
+        case OpCode::PRINT_STR: return "PRINT_STR";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -457,6 +462,26 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             return offset + 5;
         }
         
+        case OpCode::ADD_LOCAL_LOCAL:
+        case OpCode::SUB_LOCAL_LOCAL:
+        case OpCode::INC_LOCAL_BY: {
+            uint8_t dstSlot = code[offset + 1];
+            uint8_t srcSlot = code[offset + 2];
+            std::cout << " dst=" << (int)dstSlot << " src/imm=" << (int)srcSlot << std::endl;
+            return offset + 3;
+        }
+
+        case OpCode::ADD_GLOBAL_LOCAL: {
+            uint16_t globalSlot = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint8_t  localSlot  = code[offset + 3];
+            std::cout << " gSlot=" << (int)globalSlot << " lSlot=" << (int)localSlot;
+            if (globalSlotNames && globalSlot < globalSlotNames->size() && !(*globalSlotNames)[globalSlot].empty()) {
+                std::cout << " (\"" << (*globalSlotNames)[globalSlot] << "\")";
+            }
+            std::cout << std::endl;
+            return offset + 4;
+        }
+
         case OpCode::LINE: {
             uint8_t lineNum = code[offset + 1];
             std::cout << std::setw(4) << (int)lineNum << std::endl;

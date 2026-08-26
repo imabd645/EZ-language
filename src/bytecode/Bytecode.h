@@ -168,6 +168,13 @@ enum class OpCode : uint8_t {
     // the enum in every translation unit that pulls in the Win32 headers.
     MEMBER_IN,                  // membership: needle in haystack -> bool
 
+    // Superinstructions
+    ADD_LOCAL_LOCAL,            // dstSlot(1), srcSlot(1): local[dst] += local[src]
+    SUB_LOCAL_LOCAL,            // dstSlot(1), srcSlot(1): local[dst] -= local[src]
+    INC_LOCAL_BY,               // dstSlot(1), imm8(1): local[dst] += imm8
+    ADD_GLOBAL_LOCAL,           // globalSlot(2), localSlot(1): globalSlots[global] += local[local]
+    PRINT_STR,                  // toString and print TOS (fuses TO_STRING + PRINT)
+
     END            // End of chunk marker
 };
 

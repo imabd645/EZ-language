@@ -20,17 +20,24 @@
 #include "compiler/BytecodeCompiler.h"
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include "cli/PackageManager.h"
+#include "utils/EzLibPath.h"
+#include <map>
+#include <filesystem>
 #ifdef _WIN32
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #else
 #include <termios.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 #include <cstdint>
+
+namespace fs = std::filesystem;
 bool g_disableContracts = false;
 bool g_disableTypeCheck = false;
 // Set by --debug. Gates the "Local variables:" dump on an uncaught
@@ -226,6 +233,254 @@ void runFile(const std::string& path, bool traceExecution) {
     runFromSource(source, path, traceExecution);
 }
 
+#ifdef _WIN32
+static volatile bool g_watchInterrupted = false;
+static BOOL WINAPI watchCtrlHandler(DWORD fdwCtrlType) {
+    if (fdwCtrlType == CTRL_C_EVENT || fdwCtrlType == CTRL_BREAK_EVENT) {
+        g_watchInterrupted = true;
+        return 1;
+    }
+    return 0;
+}
+#else
+static volatile sig_atomic_t g_watchInterrupted = 0;
+static void watchSigHandler(int) {
+    g_watchInterrupted = 1;
+}
+#endif
+
+static std::map<std::string, fs::file_time_type> getWatchSnapshot(const std::string& scriptPath) {
+    std::map<std::string, fs::file_time_type> snapshot;
+    std::error_code ec;
+
+    if (fs::exists(scriptPath, ec)) {
+        snapshot[fs::absolute(scriptPath, ec).string()] = fs::last_write_time(scriptPath, ec);
+    }
+
+    std::string scriptDir = ".";
+    size_t lastSlash = scriptPath.find_last_of("\\/");
+    if (lastSlash != std::string::npos) {
+        scriptDir = scriptPath.substr(0, lastSlash);
+    }
+
+    std::vector<std::string> dirs = { scriptDir };
+    if (scriptDir != "." && scriptDir != "./") dirs.push_back(".");
+
+    for (const auto& d : dirs) {
+        if (!fs::exists(d, ec) || !fs::is_directory(d, ec)) continue;
+        for (auto it = fs::recursive_directory_iterator(d, fs::directory_options::skip_permission_denied, ec);
+             it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (ec) { ec.clear(); break; }
+            if (it->is_regular_file(ec)) {
+                std::string pathStr = it->path().string();
+                if ((pathStr.size() >= 3 && pathStr.substr(pathStr.size() - 3) == ".ez") ||
+                    pathStr.find("package.ez") != std::string::npos) {
+                    snapshot[fs::absolute(it->path(), ec).string()] = fs::last_write_time(it->path(), ec);
+                }
+            }
+        }
+    }
+    return snapshot;
+}
+
+static bool checkWatchModified(const std::map<std::string, fs::file_time_type>& prev,
+                               std::map<std::string, fs::file_time_type>& current,
+                               const std::string& scriptPath,
+                               std::string& changedFile) {
+    current = getWatchSnapshot(scriptPath);
+    for (const auto& [path, time] : current) {
+        auto it = prev.find(path);
+        if (it == prev.end()) {
+            changedFile = path;
+            return true;
+        }
+        if (it->second != time) {
+            changedFile = path;
+            return true;
+        }
+    }
+    for (const auto& [path, time] : prev) {
+        if (current.find(path) == current.end()) {
+            changedFile = path;
+            return true;
+        }
+    }
+    return false;
+}
+
+void runWatch(const std::string& scriptPath, const std::vector<std::string>& extraArgs) {
+    std::cout << "[ez watch] Starting watcher for '" << scriptPath << "'..." << std::endl;
+
+    std::string exePath;
+#ifdef _WIN32
+    char buf[4096];
+    if (GetModuleFileNameA(NULL, buf, sizeof(buf))) {
+        exePath = buf;
+    } else {
+        exePath = ezExeDir() + "ez.exe";
+    }
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) == 0) {
+        exePath = buf;
+    } else {
+        exePath = ezExeDir() + "ez";
+    }
+#else
+    char buf[4096];
+    ssize_t count = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (count > 0) {
+        buf[count] = '\0';
+        exePath = buf;
+    } else {
+        exePath = ezExeDir() + "ez";
+    }
+#endif
+
+#ifdef _WIN32
+    SetConsoleCtrlHandler(watchCtrlHandler, 1);
+#else
+    signal(SIGINT, watchSigHandler);
+    signal(SIGTERM, watchSigHandler);
+#endif
+
+    std::map<std::string, fs::file_time_type> snapshot = getWatchSnapshot(scriptPath);
+
+    while (!g_watchInterrupted) {
+        std::cout << "\n[ez watch] Running " << scriptPath << "..." << std::endl;
+
+#ifdef _WIN32
+        std::string cmdLine = "\"" + exePath + "\" \"" + scriptPath + "\"";
+        for (const auto& arg : extraArgs) {
+            cmdLine += " \"" + arg + "\"";
+        }
+
+        STARTUPINFOA si;
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        ZeroMemory(&pi, sizeof(pi));
+
+        std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
+        cmdBuf.push_back('\0');
+
+        BOOL created = CreateProcessA(
+            NULL,
+            cmdBuf.data(),
+            NULL,
+            NULL,
+            1,
+            0,
+            NULL,
+            NULL,
+            &si,
+            &pi
+        );
+
+        if (!created) {
+            std::cerr << "[ez watch] Failed to start process (Error " << GetLastError() << ")" << std::endl;
+            return;
+        }
+
+        bool childRunning = true;
+        std::string changedFile;
+
+        while (!g_watchInterrupted) {
+            DWORD waitRes = WaitForSingleObject(pi.hProcess, 200);
+            if (waitRes == WAIT_OBJECT_0) {
+                DWORD exitCode = 0;
+                GetExitCodeProcess(pi.hProcess, &exitCode);
+                childRunning = false;
+                std::cout << "[ez watch] Process exited with code " << exitCode << ". Waiting for changes..." << std::endl;
+                break;
+            }
+
+            std::map<std::string, fs::file_time_type> current;
+            if (checkWatchModified(snapshot, current, scriptPath, changedFile)) {
+                snapshot = current;
+                std::cout << "\n[ez watch] File change detected: " << fs::path(changedFile).filename().string() << ". Restarting..." << std::endl;
+                TerminateProcess(pi.hProcess, 0);
+                WaitForSingleObject(pi.hProcess, 1000);
+                childRunning = false;
+                break;
+            }
+        }
+
+        if (childRunning) {
+            TerminateProcess(pi.hProcess, 0);
+        }
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        while (!g_watchInterrupted && !childRunning) {
+            Sleep(200);
+            std::map<std::string, fs::file_time_type> current;
+            if (checkWatchModified(snapshot, current, scriptPath, changedFile)) {
+                snapshot = current;
+                std::cout << "\n[ez watch] File change detected: " << fs::path(changedFile).filename().string() << ". Restarting..." << std::endl;
+                break;
+            }
+        }
+#else
+        pid_t pid = fork();
+        if (pid == 0) {
+            std::vector<char*> args;
+            args.push_back(const_cast<char*>(exePath.c_str()));
+            args.push_back(const_cast<char*>(scriptPath.c_str()));
+            for (const auto& a : extraArgs) {
+                args.push_back(const_cast<char*>(a.c_str()));
+            }
+            args.push_back(nullptr);
+            execv(exePath.c_str(), args.data());
+            _exit(127);
+        } else if (pid > 0) {
+            bool childRunning = true;
+            std::string changedFile;
+
+            while (!g_watchInterrupted) {
+                int status = 0;
+                pid_t res = waitpid(pid, &status, WNOHANG);
+                if (res > 0) {
+                    childRunning = false;
+                    int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+                    std::cout << "[ez watch] Process exited with code " << exitCode << ". Waiting for changes..." << std::endl;
+                    break;
+                }
+
+                usleep(200000);
+                std::map<std::string, fs::file_time_type> current;
+                if (checkWatchModified(snapshot, current, scriptPath, changedFile)) {
+                    snapshot = current;
+                    std::cout << "\n[ez watch] File change detected: " << fs::path(changedFile).filename().string() << ". Restarting..." << std::endl;
+                    kill(pid, SIGTERM);
+                    waitpid(pid, &status, 0);
+                    childRunning = false;
+                    break;
+                }
+            }
+
+            if (childRunning) {
+                kill(pid, SIGKILL);
+                int status = 0;
+                waitpid(pid, &status, 0);
+            }
+
+            while (!g_watchInterrupted && !childRunning) {
+                usleep(200000);
+                std::map<std::string, fs::file_time_type> current;
+                if (checkWatchModified(snapshot, current, scriptPath, changedFile)) {
+                    snapshot = current;
+                    std::cout << "\n[ez watch] File change detected: " << fs::path(changedFile).filename().string() << ". Restarting..." << std::endl;
+                    break;
+                }
+            }
+        }
+#endif
+    }
+    std::cout << "\n[ez watch] Stopped." << std::endl;
+}
+
 void compileFileToEzc(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
@@ -403,6 +658,8 @@ void showHelp() {
     std::cout << "  ez                Run REPL (interactive mode)" << std::endl;
     std::cout << "  ez <file.ez>      Run a script file" << std::endl;
     std::cout << "  ez -c <code>      Run code passed in as a string" << std::endl;
+    std::cout << "  ez --watch <file> Run script in watch mode (auto-reload on save)" << std::endl;
+    std::cout << "  ez -w <file>      Short alias for --watch" << std::endl;
     std::cout << "  ez <file.ez> [args...]   Arguments reach the script as argv" << std::endl;
     std::cout << "  ez -c <code> [args...]   Arguments reach the code as argv" << std::endl;
     std::cout << "  ez <file.ez> -- [args...] Pass args through even if they look like flags" << std::endl;
@@ -586,6 +843,21 @@ int cli_main(int argc, char* argv[]) {
             return 0;
         }
 
+        if (cmd == "--watch" || cmd == "-w" || cmd == "watch") {
+            if (argc < 3) {
+                std::cerr << "Argument expected for watch mode" << std::endl;
+                std::cerr << "Usage: ez --watch <file.ez> [args...]" << std::endl;
+                return 1;
+            }
+            std::string targetScript = argv[2];
+            std::vector<std::string> extraArgs;
+            for (int i = 3; i < argc; i++) {
+                extraArgs.push_back(argv[i]);
+            }
+            runWatch(targetScript, extraArgs);
+            return 0;
+        }
+
         if (cmd == "install" || cmd == "i" || cmd == "add") {
             PackageManager pm;
             // Packages install into the shared library root, so --force is what
@@ -740,6 +1012,7 @@ int cli_main(int argc, char* argv[]) {
             bool traceExecution = false;
             bool compileToEzc = false;
             bool dumpToEzasm = false;
+            bool isWatchMode = false;
 
             // Anything that is not an interpreter flag belongs to the script.
             //
@@ -759,6 +1032,8 @@ int cli_main(int argc, char* argv[]) {
                     traceExecution = true;
                 } else if (arg == "--debug") {
                     g_debugMode = true;
+                } else if (arg == "--watch" || arg == "-w") {
+                    isWatchMode = true;
                 } else if (arg == "--compile" || arg == "--ezc") {
                     compileToEzc = true;
                 } else if (arg == "--dump" || arg == "-d" || arg == "--ezasm") {
@@ -770,6 +1045,17 @@ int cli_main(int argc, char* argv[]) {
                 } else {
                     g_scriptArgs.push_back(arg);
                 }
+            }
+
+            if (isWatchMode) {
+                std::vector<std::string> watchArgs;
+                if (traceExecution) watchArgs.push_back("--trace");
+                if (g_debugMode) watchArgs.push_back("--debug");
+                if (g_disableContracts) watchArgs.push_back("--no-contracts");
+                if (g_disableTypeCheck) watchArgs.push_back("--no-typecheck");
+                for (const auto& a : g_scriptArgs) watchArgs.push_back(a);
+                runWatch(cmd, watchArgs);
+                return 0;
             }
 
             if (compileToEzc) {

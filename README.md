@@ -132,6 +132,7 @@ This will automatically invoke the compiler, statically link all dependencies (l
 ez --help        # show usage
 ez hello.ez      # run a script
 ez -c "out 1+1"  # run inline code directly
+ez --watch hello.ez  # run script in watch mode (auto-reloads on save)
 ez --trace hello.ez   # run with bytecode execution tracing
 ez               # start the REPL
 ```

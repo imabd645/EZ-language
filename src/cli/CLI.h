@@ -1,9 +1,11 @@
 #include <cstdint>
 #pragma once
 #include <string>
+#include <vector>
 int cli_main(int argc, char* argv[]);
 void runRepl(bool traceExecution = false);
 void runFile(const std::string& path, bool traceExecution = false);
+void runWatch(const std::string& scriptPath, const std::vector<std::string>& extraArgs = {});
 bool patchPESubsystem(const std::string& exePath, uint16_t newSubsystem);
 
 void compileFileToEzc(const std::string& path);

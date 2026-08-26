@@ -233,6 +233,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_INC_LOCAL_BY,
         &&handle_ADD_GLOBAL_LOCAL,
         &&handle_PRINT_STR,
+        &&handle_INVOKE_METHOD,
         &&handle_END
     };
     // Tracing is off in every normal run, so mark the check cold: the compiler
@@ -514,7 +515,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
 
                             // 1. Fast path for instance properties (Shape IC)
                             if (ic.shape && ic.shape == inst->shape) {
-                                std::shared_lock<std::shared_mutex> lk(inst->prop_mutex);
                                 *stackTop++ = inst->propertyValues[ic.offset];
                             }
                             // 2. Fast path for method bindings (Class IC)
@@ -761,7 +761,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                             ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
                             if (ic.shape && ic.shape == inst->shape) {
-                                std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
                                 inst->propertyValues[ic.offset] = value;
                             } else {
                                 CHECK_VISIBILITY(inst->klass, propName);
@@ -2832,6 +2831,100 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         std::cout << "nil\n";
                     } else {
                         std::cout << v.toString() << "\n";
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(INVOKE_METHOD) {
+                    {
+                        uint16_t nameIdx = READ_SHORT();
+                        uint16_t icIdx = READ_SHORT();
+                        uint8_t argCount = READ_BYTE();
+                        Value& receiver = *(stackTop - argCount - 1);
+                        
+                        if (__builtin_expect(receiver.isInstance(), 1)) {
+                            auto inst = receiver.asInstance();
+                            ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
+                            
+                            Value methodVal;
+                            if (__builtin_expect(ic.klass && ic.klass == inst->klass.get(), 1)) {
+                                methodVal = ic.methodValue;
+                            } else {
+                                const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                                CHECK_VISIBILITY(inst->klass, propName);
+                                bool isField = inst->hasProperty(propName);
+                                Value val = inst->getProperty(propName);
+                                if (!isField && (val.isFunction() || val.isClosure() || val.isNativeFunction())) {
+                                    ic.klass = inst->klass.get();
+                                    ic.methodValue = val;
+                                    methodVal = val;
+                                } else if (!val.isNil()) {
+                                    methodVal = val;
+                                } else {
+                                    Value hook = findGetattrHook(receiver, propName);
+                                    if (hook.isCallable()) {
+                                        methodVal = Value(std::make_shared<EZBoundMethod>(receiver, hook));
+                                    } else {
+                                        SYNC_IP();
+                                        throwException("AttributeError",
+                                            "'" + inst->klass->name + "' has no property or method '" + propName + "'" +
+                                            ezDidYouMean(propName, ezInstanceNames(inst)));
+                                        RAISE_FAULT();
+                                    }
+                                }
+                            }
+                            
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            if (dispatchCall(methodVal, argCount + 1, false, ip)) {
+                                LOAD_FRAME();
+                            } else {
+                                REFRESH_FRAME();
+                            }
+                            stackTop = this->stackTop;
+                        } else if (receiver.isClass()) {
+                            auto klass = receiver.asClass();
+                            const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                            CHECK_VISIBILITY(klass, propName);
+                            Value member = klass->getStaticMember(propName);
+                            if (!member.isCallable()) {
+                                SYNC_IP();
+                                throwException("AttributeError", "Class '" + klass->name + "' has no static method '" + propName + "'");
+                                RAISE_FAULT();
+                            }
+                            *(stackTop - argCount - 1) = member;
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            if (dispatchCall(member, argCount, false, ip)) {
+                                LOAD_FRAME();
+                            } else {
+                                REFRESH_FRAME();
+                            }
+                            stackTop = this->stackTop;
+                        } else if (receiver.isDictionary()) {
+                            auto dictPtr = receiver.asDictionaryPtr();
+                            const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                            Value val = dictPtr->get(propName);
+                            if (!val.isCallable()) {
+                                SYNC_IP();
+                                runtimeError("'" + propName + "' is not callable on dictionary");
+                                RAISE_FAULT();
+                            }
+                            *(stackTop - argCount - 1) = val;
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            if (dispatchCall(val, argCount, false, ip)) {
+                                LOAD_FRAME();
+                            } else {
+                                REFRESH_FRAME();
+                            }
+                            stackTop = this->stackTop;
+                        } else {
+                            const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
+                            SYNC_IP();
+                            runtimeError("Cannot call method '" + propName + "' on " + receiver.typeName());
+                            RAISE_FAULT();
+                        }
                     }
                     DISPATCH();
                 }

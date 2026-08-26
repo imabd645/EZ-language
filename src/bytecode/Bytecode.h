@@ -174,6 +174,7 @@ enum class OpCode : uint8_t {
     INC_LOCAL_BY,               // dstSlot(1), imm8(1): local[dst] += imm8
     ADD_GLOBAL_LOCAL,           // globalSlot(2), localSlot(1): globalSlots[global] += local[local]
     PRINT_STR,                  // toString and print TOS (fuses TO_STRING + PRINT)
+    INVOKE_METHOD,              // nameIdx(2), icIdx(2), argCount(1): direct method invocation without EZBoundMethod allocation
 
     END            // End of chunk marker
 };

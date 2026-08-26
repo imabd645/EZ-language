@@ -224,6 +224,7 @@ static const char* opcodeName(OpCode op) {
         case OpCode::INC_LOCAL_BY: return "INC_LOCAL_BY";
         case OpCode::ADD_GLOBAL_LOCAL: return "ADD_GLOBAL_LOCAL";
         case OpCode::PRINT_STR: return "PRINT_STR";
+        case OpCode::INVOKE_METHOD: return "INVOKE_METHOD";
         case OpCode::END: return "END";
         default: return "UNKNOWN";
     }
@@ -480,6 +481,20 @@ size_t Chunk::disassembleInstruction(size_t offset, const std::vector<std::strin
             }
             std::cout << std::endl;
             return offset + 4;
+        }
+
+        case OpCode::INVOKE_METHOD: {
+            uint16_t nameIdx = (uint16_t)((code[offset + 1] << 8) | code[offset + 2]);
+            uint16_t icIdx   = (uint16_t)((code[offset + 3] << 8) | code[offset + 4]);
+            uint8_t  args    = code[offset + 5];
+            std::cout << std::setw(4) << (int)nameIdx;
+            if (nameIdx < constants.size()) {
+                std::cout << " (";
+                printConstant(constants[nameIdx]);
+                std::cout << ")";
+            }
+            std::cout << " ic=" << (int)icIdx << " args=" << (int)args << std::endl;
+            return offset + 6;
         }
 
         case OpCode::LINE: {

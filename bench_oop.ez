@@ -1,0 +1,46 @@
+model Point {
+    x = 0
+    y = 0
+
+    init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    add(dx, dy) {
+        self.x += dx
+        self.y += dy
+    }
+
+    sum() {
+        give self.x + self.y
+    }
+}
+
+p = Point(10, 20)
+
+// 1. Property Read & Write Benchmark
+start = clock()
+repeat i = 0 to 100000 {
+    p.x += 1
+    p.y += 2
+}
+elapsed = clock() - start
+out "Property access (100,000 iterations): " + str(elapsed) + " ms, (x=" + str(p.x) + ", y=" + str(p.y) + ")"
+
+// 2. Method Call Benchmark
+start = clock()
+repeat i = 0 to 100000 {
+    p.add(1, 2)
+}
+elapsed = clock() - start
+out "Method invocation (100,000 iterations): " + str(elapsed) + " ms, (x=" + str(p.x) + ", y=" + str(p.y) + ")"
+
+// 3. Method Return Benchmark
+start = clock()
+total = 0
+repeat i = 0 to 100000 {
+    total += p.sum()
+}
+elapsed = clock() - start
+out "Method call + return (100,000 iterations): " + str(elapsed) + " ms, total = " + str(total)

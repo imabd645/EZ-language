@@ -343,14 +343,13 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
         }
     }
 
-    compileExpr(expr.callee);
-    
     bool hasKwargs = false;
     for (const auto& kw : expr.argNames) {
         if (!kw.empty()) { hasKwargs = true; break; }
     }
     
     if (hasKwargs) {
+        compileExpr(expr.callee);
         size_t posCount = 0;
         size_t kwCount = 0;
         
@@ -388,11 +387,34 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
             errorAt("Too many arguments (max 255)", currentLine);
             return;
         }
+
+        // Direct method invocation optimization: obj.method(args...)
+        if (expr.callee && std::holds_alternative<PropertyAccessExpr*>(expr.callee->variant)) {
+            auto prop = std::get<PropertyAccessExpr*>(expr.callee->variant);
+            if (!prop->isOptional) {
+                compileExpr(prop->object); // Push receiver (self)
+                for (const auto& arg : expr.arguments) compileExpr(arg); // Push arguments
+                size_t nameIdx = identifierConstant(prop->property);
+                size_t icIdx = current->function->chunk.icEntries.size();
+                current->function->chunk.icEntries.push_back(ICCacheEntry{});
+                emitOp(OpCode::INVOKE_METHOD);
+                emitBytes(static_cast<uint8_t>((nameIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(nameIdx & 0xFF));
+                emitBytes(static_cast<uint8_t>((icIdx >> 8) & 0xFF),
+                          static_cast<uint8_t>(icIdx & 0xFF));
+                emitByte(static_cast<uint8_t>(expr.arguments.size()));
+                recordCallSite(calleeDisplayName(expr.callee));
+                return;
+            }
+        }
+
+        compileExpr(expr.callee);
         for (const auto& arg : expr.arguments) compileExpr(arg);
         emitBytes(static_cast<uint8_t>(OpCode::CALL),
                   static_cast<uint8_t>(expr.arguments.size()));
         recordCallSite(calleeDisplayName(expr.callee));
     } else {
+        compileExpr(expr.callee);
         // Slow path for spread calls: pack all arguments into a single array
         emitBytes(static_cast<uint8_t>(OpCode::MAKE_ARRAY), 0);
         for (const auto& arg : expr.arguments) {

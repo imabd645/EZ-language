@@ -65,15 +65,95 @@ void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     }, stmt->variant);
 }
 
+bool BytecodeCompiler::compileCompoundAssignFast(const AssignExpr& expr) {
+    if (expr.index || !expr.value) return false;
+
+    if (std::holds_alternative<BinaryExpr*>(expr.value->variant)) {
+        auto bin = std::get<BinaryExpr*>(expr.value->variant);
+        if (bin->left && std::holds_alternative<IdentifierExpr*>(bin->left->variant)) {
+            auto lhsId = std::get<IdentifierExpr*>(bin->left->variant);
+            if (lhsId->name == expr.name) {
+                // Case 1: Local variable destination (local += local, local -= local, local += imm)
+                int localDst = resolveLocal(expr.name);
+                if (localDst != -1 && localDst <= 0xFF) {
+                    if (bin->right && std::holds_alternative<IdentifierExpr*>(bin->right->variant)) {
+                        auto rhsId = std::get<IdentifierExpr*>(bin->right->variant);
+                        int localSrc = resolveLocal(rhsId->name);
+                        if (localSrc != -1 && localSrc <= 0xFF) {
+                            if (bin->op == TokenType::PLUS) {
+                                emitBytes(static_cast<uint8_t>(OpCode::ADD_LOCAL_LOCAL),
+                                          static_cast<uint8_t>(localDst),
+                                          static_cast<uint8_t>(localSrc));
+                                return true;
+                            } else if (bin->op == TokenType::MINUS) {
+                                emitBytes(static_cast<uint8_t>(OpCode::SUB_LOCAL_LOCAL),
+                                          static_cast<uint8_t>(localDst),
+                                          static_cast<uint8_t>(localSrc));
+                                return true;
+                            }
+                        }
+                    } else if (bin->right && std::holds_alternative<LiteralExpr*>(bin->right->variant)) {
+                        auto lit = std::get<LiteralExpr*>(bin->right->variant);
+                        if (std::holds_alternative<long long>(lit->value)) {
+                            long long val = std::get<long long>(lit->value);
+                            if (bin->op == TokenType::PLUS && val >= 0 && val <= 127) {
+                                emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL_BY),
+                                          static_cast<uint8_t>(localDst),
+                                          static_cast<uint8_t>(val));
+                                return true;
+                            } else if (bin->op == TokenType::MINUS && val >= 0 && val <= 128) {
+                                emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL_BY),
+                                          static_cast<uint8_t>(localDst),
+                                          static_cast<uint8_t>(-val));
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                // Case 2: Global variable destination (globalSlot += localSlot)
+                if (localDst == -1) {
+                    uint16_t gSlot = 0;
+                    bool isGlobal = false;
+                    if (globalSlots.count(expr.name) > 0 && !current->isHarvesting) {
+                        gSlot = globalSlots[expr.name];
+                        isGlobal = true;
+                    } else if (current->scopeDepth == 0) {
+                        gSlot = globalSlotFor(expr.name);
+                        isGlobal = true;
+                    }
+                    if (isGlobal && bin->right && std::holds_alternative<IdentifierExpr*>(bin->right->variant)) {
+                        auto rhsId = std::get<IdentifierExpr*>(bin->right->variant);
+                        int localSrc = resolveLocal(rhsId->name);
+                        if (localSrc != -1 && localSrc <= 0xFF && bin->op == TokenType::PLUS) {
+                            emitOp(OpCode::ADD_GLOBAL_LOCAL);
+                            emitBytes(static_cast<uint8_t>((gSlot >> 8) & 0xFF),
+                                      static_cast<uint8_t>(gSlot & 0xFF));
+                            emitByte(static_cast<uint8_t>(localSrc));
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 void BytecodeCompiler::compileExpressionStmt(const ExpressionStmt& stmt) {
+    if (stmt.expr && std::holds_alternative<AssignExpr*>(stmt.expr->variant)) {
+        auto assign = std::get<AssignExpr*>(stmt.expr->variant);
+        if (compileCompoundAssignFast(*assign)) {
+            return; // Fast path emitted directly without pushing/popping operand stack
+        }
+    }
     compileExpr(stmt.expr);
     emitOp(OpCode::POP);
 }
 
 void BytecodeCompiler::compileOutStmt(const OutStmt& stmt) {
     compileExpr(stmt.expr);
-    emitOp(OpCode::TO_STRING);
-    emitOp(OpCode::PRINT);
+    emitOp(OpCode::PRINT_STR);
 }
 
 void BytecodeCompiler::compileVarDecl(const VarDeclStmt& stmt) {

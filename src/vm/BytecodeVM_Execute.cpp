@@ -111,6 +111,11 @@ using ezarith::wrapSub;
 using ezarith::wrapMul;
 using ezarith::wrapNeg;
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wjump-misses-init"
+#endif
+
 void BytecodeVM::run(size_t targetFrameCount) {
     if (frames.empty()) return;
 
@@ -223,6 +228,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
         &&handle_LOAD_LOCAL_W,
         &&handle_STORE_LOCAL_W,
         &&handle_MEMBER_IN,
+        &&handle_ADD_LOCAL_LOCAL,
+        &&handle_SUB_LOCAL_LOCAL,
+        &&handle_INC_LOCAL_BY,
+        &&handle_ADD_GLOBAL_LOCAL,
+        &&handle_PRINT_STR,
         &&handle_END
     };
     // Tracing is off in every normal run, so mark the check cold: the compiler
@@ -2679,8 +2689,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 // and crashes (fatally under the libuv event loop that drives
                 // every ffi callback / ezweb handler).
                 handle_vm_fault: {
-                    Value exc = pendingException;
-                    if (exc.isNil()) { running = true; DISPATCH(); } // defensive
+                    if (pendingException.isNil()) { running = true; DISPATCH(); } // defensive
                     if (ownsTryBlock()) {
                         running = true;   // resume execution in the catch handler
                         TryBlock tb = tryStack.back(); tryStack.pop_back();
@@ -2691,7 +2700,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         stackTop = tb.stackTop;
                         LOAD_FRAME();
                         ip = tb.catchIp;
-                        *stackTop++ = exc;
+                        *stackTop++ = pendingException;
                         pendingException = Value();
                         DISPATCH();
                     } else if (!tryStack.empty()) {
@@ -2706,6 +2715,125 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         SYNC_IP();
                         return;
                     }
+                }
+
+                CASE_CODE(ADD_LOCAL_LOCAL) {
+                    uint8_t dstSlot = READ_BYTE();
+                    uint8_t srcSlot = READ_BYTE();
+                    Value& dst = frame->slots[dstSlot];
+                    const Value& src = frame->slots[srcSlot];
+                    if (__builtin_expect(dst.isInteger() && src.isInteger(), 1)) {
+                        dst = Value(wrapAdd(dst.asInteger(), src.asInteger()));
+                    } else if (dst.isFloat() && src.isFloat()) {
+                        dst = Value(dst.asFloat() + src.asFloat());
+                    } else if (dst.isInteger() && src.isFloat()) {
+                        dst = Value((double)dst.asInteger() + src.asFloat());
+                    } else if (dst.isFloat() && src.isInteger()) {
+                        dst = Value(dst.asFloat() + (double)src.asInteger());
+                    } else if (dst.isString() && src.isString()) {
+                        dst = Value(dst.asString() + src.asString());
+                    } else {
+                        *stackTop++ = dst;
+                        *stackTop++ = src;
+                        SYNC_IP();
+                        doAdd();
+                        if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                        LOAD_FRAME();
+                        dst = *(--stackTop);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(SUB_LOCAL_LOCAL) {
+                    uint8_t dstSlot = READ_BYTE();
+                    uint8_t srcSlot = READ_BYTE();
+                    Value& dst = frame->slots[dstSlot];
+                    const Value& src = frame->slots[srcSlot];
+                    if (__builtin_expect(dst.isInteger() && src.isInteger(), 1)) {
+                        dst = Value(wrapSub(dst.asInteger(), src.asInteger()));
+                    } else if (dst.isFloat() && src.isFloat()) {
+                        dst = Value(dst.asFloat() - src.asFloat());
+                    } else if (dst.isInteger() && src.isFloat()) {
+                        dst = Value((double)dst.asInteger() - src.asFloat());
+                    } else if (dst.isFloat() && src.isInteger()) {
+                        dst = Value(dst.asFloat() - (double)src.asInteger());
+                    } else {
+                        *stackTop++ = dst;
+                        *stackTop++ = src;
+                        SYNC_IP();
+                        doSubtract();
+                        if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                        LOAD_FRAME();
+                        dst = *(--stackTop);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(INC_LOCAL_BY) {
+                    uint8_t dstSlot = READ_BYTE();
+                    int8_t imm = static_cast<int8_t>(READ_BYTE());
+                    Value& dst = frame->slots[dstSlot];
+                    if (__builtin_expect(dst.isInteger(), 1)) {
+                        dst = Value(wrapAdd(dst.asInteger(), (long long)imm));
+                    } else if (dst.isFloat()) {
+                        dst = Value(dst.asFloat() + imm);
+                    } else {
+                        *stackTop++ = dst;
+                        *stackTop++ = Value((long long)imm);
+                        SYNC_IP();
+                        doAdd();
+                        if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                        LOAD_FRAME();
+                        dst = *(--stackTop);
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(ADD_GLOBAL_LOCAL) {
+                    uint16_t globalSlot = READ_SHORT();
+                    uint8_t localSlot = READ_BYTE();
+                    if (__builtin_expect(globalSlot < globalEnv->globalSlots.size(), 1)) {
+                        Value& dst = globalEnv->globalSlots[globalSlot];
+                        const Value& src = frame->slots[localSlot];
+                        if (__builtin_expect(dst.isInteger() && src.isInteger(), 1)) {
+                            dst = Value(wrapAdd(dst.asInteger(), src.asInteger()));
+                        } else if (dst.isFloat() && src.isFloat()) {
+                            dst = Value(dst.asFloat() + src.asFloat());
+                        } else if (dst.isInteger() && src.isFloat()) {
+                            dst = Value((double)dst.asInteger() + src.asFloat());
+                        } else if (dst.isFloat() && src.isInteger()) {
+                            dst = Value(dst.asFloat() + (double)src.asInteger());
+                        } else if (dst.isString() && src.isString()) {
+                            dst = Value(dst.asString() + src.asString());
+                        } else {
+                            *stackTop++ = dst;
+                            *stackTop++ = src;
+                            SYNC_IP();
+                            doAdd();
+                            if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                            LOAD_FRAME();
+                            dst = *(--stackTop);
+                        }
+                    }
+                    DISPATCH();
+                }
+
+                CASE_CODE(PRINT_STR) {
+                    Value v = *(--stackTop);
+                    if (__builtin_expect(v.isString(), 1)) {
+                        std::cout << v.asString() << "\n";
+                    } else if (v.isInteger()) {
+                        std::cout << v.asInteger() << "\n";
+                    } else if (v.isFloat()) {
+                        std::cout << v.asFloat() << "\n";
+                    } else if (v.isBool()) {
+                        std::cout << (v.asBool() ? "true\n" : "false\n");
+                    } else if (v.isNil()) {
+                        std::cout << "nil\n";
+                    } else {
+                        std::cout << v.toString() << "\n";
+                    }
+                    DISPATCH();
                 }
 
                 CASE_CODE(END) {
@@ -3520,6 +3648,10 @@ void BytecodeVM::doGreaterEq() {
     runtimeError("'>=' operands must be numbers or strings");
 }
 void BytecodeVM::doNot() { push(Value(!pop().isTruthy())); }
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 // ============================================================================
 // Error Handling

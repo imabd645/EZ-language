@@ -161,6 +161,7 @@ private:
                                const std::string& directoryHit);
     void compileArray(const ArrayExpr& expr);
     void compileAssign(const AssignExpr& expr);
+    bool compileCompoundAssignFast(const AssignExpr& expr);
     void compileDestructureAssign(const DestructureAssignExpr& expr);
     void compileLogical(const LogicalExpr& expr);
     void compileLogicalShortCircuit(const BinaryExpr& expr);

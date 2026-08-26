@@ -81,13 +81,13 @@ bool BytecodeCompiler::compileCompoundAssignFast(const AssignExpr& expr) {
                         int localSrc = resolveLocal(rhsId->name);
                         if (localSrc != -1 && localSrc <= 0xFF) {
                             if (bin->op == TokenType::PLUS) {
-                                emitBytes(static_cast<uint8_t>(OpCode::ADD_LOCAL_LOCAL),
-                                          static_cast<uint8_t>(localDst),
+                                emitOp(OpCode::ADD_LOCAL_LOCAL);
+                                emitBytes(static_cast<uint8_t>(localDst),
                                           static_cast<uint8_t>(localSrc));
                                 return true;
                             } else if (bin->op == TokenType::MINUS) {
-                                emitBytes(static_cast<uint8_t>(OpCode::SUB_LOCAL_LOCAL),
-                                          static_cast<uint8_t>(localDst),
+                                emitOp(OpCode::SUB_LOCAL_LOCAL);
+                                emitBytes(static_cast<uint8_t>(localDst),
                                           static_cast<uint8_t>(localSrc));
                                 return true;
                             }
@@ -97,13 +97,13 @@ bool BytecodeCompiler::compileCompoundAssignFast(const AssignExpr& expr) {
                         if (std::holds_alternative<long long>(lit->value)) {
                             long long val = std::get<long long>(lit->value);
                             if (bin->op == TokenType::PLUS && val >= 0 && val <= 127) {
-                                emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL_BY),
-                                          static_cast<uint8_t>(localDst),
+                                emitOp(OpCode::INC_LOCAL_BY);
+                                emitBytes(static_cast<uint8_t>(localDst),
                                           static_cast<uint8_t>(val));
                                 return true;
                             } else if (bin->op == TokenType::MINUS && val >= 0 && val <= 128) {
-                                emitBytes(static_cast<uint8_t>(OpCode::INC_LOCAL_BY),
-                                          static_cast<uint8_t>(localDst),
+                                emitOp(OpCode::INC_LOCAL_BY);
+                                emitBytes(static_cast<uint8_t>(localDst),
                                           static_cast<uint8_t>(-val));
                                 return true;
                             }

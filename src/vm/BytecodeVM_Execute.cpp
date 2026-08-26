@@ -2840,15 +2840,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         uint16_t icIdx = READ_SHORT();
                         uint8_t argCount = READ_BYTE();
-                        Value& receiver = *(stackTop - argCount - 1);
+                        Value* start = stackTop - (argCount + 1);
+                        Value receiver = *start;
                         
                         if (__builtin_expect(receiver.isInstance(), 1)) {
                             auto inst = receiver.asInstance();
                             ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
                             
                             Value methodVal;
+                            bool isGenuineMethod = false;
                             if (__builtin_expect(ic.klass && ic.klass == inst->klass.get(), 1)) {
                                 methodVal = ic.methodValue;
+                                isGenuineMethod = true;
                             } else {
                                 const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                                 CHECK_VISIBILITY(inst->klass, propName);
@@ -2858,6 +2861,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     ic.klass = inst->klass.get();
                                     ic.methodValue = val;
                                     methodVal = val;
+                                    isGenuineMethod = true;
                                 } else if (!val.isNil()) {
                                     methodVal = val;
                                 } else {
@@ -2875,13 +2879,29 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                             
                             SYNC_IP();
-                            this->stackTop = stackTop;
-                            if (dispatchCall(methodVal, argCount + 1, false, ip)) {
-                                LOAD_FRAME();
+                            if (isGenuineMethod) {
+                                for (int i = (int)argCount; i >= 0; --i) {
+                                    start[i + 1] = std::move(start[i]);
+                                }
+                                *start = methodVal;
+                                stackTop++;
+                                this->stackTop = stackTop;
+                                if (dispatchCall(methodVal, argCount + 1, false, ip)) {
+                                    LOAD_FRAME();
+                                } else {
+                                    REFRESH_FRAME();
+                                }
+                                stackTop = this->stackTop;
                             } else {
-                                REFRESH_FRAME();
+                                *start = methodVal;
+                                this->stackTop = stackTop;
+                                if (dispatchCall(methodVal, argCount, false, ip)) {
+                                    LOAD_FRAME();
+                                } else {
+                                    REFRESH_FRAME();
+                                }
+                                stackTop = this->stackTop;
                             }
-                            stackTop = this->stackTop;
                         } else if (receiver.isClass()) {
                             auto klass = receiver.asClass();
                             const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
@@ -2892,7 +2912,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 throwException("AttributeError", "Class '" + klass->name + "' has no static method '" + propName + "'");
                                 RAISE_FAULT();
                             }
-                            *(stackTop - argCount - 1) = member;
+                            *start = member;
                             SYNC_IP();
                             this->stackTop = stackTop;
                             if (dispatchCall(member, argCount, false, ip)) {
@@ -2910,7 +2930,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 runtimeError("'" + propName + "' is not callable on dictionary");
                                 RAISE_FAULT();
                             }
-                            *(stackTop - argCount - 1) = val;
+                            *start = val;
                             SYNC_IP();
                             this->stackTop = stackTop;
                             if (dispatchCall(val, argCount, false, ip)) {

@@ -7,12 +7,12 @@ model Point {
         self.y = y
     }
 
-    add(dx, dy) {
+    task add(dx, dy) {
         self.x += dx
         self.y += dy
     }
 
-    sum() {
+    task sum() {
         give self.x + self.y
     }
 }

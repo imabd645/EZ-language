@@ -215,8 +215,9 @@ jobs:
     - name: Copy standard library
       run: |
         if [ -d "lib" ]; then
+          rm -rf build/lib
           mkdir -p build/lib
-          cp -r lib/* build/lib/
+          cp -a lib/* build/lib/
           echo "Copied lib/ to build/lib/"
         fi
 
@@ -263,8 +264,9 @@ jobs:
     - name: Copy standard library
       run: |
         if [ -d "lib" ]; then
+          rm -rf build/lib
           mkdir -p build/lib
-          cp -r lib/* build/lib/
+          cp -a lib/* build/lib/
           echo "Copied lib/ to build/lib/"
         fi
 

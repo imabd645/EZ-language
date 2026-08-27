@@ -730,7 +730,6 @@ export describe = test["describe"]
 export it = test["it"]
 export suite = test["suite"]
 export testCase = test["test"]
-export skip = test["skip"]
 export testSummary = test["run"]
 
 # Assertions

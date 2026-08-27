@@ -2239,7 +2239,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
                     case TokenType::MINUS: out = Constant(ezarith::wrapSub(l, r)); return true;
                     case TokenType::STAR:  out = Constant(ezarith::wrapMul(l, r)); return true;
                     case TokenType::PERCENT:
-                        if (r != 0 && !(l == LLONG_MIN && r == -1)) {
+                        if (!ezarith::divIsUB(l, r)) {
                             out = Constant(l % r);
                             return true;
                         }

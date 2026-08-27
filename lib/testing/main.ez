@@ -692,7 +692,7 @@ export test = {}
 test["run"] = run
 test["runTests"] = runTests
 test["clear"] = clear
-test["describe"] = describe
+
 test["suite"] = suite
 test["it"] = it
 test["test"] = testCase
@@ -726,7 +726,7 @@ test["silent"] = |b| { __testState["silent"] = b }
 # Allow using without test. prefix
 
 # Standard Suite & Test Definitions
-export describe = test["describe"]
+
 export it = test["it"]
 export suite = test["suite"]
 export testCase = test["test"]
@@ -769,7 +769,7 @@ export tAssertGreaterThan = test["assertGreaterThan"]
 export tAssertLessThan = test["assertLessThan"]
 
 # Suite definition
-export tDescribe = test["describe"]
+
 export tSuite = test["suite"]
 export tIt = test["it"]
 export tTestCase = test["test"]

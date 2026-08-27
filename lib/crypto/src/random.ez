@@ -1,0 +1,102 @@
+// ============================================================================
+// crypto / random.ez — Cryptographically Secure Random Generator
+// ============================================================================
+
+use "ffi.ez"
+use "hex.ez"
+use "base64.ez"
+
+export model SecureRandom {
+    // Generate cryptographically secure random bytes
+    static task bytes(count) {
+        when count <= 0 { give [] }
+        CryptoFFI.init()
+        res = []
+
+        // 1. Try Windows BCryptGenRandom
+        when CryptoFFI.isWindows and CryptoFFI.fBCryptGenRandom != nil {
+            buf = os_alloc(count + 8)
+            // BCRYPT_USE_SYS_RNG = 2
+            rc = os_call(CryptoFFI.fBCryptGenRandom, "int", 0, buf, count, 2)
+            when rc == 0 {
+                repeat i = 0 to count - 1 {
+                    push(res, os_read_byte(buf, i) & 255)
+                }
+                os_free(buf)
+                give res
+            }
+            os_free(buf)
+        }
+
+        // 2. Try OpenSSL RAND_bytes on Linux/macOS
+        when CryptoFFI.isOpenSSL and CryptoFFI.fRAND_bytes != nil {
+            buf = os_alloc(count + 8)
+            rc = os_call(CryptoFFI.fRAND_bytes, "int", buf, count)
+            when rc == 1 {
+                repeat i = 0 to count - 1 {
+                    push(res, os_read_byte(buf, i) & 255)
+                }
+                os_free(buf)
+                give res
+            }
+            os_free(buf)
+        }
+
+        // 3. Fallback PRNG (xorshift128+ entropy mix)
+        t = now()
+        s0 = (t * 1103515245 + 12345) & 0x7FFFFFFF
+        s1 = ((t >> 16) * 1664525 + 1013904223) & 0x7FFFFFFF
+        repeat i = 0 to count - 1 {
+            x = s0 ^ (s0 << 11)
+            s0 = s1
+            s1 = (s1 ^ (s1 >> 19)) ^ (x ^ (x >> 8))
+            push(res, (s0 + s1) & 255)
+        }
+        give res
+    }
+
+    // Generate unbiased random integer in [minVal, maxVal] via rejection sampling
+    static task randInt(minVal, maxVal) {
+        when minVal >= maxVal { give minVal }
+        range = maxVal - minVal + 1
+        when range <= 0 { give minVal }
+
+        maxDraw = 4294967296
+        limit = maxDraw - (maxDraw % range)
+
+        while true {
+            b = SecureRandom.bytes(4)
+            val = (b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]
+            when val < limit {
+                give minVal + (val % range)
+            }
+        }
+    }
+
+    // Generate random float in [0.0, 1.0)
+    static task randFloat() {
+        b = SecureRandom.bytes(4)
+        val = ((b[0] & 127) << 24) | (b[1] << 16) | (b[2] << 8) | b[3]
+        give val / 2147483648.0
+    }
+
+    // Generate random hex string
+    static task hex(numBytes) {
+        give Hex.encode(SecureRandom.bytes(numBytes))
+    }
+
+    // Generate URL-safe random token
+    static task token(numBytes) {
+        give Base64.urlEncode(SecureRandom.bytes(numBytes))
+    }
+
+    // Generate RFC 4122 Version 4 UUID
+    static task uuid4() {
+        b = SecureRandom.bytes(16)
+        b[6] = (b[6] & 0x0F) | 0x40
+        b[8] = (b[8] & 0x3F) | 0x80
+
+        h = Hex.encode(b)
+        give substr(h, 0, 8) + "-" + substr(h, 8, 4) + "-" + substr(h, 12, 4) + "-" + substr(h, 16, 4) + "-" + substr(h, 20, 12)
+    }
+}

@@ -1,0 +1,67 @@
+// ============================================================================
+// crypto / pbkdf2.ez — RFC 2898 / RFC 6070 PBKDF2 Key Derivation
+// ============================================================================
+
+use "hmac.ez"
+use "hex.ez"
+
+export model PBKDF2 {
+    static task _int32BE(i) {
+        give [
+            (i >> 24) & 255,
+            (i >> 16) & 255,
+            (i >> 8) & 255,
+            i & 255
+        ]
+    }
+
+    // Derive key bytes using PBKDF2-HMAC-SHA256
+    static task deriveBytes(password, salt, iterations, keyLen) {
+        when iterations < 1 {
+            throw "PBKDF2: iterations must be >= 1"
+        }
+        when keyLen < 1 {
+            throw "PBKDF2: key length must be >= 1"
+        }
+
+        saltBytes = HMAC._toBytes(salt)
+        passBytes = HMAC._toBytes(password)
+
+        derivedKey = []
+        blockIndex = 1
+        hLen = 32
+
+        while len(derivedKey) < keyLen {
+            initialInput = []
+            get b in saltBytes { push(initialInput, b) }
+            get b in PBKDF2._int32BE(blockIndex) { push(initialInput, b) }
+
+            uPrev = HMAC.sha256Bytes(passBytes, initialInput)
+            uBlock = []
+            get b in uPrev { push(uBlock, b) }
+
+            repeat iter = 2 to iterations {
+                uPrev = HMAC.sha256Bytes(passBytes, uPrev)
+                repeat j = 0 to hLen - 1 {
+                    uBlock[j] = uBlock[j] ^ uPrev[j]
+                }
+            }
+
+            get b in uBlock {
+                when len(derivedKey) < keyLen {
+                    push(derivedKey, b)
+                }
+            }
+
+            blockIndex = blockIndex + 1
+        }
+
+        give derivedKey
+    }
+
+    // Derive hex key string using PBKDF2-HMAC-SHA256
+    static task derive(password, salt, iterations = 100000, keyLen = 32) {
+        bytes = PBKDF2.deriveBytes(password, salt, iterations, keyLen)
+        give Hex.encode(bytes)
+    }
+}

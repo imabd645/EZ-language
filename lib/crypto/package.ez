@@ -1,7 +1,7 @@
 {
     "name": "crypto",
-    "version": "1.0.1",
-    "description": "AES-256 Encryption, SHA Hashing, and Base64 bindings for EZ Language",
+    "version": "2.0.0",
+    "description": "Cross-platform AES-256 encryption, SHA/MD5 hashing, HMAC, PBKDF2, Base64/Hex, and SecureRandom CSPRNG for EZ",
     "author": "Abdullah Masood",
     "main": "main.ez",
     "dependencies": {}

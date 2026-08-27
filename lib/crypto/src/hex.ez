@@ -1,0 +1,67 @@
+// ============================================================================
+// crypto / hex.ez — Hexadecimal Encoding, Decoding & Constant-Time Comparison
+// ============================================================================
+
+export model Hex {
+    static digits = "0123456789abcdef"
+
+    // Convert byte array or string to lowercase hex string
+    static task encode(input) {
+        when typeOf(input) == "nil" { give "" }
+        res = ""
+        isStr = typeOf(input) == "string"
+        l = len(input)
+        repeat i = 0 to l - 1 {
+            b = isStr ? ord(substr(input, i, 1)) : input[i]
+            hi = (b >> 4) & 15
+            lo = b & 15
+            res = res + substr(Hex.digits, hi, 1) + substr(Hex.digits, lo, 1)
+        }
+        give res
+    }
+
+    // Convert hex string to byte array [0..255]
+    static task decodeToBytes(hexStr) {
+        when typeOf(hexStr) != "string" { give [] }
+        l = len(hexStr)
+        when l == 0 { give [] }
+        when l % 2 != 0 {
+            throw "Hex.decodeToBytes: hex string must have an even length"
+        }
+        bytes = []
+        i = 0
+        while i < l {
+            cHi = lower(substr(hexStr, i, 1))
+            cLo = lower(substr(hexStr, i + 1, 1))
+            vHi = indexOf(Hex.digits, cHi)
+            vLo = indexOf(Hex.digits, cLo)
+            when vHi == -1 or vLo == -1 {
+                throw "Hex.decodeToBytes: invalid hex character at offset " + str(i)
+            }
+            push(bytes, (vHi << 4) | vLo)
+            i = i + 2
+        }
+        give bytes
+    }
+
+    // Convert hex string to ASCII string
+    static task decode(hexStr) {
+        bytes = Hex.decodeToBytes(hexStr)
+        res = ""
+        get b in bytes {
+            res = res + chr(b)
+        }
+        give res
+    }
+
+    // Constant-time string equality comparison to prevent timing attacks
+    static task timingSafeEqual(a, b) {
+        when len(a) != len(b) { give false }
+        diff = 0
+        l = len(a)
+        repeat i = 0 to l - 1 {
+            diff = diff | (ord(substr(a, i, 1)) ^ ord(substr(b, i, 1)))
+        }
+        give diff == 0
+    }
+}

@@ -1,0 +1,118 @@
+// ============================================================================
+// ezcrypto test suite — RFC Publication Vectors & Integration Tests
+// ============================================================================
+
+use "main.ez"
+
+__pass = 0
+__fail = 0
+
+task assert(cond, name) {
+    when cond {
+        __pass = __pass + 1
+    } other {
+        __fail = __fail + 1
+        out "  FAIL: " + name
+    }
+}
+
+task assertEq(actual, expected, name) {
+    when str(actual) == str(expected) {
+        __pass = __pass + 1
+    } other {
+        __fail = __fail + 1
+        out "  FAIL: " + name + " (expected: '" + str(expected) + "', got: '" + str(actual) + "')"
+    }
+}
+
+// ── 1. Hex Tests ────────────────────────────────────────────────────────────
+out "--- Hex encoding / decoding ---"
+assertEq(Hex.encode(""), "", "Hex.encode empty")
+assertEq(Hex.encode("hello"), "68656c6c6f", "Hex.encode 'hello'")
+assertEq(Hex.decode("68656c6c6f"), "hello", "Hex.decode 'hello'")
+assertEq(len(Hex.decodeToBytes("68656c6c6f")), 5, "Hex.decodeToBytes len")
+assert(Hex.timingSafeEqual("abc", "abc"), "Hex.timingSafeEqual same")
+assert(not Hex.timingSafeEqual("abc", "abd"), "Hex.timingSafeEqual diff")
+
+// ── 2. Base64 & Base64URL Tests ─────────────────────────────────────────────
+out "--- Base64 & Base64URL (RFC 4648) ---"
+assertEq(Base64.encode(""), "", "Base64 empty")
+assertEq(Base64.encode("f"), "Zg==", "Base64 'f'")
+assertEq(Base64.encode("fo"), "Zm8=", "Base64 'fo'")
+assertEq(Base64.encode("foo"), "Zm9v", "Base64 'foo'")
+assertEq(Base64.encode("foobar"), "Zm9vYmFy", "Base64 'foobar'")
+assertEq(Base64.decode("Zm9vYmFy"), "foobar", "Base64.decode 'foobar'")
+
+urlData = "hello?world/test+data=="
+urlEnc = Base64.urlEncode(urlData)
+assert(indexOf(urlEnc, "+") == -1, "urlEncode has no +")
+assert(indexOf(urlEnc, "/") == -1, "urlEncode has no /")
+assert(indexOf(urlEnc, "=") == -1, "urlEncode has no =")
+assertEq(Base64.urlDecode(urlEnc), urlData, "Base64.urlDecode roundtrip")
+
+// ── 3. SecureRandom & UUID Tests ────────────────────────────────────────────
+out "--- SecureRandom & UUID v4 ---"
+rBytes = SecureRandom.bytes(16)
+assertEq(len(rBytes), 16, "SecureRandom.bytes length")
+rInt = SecureRandom.randInt(10, 20)
+assert(rInt >= 10 and rInt <= 20, "SecureRandom.randInt within bounds")
+rFlt = SecureRandom.randFloat()
+assert(rFlt >= 0.0 and rFlt < 1.0, "SecureRandom.randFloat within [0, 1)")
+
+uuid = SecureRandom.uuid4()
+assertEq(len(uuid), 36, "UUID v4 length is 36")
+assertEq(substr(uuid, 14, 1), "4", "UUID v4 version nibble is 4")
+
+// ── 4. Hash Tests (NIST FIPS 180-4 Vectors) ─────────────────────────────────
+out "--- Cryptographic Hashes ---"
+assertEq(Hash.sha256(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 empty")
+assertEq(Hash.sha256("hello"), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", "SHA-256 'hello'")
+assertEq(Hash.sha1("hello"), "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d", "SHA-1 'hello'")
+assertEq(Hash.md5("hello"), "5d41402abc4b2a76b9719d911017c592", "MD5 'hello'")
+assertEq(substr(Hash.sha384("hello"), 0, 14), "59e1748777448c", "SHA-384 'hello' prefix")
+assertEq(substr(Hash.sha512("hello"), 0, 14), "9b71d224bd62f3", "SHA-512 'hello' prefix")
+
+// ── 5. HMAC Tests (RFC 4231 Vectors) ────────────────────────────────────────
+out "--- HMAC (RFC 2104 / RFC 4231) ---"
+assertEq(HMAC.sha256("key", "The quick brown fox jumps over the lazy dog"), "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8", "HMAC-SHA256 RFC 4231")
+assertEq(HMAC.sha1("key", "The quick brown fox jumps over the lazy dog"), "de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9", "HMAC-SHA1 RFC 2202")
+assertEq(HMAC.md5("key", "The quick brown fox jumps over the lazy dog"), "80070713463e7749b90c2dc24911e275", "HMAC-MD5 RFC 2202")
+
+// ── 6. PBKDF2 Key Derivation ────────────────────────────────────────────────
+out "--- PBKDF2 Key Derivation (RFC 6070) ---"
+k1 = PBKDF2.derive("password", "salt", 1, 32)
+assertEq(k1, "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b", "PBKDF2-HMAC-SHA256 c=1")
+k2 = PBKDF2.derive("password", "salt", 2, 32)
+assertEq(k2, "ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43", "PBKDF2-HMAC-SHA256 c=2")
+
+// ── 7. AES-CBC Encryption & PKCS#7 ──────────────────────────────────────────
+out "--- AES-CBC Encryption / Decryption ---"
+aesKey = "0123456789abcdef0123456789abcdef" // 32 bytes (AES-256)
+aesIv  = "1234567890abcdef"                 // 16 bytes IV
+plainText = "Confidential EZ Language Payload 2026"
+
+cipher = AES.encrypt(aesKey, aesIv, plainText)
+decrypted = AES.decrypt(aesKey, aesIv, cipher)
+assertEq(decrypted, plainText, "AES-256-CBC Encrypt/Decrypt Roundtrip")
+
+// ── 8. Crypto Facade Tests ──────────────────────────────────────────────────
+out "--- Crypto Unified Facade ---"
+assertEq(Crypto.sha256("hello"), Hash.sha256("hello"), "Crypto.sha256 facade")
+assertEq(Crypto.hmacSha256("key", "hello"), HMAC.sha256("key", "hello"), "Crypto.hmacSha256 facade")
+assertEq(Crypto.base64Encode("hello"), "aGVsbG8=", "Crypto.base64Encode facade")
+assertEq(Crypto.base64Decode("aGVsbG8="), "hello", "Crypto.base64Decode facade")
+
+// ── Summary ─────────────────────────────────────────────────────────────────
+out ""
+out "========================================="
+out "  ezcrypto test suite"
+out "  PASSED: " + str(__pass)
+out "  FAILED: " + str(__fail)
+out "  TOTAL:  " + str(__pass + __fail)
+out "========================================="
+when __fail > 0 {
+    out "  *** SOME TESTS FAILED ***"
+    exit(1)
+} other {
+    out "  All tests passed."
+}

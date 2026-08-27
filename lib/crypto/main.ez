@@ -1,706 +1,110 @@
-# ============================================================================
-# EZ Standard Library: ezcrypto (v2.0)
-# Features:
-#   - SecureRandom  — BCryptGenRandom FFI (cryptographically secure)
-#   - Hash          — SHA-256, SHA-1, MD5 via Windows CryptoAPI (Advapi32)
-#   - HMAC          — HMAC-SHA256/SHA1/MD5 (pure EZ, using Hash)
-#   - AES           — AES-128/192/256 CBC via Windows CryptoAPI (Advapi32)
-#   - PBKDF2        — Password key derivation using HMAC-SHA256
-#   - UUID          — UUID v4 via SecureRandom
-#   - Base64        — encode / decode (unchanged from v1)
-#   - RC4           — DEPRECATED, kept for compatibility
-# ============================================================================
-
-# ============================================================================
-# FFI Bindings
-# ============================================================================
-
-__adv32  = os_load_lib("Advapi32.dll")
-__bcrypt = os_load_lib("bcrypt.dll")
-
-when __adv32 == 0 or type(__adv32) == "nil" {
-    throw "ezcrypto: Advapi32.dll not found"
-}
-when __bcrypt == 0 or type(__bcrypt) == "nil" {
-    throw "ezcrypto: bcrypt.dll not found"
-}
-
-_fCryptAcquireContext = os_get_func(__adv32,  "CryptAcquireContextA")
-_fCryptReleaseContext  = os_get_func(__adv32,  "CryptReleaseContext")
-_fCryptCreateHash      = os_get_func(__adv32,  "CryptCreateHash")
-_fCryptHashData        = os_get_func(__adv32,  "CryptHashData")
-_fCryptGetHashParam    = os_get_func(__adv32,  "CryptGetHashParam")
-_fCryptDestroyHash     = os_get_func(__adv32,  "CryptDestroyHash")
-_fCryptImportKey       = os_get_func(__adv32,  "CryptImportKey")
-_fCryptEncrypt         = os_get_func(__adv32,  "CryptEncrypt")
-_fCryptDecrypt         = os_get_func(__adv32,  "CryptDecrypt")
-_fCryptDestroyKey      = os_get_func(__adv32,  "CryptDestroyKey")
-_fCryptSetKeyParam     = os_get_func(__adv32,  "CryptSetKeyParam")
-_fBCryptGenRandom      = os_get_func(__bcrypt, "BCryptGenRandom")
-
-# ============================================================================
-# CryptoAPI Constants
-# ============================================================================
-
-_PROV_RSA_AES        = 24
-_CALG_MD5            = 0x8003
-_CALG_SHA1           = 0x8004
-_CALG_SHA_256        = 0x800C
-_CALG_SHA_384        = 0x800D
-_CALG_SHA_512        = 0x800E
-_CALG_AES_128        = 0x660E
-_CALG_AES_192        = 0x660F
-_CALG_AES_256        = 0x6610
-_HP_HASHVAL          = 2
-_CRYPT_VERIFYCTX     = 0xF0000000
-_KP_IV               = 1
-_KP_MODE             = 4
-_CRYPT_MODE_CBC      = 1
-_BCRYPT_USE_SYS_RNG  = 2
-_PLAINTEXTKEYBLOB    = 8
-_CUR_BLOB_VERSION    = 2
-
-# ============================================================================
-# Internal Helpers
-# ============================================================================
-
-# Acquire a CryptoAPI provider handle
-task _acquireCtx() {
-    hBuf = os_alloc(8)
-    rc = os_call(_fCryptAcquireContext, "int", hBuf, 0, 0, _PROV_RSA_AES, _CRYPT_VERIFYCTX)
-    when rc == 0 {
-        os_free(hBuf)
-        throw "ezcrypto: CryptAcquireContextA failed (rc=" + str(rc) + ")"
-    }
-    h = os_read_uint64(hBuf, 0)
-    os_free(hBuf)
-    give h
-}
-
-# Read a single byte from an FFI buffer at a given byte offset
-task _readByte(buf, offset) {
-    # os_read_byte reads ONE byte; os_read_uint64 pulls in the 8 bytes at
-    # offset..offset+7, so any read near the end of an allocation ran past
-    # it. `& 255` discarded the extra bytes, which hid the overread until
-    # the FFI bounds guard started rejecting it.
-    give os_read_byte(buf, offset) & 255
-}
-
-# Read `size` bytes from an FFI buffer into an EZ integer array
-task _readBuffer(buf, size) {
-    result = []
-    i = 0
-    # Read 8 bytes at a time only while a full 8-byte read stays INSIDE the
-    # buffer, then finish byte by byte. The old loop issued a uint64 read for the
-    # tail too, running up to 7 bytes past the end whenever size was not a
-    # multiple of 8; callers hid that by over-allocating 8 spare bytes, and any
-    # caller that allocated exactly `size` tripped the FFI bounds guard.
-    while i + 8 <= size {
-        chunk = os_read_uint64(buf, i)
-        repeat j = 0 to 7 {
-            push(result, (chunk >> (j * 8)) & 255)
-        }
-        i = i + 8
-    }
-    while i < size {
-        push(result, os_read_byte(buf, i) & 255)
-        i = i + 1
-    }
-    give result
-}
-
-# Convert a byte array [0..255] to a lowercase hex string
-task _toHex(bytes) {
-    hc = "0123456789abcdef"
-    result = ""
-    get b in bytes {
-        result = result + substr(hc, (b >> 4) & 15, 1) + substr(hc, b & 15, 1)
-    }
-    give result
-}
-
-# Convert a hex string back to a byte array
-task _hexToBytes(hex) {
-    result = []
-    i = 0
-    l = len(hex)
-    while i < l - 1 {
-        hi = 0
-        lo = 0
-        ch = lower(substr(hex, i, 1))
-        when ch >= "0" and ch <= "9" { hi = ord(ch) - 48 }
-        other when ch >= "a" and ch <= "f" { hi = ord(ch) - 87 }
-        ch = lower(substr(hex, i + 1, 1))
-        when ch >= "0" and ch <= "9" { lo = ord(ch) - 48 }
-        other when ch >= "a" and ch <= "f" { lo = ord(ch) - 87 }
-        push(result, hi * 16 + lo)
-        i = i + 2
-    }
-    give result
-}
-
-# Raw bytes of a string, exactly as stored.
-#
-# ord(substr(s, i, 1)) gives a CODEPOINT, while len(s) counts BYTES, so the two
-# disagree the moment a string holds anything non-ASCII. os_write_string memcpy's
-# the real bytes, so writing and reading them back is the only way to get a
-# faithful byte array.
-task _rawBytes(s) {
-    n = len(s)
-    buf = os_alloc(n + 1)
-    os_write_string(buf, 0, s)
-    result = _readBuffer(buf, n)
-    os_free(buf)
-    give result
-}
-
-# Internal: hash text with the given CryptoAPI algorithm ID, return byte array
-#
-# `text` may be a string OR an array of byte values. Binary MUST be passed as an
-# array: an EZ string is UTF-8, so a byte >= 128 assembled with chr() is stored as
-# a two-byte sequence and the hash silently sees different input than intended.
-task _hashBytes(text, algId, hashSize) {
-    inBuf   = 0
-    inLen   = 0
-    ownsBuf = false
-    when typeOf(text) == "array" {
-        inLen   = len(text)
-        inBuf   = os_alloc(inLen + 1)
-        ownsBuf = true
-        repeat i = 0 to inLen - 1 { os_write_byte(inBuf, i, text[i] & 255) }
-    } other {
-        inBuf = text
-        inLen = len(text)
-    }
-
-    hProv = _acquireCtx()
-
-    hHashBuf = os_alloc(8)
-    rc = os_call(_fCryptCreateHash, "int", hProv, algId, 0, 0, hHashBuf)
-    when rc == 0 {
-        os_free(hHashBuf)
-        os_call(_fCryptReleaseContext, "int", hProv, 0)
-        throw "ezcrypto: CryptCreateHash failed"
-    }
-    hHash = os_read_uint64(hHashBuf, 0)
-    os_free(hHashBuf)
-
-    rc = os_call(_fCryptHashData, "int", hHash, inBuf, inLen, 0)
-    when ownsBuf { os_free(inBuf) }
-    when rc == 0 {
-        os_call(_fCryptDestroyHash, "int", hHash)
-        os_call(_fCryptReleaseContext, "int", hProv, 0)
-        throw "ezcrypto: CryptHashData failed"
-    }
-
-    # Allocate hashSize + 8 bytes so 8-byte aligned reads at the end are safe
-    hashBuf = os_alloc(hashSize + 8)
-    sizeBuf = os_alloc(8)
-    os_write_uint64(sizeBuf, 0, hashSize)
-
-    rc = os_call(_fCryptGetHashParam, "int", hHash, _HP_HASHVAL, hashBuf, sizeBuf, 0)
-    when rc == 0 {
-        os_free(hashBuf)
-        os_free(sizeBuf)
-        os_call(_fCryptDestroyHash, "int", hHash)
-        os_call(_fCryptReleaseContext, "int", hProv, 0)
-        throw "ezcrypto: CryptGetHashParam failed"
-    }
-
-    bytes = _readBuffer(hashBuf, hashSize)
-
-    os_free(hashBuf)
-    os_free(sizeBuf)
-    os_call(_fCryptDestroyHash, "int", hHash)
-    os_call(_fCryptReleaseContext, "int", hProv, 0)
-
-    give bytes
-}
-
-# ============================================================================
-# SecureRandom — Cryptographically secure random via BCryptGenRandom
-# ============================================================================
-export model SecureRandom {
-    # Generate n cryptographically secure random bytes → array of ints [0..255]
-    static task bytes(n) {
-        buf = os_alloc(n + 8)
-        rc  = os_call(_fBCryptGenRandom, "int", 0, buf, n, _BCRYPT_USE_SYS_RNG)
-        when rc != 0 {
-            os_free(buf)
-            throw "SecureRandom: BCryptGenRandom failed (NTSTATUS=" + str(rc) + ")"
-        }
-        result = _readBuffer(buf, n)
-        os_free(buf)
-        give result
-    }
-
-    # Secure random integer in [minV, maxV]
-    static task randInt(minV, maxV) {
-        range = maxV - minV + 1
-        bs    = SecureRandom.bytes(4)
-        raw   = (bs[0] | (bs[1] << 8) | (bs[2] << 16) | (bs[3] << 24)) & 2147483647
-        give minV + (raw % range)
-    }
-
-    # Secure random float in [0.0, 1.0)
-    static task randFloat() {
-        bs  = SecureRandom.bytes(4)
-        raw = (bs[0] | (bs[1] << 8) | (bs[2] << 16) | (bs[3] << 24)) & 2147483647
-        give raw / 2147483647.0
-    }
-
-    # Generate a UUID v4 string (RFC 4122)
-    static task uuid4() {
-        bs = SecureRandom.bytes(16)
-        # Set version = 4  (bits 4-7 of byte 6)
-        bs[6] = (bs[6] & 15) | 64
-        # Set variant = 10xx  (bits 6-7 of byte 8)
-        bs[8] = (bs[8] & 63) | 128
-
-        hc = "0123456789abcdef"
-        task bh(b) {
-            give substr(hc, (b >> 4) & 15, 1) + substr(hc, b & 15, 1)
-        }
-        give bh(bs[0])  + bh(bs[1])  + bh(bs[2])  + bh(bs[3])  + "-" +
-             bh(bs[4])  + bh(bs[5])  + "-" +
-             bh(bs[6])  + bh(bs[7])  + "-" +
-             bh(bs[8])  + bh(bs[9])  + "-" +
-             bh(bs[10]) + bh(bs[11]) + bh(bs[12]) +
-             bh(bs[13]) + bh(bs[14]) + bh(bs[15])
-    }
-}
-
-# ============================================================================
-# Hash — SHA-256, SHA-1, MD5 via Windows CryptoAPI (Advapi32)
-# ============================================================================
-export model Hash {
-    # Return lowercase hex digest
-    static task sha256(text) { give _toHex(_hashBytes(text, _CALG_SHA_256, 32)) }
-    static task sha384(text) { give _toHex(_hashBytes(text, _CALG_SHA_384, 48)) }
-    static task sha512(text) { give _toHex(_hashBytes(text, _CALG_SHA_512, 64)) }
-    static task sha1(text)   { give _toHex(_hashBytes(text, _CALG_SHA1,    20)) }
-    static task md5(text)    { give _toHex(_hashBytes(text, _CALG_MD5,     16)) }
-
-    # Return raw byte array [0..255]
-    static task sha256Bytes(text) { give _hashBytes(text, _CALG_SHA_256, 32) }
-    static task sha384Bytes(text) { give _hashBytes(text, _CALG_SHA_384, 48) }
-    static task sha512Bytes(text) { give _hashBytes(text, _CALG_SHA_512, 64) }
-    static task sha1Bytes(text)   { give _hashBytes(text, _CALG_SHA1,    20) }
-    static task md5Bytes(text)    { give _hashBytes(text, _CALG_MD5,     16) }
-}
-
-# ============================================================================
-# HMAC — Hash-based MAC (RFC 2104)
-# Pure EZ using Hash above.
-# HMAC(K,m) = H( (K⊕opad) ‖ H( (K⊕ipad) ‖ m ) )
-# ============================================================================
-export model HMAC {
-    static task sha256(key, message) { give HMAC._compute(key, message, _CALG_SHA_256, 32, 64) }
-    # SHA-384/512 are 1024-bit-block hashes, so the HMAC block size is 128, not 64.
-    static task sha384(key, message) { give HMAC._compute(key, message, _CALG_SHA_384, 48, 128) }
-    static task sha512(key, message) { give HMAC._compute(key, message, _CALG_SHA_512, 64, 128) }
-    static task sha1(key, message)   { give HMAC._compute(key, message, _CALG_SHA1,    20, 64) }
-    static task md5(key, message)    { give HMAC._compute(key, message, _CALG_MD5,     16, 64) }
-
-    # RFC 2104. Everything here stays in BYTE ARRAYS.
-    #
-    # This used to assemble the padded key and the inner digest into STRINGS with
-    # chr() and concatenate them. An EZ string is UTF-8, so every byte >= 128
-    # became a two-byte sequence: the pads and the inner hash were both corrupted
-    # before hashing, and the result disagreed with the RFC 4231 vectors for
-    # essentially every input -- HMAC.sha256("key", "The quick brown fox jumps
-    # over the lazy dog") returned bff805b9... instead of f7bc83f4...
-    static task _compute(key, message, algId, hashLen, blockLen) {
-        give _toHex(HMAC.raw(_rawBytes(key), _rawBytes(message), algId, hashLen, blockLen))
-    }
-
-    # HMAC over byte ARRAYS, returning a byte array. Callers that need to feed one
-    # HMAC's output into the next (PBKDF2) must use this: round-tripping a digest
-    # through a string corrupts every byte >= 128.
-    static task raw(keyIn, msgBytes, algId, hashLen, blockLen) {
-        # Copy the key: push() below would otherwise mutate the caller's array,
-        # which PBKDF2 reuses across thousands of iterations.
-        keyBytes = []
-        get b in keyIn { push(keyBytes, b) }
-
-        # If key > block size, hash it down
-        when len(keyBytes) > blockLen {
-            keyBytes = _hashBytes(keyBytes, algId, hashLen)
-        }
-
-        # Zero-pad to block size
-        while len(keyBytes) < blockLen {
-            push(keyBytes, 0)
-        }
-
-        # Inner: H( (key ^ 0x36) ‖ message )
-        innerInput = []
-        repeat i = 0 to blockLen - 1 { push(innerInput, keyBytes[i] ^ 54) }
-        get b in msgBytes { push(innerInput, b) }
-        innerBytes = _hashBytes(innerInput, algId, hashLen)
-
-        # Outer: H( (key ^ 0x5C) ‖ innerHash )
-        outerInput = []
-        repeat i = 0 to blockLen - 1 { push(outerInput, keyBytes[i] ^ 92) }
-        get b in innerBytes { push(outerInput, b) }
-
-        give _hashBytes(outerInput, algId, hashLen)
-    }
-}
-
-# ============================================================================
-# PBKDF2 — Password-Based Key Derivation Function 2 (RFC 2898)
-# Uses HMAC-SHA256 as its PRF. Pure EZ implementation.
-# ============================================================================
-export model PBKDF2 {
-    # Derive a key from password + salt.
-    # iterations: ≥100000 recommended  |  keyLen: bytes to output
-    # Returns: lowercase hex string of keyLen bytes
-    static task derive(password, salt, iterations, keyLen) {
-        when not iterations { iterations = 100000 }
-        when not keyLen     { keyLen     = 32      }
-
-        result   = []
-        blockNum = 1
-
-        # Everything below stays in BYTE ARRAYS via HMAC.raw. Building the salt
-        # block and each U_{n-1} with chr() turned every byte >= 128 into a
-        # two-byte UTF-8 sequence, so from the second iteration onward the PRF was
-        # fed the wrong input and the derived key did not match the spec.
-        passBytes = _rawBytes(password)
-        saltBytes = _rawBytes(salt)
-
-        while len(result) < keyLen {
-            # F(P, S, c, i) = U1 ⊕ U2 ⊕ ... ⊕ Uc
-            # U1 = HMAC(P, S ‖ INT(i))
-            saltBlock = []
-            get b in saltBytes { push(saltBlock, b) }
-            push(saltBlock, (blockNum >> 24) & 255)
-            push(saltBlock, (blockNum >> 16) & 255)
-            push(saltBlock, (blockNum >> 8)  & 255)
-            push(saltBlock, blockNum & 255)
-
-            uBytes = HMAC.raw(passBytes, saltBlock, _CALG_SHA_256, 32, 64)
-            block  = []
-            get b in uBytes { push(block, b) }
-
-            # Iterations 2..c: U_n = HMAC(P, U_{n-1})
-            repeat _iter = 2 to iterations {
-                uBytes = HMAC.raw(passBytes, uBytes, _CALG_SHA_256, 32, 64)
-                repeat k = 0 to len(block) - 1 {
-                    block[k] = block[k] ^ uBytes[k]
-                }
-            }
-
-            get b in block {
-                when len(result) < keyLen { push(result, b) }
-            }
-            blockNum = blockNum + 1
-        }
-
-        give _toHex(result)
-    }
-}
-
-# ============================================================================
-# AES — AES-128 / AES-192 / AES-256 in CBC mode via Windows CryptoAPI
-#
-# encrypt(key, iv, plaintext) → Base64 ciphertext
-# decrypt(key, iv, cipherBase64) → plaintext string
-#
-# key: string of exactly 16, 24, or 32 characters (bytes)
-# iv:  string of exactly 16 characters (AES block size)
-# ============================================================================
-export model AES {
-    static task encrypt(key, iv, plaintext) {
-        # Convert plaintext string → byte array
-        ptBytes = []
-        repeat i = 0 to len(plaintext) - 1 {
-            push(ptBytes, ord(substr(plaintext, i, 1)))
-        }
-        give AES._process(key, iv, ptBytes, true)
-    }
-
-    static task decrypt(key, iv, cipherBase64) {
-        cipherBytes = Base64.decodeToBytes(cipherBase64)
-        give AES._process(key, iv, cipherBytes, false)
-    }
-
-    # Encrypt/decrypt raw byte array. isEncrypt=true → returns Base64 string.
-    # isEncrypt=false → returns plaintext string.
-    static task _process(key, iv, dataBytes, isEncrypt) {
-        keyLen = len(key)
-        algId  = 0
-        when keyLen == 16 { algId = _CALG_AES_128 }
-        other when keyLen == 24 { algId = _CALG_AES_192 }
-        other when keyLen == 32 { algId = _CALG_AES_256 }
-        other { throw "AES: key must be 16, 24, or 32 bytes (got " + str(keyLen) + ")" }
-
-        hProv = _acquireCtx()
-
-        # Build PLAINTEXTKEYBLOB = BLOBHEADER(8) + DWORD cbKey(4) + key bytes
-        blobSize = 12 + keyLen
-        keyBlob  = os_alloc(blobSize)
-
-        os_write_byte(keyBlob, 0, _PLAINTEXTKEYBLOB)       # bType
-        os_write_byte(keyBlob, 1, _CUR_BLOB_VERSION)       # bVersion
-        os_write_byte(keyBlob, 2, 0)                        # reserved low
-        os_write_byte(keyBlob, 3, 0)                        # reserved high
-        os_write_byte(keyBlob, 4,  algId         & 255)    # aiKeyAlg (LE)
-        os_write_byte(keyBlob, 5, (algId >> 8)  & 255)
-        os_write_byte(keyBlob, 6, (algId >> 16) & 255)
-        os_write_byte(keyBlob, 7, (algId >> 24) & 255)
-        os_write_byte(keyBlob, 8,  keyLen         & 255)   # cbKeyData (LE)
-        os_write_byte(keyBlob, 9, (keyLen >> 8)  & 255)
-        os_write_byte(keyBlob, 10, (keyLen >> 16) & 255)
-        os_write_byte(keyBlob, 11, (keyLen >> 24) & 255)
-        repeat i = 0 to keyLen - 1 {
-            os_write_byte(keyBlob, 12 + i, ord(substr(key, i, 1)))
-        }
-
-        hKeyBuf = os_alloc(8)
-        rc = os_call(_fCryptImportKey, "int", hProv, keyBlob, blobSize, 0, 0, hKeyBuf)
-        os_free(keyBlob)
-        when rc == 0 {
-            os_free(hKeyBuf)
-            os_call(_fCryptReleaseContext, "int", hProv, 0)
-            throw "AES: CryptImportKey failed"
-        }
-        hKey = os_read_uint64(hKeyBuf, 0)
-        os_free(hKeyBuf)
-
-        # Set CBC mode
-        modeBuf = os_alloc(8)
-        os_write_uint64(modeBuf, 0, _CRYPT_MODE_CBC)
-        os_call(_fCryptSetKeyParam, "int", hKey, _KP_MODE, modeBuf, 0)
-        os_free(modeBuf)
-
-        # Set IV (16 bytes)
-        ivBuf = os_alloc(16)
-        ivLen = len(iv)
-        repeat i = 0 to 15 {
-            when i < ivLen { os_write_byte(ivBuf, i, ord(substr(iv, i, 1))) }
-            other          { os_write_byte(ivBuf, i, 0) }
-        }
-        os_call(_fCryptSetKeyParam, "int", hKey, _KP_IV, ivBuf, 0)
-        os_free(ivBuf)
-
-        # Copy data into work buffer (extra 16 bytes space for PKCS7 padding)
-        dataLen = len(dataBytes)
-        bufSize = dataLen + 16
-        dataBuf = os_alloc(bufSize)
-        repeat i = 0 to dataLen - 1 {
-            os_write_byte(dataBuf, i, dataBytes[i])
-        }
-
-        # dataLenBuf: DWORD* — input is plaintext len, output is cipher len
-        dataLenBuf = os_alloc(8)
-        os_write_uint64(dataLenBuf, 0, dataLen)
-
-        when isEncrypt {
-            rc = os_call(_fCryptEncrypt, "int", hKey, 0, 1, 0, dataBuf, dataLenBuf, bufSize)
-        } other {
-            rc = os_call(_fCryptDecrypt, "int", hKey, 0, 1, 0, dataBuf, dataLenBuf)
-        }
-
-        when rc == 0 {
-            os_free(dataBuf)
-            os_free(dataLenBuf)
-            os_call(_fCryptDestroyKey, "int", hKey)
-            os_call(_fCryptReleaseContext, "int", hProv, 0)
-            throw "AES: " + (isEncrypt ? "Encrypt" : "Decrypt") + " failed"
-        }
-
-        outLen  = os_read_uint64(dataLenBuf, 0) & 4294967295
-        outBytes = _readBuffer(dataBuf, outLen)
-
-        os_free(dataBuf)
-        os_free(dataLenBuf)
-        os_call(_fCryptDestroyKey, "int", hKey)
-        os_call(_fCryptReleaseContext, "int", hProv, 0)
-
-        when isEncrypt {
-            give Base64.encode(outBytes)
-        } other {
-            result = ""
-            get b in outBytes { result = result + chr(b) }
-            give result
-        }
-    }
-}
-
-# ============================================================================
-# Base64 — unchanged from v1
-# ============================================================================
-export model Base64 {
-    static chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-    static task encode(input) {
-        isStr = type(input) == "string"
-        res   = ""
-        l     = len(input)
-        when l == 0 { give "" }
-
-        i = 0
-        while i < l - 2 {
-            b0 = 0  b1 = 0  b2 = 0
-            when isStr {
-                b0 = ord(substr(input, i,   1))
-                b1 = ord(substr(input, i+1, 1))
-                b2 = ord(substr(input, i+2, 1))
-            } other {
-                b0 = input[i]  b1 = input[i+1]  b2 = input[i+2]
-            }
-            n  = (b0 << 16) | (b1 << 8) | b2
-            res = res + substr(Base64.chars, (n >> 18) & 63, 1) +
-                        substr(Base64.chars, (n >> 12) & 63, 1) +
-                        substr(Base64.chars, (n >> 6)  & 63, 1) +
-                        substr(Base64.chars, n & 63, 1)
-            i = i + 3
-        }
-
-        rem = l - i
-        when rem == 1 {
-            b0 = 0
-            when isStr { b0 = ord(substr(input, i, 1)) } other { b0 = input[i] }
-            n  = b0 << 16
-            res = res + substr(Base64.chars, (n >> 18) & 63, 1) +
-                        substr(Base64.chars, (n >> 12) & 63, 1) + "=="
-        }
-        other when rem == 2 {
-            b0 = 0  b1 = 0
-            when isStr {
-                b0 = ord(substr(input, i,   1))
-                b1 = ord(substr(input, i+1, 1))
-            } other { b0 = input[i]  b1 = input[i+1] }
-            n  = (b0 << 16) | (b1 << 8)
-            res = res + substr(Base64.chars, (n >> 18) & 63, 1) +
-                        substr(Base64.chars, (n >> 12) & 63, 1) +
-                        substr(Base64.chars, (n >> 6)  & 63, 1) + "="
-        }
-        give res
-    }
-
-    static task decodeToBytes(encoded) {
-        l = len(encoded)
-        when l == 0 { give [] }
-
-        pad = 0
-        when substr(encoded, l-1, 1) == "=" { pad = pad + 1 }
-        when substr(encoded, l-2, 1) == "=" { pad = pad + 1 }
-
-        res   = []
-        i     = 0
-        limit = l
-        when pad > 0 { limit = l - 4 }
-
-        while i < limit {
-            n = (indexOf(Base64.chars, substr(encoded, i,   1)) << 18) |
-                (indexOf(Base64.chars, substr(encoded, i+1, 1)) << 12) |
-                (indexOf(Base64.chars, substr(encoded, i+2, 1)) <<  6) |
-                 indexOf(Base64.chars, substr(encoded, i+3, 1))
-            push(res, (n >> 16) & 255)
-            push(res, (n >>  8) & 255)
-            push(res, n & 255)
-            i = i + 4
-        }
-
-        when pad > 0 {
-            i0 = indexOf(Base64.chars, substr(encoded, i,   1))  when i0 == -1 { i0 = 0 }
-            i1 = indexOf(Base64.chars, substr(encoded, i+1, 1))  when i1 == -1 { i1 = 0 }
-            i2 = indexOf(Base64.chars, substr(encoded, i+2, 1))  when i2 == -1 { i2 = 0 }
-            i3 = indexOf(Base64.chars, substr(encoded, i+3, 1))  when i3 == -1 { i3 = 0 }
-            n = (i0 << 18) | (i1 << 12) | (i2 << 6) | i3
-            push(res, (n >> 16) & 255)
-            when pad < 2 { push(res, (n >> 8) & 255) }
-        }
-        give res
-    }
-
-    static task decode(encoded) {
-        bytes = Base64.decodeToBytes(encoded)
-        res = ""
-        get b in bytes { res = res + chr(b) }
-        give res
-    }
-}
-
-# ============================================================================
-# RC4 — DEPRECATED. Use AES instead.
-# ============================================================================
+// ============================================================================
+// ezcrypto (v2.0) — Unified Cross-Platform Cryptographic Suite for EZ
+// ============================================================================
+// Features:
+//   - Hex           — Hex encoding, decoding, timingSafeEqual
+//   - Base64        — Standard & URL-Safe RFC 4648 encoding/decoding
+//   - SecureRandom  — OS-backed CSPRNG, random ints/floats, tokens, UUID v4
+//   - Hash          — SHA-256, SHA-512, SHA-384, SHA-1, MD5
+//   - HMAC          — Keyed-Hash MAC (RFC 2104 / 4231)
+//   - AES           — AES-128/192/256 CBC with PKCS#7
+//   - PBKDF2        — RFC 2898 / 6070 key derivation
+//   - Crypto        — Unified static facade
+// ============================================================================
+
+use "src/ffi.ez"
+use "src/hex.ez"
+use "src/base64.ez"
+use "src/random.ez"
+use "src/hash.ez"
+use "src/hmac.ez"
+use "src/cipher.ez"
+use "src/pbkdf2.ez"
+
+
+// ── RC4 Stream Cipher (Backward Compatibility) ──────────────────────────────
 export model RC4 {
-    hidden S
-
-    init(key) {
-        self.S = []
-        repeat i = 0 to 255 { push(self.S, i) }
-        j = 0
+    static task process(key, data) {
         keyLen = len(key)
+        when keyLen == 0 { give data }
+        S = []
+        repeat i = 0 to 255 { push(S, i) }
+        j = 0
         repeat i = 0 to 255 {
-            j = (j + self.S[i] + ord(substr(key, i % keyLen, 1))) % 256
-            temp = self.S[i]  self.S[i] = self.S[j]  self.S[j] = temp
+            kByte = ord(substr(key, i % keyLen, 1))
+            j = (j + S[i] + kByte) % 256
+            temp = S[i]
+            S[i] = S[j]
+            S[j] = temp
         }
+        i = 0
+        j = 0
+        res = []
+        dLen = len(data)
+        isStr = typeOf(data) == "string"
+        repeat k = 0 to dLen - 1 {
+            i = (i + 1) % 256
+            j = (j + S[i]) % 256
+            temp = S[i]
+            S[i] = S[j]
+            S[j] = temp
+            K = S[(S[i] + S[j]) % 256]
+            byteVal = isStr ? ord(substr(data, k, 1)) : data[k]
+            push(res, byteVal ^ K)
+        }
+        give res
     }
 
-    task processBytes(input) {
-        res   = []
-        i     = 0
-        j     = 0
-        isStr = type(input) == "string"
-        l     = len(input)
-        when l == 0 { give [] }
+    static task encrypt(key, plaintext) {
+        bytes = RC4.process(key, plaintext)
+        give Base64.encode(bytes)
+    }
 
-        repeat k = 0 to l - 1 {
-            i = (i + 1) % 256
-            j = (j + self.S[i]) % 256
-            temp = self.S[i]  self.S[i] = self.S[j]  self.S[j] = temp
-            K = self.S[(self.S[i] + self.S[j]) % 256]
-            b = 0
-            when isStr { b = ord(substr(input, k, 1)) } other { b = input[k] }
-            push(res, b ^ K)
-        }
+    static task decrypt(key, base64Cipher) {
+        cipherBytes = Base64.decodeToBytes(base64Cipher)
+        plainBytes = RC4.process(key, cipherBytes)
+        res = ""
+        get b in plainBytes { res = res + chr(b) }
         give res
     }
 }
 
-# ============================================================================
-# Crypto — Unified facade for common operations
-# ============================================================================
 export model Crypto {
-    # Hashing
-    static task sha256(text)         { give Hash.sha256(text) }
-    static task sha1(text)           { give Hash.sha1(text) }
-    static task md5(text)            { give Hash.md5(text) }
+    // ── Hashing ─────────────────────────────────────────────────────────────
+    static task sha256(data) { give Hash.sha256(data) }
+    static task sha512(data) { give Hash.sha512(data) }
+    static task sha384(data) { give Hash.sha384(data) }
+    static task sha1(data)   { give Hash.sha1(data) }
+    static task md5(data)    { give Hash.md5(data) }
 
-    # HMAC
-    static task hmac(key, message)   { give HMAC.sha256(key, message) }
+    // ── HMAC ────────────────────────────────────────────────────────────────
+    static task hmacSha256(key, message) { give HMAC.sha256(key, message) }
+    static task hmacSha512(key, message) { give HMAC.sha512(key, message) }
+    static task hmacSha384(key, message) { give HMAC.sha384(key, message) }
+    static task hmacSha1(key, message)   { give HMAC.sha1(key, message) }
+    static task hmacMd5(key, message)    { give HMAC.md5(key, message) }
 
-    # AES-256-CBC
-    static task aesEncrypt(key, iv, text) { give AES.encrypt(key, iv, text) }
-    static task aesDecrypt(key, iv, b64)  { give AES.decrypt(key, iv, b64) }
+    // ── Symmetric Encryption (AES-CBC) ──────────────────────────────────────
+    static task encrypt(key, iv, plaintext) { give AES.encrypt(key, iv, plaintext) }
+    static task decrypt(key, iv, ciphertext) { give AES.decrypt(key, iv, ciphertext) }
+    static task rc4Encrypt(key, plaintext) { give RC4.encrypt(key, plaintext) }
+    static task rc4Decrypt(key, ciphertext) { give RC4.decrypt(key, ciphertext) }
 
-    # UUID v4
-    static task uuid()               { give SecureRandom.uuid4() }
-
-    # Base64
-    static task base64Encode(text)   { give Base64.encode(text) }
-    static task base64Decode(text)   { give Base64.decode(text) }
-
-    # RC4 — DEPRECATED
-    static task rc4Encrypt(key, text) {
-        out "[WARN] ezcrypto: RC4 is broken and deprecated — use AES instead"
-        cipher = RC4(key)
-        give Base64.encode(cipher.processBytes(text))
+    // ── Key Derivation (PBKDF2) ─────────────────────────────────────────────
+    static task pbkdf2(password, salt, iterations = 100000, keyLen = 32) {
+        give PBKDF2.derive(password, salt, iterations, keyLen)
     }
-    static task rc4Decrypt(key, b64) {
-        out "[WARN] ezcrypto: RC4 is broken and deprecated — use AES instead"
-        when len(b64) == 0 { give "" }
-        cipher = RC4(key)
-        raw    = Base64.decodeToBytes(b64)
-        when len(raw) == 0 { give "" }
-        decBytes = cipher.processBytes(raw)
-        res = ""
-        get b in decBytes { res = res + chr(b) }
-        give res
-    }
+
+    // ── Random Generation & UUID ────────────────────────────────────────────
+    static task randomBytes(count) { give SecureRandom.bytes(count) }
+    static task randomHex(numBytes) { give SecureRandom.hex(numBytes) }
+    static task randomToken(numBytes) { give SecureRandom.token(numBytes) }
+    static task uuid() { give SecureRandom.uuid4() }
+
+    // ── Base64 & Hex ────────────────────────────────────────────────────────
+    static task base64Encode(data) { give Base64.encode(data) }
+    static task base64Decode(data) { give Base64.decode(data) }
+    static task hexEncode(data)    { give Hex.encode(data) }
+    static task hexDecode(data)    { give Hex.decode(data) }
+    static task timingSafeEqual(a, b) { give Hex.timingSafeEqual(a, b) }
 }

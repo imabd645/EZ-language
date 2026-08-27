@@ -121,6 +121,16 @@ export task assertEqual(actual, expected, message = nil) {
     give true
 }
 
+# Alias for assertEqual
+export task assertEquals(actual, expected, message = nil) {
+    give assertEqual(actual, expected, message)
+}
+
+# Alias for assert
+export task assertTrue(value, message = nil) {
+    give assert(value, message)
+}
+
 # Assert deep equality (for arrays/objects)
 export task assertDeepEqual(actual, expected, message = nil) {
     when not __deepEqual(actual, expected) {
@@ -658,6 +668,11 @@ export task run() {
         exit(1)
     }
     give results
+}
+
+# Alias for run
+export task testSummary() {
+    give run()
 }
 
 # Clear all tests (for reloading)

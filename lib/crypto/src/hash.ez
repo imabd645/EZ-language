@@ -1,0 +1,183 @@
+// ============================================================================
+// crypto / hash.ez — SHA-256/512/384/1 and MD5 Hash Functions
+// ============================================================================
+
+use "ffi.ez"
+use "hex.ez"
+
+_CALG_MD5     = 0x8003
+_CALG_SHA1    = 0x8004
+_CALG_SHA_256 = 0x800C
+_CALG_SHA_384 = 0x800D
+_CALG_SHA_512 = 0x800E
+_HP_HASHVAL   = 2
+
+export model Hash {
+    // Internal: Hash computation on Windows via CryptoAPI
+    static task _hashWin(calg, data, outLen) {
+        CryptoFFI.init()
+        hBuf = os_alloc(8)
+        rc = os_call(CryptoFFI.fCryptAcquireContext, "int", hBuf, 0, 0, 24, 0xF0000000)
+        when rc == 0 {
+            os_free(hBuf)
+            throw "Hash._hashWin: CryptAcquireContext failed"
+        }
+        hProv = os_read_uint64(hBuf, 0)
+
+        hHashBuf = os_alloc(8)
+        rc = os_call(CryptoFFI.fCryptCreateHash, "int", hProv, calg, 0, 0, hHashBuf)
+        when rc == 0 {
+            os_free(hBuf)
+            os_free(hHashBuf)
+            os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+            throw "Hash._hashWin: CryptCreateHash failed"
+        }
+        hHash = os_read_uint64(hHashBuf, 0)
+
+        dataLen = len(data)
+        dataBuf = os_alloc(dataLen > 0 ? dataLen : 1)
+        when dataLen > 0 {
+            isStr = typeOf(data) == "string"
+            repeat i = 0 to dataLen - 1 {
+                b = isStr ? ord(substr(data, i, 1)) : data[i]
+                os_write_byte(dataBuf, i, b & 255)
+            }
+            os_call(CryptoFFI.fCryptHashData, "int", hHash, dataBuf, dataLen, 0)
+        }
+        os_free(dataBuf)
+
+        outBuf = os_alloc(outLen + 8)
+        lenBuf = os_alloc(8)
+        os_write_uint32(lenBuf, 0, outLen)
+        os_call(CryptoFFI.fCryptGetHashParam, "int", hHash, _HP_HASHVAL, outBuf, lenBuf, 0)
+
+        res = []
+        repeat i = 0 to outLen - 1 {
+            push(res, os_read_byte(outBuf, i) & 255)
+        }
+
+        os_free(outBuf)
+        os_free(lenBuf)
+        os_free(hHashBuf)
+        os_free(hBuf)
+        os_call(CryptoFFI.fCryptDestroyHash, "int", hHash)
+        os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+        give res
+    }
+
+    // Internal: Hash computation on POSIX via OpenSSL libcrypto
+    static task _hashOpenSSL(fn, data, outLen) {
+        CryptoFFI.init()
+        dataLen = len(data)
+        dataBuf = os_alloc(dataLen > 0 ? dataLen : 1)
+        when dataLen > 0 {
+            isStr = typeOf(data) == "string"
+            repeat i = 0 to dataLen - 1 {
+                b = isStr ? ord(substr(data, i, 1)) : data[i]
+                os_write_byte(dataBuf, i, b & 255)
+            }
+        }
+        outBuf = os_alloc(outLen + 8)
+        os_call(fn, "ptr", dataBuf, dataLen, outBuf)
+
+        res = []
+        repeat i = 0 to outLen - 1 {
+            push(res, os_read_byte(outBuf, i) & 255)
+        }
+
+        os_free(dataBuf)
+        os_free(outBuf)
+        give res
+    }
+
+    // SHA-256 (32 bytes)
+    static task sha256Bytes(data) {
+        CryptoFFI.init()
+        when CryptoFFI.isWindows and CryptoFFI.fCryptCreateHash != nil {
+            give Hash._hashWin(_CALG_SHA_256, data, 32)
+        }
+        when CryptoFFI.isOpenSSL and CryptoFFI.fSHA256 != nil {
+            give Hash._hashOpenSSL(CryptoFFI.fSHA256, data, 32)
+        }
+        throw "Hash: no native SHA-256 provider available"
+    }
+
+    static task sha256(data) {
+        give Hex.encode(Hash.sha256Bytes(data))
+    }
+
+    // SHA-512 (64 bytes)
+    static task sha512Bytes(data) {
+        CryptoFFI.init()
+        when CryptoFFI.isWindows and CryptoFFI.fCryptCreateHash != nil {
+            give Hash._hashWin(_CALG_SHA_512, data, 64)
+        }
+        when CryptoFFI.isOpenSSL and CryptoFFI.fSHA512 != nil {
+            give Hash._hashOpenSSL(CryptoFFI.fSHA512, data, 64)
+        }
+        throw "Hash: no native SHA-512 provider available"
+    }
+
+    static task sha512(data) {
+        give Hex.encode(Hash.sha512Bytes(data))
+    }
+
+    // SHA-384 (48 bytes)
+    static task sha384Bytes(data) {
+        CryptoFFI.init()
+        when CryptoFFI.isWindows and CryptoFFI.fCryptCreateHash != nil {
+            give Hash._hashWin(_CALG_SHA_384, data, 48)
+        }
+        when CryptoFFI.isOpenSSL and CryptoFFI.fSHA384 != nil {
+            give Hash._hashOpenSSL(CryptoFFI.fSHA384, data, 48)
+        }
+        throw "Hash: no native SHA-384 provider available"
+    }
+
+    static task sha384(data) {
+        give Hex.encode(Hash.sha384Bytes(data))
+    }
+
+    // SHA-1 (20 bytes)
+    static task sha1Bytes(data) {
+        CryptoFFI.init()
+        when CryptoFFI.isWindows and CryptoFFI.fCryptCreateHash != nil {
+            give Hash._hashWin(_CALG_SHA1, data, 20)
+        }
+        when CryptoFFI.isOpenSSL and CryptoFFI.fSHA1 != nil {
+            give Hash._hashOpenSSL(CryptoFFI.fSHA1, data, 20)
+        }
+        throw "Hash: no native SHA-1 provider available"
+    }
+
+    static task sha1(data) {
+        give Hex.encode(Hash.sha1Bytes(data))
+    }
+
+    // MD5 (16 bytes)
+    static task md5Bytes(data) {
+        CryptoFFI.init()
+        when CryptoFFI.isWindows and CryptoFFI.fCryptCreateHash != nil {
+            give Hash._hashWin(_CALG_MD5, data, 16)
+        }
+        when CryptoFFI.isOpenSSL and CryptoFFI.fMD5 != nil {
+            give Hash._hashOpenSSL(CryptoFFI.fMD5, data, 16)
+        }
+        throw "Hash: no native MD5 provider available"
+    }
+
+    static task md5(data) {
+        give Hex.encode(Hash.md5Bytes(data))
+    }
+
+    // Generic digest dispatcher
+    static task digest(algo, data) {
+        norm = lower(algo)
+        when norm == "sha256" or norm == "sha-256" { give Hash.sha256(data) }
+        when norm == "sha512" or norm == "sha-512" { give Hash.sha512(data) }
+        when norm == "sha384" or norm == "sha-384" { give Hash.sha384(data) }
+        when norm == "sha1"   or norm == "sha-1"   { give Hash.sha1(data) }
+        when norm == "md5"                         { give Hash.md5(data) }
+        throw "Hash.digest: unsupported algorithm '" + str(algo) + "'"
+    }
+}

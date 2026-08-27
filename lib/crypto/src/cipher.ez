@@ -1,0 +1,277 @@
+// ============================================================================
+// crypto / cipher.ez — AES Symmetric Ciphers & PKCS#7 Padding
+// ============================================================================
+
+use "ffi.ez"
+use "hex.ez"
+use "base64.ez"
+
+_PROV_RSA_AES     = 24
+_CRYPT_VERIFYCTX  = 0xF0000000
+_CALG_AES_128     = 0x660E
+_CALG_AES_192     = 0x660F
+_CALG_AES_256     = 0x6610
+_KP_IV            = 1
+_KP_MODE          = 4
+_CRYPT_MODE_CBC   = 1
+_PLAINTEXTKEYBLOB = 8
+_CUR_BLOB_VERSION = 2
+
+export model PKCS7 {
+    // Apply PKCS#7 padding up to block size (16 for AES)
+    static task pad(data, blockSize) {
+        isStr = typeOf(data) == "string"
+        l = len(data)
+        padLen = blockSize - (l % blockSize)
+        when padLen == 0 { padLen = blockSize }
+
+        bytes = []
+        repeat i = 0 to l - 1 {
+            b = isStr ? ord(substr(data, i, 1)) : data[i]
+            push(bytes, b & 255)
+        }
+        repeat i = 0 to padLen - 1 {
+            push(bytes, padLen)
+        }
+        give bytes
+    }
+
+    // Strip PKCS#7 padding
+    static task unpad(bytes) {
+        l = len(bytes)
+        when l == 0 { give [] }
+        padLen = bytes[l - 1]
+        when padLen < 1 or padLen > 16 or padLen > l {
+            throw "PKCS7: invalid padding byte"
+        }
+        repeat i = l - padLen to l - 1 {
+            when bytes[i] != padLen {
+                throw "PKCS7: corrupted padding sequence"
+            }
+        }
+        res = []
+        repeat i = 0 to l - padLen - 1 {
+            push(res, bytes[i])
+        }
+        give res
+    }
+}
+
+export model AES {
+    // Internal: Windows PLAINTEXTKEYBLOB builder
+    static task _makeKeyBlob(keyBytes, calg) {
+        kLen = len(keyBytes)
+        blob = os_alloc(12 + kLen)
+        os_write_byte(blob, 0, _PLAINTEXTKEYBLOB)
+        os_write_byte(blob, 1, _CUR_BLOB_VERSION)
+        os_write_byte(blob, 2, 0)
+        os_write_byte(blob, 3, 0)
+        os_write_uint32(blob, 4, calg)
+        os_write_uint32(blob, 8, kLen)
+        repeat i = 0 to kLen - 1 {
+            os_write_byte(blob, 12 + i, keyBytes[i] & 255)
+        }
+        give blob
+    }
+
+    // Encrypt plaintext with key and IV using AES-CBC with PKCS#7 padding
+    static task encrypt(key, iv, plaintext) {
+        CryptoFFI.init()
+        kLen = len(key)
+        calg = _CALG_AES_256
+        when kLen == 16 { calg = _CALG_AES_128 }
+        when kLen == 24 { calg = _CALG_AES_192 }
+        when kLen != 16 and kLen != 24 and kLen != 32 {
+            throw "AES.encrypt: key length must be 16, 24, or 32 bytes"
+        }
+        when len(iv) != 16 {
+            throw "AES.encrypt: IV length must be exactly 16 bytes"
+        }
+
+        paddedData = PKCS7.pad(plaintext, 16)
+        dataLen = len(paddedData)
+
+        when CryptoFFI.isWindows and CryptoFFI.fCryptImportKey != nil {
+            hBuf = os_alloc(8)
+            rc = os_call(CryptoFFI.fCryptAcquireContext, "int", hBuf, 0, 0, _PROV_RSA_AES, _CRYPT_VERIFYCTX)
+            when rc == 0 {
+                os_free(hBuf)
+                throw "AES.encrypt: CryptAcquireContext failed"
+            }
+            hProv = os_read_uint64(hBuf, 0)
+
+            kBytes = []
+            isStr = typeOf(key) == "string"
+            repeat i = 0 to kLen - 1 {
+                push(kBytes, isStr ? ord(substr(key, i, 1)) : key[i])
+            }
+
+            keyBlob = AES._makeKeyBlob(kBytes, calg)
+            hKeyBuf = os_alloc(8)
+            rc = os_call(CryptoFFI.fCryptImportKey, "int", hProv, keyBlob, 12 + kLen, 0, 0, hKeyBuf)
+            os_free(keyBlob)
+            when rc == 0 {
+                os_free(hBuf)
+                os_free(hKeyBuf)
+                os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+                throw "AES.encrypt: CryptImportKey failed"
+            }
+            hKey = os_read_uint64(hKeyBuf, 0)
+
+            // Set IV
+            ivBuf = os_alloc(16)
+            isIvStr = typeOf(iv) == "string"
+            repeat i = 0 to 15 {
+                os_write_byte(ivBuf, i, isIvStr ? ord(substr(iv, i, 1)) : iv[i])
+            }
+            os_call(CryptoFFI.fCryptSetKeyParam, "int", hKey, _KP_IV, ivBuf, 0)
+            os_free(ivBuf)
+
+            // Set CBC Mode
+            modeBuf = os_alloc(4)
+            os_write_uint32(modeBuf, 0, _CRYPT_MODE_CBC)
+            os_call(CryptoFFI.fCryptSetKeyParam, "int", hKey, _KP_MODE, modeBuf, 0)
+            os_free(modeBuf)
+
+            // Encrypt buffer
+            bufLen = dataLen + 16
+            cipherBuf = os_alloc(bufLen)
+            repeat i = 0 to dataLen - 1 {
+                os_write_byte(cipherBuf, i, paddedData[i])
+            }
+            lenBuf = os_alloc(4)
+            os_write_uint32(lenBuf, 0, dataLen)
+
+            rc = os_call(CryptoFFI.fCryptEncrypt, "int", hKey, 0, 0, 0, cipherBuf, lenBuf, bufLen)
+            when rc == 0 {
+                os_free(cipherBuf)
+                os_free(lenBuf)
+                os_free(hKeyBuf)
+                os_free(hBuf)
+                os_call(CryptoFFI.fCryptDestroyKey, "int", hKey)
+                os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+                throw "AES.encrypt: CryptEncrypt failed"
+            }
+
+            finalLen = os_read_uint32(lenBuf, 0)
+            resBytes = []
+            repeat i = 0 to finalLen - 1 {
+                push(resBytes, os_read_byte(cipherBuf, i) & 255)
+            }
+
+            os_free(cipherBuf)
+            os_free(lenBuf)
+            os_free(hKeyBuf)
+            os_free(hBuf)
+            os_call(CryptoFFI.fCryptDestroyKey, "int", hKey)
+            os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+
+            give Base64.encode(resBytes)
+        }
+
+        throw "AES: no native AES provider available"
+    }
+
+    // Decrypt AES-CBC Base64 ciphertext and remove PKCS#7 padding
+    static task decrypt(key, iv, cipherBase64) {
+        CryptoFFI.init()
+        kLen = len(key)
+        calg = _CALG_AES_256
+        when kLen == 16 { calg = _CALG_AES_128 }
+        when kLen == 24 { calg = _CALG_AES_192 }
+        when kLen != 16 and kLen != 24 and kLen != 32 {
+            throw "AES.decrypt: key length must be 16, 24, or 32 bytes"
+        }
+        when len(iv) != 16 {
+            throw "AES.decrypt: IV length must be exactly 16 bytes"
+        }
+
+        cipherBytes = Base64.decodeToBytes(cipherBase64)
+        cLen = len(cipherBytes)
+        when cLen == 0 { give "" }
+        when cLen % 16 != 0 {
+            throw "AES.decrypt: ciphertext length must be a multiple of 16"
+        }
+
+        when CryptoFFI.isWindows and CryptoFFI.fCryptImportKey != nil {
+            hBuf = os_alloc(8)
+            rc = os_call(CryptoFFI.fCryptAcquireContext, "int", hBuf, 0, 0, _PROV_RSA_AES, _CRYPT_VERIFYCTX)
+            when rc == 0 {
+                os_free(hBuf)
+                throw "AES.decrypt: CryptAcquireContext failed"
+            }
+            hProv = os_read_uint64(hBuf, 0)
+
+            kBytes = []
+            isStr = typeOf(key) == "string"
+            repeat i = 0 to kLen - 1 {
+                push(kBytes, isStr ? ord(substr(key, i, 1)) : key[i])
+            }
+
+            keyBlob = AES._makeKeyBlob(kBytes, calg)
+            hKeyBuf = os_alloc(8)
+            rc = os_call(CryptoFFI.fCryptImportKey, "int", hProv, keyBlob, 12 + kLen, 0, 0, hKeyBuf)
+            os_free(keyBlob)
+            when rc == 0 {
+                os_free(hBuf)
+                os_free(hKeyBuf)
+                os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+                throw "AES.decrypt: CryptImportKey failed"
+            }
+            hKey = os_read_uint64(hKeyBuf, 0)
+
+            // Set IV
+            ivBuf = os_alloc(16)
+            isIvStr = typeOf(iv) == "string"
+            repeat i = 0 to 15 {
+                os_write_byte(ivBuf, i, isIvStr ? ord(substr(iv, i, 1)) : iv[i])
+            }
+            os_call(CryptoFFI.fCryptSetKeyParam, "int", hKey, _KP_IV, ivBuf, 0)
+            os_free(ivBuf)
+
+            // Set CBC Mode
+            modeBuf = os_alloc(4)
+            os_write_uint32(modeBuf, 0, _CRYPT_MODE_CBC)
+            os_call(CryptoFFI.fCryptSetKeyParam, "int", hKey, _KP_MODE, modeBuf, 0)
+            os_free(modeBuf)
+
+            // Decrypt buffer
+            plainBuf = os_alloc(cLen)
+            repeat i = 0 to cLen - 1 {
+                os_write_byte(plainBuf, i, cipherBytes[i] & 255)
+            }
+            lenBuf = os_alloc(4)
+            os_write_uint32(lenBuf, 0, cLen)
+
+            rc = os_call(CryptoFFI.fCryptDecrypt, "int", hKey, 0, 0, 0, plainBuf, lenBuf)
+            when rc == 0 {
+                os_free(plainBuf)
+                os_free(lenBuf)
+                os_free(hKeyBuf)
+                os_free(hBuf)
+                os_call(CryptoFFI.fCryptDestroyKey, "int", hKey)
+                os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+                throw "AES.decrypt: CryptDecrypt failed"
+            }
+
+            decryptedBytes = []
+            repeat i = 0 to cLen - 1 {
+                push(decryptedBytes, os_read_byte(plainBuf, i) & 255)
+            }
+
+            os_free(plainBuf)
+            os_free(lenBuf)
+            os_free(hKeyBuf)
+            os_free(hBuf)
+            os_call(CryptoFFI.fCryptDestroyKey, "int", hKey)
+            os_call(CryptoFFI.fCryptReleaseContext, "int", hProv, 0)
+
+            unpadded = PKCS7.unpad(decryptedBytes)
+            resStr = ""
+            get b in unpadded { resStr = resStr + chr(b) }
+            give resStr
+        }
+
+        throw "AES: no native AES provider available"
+    }
+}

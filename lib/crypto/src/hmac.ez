@@ -1,0 +1,100 @@
+// ============================================================================
+// crypto / hmac.ez — RFC 2104 / RFC 4231 Keyed-Hash Message Authentication Code
+// ============================================================================
+
+use "hash.ez"
+use "hex.ez"
+
+export model HMAC {
+    static task _toBytes(data) {
+        when typeOf(data) == "nil" { give [] }
+        when typeOf(data) != "string" { give data }
+        res = []
+        l = len(data)
+        repeat i = 0 to l - 1 {
+            push(res, ord(substr(data, i, 1)) & 255)
+        }
+        give res
+    }
+
+    // Core HMAC RFC 2104 implementation operating on raw byte arrays
+    static task raw(keyData, msgData, hashFn, blockSize) {
+        kBytes = []
+        get b in HMAC._toBytes(keyData) { push(kBytes, b) }
+        mBytes = HMAC._toBytes(msgData)
+
+        // 1. Key conditioning
+        when len(kBytes) > blockSize {
+            kBytes = hashFn(kBytes)
+        }
+
+        while len(kBytes) < blockSize {
+            push(kBytes, 0)
+        }
+
+        // 2. Outer and inner padded keys
+        oKeyPad = []
+        iKeyPad = []
+        repeat i = 0 to blockSize - 1 {
+            push(oKeyPad, kBytes[i] ^ 0x5C)
+            push(iKeyPad, kBytes[i] ^ 0x36)
+        }
+
+        // 3. Inner hash: Hash(iKeyPad || message)
+        innerData = []
+        get b in iKeyPad { push(innerData, b) }
+        get b in mBytes  { push(innerData, b) }
+        innerHash = hashFn(innerData)
+
+        // 4. Outer hash: Hash(oKeyPad || innerHash)
+        outerData = []
+        get b in oKeyPad   { push(outerData, b) }
+        get b in innerHash { push(outerData, b) }
+        give hashFn(outerData)
+    }
+
+    // HMAC-SHA256 (Block: 64, Digest: 32)
+    static task sha256Bytes(key, message) {
+        give HMAC.raw(key, message, Hash.sha256Bytes, 64)
+    }
+
+    static task sha256(key, message) {
+        give Hex.encode(HMAC.sha256Bytes(key, message))
+    }
+
+    // HMAC-SHA512 (Block: 128, Digest: 64)
+    static task sha512Bytes(key, message) {
+        give HMAC.raw(key, message, Hash.sha512Bytes, 128)
+    }
+
+    static task sha512(key, message) {
+        give Hex.encode(HMAC.sha512Bytes(key, message))
+    }
+
+    // HMAC-SHA384 (Block: 128, Digest: 48)
+    static task sha384Bytes(key, message) {
+        give HMAC.raw(key, message, Hash.sha384Bytes, 128)
+    }
+
+    static task sha384(key, message) {
+        give Hex.encode(HMAC.sha384Bytes(key, message))
+    }
+
+    // HMAC-SHA1 (Block: 64, Digest: 20)
+    static task sha1Bytes(key, message) {
+        give HMAC.raw(key, message, Hash.sha1Bytes, 64)
+    }
+
+    static task sha1(key, message) {
+        give Hex.encode(HMAC.sha1Bytes(key, message))
+    }
+
+    // HMAC-MD5 (Block: 64, Digest: 16)
+    static task md5Bytes(key, message) {
+        give HMAC.raw(key, message, Hash.md5Bytes, 64)
+    }
+
+    static task md5(key, message) {
+        give Hex.encode(HMAC.md5Bytes(key, message))
+    }
+}

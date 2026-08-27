@@ -1,0 +1,91 @@
+// ============================================================================
+// crypto / ffi.ez — Cross-Platform Crypto FFI Dynamic Loader
+// ============================================================================
+
+export model CryptoFFI {
+    static isWindows = false
+    static isOpenSSL = false
+    static _initDone = false
+
+    // Windows handles
+    static hAdvapi32 = nil
+    static hBcrypt = nil
+    static fCryptAcquireContext = nil
+    static fCryptReleaseContext = nil
+    static fCryptCreateHash = nil
+    static fCryptHashData = nil
+    static fCryptGetHashParam = nil
+    static fCryptDestroyHash = nil
+    static fCryptImportKey = nil
+    static fCryptEncrypt = nil
+    static fCryptDecrypt = nil
+    static fCryptDestroyKey = nil
+    static fCryptSetKeyParam = nil
+    static fBCryptGenRandom = nil
+
+    // OpenSSL handles
+    static hLibCrypto = nil
+    static fSHA256 = nil
+    static fSHA512 = nil
+    static fSHA384 = nil
+    static fSHA1 = nil
+    static fMD5 = nil
+    static fRAND_bytes = nil
+
+    static task init() {
+        when CryptoFFI._initDone { give nil }
+        CryptoFFI._initDone = true
+
+        curOs = os()
+        when curOs == "windows" {
+            CryptoFFI.isWindows = true
+            try {
+                CryptoFFI.hAdvapi32 = os_load_lib("Advapi32.dll")
+                CryptoFFI.hBcrypt   = os_load_lib("bcrypt.dll")
+
+                when CryptoFFI.hAdvapi32 != nil and CryptoFFI.hAdvapi32 != 0 {
+                    CryptoFFI.fCryptAcquireContext = os_get_func(CryptoFFI.hAdvapi32, "CryptAcquireContextA")
+                    CryptoFFI.fCryptReleaseContext = os_get_func(CryptoFFI.hAdvapi32, "CryptReleaseContext")
+                    CryptoFFI.fCryptCreateHash     = os_get_func(CryptoFFI.hAdvapi32, "CryptCreateHash")
+                    CryptoFFI.fCryptHashData       = os_get_func(CryptoFFI.hAdvapi32, "CryptHashData")
+                    CryptoFFI.fCryptGetHashParam   = os_get_func(CryptoFFI.hAdvapi32, "CryptGetHashParam")
+                    CryptoFFI.fCryptDestroyHash    = os_get_func(CryptoFFI.hAdvapi32, "CryptDestroyHash")
+                    CryptoFFI.fCryptImportKey      = os_get_func(CryptoFFI.hAdvapi32, "CryptImportKey")
+                    CryptoFFI.fCryptEncrypt        = os_get_func(CryptoFFI.hAdvapi32, "CryptEncrypt")
+                    CryptoFFI.fCryptDecrypt        = os_get_func(CryptoFFI.hAdvapi32, "CryptDecrypt")
+                    CryptoFFI.fCryptDestroyKey     = os_get_func(CryptoFFI.hAdvapi32, "CryptDestroyKey")
+                    CryptoFFI.fCryptSetKeyParam    = os_get_func(CryptoFFI.hAdvapi32, "CryptSetKeyParam")
+                }
+
+                when CryptoFFI.hBcrypt != nil and CryptoFFI.hBcrypt != 0 {
+                    CryptoFFI.fBCryptGenRandom = os_get_func(CryptoFFI.hBcrypt, "BCryptGenRandom")
+                }
+            } catch e {}
+        } other {
+            candidates = [
+                "libcrypto.so.3",
+                "libcrypto.so.1.1",
+                "libcrypto.so",
+                "libcrypto.dylib",
+                "/opt/homebrew/opt/openssl@3/lib/libcrypto.dylib",
+                "/opt/homebrew/opt/openssl/lib/libcrypto.dylib",
+                "/usr/local/opt/openssl/lib/libcrypto.dylib"
+            ]
+            get cand in candidates {
+                try {
+                    CryptoFFI.hLibCrypto = os_load_lib(cand)
+                    when CryptoFFI.hLibCrypto != nil and CryptoFFI.hLibCrypto != 0 {
+                        CryptoFFI.isOpenSSL = true
+                        CryptoFFI.fSHA256     = os_get_func(CryptoFFI.hLibCrypto, "SHA256")
+                        CryptoFFI.fSHA512     = os_get_func(CryptoFFI.hLibCrypto, "SHA512")
+                        CryptoFFI.fSHA384     = os_get_func(CryptoFFI.hLibCrypto, "SHA384")
+                        CryptoFFI.fSHA1       = os_get_func(CryptoFFI.hLibCrypto, "SHA1")
+                        CryptoFFI.fMD5        = os_get_func(CryptoFFI.hLibCrypto, "MD5")
+                        CryptoFFI.fRAND_bytes = os_get_func(CryptoFFI.hLibCrypto, "RAND_bytes")
+                        break
+                    }
+                } catch e {}
+            }
+        }
+    }
+}

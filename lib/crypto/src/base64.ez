@@ -1,0 +1,133 @@
+// ============================================================================
+// crypto / base64.ez — RFC 4648 Standard & URL-Safe Base64
+// ============================================================================
+
+export model Base64 {
+    static chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    static urlChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+    // Encode string or byte array to standard Base64
+    static task encode(input) {
+        when typeOf(input) == "nil" { give "" }
+        isStr = typeOf(input) == "string"
+        res = ""
+        l = len(input)
+        when l == 0 { give "" }
+
+        i = 0
+        while i < l - 2 {
+            b0 = isStr ? ord(substr(input, i, 1)) : input[i]
+            b1 = isStr ? ord(substr(input, i + 1, 1)) : input[i + 1]
+            b2 = isStr ? ord(substr(input, i + 2, 1)) : input[i + 2]
+
+            n = (b0 << 16) | (b1 << 8) | b2
+
+            c1 = (n >> 18) & 63
+            c2 = (n >> 12) & 63
+            c3 = (n >> 6) & 63
+            c4 = n & 63
+
+            res = res + substr(Base64.chars, c1, 1) + substr(Base64.chars, c2, 1) + substr(Base64.chars, c3, 1) + substr(Base64.chars, c4, 1)
+            i = i + 3
+        }
+
+        rem = l - i
+        when rem == 1 {
+            b0 = isStr ? ord(substr(input, i, 1)) : input[i]
+            n = b0 << 16
+            c1 = (n >> 18) & 63
+            c2 = (n >> 12) & 63
+            res = res + substr(Base64.chars, c1, 1) + substr(Base64.chars, c2, 1) + "=="
+        } other when rem == 2 {
+            b0 = isStr ? ord(substr(input, i, 1)) : input[i]
+            b1 = isStr ? ord(substr(input, i + 1, 1)) : input[i + 1]
+            n = (b0 << 16) | (b1 << 8)
+            c1 = (n >> 18) & 63
+            c2 = (n >> 12) & 63
+            c3 = (n >> 6) & 63
+            res = res + substr(Base64.chars, c1, 1) + substr(Base64.chars, c2, 1) + substr(Base64.chars, c3, 1) + "="
+        }
+
+        give res
+    }
+
+    // Decode Base64 string to byte array
+    static task decodeToBytes(encoded) {
+        when typeOf(encoded) != "string" { give [] }
+        l = len(encoded)
+        when l == 0 { give [] }
+
+        pad = 0
+        when substr(encoded, l - 1, 1) == "=" { pad = pad + 1 }
+        when l >= 2 and substr(encoded, l - 2, 1) == "=" { pad = pad + 1 }
+
+        res = []
+        i = 0
+        limit = l
+        when pad > 0 { limit = l - 4 }
+
+        while i < limit {
+            i0 = indexOf(Base64.chars, substr(encoded, i, 1))
+            i1 = indexOf(Base64.chars, substr(encoded, i + 1, 1))
+            i2 = indexOf(Base64.chars, substr(encoded, i + 2, 1))
+            i3 = indexOf(Base64.chars, substr(encoded, i + 3, 1))
+
+            n = (i0 << 18) | (i1 << 12) | (i2 << 6) | i3
+
+            push(res, (n >> 16) & 255)
+            push(res, (n >> 8) & 255)
+            push(res, n & 255)
+
+            i = i + 4
+        }
+
+        when pad > 0 {
+            i0 = indexOf(Base64.chars, substr(encoded, i, 1))
+            i1 = indexOf(Base64.chars, substr(encoded, i + 1, 1))
+            when i0 == -1 { i0 = 0 }
+            when i1 == -1 { i1 = 0 }
+
+            when pad == 1 {
+                i2 = indexOf(Base64.chars, substr(encoded, i + 2, 1))
+                when i2 == -1 { i2 = 0 }
+                n = (i0 << 18) | (i1 << 12) | (i2 << 6)
+                push(res, (n >> 16) & 255)
+                push(res, (n >> 8) & 255)
+            } other when pad == 2 {
+                n = (i0 << 18) | (i1 << 12)
+                push(res, (n >> 16) & 255)
+            }
+        }
+
+        give res
+    }
+
+    // Decode Base64 string to ASCII text
+    static task decode(encoded) {
+        bytes = Base64.decodeToBytes(encoded)
+        res = ""
+        get b in bytes { res = res + chr(b) }
+        give res
+    }
+
+    // URL-Safe Base64 encode (RFC 4648 Section 5) without padding
+    static task urlEncode(input) {
+        s = Base64.encode(input)
+        s = replace(s, "+", "-")
+        s = replace(s, "/", "_")
+        while len(s) > 0 and substr(s, len(s) - 1, 1) == "=" {
+            s = substr(s, 0, len(s) - 1)
+        }
+        give s
+    }
+
+    // URL-Safe Base64 decode
+    static task urlDecode(encoded) {
+        s = replace(encoded, "-", "+")
+        s = replace(s, "_", "/")
+        rem = len(s) % 4
+        when rem == 2 { s = s + "==" }
+        when rem == 3 { s = s + "=" }
+        give Base64.decode(s)
+    }
+}

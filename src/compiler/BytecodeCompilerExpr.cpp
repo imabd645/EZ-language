@@ -1,5 +1,6 @@
 #include "BytecodeCompiler.h"
 #include "utils/WrapArith.h"
+#include "runtime/Utf8.h"
 #include <cmath>
 #include <iostream>
 void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
@@ -415,19 +416,25 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
                     Constant argConst;
                     if (isConstant(expr.arguments[0], argConst) && argConst.type == Constant::Type::STRING) {
                         const auto& s = std::get<std::string>(argConst.value);
-                        if (!s.empty()) {
-                            emitConstant(Constant(static_cast<long long>(static_cast<unsigned char>(s[0]))));
+                        if (s.empty()) {
+                            emitConstant(Constant(0LL));
                             return;
                         }
+                        size_t i = 0;
+                        uint32_t cp = ez_utf8::decode(s, i);
+                        emitConstant(Constant(static_cast<long long>(cp)));
+                        return;
                     }
                 } else if (id->name == "chr" && expr.arguments.size() == 1) {
                     Constant argConst;
                     if (isConstant(expr.arguments[0], argConst) && argConst.type == Constant::Type::INT) {
                         long long code = std::get<long long>(argConst.value);
-                        if (code >= 0 && code <= 255) {
-                            std::string res(1, static_cast<char>(code));
-                            emitConstant(Constant(res));
-                            return;
+                        if (code >= 0 && code <= 1114111) {
+                            std::string out;
+                            if (ez_utf8::encode(static_cast<uint32_t>(code), out)) {
+                                emitConstant(Constant(out));
+                                return;
+                            }
                         }
                     }
                 } else if (id->name == "str" && expr.arguments.size() == 1) {

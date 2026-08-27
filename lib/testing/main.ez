@@ -693,6 +693,7 @@ test["run"] = run
 test["runTests"] = runTests
 test["clear"] = clear
 
+test["describe"] = describe
 test["suite"] = suite
 test["it"] = it
 test["test"] = testCase
@@ -727,6 +728,7 @@ test["silent"] = |b| { __testState["silent"] = b }
 
 # Standard Suite & Test Definitions
 
+export describe = describe
 export it = test["it"]
 export suite = test["suite"]
 export testCase = test["test"]

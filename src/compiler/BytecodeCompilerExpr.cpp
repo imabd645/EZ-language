@@ -384,7 +384,7 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
         // Direct method invocation optimization: obj.method(args...)
         if (expr.callee && std::holds_alternative<PropertyAccessExpr*>(expr.callee->variant)) {
             auto prop = std::get<PropertyAccessExpr*>(expr.callee->variant);
-            if (!prop->isOptional) {
+            if (!prop->isOptional && prop->object && !std::holds_alternative<SuperExpr*>(prop->object->variant)) {
                 compileExpr(prop->object); // Push receiver (self)
                 for (const auto& arg : expr.arguments) compileExpr(arg); // Push arguments
                 size_t nameIdx = identifierConstant(prop->property);

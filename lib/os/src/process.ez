@@ -1,0 +1,86 @@
+// ============================================================================
+// ezos / process.ez -- Cross-platform subprocess execution & PID management
+// ============================================================================
+
+use "ffi.ez"
+use "util.ez"
+use "errors.ez"
+
+export model OSProcess {
+    task pid() {
+        when OSFFI.isWindows and OSFFI.getCurrentProcessId != nil {
+            give os_call(OSFFI.getCurrentProcessId, "int")
+        } other when OSFFI.posixGetPid != nil {
+            give os_call(OSFFI.posixGetPid, "int")
+        }
+        give 0
+    }
+
+    // Capture stdout
+    task exec(cmd) {
+        result = self.run(cmd, { "captureStderr": true })
+        give result["stdout"]
+    }
+
+    // Production runner: returns { ok, exitCode, stdout, stderr }
+    task run(cmd, options = nil) {
+        opts = ensureDict(options)
+        captureErr = true
+        when has_key(opts, "captureStderr") { captureErr = opts["captureStderr"] }
+
+        shellCmd = str(cmd)
+        when captureErr and indexOf(shellCmd, "2>&1") == -1 {
+            shellCmd = shellCmd + " 2>&1"
+        }
+
+        when OSFFI.popen == nil {
+            raise_process("popen C runtime function not available on this platform", str(cmd))
+        }
+
+        filePtr = os_call(OSFFI.popen, "ptr", shellCmd, "r")
+        when filePtr == 0 or filePtr == nil {
+            raise_process("Failed to start process", str(cmd))
+        }
+
+        buf = os_alloc(4096)
+        output = ""
+        while os_call(OSFFI.feof, "int", filePtr) == 0 {
+            charPtr = os_call(OSFFI.fgets, "ptr", buf, 4096, filePtr)
+            when charPtr != 0 and charPtr != nil {
+                output = output + os_read_string_ptr(charPtr)
+            }
+        }
+
+        exitCode = 0
+        when OSFFI.pclose != nil {
+            exitCode = os_call(OSFFI.pclose, "int", filePtr)
+        }
+        os_free(buf)
+
+        ok = (exitCode == 0)
+        when opts["check"] == true and not ok {
+            raise_process("Process exited with code " + str(exitCode), str(cmd), exitCode)
+        }
+
+        give {
+            "ok": ok,
+            "exitCode": exitCode,
+            "stdout": output,
+            "stderr": ""
+        }
+    }
+
+    task system(cmd) {
+        when OSFFI.system != nil {
+            give os_call(OSFFI.system, "int", str(cmd))
+        }
+        give -1
+    }
+
+    task exit(code = 0) {
+        when isNil(code) { code = 0 }
+        when OSFFI.exitProc != nil {
+            os_call(OSFFI.exitProc, "int", code)
+        }
+    }
+}

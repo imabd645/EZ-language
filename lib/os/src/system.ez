@@ -1,0 +1,313 @@
+// ============================================================================
+// ezos / system.ez -- Cross-platform platform, memory, CPU, and host identity
+// ============================================================================
+
+use "ffi.ez"
+use "process.ez"
+use "util.ez"
+
+export model OSSystem {
+    task platform() {
+        try {
+            give os()
+        } catch e {
+            give "windows"
+        }
+    }
+
+    task isWindows() { give self.platform() == "windows" }
+    task isMacOS()   { give self.platform() == "macos" }
+    task isLinux()   { give self.platform() == "linux" }
+    task isPosix()   { give self.platform() != "windows" }
+
+    task uptime() {
+        when OSFFI.isWindows and OSFFI.getTickCount64 != nil {
+            give os_call(OSFFI.getTickCount64, "int") / 1000.0
+        }
+        // Linux / POSIX uptime parsing
+        try {
+            when exists("/proc/uptime") {
+                content = readFile("/proc/uptime")
+                parts = split(trim(content), " ")
+                when len(parts) > 0 {
+                    give double(parts[0])
+                }
+            }
+        } catch e {}
+        give 0.0
+    }
+
+    task _readMemoryStatus() {
+        when OSFFI.isWindows and OSFFI.globalMemStatus != nil {
+            memInfo = os_alloc(64)
+            os_write_uint32(memInfo, 0, 64)
+            ok = os_call(OSFFI.globalMemStatus, "int", memInfo)
+            when ok == 0 {
+                os_free(memInfo)
+                give nil
+            }
+
+            loadPct = os_read_uint32(memInfo, 4)
+            total = os_read_uint64(memInfo, 8)
+            avail = os_read_uint64(memInfo, 16)
+            os_free(memInfo)
+
+            used = total - avail
+            give {
+                "total": total,
+                "free": avail,
+                "used": used,
+                "loadPercent": loadPct
+            }
+        }
+
+        // Linux /proc/meminfo parsing
+        try {
+            when exists("/proc/meminfo") {
+                content = readFile("/proc/meminfo")
+                lines = split(content, "\n")
+                totalKb = 0
+                availKb = 0
+                get line in lines {
+                    when startsWith(line, "MemTotal:") {
+                        parts = split(trim(substr(line, 9, len(line) - 9)), " ")
+                        totalKb = int(parts[0])
+                    } other when startsWith(line, "MemAvailable:") or startsWith(line, "MemFree:") {
+                        when availKb == 0 {
+                            parts = split(trim(substr(line, 13, len(line) - 13)), " ")
+                            availKb = int(parts[0])
+                        }
+                    }
+                }
+                totalBytes = totalKb * 1024
+                availBytes = availKb * 1024
+                usedBytes = totalBytes - availBytes
+                loadPct = 0
+                when totalBytes > 0 {
+                    loadPct = int((usedBytes * 100) / totalBytes)
+                }
+                give {
+                    "total": totalBytes,
+                    "free": availBytes,
+                    "used": usedBytes,
+                    "loadPercent": loadPct
+                }
+            }
+        } catch e {}
+
+        give {
+            "total": 0,
+            "free": 0,
+            "used": 0,
+            "loadPercent": 0
+        }
+    }
+
+    task totalMemory() {
+        m = self._readMemoryStatus()
+        when isNil(m) { give 0 }
+        give m["total"]
+    }
+
+    task freeMemory() {
+        m = self._readMemoryStatus()
+        when isNil(m) { give 0 }
+        give m["free"]
+    }
+
+    task memory() { give self._readMemoryStatus() }
+
+    task cwd() {
+        when OSFFI.isWindows and OSFFI.getCwd != nil {
+            buf = os_alloc(1024)
+            os_call(OSFFI.getCwd, "int", 1024, buf)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            give res
+        } other when OSFFI.posixGetCwd != nil {
+            buf = os_alloc(1024)
+            os_call(OSFFI.posixGetCwd, "ptr", buf, 1024)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            give res
+        }
+        give "."
+    }
+
+    task chdir(path) {
+        when OSFFI.isWindows and OSFFI.setCwd != nil {
+            give os_call(OSFFI.setCwd, "int", str(path)) != 0
+        } other when OSFFI.posixChdir != nil {
+            give os_call(OSFFI.posixChdir, "int", str(path)) == 0
+        }
+        give false
+    }
+
+    task sleep(ms) {
+        when OSFFI.isWindows and OSFFI.sleep != nil {
+            os_call(OSFFI.sleep, "int", ms)
+        } other when OSFFI.posixUsleep != nil {
+            os_call(OSFFI.posixUsleep, "int", ms * 1000)
+        } other {
+            try { wait(ms) } catch e {}
+        }
+    }
+
+    task cpuCores() {
+        when OSFFI.isWindows and OSFFI.getSystemInfo != nil {
+            sysInfo = os_alloc(64)
+            os_call(OSFFI.getSystemInfo, "void", sysInfo)
+            cores = os_read_uint32(sysInfo, 32)
+            os_free(sysInfo)
+            when cores > 0 { give cores }
+        }
+
+        // Linux /proc/cpuinfo or sysconf
+        when OSFFI.posixSysconf != nil {
+            // _SC_NPROCESSORS_ONLN = 84 on Linux, 58 on macOS
+            scVal = 84
+            when OSFFI.isMacOS { scVal = 58 }
+            cores = os_call(OSFFI.posixSysconf, "int", scVal)
+            when cores > 0 { give cores }
+        }
+
+        give 1
+    }
+
+    task arch() {
+        when OSFFI.isWindows and OSFFI.getNativeSystemInfo != nil {
+            sysInfo = os_alloc(64)
+            os_call(OSFFI.getNativeSystemInfo, "void", sysInfo)
+            archId = os_read_uint16(sysInfo, 0)
+            os_free(sysInfo)
+
+            when archId == 9 { give "x64" }
+            when archId == 0 { give "x86" }
+            when archId == 12 { give "arm64" }
+            when archId == 5 { give "arm" }
+        }
+
+        // Try uname on POSIX
+        try {
+            p = OSProcess()
+            res = p.run("uname -m", { "check": false })
+            when res["ok"] and len(res["stdout"]) > 0 {
+                m = trim(res["stdout"])
+                when m == "x86_64" or m == "amd64" { give "x64" }
+                when m == "aarch64" or m == "arm64" { give "arm64" }
+                when startsWith(m, "arm") { give "arm" }
+                when m == "i386" or m == "i686" { give "x86" }
+                give m
+            }
+        } catch e {}
+
+        give "unknown"
+    }
+
+    task pid() {
+        p = OSProcess()
+        give p.pid()
+    }
+
+    task userName() {
+        when OSFFI.isWindows and OSFFI.getUserName != nil {
+            buf = os_alloc(256)
+            sizeBuf = os_alloc(4)
+            os_write_uint32(sizeBuf, 0, 256)
+            os_call(OSFFI.getUserName, "int", buf, sizeBuf)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            os_free(sizeBuf)
+            when res != "" { give res }
+        }
+
+        // Fallback to environment variables
+        when OSFFI.getEnv != nil {
+            user = os_call(OSFFI.getEnv, "string", "USERNAME")
+            when user != "" { give user }
+            user = os_call(OSFFI.getEnv, "string", "USER")
+            when user != "" { give user }
+            user = os_call(OSFFI.getEnv, "string", "LOGNAME")
+            when user != "" { give user }
+        }
+
+        give "user"
+    }
+
+    task computerName() {
+        when OSFFI.isWindows and OSFFI.getComputerName != nil {
+            buf = os_alloc(256)
+            sizeBuf = os_alloc(4)
+            os_write_uint32(sizeBuf, 0, 256)
+            os_call(OSFFI.getComputerName, "int", buf, sizeBuf)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            os_free(sizeBuf)
+            when res != "" { give res }
+        } other when OSFFI.posixGetHostname != nil {
+            buf = os_alloc(256)
+            os_call(OSFFI.posixGetHostname, "int", buf, 256)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            when res != "" { give res }
+        }
+
+        // Fallback to environment
+        when OSFFI.getEnv != nil {
+            host = os_call(OSFFI.getEnv, "string", "COMPUTERNAME")
+            when host != "" { give host }
+            host = os_call(OSFFI.getEnv, "string", "HOSTNAME")
+            when host != "" { give host }
+        }
+
+        give "localhost"
+    }
+
+    task hostname() { give self.computerName() }
+
+    task executable() {
+        when OSFFI.isWindows and OSFFI.getModuleFileName != nil {
+            buf = os_alloc(1024)
+            os_call(OSFFI.getModuleFileName, "int", 0, buf, 1024)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            when res != "" { give res }
+        }
+        // Linux /proc/self/exe
+        try {
+            when exists("/proc/self/exe") {
+                give "/proc/self/exe"
+            }
+        } catch e {}
+        give "ez"
+    }
+
+    task version() {
+        when OSFFI.isWindows and OSFFI.rtlGetVersion != nil {
+            buf = os_alloc(284)
+            os_write_uint32(buf, 0, 284)
+            os_call(OSFFI.rtlGetVersion, "int", buf)
+
+            major = os_read_uint32(buf, 4)
+            minor = os_read_uint32(buf, 8)
+            build = os_read_uint32(buf, 12)
+            os_free(buf)
+
+            give {
+                "platform": "windows",
+                "major": major,
+                "minor": minor,
+                "build": build,
+                "release": str(major) + "." + str(minor) + "." + str(build)
+            }
+        }
+
+        give {
+            "platform": self.platform(),
+            "major": 1,
+            "minor": 0,
+            "build": 0,
+            "release": self.platform()
+        }
+    }
+}

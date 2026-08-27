@@ -1,0 +1,131 @@
+// ============================================================================
+// ezos / ffi.ez -- Cross-platform FFI binding layer (Windows + POSIX/Linux/macOS)
+// All os_load_lib / os_get_func / os_call usage lives here.
+// ============================================================================
+
+__os_name = "windows"
+try {
+    __os_name = os()
+} catch e {
+    __os_name = "windows"
+}
+
+__is_win = (__os_name == "windows")
+__is_mac = (__os_name == "macos")
+__is_linux = (__os_name == "linux" or __os_name == "posix")
+
+__k32 = nil
+__u32 = nil
+__msv = nil
+__s32 = nil
+__adv32 = nil
+__ntdll = nil
+__libc = nil
+
+when __is_win {
+    try { __k32 = os_load_lib("Kernel32.dll") } catch e {}
+    try { __u32 = os_load_lib("User32.dll") } catch e {}
+    try { __msv = os_load_lib("msvcrt.dll") } catch e {}
+    try { __s32 = os_load_lib("shell32.dll") } catch e {}
+    try { __adv32 = os_load_lib("Advapi32.dll") } catch e {}
+    try { __ntdll = os_load_lib("ntdll.dll") } catch e {}
+} other {
+    candidates = []
+    when __is_mac {
+        candidates = ["libSystem.B.dylib", "libc.dylib", "libc.so"]
+    } other {
+        candidates = ["libc.so.6", "libc.so", "libSystem.B.dylib", "libc.dylib"]
+    }
+
+    get cand in candidates {
+        try {
+            h = os_load_lib(cand)
+            when typeOf(h) != "nil" and h != 0 and h != nil {
+                __libc = h
+                escape
+            }
+        } catch e {}
+    }
+}
+
+task _safeFunc(libHandle, funcName) {
+    when typeOf(libHandle) == "nil" or libHandle == 0 or libHandle == nil {
+        give nil
+    }
+    try {
+        give os_get_func(libHandle, funcName)
+    } catch e {
+        give nil
+    }
+}
+
+// Shared across submodules in this package.
+export model OSFFI {
+    static isWindows = __is_win
+    static isMacOS = __is_mac
+    static isLinux = __is_linux
+    static osName = __os_name
+
+    // --- Windows Kernel32 Functions ---
+    static getTickCount64 = _safeFunc(__k32, "GetTickCount64")
+    static globalMemStatus = _safeFunc(__k32, "GlobalMemoryStatusEx")
+    static setEnvVar = _safeFunc(__k32, "SetEnvironmentVariableA")
+    static getEnvVar = _safeFunc(__k32, "GetEnvironmentVariableA")
+    static getEnvStrings = _safeFunc(__k32, "GetEnvironmentStringsA")
+    static freeEnvStrings = _safeFunc(__k32, "FreeEnvironmentStringsA")
+    static expandEnvStrings = _safeFunc(__k32, "ExpandEnvironmentStringsA")
+    static getCwd = _safeFunc(__k32, "GetCurrentDirectoryA")
+    static setCwd = _safeFunc(__k32, "SetCurrentDirectoryA")
+    static getTempPath = _safeFunc(__k32, "GetTempPathA")
+    static getModuleFileName = _safeFunc(__k32, "GetModuleFileNameA")
+    static getCurrentProcessId = _safeFunc(__k32, "GetCurrentProcessId")
+    static globalAlloc = _safeFunc(__k32, "GlobalAlloc")
+    static globalLock = _safeFunc(__k32, "GlobalLock")
+    static globalUnlock = _safeFunc(__k32, "GlobalUnlock")
+    static sleep = _safeFunc(__k32, "Sleep")
+    static getSystemInfo = _safeFunc(__k32, "GetSystemInfo")
+    static getNativeSystemInfo = _safeFunc(__k32, "GetNativeSystemInfo")
+    static getComputerName = _safeFunc(__k32, "GetComputerNameA")
+    static getVersionEx = _safeFunc(__k32, "GetVersionExA")
+
+    // --- CRT (msvcrt on Windows, libc on POSIX) ---
+    static getEnv = when __is_win { give _safeFunc(__msv, "getenv") } other { give _safeFunc(__libc, "getenv") }
+    static putEnv = _safeFunc(__msv, "_putenv_s")
+    static setEnv = _safeFunc(__libc, "setenv")
+    static unsetEnv = _safeFunc(__libc, "unsetenv")
+    static system = when __is_win { give _safeFunc(__msv, "system") } other { give _safeFunc(__libc, "system") }
+    static exitProc = when __is_win { give _safeFunc(__msv, "exit") } other { give _safeFunc(__libc, "exit") }
+    static popen = when __is_win { give _safeFunc(__msv, "_popen") } other { give _safeFunc(__libc, "popen") }
+    static pclose = when __is_win { give _safeFunc(__msv, "_pclose") } other { give _safeFunc(__libc, "pclose") }
+    static fgets = when __is_win { give _safeFunc(__msv, "fgets") } other { give _safeFunc(__libc, "fgets") }
+    static feof = when __is_win { give _safeFunc(__msv, "feof") } other { give _safeFunc(__libc, "feof") }
+
+    // --- POSIX specific functions ---
+    static posixGetCwd = _safeFunc(__libc, "getcwd")
+    static posixChdir = _safeFunc(__libc, "chdir")
+    static posixGetPid = _safeFunc(__libc, "getpid")
+    static posixUsleep = _safeFunc(__libc, "usleep")
+    static posixGetHostname = _safeFunc(__libc, "gethostname")
+    static posixSysconf = _safeFunc(__libc, "sysconf")
+
+    // --- User32 (Windows Clipboard) ---
+    static openClipboard = _safeFunc(__u32, "OpenClipboard")
+    static closeClipboard = _safeFunc(__u32, "CloseClipboard")
+    static emptyClipboard = _safeFunc(__u32, "EmptyClipboard")
+    static getClipboardData = _safeFunc(__u32, "GetClipboardData")
+    static setClipboardData = _safeFunc(__u32, "SetClipboardData")
+
+    // --- Shell32 ---
+    static shellExec = _safeFunc(__s32, "ShellExecuteA")
+
+    // --- Advapi32 ---
+    static getUserName = _safeFunc(__adv32, "GetUserNameA")
+
+    // --- ntdll ---
+    static rtlGetVersion = _safeFunc(__ntdll, "RtlGetVersion")
+}
+
+export PATH_SEP = when __is_win { give "\\" } other { give "/" }
+export GMEM_MOVEABLE = 2
+export CF_TEXT = 1
+export SW_SHOWNORMAL = 1

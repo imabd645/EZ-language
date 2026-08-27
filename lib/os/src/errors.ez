@@ -1,0 +1,51 @@
+// ============================================================================
+// ezos / errors.ez -- Standard exception models for OS operations
+// ============================================================================
+
+export model OSError {
+    task init(message, code = 0) {
+        self.message = str(message)
+        self.code = code
+    }
+
+    task toString() {
+        when self.code != 0 {
+            give "OSError [" + str(self.code) + "]: " + self.message
+        }
+        give "OSError: " + self.message
+    }
+}
+
+export model EnvError < OSError {
+    task init(message, key = "") {
+        super.init(message)
+        self.key = str(key)
+    }
+
+    task toString() {
+        when self.key != "" {
+            give "EnvError ('" + self.key + "'): " + self.message
+        }
+        give "EnvError: " + self.message
+    }
+}
+
+export model ProcessError < OSError {
+    task init(message, command = "", exitCode = 1) {
+        super.init(message, exitCode)
+        self.command = str(command)
+        self.exitCode = exitCode
+    }
+
+    task toString() {
+        give "ProcessError (exit " + str(self.exitCode) + "): " + self.message + " [cmd: " + self.command + "]"
+    }
+}
+
+export task raise_env(msg, key = "") {
+    throw EnvError(msg, key)
+}
+
+export task raise_process(msg, cmd = "", code = 1) {
+    throw ProcessError(msg, cmd, code)
+}

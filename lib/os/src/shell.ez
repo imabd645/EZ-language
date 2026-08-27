@@ -1,0 +1,58 @@
+// ============================================================================
+// ezos / shell.ez -- Cross-platform file, directory, and URL launcher
+// ============================================================================
+
+use "ffi.ez"
+use "process.ez"
+
+export model OSShell {
+    init() {
+        self._proc = OSProcess()
+    }
+
+    task open(target) {
+        t = str(target)
+        when OSFFI.isWindows and OSFFI.shellExec != nil {
+            rc = os_call(OSFFI.shellExec, "int", 0, "open", t, 0, 0, SW_SHOWNORMAL)
+            give rc > 32
+        } other when OSFFI.isMacOS {
+            res = self._proc.run("open \"" + t + "\"", { "check": false })
+            give res["ok"]
+        } other {
+            res = self._proc.run("xdg-open \"" + t + "\"", { "check": false })
+            give res["ok"]
+        }
+    }
+
+    task explore(path) {
+        p = str(path)
+        when OSFFI.isWindows and OSFFI.shellExec != nil {
+            rc = os_call(OSFFI.shellExec, "int", 0, "explore", p, 0, 0, SW_SHOWNORMAL)
+            give rc > 32
+        } other when OSFFI.isMacOS {
+            res = self._proc.run("open \"" + p + "\"", { "check": false })
+            give res["ok"]
+        } other {
+            res = self._proc.run("xdg-open \"" + p + "\"", { "check": false })
+            give res["ok"]
+        }
+    }
+
+    // Reveal/select a file in system file manager (Explorer / Finder / Nautilus)
+    task reveal(filePath) {
+        p = str(filePath)
+        when OSFFI.isWindows {
+            when OSFFI.shellExec != nil {
+                cmd = "explorer /select,\"" + p + "\""
+                give os_call(OSFFI.shellExec, "int", 0, "open", cmd, 0, 0, SW_SHOWNORMAL) > 32
+            }
+        } other when OSFFI.isMacOS {
+            res = self._proc.run("open -R \"" + p + "\"", { "check": false })
+            give res["ok"]
+        } other {
+            res = self._proc.run("xdg-open \"" + p + "\"", { "check": false })
+            give res["ok"]
+        }
+        give false
+    }
+}

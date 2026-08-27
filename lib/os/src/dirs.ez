@@ -1,0 +1,84 @@
+// ============================================================================
+// ezos / dirs.ez -- Cross-platform well-known system directories
+// ============================================================================
+
+use "ffi.ez"
+use "env.ez"
+use "path.ez"
+use "util.ez"
+
+export model OSDirs {
+    init() {
+        self._env = OSEnv()
+        self._path = OSPath()
+    }
+
+    task fromEnv(keys, fallback = nil) {
+        get k in keys {
+            val = self._env.get(k)
+            when not isNil(val) and val != "" { give val }
+        }
+        give fallback
+    }
+
+    task home() {
+        when OSFFI.isWindows {
+            give self.fromEnv(["USERPROFILE", "HOME"], "C:\\Users\\Default")
+        } other {
+            give self.fromEnv(["HOME"], "/home")
+        }
+    }
+
+    task temp() {
+        when OSFFI.isWindows and OSFFI.getTempPath != nil {
+            buf = os_alloc(260)
+            n = os_call(OSFFI.getTempPath, "int", 260, buf)
+            when n > 0 and n <= 260 {
+                output = os_read_string_ptr(buf)
+                os_free(buf)
+                give output
+            }
+            os_free(buf)
+            give self.fromEnv(["TEMP", "TMP"], "C:\\Windows\\Temp")
+        } other {
+            give self.fromEnv(["TMPDIR", "TMP", "TEMP"], "/tmp")
+        }
+    }
+
+    task userProfile() { give self.home() }
+
+    task appData() {
+        when OSFFI.isWindows {
+            give self.fromEnv(["APPDATA"], self._path.join(self.home(), "AppData\\Roaming"))
+        } other {
+            give self.fromEnv(["XDG_CONFIG_HOME"], self._path.join(self.home(), ".config"))
+        }
+    }
+
+    task localAppData() {
+        when OSFFI.isWindows {
+            give self.fromEnv(["LOCALAPPDATA"], self._path.join(self.home(), "AppData\\Local"))
+        } other {
+            give self.fromEnv(["XDG_DATA_HOME"], self._path.join(self.home(), ".local/share"))
+        }
+    }
+
+    task config() {
+        give self.appData()
+    }
+
+    task programFiles() {
+        when OSFFI.isWindows {
+            give self.fromEnv(["ProgramFiles"], "C:\\Program Files")
+        } other {
+            give "/usr/bin"
+        }
+    }
+
+    task desktop() { give self._path.join(self.home(), "Desktop") }
+    task documents() { give self._path.join(self.home(), "Documents") }
+    task downloads() { give self._path.join(self.home(), "Downloads") }
+    task music() { give self._path.join(self.home(), "Music") }
+    task pictures() { give self._path.join(self.home(), "Pictures") }
+    task videos() { give self._path.join(self.home(), "Videos") }
+}

@@ -1,0 +1,7 @@
+{
+    "name": "os",
+    "version": "2.0.0",
+    "description": "Cross-platform operating system utilities for EZ (Windows, Linux, macOS)",
+    "entry": "main.ez",
+    "dependencies": {}
+}

@@ -1,0 +1,71 @@
+// ============================================================================
+// Test Cross-Platform OS Package
+// ============================================================================
+
+use "os"
+
+passed = 0
+failed = 0
+
+task check(name, cond) {
+    when cond {
+        passed = passed + 1
+        out "[PASS] " + name
+    } other {
+        failed = failed + 1
+        out "[FAIL] " + name
+    }
+}
+
+out "=== Cross-Platform OS Smoke Tests ==="
+
+out "Platform: " + os.platform()
+check("platform is non-empty", len(os.platform()) > 0)
+check("isWindows or isPosix", os.isWindows() or os.isPosix())
+
+out "CWD: " + os.cwd()
+check("cwd is non-empty", len(os.cwd()) > 0)
+
+out "CPU Cores: " + str(os.cpuCores())
+check("cpuCores >= 1", os.cpuCores() >= 1)
+
+out "Arch: " + os.arch()
+check("arch is known", os.arch() != "unknown")
+
+out "Total Memory: " + str(os.totalMemory())
+check("totalMemory > 0", os.totalMemory() > 0)
+
+out "PID: " + str(os.pid())
+check("pid > 0", os.pid() > 0)
+
+out "User Name: " + os.userName()
+check("userName non-empty", len(os.userName()) > 0)
+
+out "Host Name: " + os.hostname()
+check("hostname non-empty", len(os.hostname()) > 0)
+
+out "Home Dir: " + os.homedir()
+check("homedir non-empty", len(os.homedir()) > 0)
+
+out "Temp Dir: " + os.tmpdir()
+check("tmpdir non-empty", len(os.tmpdir()) > 0)
+
+// Path tests
+out "Path Sep: " + os.path.sep()
+check("path join", len(os.path.join("a", "b")) > 0)
+check("path extname", os.path.extname("archive.tar.gz") == ".gz")
+check("path stem", os.path.stem("test.ez") == "test")
+
+// Environment tests
+os.env.set("EZ_TEST_CROSS_VAR", "antigravity_123")
+check("env set/get", os.env.get("EZ_TEST_CROSS_VAR") == "antigravity_123")
+check("env has", os.env.has("EZ_TEST_CROSS_VAR") == true)
+os.env.unset("EZ_TEST_CROSS_VAR")
+check("env unset", os.env.has("EZ_TEST_CROSS_VAR") == false)
+
+// Process tests
+runRes = os.process.run("echo ezos_test", { "check": false })
+check("process run", runRes["ok"] and indexOf(runRes["stdout"], "ezos_test") != -1)
+
+out "=== Test Results: " + str(passed) + " passed, " + str(failed) + " failed ==="
+when failed > 0 { os.process.exit(1) }

@@ -1,0 +1,93 @@
+// ============================================================================
+// ezos / clipboard.ez -- Cross-platform system clipboard support
+// ============================================================================
+
+use "ffi.ez"
+use "process.ez"
+
+export model OSClipboard {
+    init() {
+        self._proc = OSProcess()
+    }
+
+    task read() {
+        when OSFFI.isWindows and OSFFI.openClipboard != nil {
+            opened = os_call(OSFFI.openClipboard, "int", 0)
+            when opened == 0 { give "" }
+
+            hData = os_call(OSFFI.getClipboardData, "ptr", CF_TEXT)
+            when hData == 0 {
+                os_call(OSFFI.closeClipboard, "int")
+                give ""
+            }
+
+            ptr = os_call(OSFFI.globalLock, "ptr", hData)
+            when ptr == 0 {
+                os_call(OSFFI.closeClipboard, "int")
+                give ""
+            }
+
+            text = os_read_string_ptr(ptr)
+            os_call(OSFFI.globalUnlock, "int", hData)
+            os_call(OSFFI.closeClipboard, "int")
+            give text
+        } other when OSFFI.isMacOS {
+            // macOS pbpaste
+            try {
+                res = self._proc.run("pbpaste", { "check": false })
+                when res["ok"] { give res["stdout"] }
+            } catch e {}
+        } other {
+            // Linux xclip / wl-paste
+            try {
+                res = self._proc.run("wl-paste", { "check": false })
+                when res["ok"] { give res["stdout"] }
+            } catch e {}
+            try {
+                res = self._proc.run("xclip -selection clipboard -o", { "check": false })
+                when res["ok"] { give res["stdout"] }
+            } catch e {}
+        }
+        give ""
+    }
+
+    task write(text) {
+        textStr = str(text)
+        when OSFFI.isWindows and OSFFI.openClipboard != nil {
+            l = len(textStr)
+            hMem = os_call(OSFFI.globalAlloc, "ptr", GMEM_MOVEABLE, l + 1)
+            when hMem == 0 { give false }
+
+            ptr = os_call(OSFFI.globalLock, "ptr", hMem)
+            when ptr == 0 { give false }
+
+            os_write_string(ptr, 0, textStr)
+            os_call(OSFFI.globalUnlock, "int", hMem)
+
+            opened = os_call(OSFFI.openClipboard, "int", 0)
+            when opened == 0 { give false }
+
+            os_call(OSFFI.emptyClipboard, "int")
+            os_call(OSFFI.setClipboardData, "ptr", CF_TEXT, hMem)
+            os_call(OSFFI.closeClipboard, "int")
+            give true
+        } other when OSFFI.isMacOS {
+            try {
+                res = self._proc.run("printf \"%s\" \"" + textStr + "\" | pbcopy", { "check": false })
+                give res["ok"]
+            } catch e {}
+        } other {
+            try {
+                res = self._proc.run("printf \"%s\" \"" + textStr + "\" | wl-copy", { "check": false })
+                when res["ok"] { give true }
+            } catch e {}
+            try {
+                res = self._proc.run("printf \"%s\" \"" + textStr + "\" | xclip -selection clipboard", { "check": false })
+                when res["ok"] { give true }
+            } catch e {}
+        }
+        give false
+    }
+
+    task clear() { give self.write("") }
+}

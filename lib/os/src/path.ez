@@ -1,0 +1,116 @@
+// ============================================================================
+// ezos / path.ez -- Cross-platform path manipulation utilities
+// ============================================================================
+
+use "ffi.ez"
+use "util.ez"
+
+export model OSPath {
+    task sep() { give PATH_SEP }
+
+    task join(p1, p2) {
+        give self.joinAll([p1, p2])
+    }
+
+    task joinAll(parts) {
+        when len(parts) == 0 { give "" }
+
+        sep = self.sep()
+        res = normalizeSeparators(str(parts[0]), sep)
+        repeat i = 1 to len(parts) - 1 {
+            seg = normalizeSeparators(str(parts[i]), sep)
+            when seg != "" {
+                when self.isAbsolute(seg) {
+                    res = seg
+                } other when endsWith(res, sep) {
+                    res = res + seg
+                } other when endsWith(res, ":") {
+                    res = res + sep + seg
+                } other {
+                    res = res + sep + seg
+                }
+            }
+        }
+
+        give collapseSeparators(res, sep)
+    }
+
+    task isAbsolute(p) {
+        p = str(p)
+        when OSFFI.isWindows {
+            when len(p) >= 2 and substr(p, 1, 1) == ":" { give true }
+            when startsWith(p, "\\\\") { give true }
+            when startsWith(p, "/") or startsWith(p, "\\") { give true }
+            give false
+        } other {
+            give startsWith(p, "/")
+        }
+    }
+
+    task isRelative(p) { give not self.isAbsolute(p) }
+
+    task basename(p) {
+        p = collapseSeparators(str(p), self.sep())
+        parts = split(p, self.sep())
+        give parts[len(parts) - 1]
+    }
+
+    task dirname(p) {
+        p = collapseSeparators(str(p), self.sep())
+        parts = split(p, self.sep())
+        when len(parts) <= 1 { give "" }
+
+        res = parts[0]
+        repeat i = 1 to len(parts) - 2 {
+            res = res + self.sep() + parts[i]
+        }
+        give res
+    }
+
+    task extname(p) {
+        base = self.basename(p)
+        dot = indexOf(base, ".")
+        when dot == -1 { give "" }
+        give substr(base, dot, len(base) - dot)
+    }
+
+    task stem(p) {
+        base = self.basename(p)
+        dot = indexOf(base, ".")
+        when dot == -1 { give base }
+        give substr(base, 0, dot)
+    }
+
+    task normalize(p) {
+        give collapseSeparators(str(p), self.sep())
+    }
+
+    // Resolve relative paths against a base directory (defaults to cwd).
+    task resolve(p, base = nil) {
+        p = self.normalize(p)
+        when self.isAbsolute(p) { give p }
+
+        when isNil(base) or base == "" {
+            base = self._getCwd()
+        }
+
+        give self.join(str(base), p)
+    }
+
+    task _getCwd() {
+        when OSFFI.isWindows and OSFFI.getCwd != nil {
+            buf = os_alloc(1024)
+            os_call(OSFFI.getCwd, "int", 1024, buf)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            give res
+        } other when OSFFI.posixGetCwd != nil {
+            buf = os_alloc(1024)
+            os_call(OSFFI.posixGetCwd, "ptr", buf, 1024)
+            res = os_read_string_ptr(buf)
+            os_free(buf)
+            give res
+        }
+        give "."
+    }
+}

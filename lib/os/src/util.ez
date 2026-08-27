@@ -1,0 +1,116 @@
+// ============================================================================
+// ezos / util.ez -- Cross-platform string, path, and environment utilities
+// ============================================================================
+
+export task isNil(v) {
+    give typeOf(v) == "nil" or v == nil
+}
+
+export task isBlank(s) {
+    when isNil(s) { give true }
+    give trim(str(s)) == ""
+}
+
+export task startsWith(s, prefix) {
+    s = str(s)
+    prefix = str(prefix)
+    when len(prefix) > len(s) { give false }
+    give substr(s, 0, len(prefix)) == prefix
+}
+
+export task endsWith(s, suffix) {
+    s = str(s)
+    suffix = str(suffix)
+    when len(suffix) > len(s) { give false }
+    give substr(s, len(s) - len(suffix), len(suffix)) == suffix
+}
+
+export task stripQuotes(s) {
+    s = trim(str(s))
+    when len(s) >= 2 {
+        first = substr(s, 0, 1)
+        last = substr(s, len(s) - 1, 1)
+        when (first == "\"" and last == "\"") or (first == "'" and last == "'") {
+            give substr(s, 1, len(s) - 2)
+        }
+    }
+    give s
+}
+
+// Split KEY=VALUE respecting quotes and inline comments
+export task parseEnvLine(line) {
+    line = trim(line)
+    when isBlank(line) { give nil }
+    when startsWith(line, "#") or startsWith(line, "//") { give nil }
+
+    when startsWith(line, "export ") {
+        line = trim(substr(line, 7, len(line) - 7))
+    }
+
+    eq = indexOf(line, "=")
+    when eq == -1 { give nil }
+
+    key = trim(substr(line, 0, eq))
+    val = trim(substr(line, eq + 1, len(line) - eq - 1))
+    when isBlank(key) { give nil }
+
+    val = stripQuotes(val)
+
+    when indexOf(val, "#") != -1 and not endsWith(stripQuotes(val), "\"") {
+        hash = indexOf(val, " #")
+        when hash != -1 { val = trim(substr(val, 0, hash)) }
+    }
+
+    cr = indexOf(val, "\r")
+    when cr != -1 { val = substr(val, 0, cr) }
+
+    give { "key": key, "value": val }
+}
+
+export task normalizeSeparators(p, targetSep = nil) {
+    when isNil(targetSep) {
+        try {
+            when os() == "windows" { targetSep = "\\" } other { targetSep = "/" }
+        } catch e {
+            targetSep = "\\"
+        }
+    }
+    p = str(p)
+    output = ""
+    i = 0
+    while i < len(p) {
+        ch = substr(p, i, 1)
+        when ch == "/" or ch == "\\" {
+            output = output + targetSep
+        } other {
+            output = output + ch
+        }
+        i = i + 1
+    }
+    give output
+}
+
+export task collapseSeparators(p, sep = nil) {
+    when isNil(sep) {
+        try {
+            when os() == "windows" { sep = "\\" } other { sep = "/" }
+        } catch e {
+            sep = "\\"
+        }
+    }
+    p = normalizeSeparators(p, sep)
+    doubleSep = sep + sep
+    while indexOf(p, doubleSep) != -1 {
+        // Keep leading UNC path \\server\share on Windows
+        when startsWith(p, "\\\\") and sep == "\\" and indexOf(substr(p, 2, len(p) - 2), "\\\\") == -1 {
+            escape
+        }
+        p = replace(p, doubleSep, sep)
+    }
+    give p
+}
+
+export task ensureDict(opts) {
+    when typeOf(opts) == "dictionary" { give opts }
+    give {}
+}

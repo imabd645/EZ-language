@@ -1,0 +1,69 @@
+// ============================================================================
+// ezos -- Cross-Platform System Utilities for EZ Language (v2.0)
+// Supports Windows, Linux, and macOS
+//
+//   use "os"
+//
+// Modular layout:
+//   src/ffi.ez        Cross-platform FFI binding layer
+//   src/env.ez        Environment variables + .env loader
+//   src/path.ez       Cross-platform path join/normalize/resolve
+//   src/process.ez    Subprocess execution
+//   src/clipboard.ez  Clipboard read/write
+//   src/shell.ez      Open files, folders, URLs
+//   src/system.ez     Platform, memory, CPU, version
+//   src/dirs.ez       Known folders (home, temp, appdata, config, ...)
+//   src/errors.ez     OSError / EnvError / ProcessError
+//   src/util.ez       Shared helpers
+// ============================================================================
+
+use "src/errors.ez"
+use "src/env.ez"
+use "src/path.ez"
+use "src/process.ez"
+use "src/clipboard.ez"
+use "src/shell.ez"
+use "src/system.ez"
+use "src/dirs.ez"
+
+export model OS {
+    init() {
+        self.env = OSEnv()
+        self.path = OSPath()
+        self.process = OSProcess()
+        self.clipboard = OSClipboard()
+        self.shell = OSShell()
+        self.dirs = OSDirs()
+        self._sys = OSSystem()
+    }
+
+    // --- Core Platform API ---
+    task platform() { give self._sys.platform() }
+    task isWindows() { give self._sys.isWindows() }
+    task isMacOS() { give self._sys.isMacOS() }
+    task isLinux() { give self._sys.isLinux() }
+    task isPosix() { give self._sys.isPosix() }
+
+    // --- System & Hardware Info ---
+    task uptime() { give self._sys.uptime() }
+    task totalMemory() { give self._sys.totalMemory() }
+    task freeMemory() { give self._sys.freeMemory() }
+    task memory() { give self._sys.memory() }
+    task cpuCores() { give self._sys.cpuCores() }
+    task arch() { give self._sys.arch() }
+    task pid() { give self._sys.pid() }
+    task userName() { give self._sys.userName() }
+    task computerName() { give self._sys.computerName() }
+    task hostname() { give self._sys.hostname() }
+    task executable() { give self._sys.executable() }
+    task version() { give self._sys.version() }
+
+    // --- Filesystem & Directories ---
+    task cwd() { give self._sys.cwd() }
+    task chdir(path) { give self._sys.chdir(path) }
+    task sleep(ms) { self._sys.sleep(ms) }
+    task homedir() { give self.dirs.home() }
+    task tmpdir() { give self.dirs.temp() }
+}
+
+export os = OS()

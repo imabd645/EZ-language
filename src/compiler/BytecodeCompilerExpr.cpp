@@ -153,52 +153,47 @@ void BytecodeCompiler::compileBinary(const BinaryExpr& expr) {
     }
 
     Constant leftConst, rightConst;
-    if (isConstant(expr.left, leftConst) && isConstant(expr.right, rightConst)) {
-        if (leftConst.type == Constant::Type::INT && rightConst.type == Constant::Type::INT) {
-            long long l = std::get<long long>(leftConst.value);
+    bool hasLeftConst = isConstant(expr.left, leftConst);
+    bool hasRightConst = isConstant(expr.right, rightConst);
+
+    if (hasLeftConst && hasRightConst) {
+        BinaryExpr bin(expr.left, expr.op, expr.right);
+        Expr tempExpr(0, 0, 0, "", &bin);
+        Constant folded;
+        if (isConstant(&tempExpr, folded)) {
+            emitConstant(folded);
+            return;
+        }
+    }
+
+    // Algebraic Simplifications (Identity Reductions)
+    if (hasRightConst) {
+        if (rightConst.type == Constant::Type::INT) {
             long long r = std::get<long long>(rightConst.value);
-            // A folded expression MUST produce what the VM would produce for the
-            // same operands (see utils/WrapArith.h). Plain l+r / l-r / l*r was
-            // signed-overflow UB where the VM wraps, and `l / r` was C++ integer
-            // division where the VM promotes to double unless the division is
-            // exact -- so `5 / 2` compiled to 2 while `a / b` gave 2.5.
-            switch (expr.op) {
-                case TokenType::PLUS:  emitConstant(Constant(ezarith::wrapAdd(l, r))); return;
-                case TokenType::MINUS: emitConstant(Constant(ezarith::wrapSub(l, r))); return;
-                case TokenType::STAR:  emitConstant(Constant(ezarith::wrapMul(l, r))); return;
-                case TokenType::STAR_STAR: {
-                    if (r >= 0) {
-                        long long base = l, exp = r, result = 1;
-                        while (exp > 0) {
-                            if (exp % 2 == 1) result = ezarith::wrapMul(result, base);
-                            exp /= 2;
-                            if (exp > 0) base = ezarith::wrapMul(base, base);
-                        }
-                        emitConstant(Constant(result)); return;
-                    }
-                    break;
-                }
-                case TokenType::SLASH:
-                    // Leave the UB cases (÷0, LLONG_MIN / -1) unfolded so the VM
-                    // reports them at runtime.
-                    if (!ezarith::divIsUB(l, r)) {
-                        if (ezarith::divIsExact(l, r)) emitConstant(Constant(l / r));
-                        else emitConstant(Constant(static_cast<double>(l) / static_cast<double>(r)));
-                        return;
-                    }
-                    break;
-                default: break;
+            if (expr.op == TokenType::PLUS && r == 0) {
+                compileExpr(expr.left);
+                return;
             }
-        } else if (leftConst.type == Constant::Type::DOUBLE || rightConst.type == Constant::Type::DOUBLE) {
-            double l = leftConst.type == Constant::Type::INT ? std::get<long long>(leftConst.value) : std::get<double>(leftConst.value);
-            double r = rightConst.type == Constant::Type::INT ? std::get<long long>(rightConst.value) : std::get<double>(rightConst.value);
-            switch (expr.op) {
-                case TokenType::PLUS: emitConstant(Constant(l + r)); return;
-                case TokenType::MINUS: emitConstant(Constant(l - r)); return;
-                case TokenType::STAR: emitConstant(Constant(l * r)); return;
-                case TokenType::STAR_STAR: emitConstant(Constant(std::pow(l, r))); return;
-                case TokenType::SLASH: if (r != 0.0) { emitConstant(Constant(l / r)); return; } break;
-                default: break;
+            if (expr.op == TokenType::MINUS && r == 0) {
+                compileExpr(expr.left);
+                return;
+            }
+            if (expr.op == TokenType::STAR && r == 1) {
+                compileExpr(expr.left);
+                return;
+            }
+        }
+    }
+    if (hasLeftConst) {
+        if (leftConst.type == Constant::Type::INT) {
+            long long l = std::get<long long>(leftConst.value);
+            if (expr.op == TokenType::PLUS && l == 0) {
+                compileExpr(expr.right);
+                return;
+            }
+            if (expr.op == TokenType::STAR && l == 1) {
+                compileExpr(expr.right);
+                return;
             }
         }
     }
@@ -255,21 +250,19 @@ void BytecodeCompiler::compileLogicalShortCircuit(const BinaryExpr& expr) {
 void BytecodeCompiler::compileUnary(const UnaryExpr& expr) {
     Constant operandConst;
     if (isConstant(expr.operand, operandConst)) {
-        if (expr.op == TokenType::MINUS) {
-            if (operandConst.type == Constant::Type::INT) {
-                // wrapNeg matches the VM's doNegate; plain -x was UB for LLONG_MIN.
-                emitConstant(Constant(ezarith::wrapNeg(std::get<long long>(operandConst.value))));
-                return;
-            } else if (operandConst.type == Constant::Type::DOUBLE) {
-                emitConstant(Constant(-std::get<double>(operandConst.value)));
-                return;
-            }
+        UnaryExpr un(expr.op, expr.operand);
+        Expr tempExpr(0, 0, 0, "", &un);
+        Constant folded;
+        if (isConstant(&tempExpr, folded)) {
+            emitConstant(folded);
+            return;
         }
     }
     compileExpr(expr.operand);
     switch (expr.op) {
         case TokenType::MINUS: emitOp(OpCode::NEGATE);  break;
-        case TokenType::NOT:   emitOp(OpCode::NOT);     break;
+        case TokenType::NOT:
+        case TokenType::BANG:  emitOp(OpCode::NOT);     break;
         case TokenType::TILDE: emitOp(OpCode::BIT_NOT); break;
         default: errorAt("Unknown unary operator", currentLine);
     }
@@ -405,6 +398,45 @@ void BytecodeCompiler::compileCall(const CallExpr& expr) {
                 emitByte(static_cast<uint8_t>(expr.arguments.size()));
                 recordCallSite(calleeDisplayName(expr.callee));
                 return;
+            }
+        }
+
+        // Pure builtin constant folding (len, ord, chr, str)
+        if (expr.callee && std::holds_alternative<IdentifierExpr*>(expr.callee->variant)) {
+            auto id = std::get<IdentifierExpr*>(expr.callee->variant);
+            if (resolveLocal(id->name) == -1 && resolveUpvalue(id->name) == -1 && globalSlots.count(id->name) == 0) {
+                if (id->name == "len" && expr.arguments.size() == 1) {
+                    Constant argConst;
+                    if (isConstant(expr.arguments[0], argConst) && argConst.type == Constant::Type::STRING) {
+                        emitConstant(Constant(static_cast<long long>(std::get<std::string>(argConst.value).size())));
+                        return;
+                    }
+                } else if (id->name == "ord" && expr.arguments.size() == 1) {
+                    Constant argConst;
+                    if (isConstant(expr.arguments[0], argConst) && argConst.type == Constant::Type::STRING) {
+                        const auto& s = std::get<std::string>(argConst.value);
+                        if (!s.empty()) {
+                            emitConstant(Constant(static_cast<long long>(static_cast<unsigned char>(s[0]))));
+                            return;
+                        }
+                    }
+                } else if (id->name == "chr" && expr.arguments.size() == 1) {
+                    Constant argConst;
+                    if (isConstant(expr.arguments[0], argConst) && argConst.type == Constant::Type::INT) {
+                        long long code = std::get<long long>(argConst.value);
+                        if (code >= 0 && code <= 255) {
+                            std::string res(1, static_cast<char>(code));
+                            emitConstant(Constant(res));
+                            return;
+                        }
+                    }
+                } else if (id->name == "str" && expr.arguments.size() == 1) {
+                    Constant argConst;
+                    if (isConstant(expr.arguments[0], argConst)) {
+                        emitConstant(Constant(constantToString(argConst)));
+                        return;
+                    }
+                }
             }
         }
 

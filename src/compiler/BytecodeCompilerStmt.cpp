@@ -186,6 +186,16 @@ void BytecodeCompiler::compileBlock(const BlockStmt& stmt) {
 }
 
 void BytecodeCompiler::compileWhen(const WhenStmt& stmt) {
+    Constant condConst;
+    if (isConstant(stmt.condition, condConst)) {
+        if (isConstantTruthy(condConst)) {
+            compileStmt(stmt.thenBranch);
+        } else if (stmt.elseBranch) {
+            compileStmt(stmt.elseBranch);
+        }
+        return;
+    }
+
     compileExpr(stmt.condition);
     size_t elseJump = emitJump(OpCode::JUMP_IF_FALSE);
 
@@ -202,6 +212,14 @@ void BytecodeCompiler::compileWhen(const WhenStmt& stmt) {
 }
 
 void BytecodeCompiler::compileWhile(const WhileStmt& stmt) {
+    Constant condConst;
+    if (isConstant(stmt.condition, condConst)) {
+        if (!isConstantTruthy(condConst)) {
+            // Constant false: body will never run, prune entire while loop
+            return;
+        }
+    }
+
     startLoop();
     size_t loopStart = currentChunk().code.size();
     loopStack.back().start = loopStart;
@@ -2102,6 +2120,55 @@ void BytecodeCompiler::errorAt(const std::string& message, int line) {
 // Loop Handling
 // ============================================================================
 
+bool BytecodeCompiler::isConstantTruthy(const Constant& c) {
+    switch (c.type) {
+        case Constant::Type::NIL: return false;
+        case Constant::Type::BOOL: return std::get<bool>(c.value);
+        case Constant::Type::INT: return std::get<long long>(c.value) != 0;
+        case Constant::Type::DOUBLE: return std::get<double>(c.value) != 0.0;
+        case Constant::Type::STRING: return !std::get<std::string>(c.value).empty();
+        default: return true;
+    }
+}
+
+std::string BytecodeCompiler::constantToString(const Constant& c) {
+    switch (c.type) {
+        case Constant::Type::NIL: return "nil";
+        case Constant::Type::BOOL: return std::get<bool>(c.value) ? "true" : "false";
+        case Constant::Type::INT: return std::to_string(std::get<long long>(c.value));
+        case Constant::Type::DOUBLE: {
+            std::string s = std::to_string(std::get<double>(c.value));
+            if (s.find('.') != std::string::npos) {
+                s.erase(s.find_last_not_of('0') + 1, std::string::npos);
+                if (s.back() == '.') s.pop_back();
+            }
+            return s;
+        }
+        case Constant::Type::STRING: return std::get<std::string>(c.value);
+        default: return "";
+    }
+}
+
+bool BytecodeCompiler::constantEquals(const Constant& a, const Constant& b) {
+    if (a.type != b.type) {
+        if (a.type == Constant::Type::INT && b.type == Constant::Type::DOUBLE) {
+            return static_cast<double>(std::get<long long>(a.value)) == std::get<double>(b.value);
+        }
+        if (a.type == Constant::Type::DOUBLE && b.type == Constant::Type::INT) {
+            return std::get<double>(a.value) == static_cast<double>(std::get<long long>(b.value));
+        }
+        return false;
+    }
+    switch (a.type) {
+        case Constant::Type::NIL: return true;
+        case Constant::Type::BOOL: return std::get<bool>(a.value) == std::get<bool>(b.value);
+        case Constant::Type::INT: return std::get<long long>(a.value) == std::get<long long>(b.value);
+        case Constant::Type::DOUBLE: return std::get<double>(a.value) == std::get<double>(b.value);
+        case Constant::Type::STRING: return std::get<std::string>(a.value) == std::get<std::string>(b.value);
+        default: return false;
+    }
+}
+
 bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
     if (!expr) return false;
     
@@ -2127,25 +2194,64 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
         auto bin = *binPtr;
         Constant left, right;
         if (isConstant(bin->left, left) && isConstant(bin->right, right)) {
+            // Comparisons
+            if (bin->op == TokenType::EQUAL_EQUAL) {
+                out = Constant(constantEquals(left, right));
+                return true;
+            } else if (bin->op == TokenType::BANG_EQUAL) {
+                out = Constant(!constantEquals(left, right));
+                return true;
+            }
+
+            // String concatenation & string operations
+            if (left.type == Constant::Type::STRING || right.type == Constant::Type::STRING) {
+                if (bin->op == TokenType::PLUS) {
+                    out = Constant(constantToString(left) + constantToString(right));
+                    return true;
+                } else if (bin->op == TokenType::STAR && left.type == Constant::Type::STRING && right.type == Constant::Type::INT) {
+                    long long count = std::get<long long>(right.value);
+                    if (count <= 0) { out = Constant(std::string("")); return true; }
+                    if (count <= 50000) {
+                        const std::string& s = std::get<std::string>(left.value);
+                        std::string res;
+                        res.reserve(s.size() * count);
+                        for (long long i = 0; i < count; ++i) res += s;
+                        out = Constant(res);
+                        return true;
+                    }
+                } else if (left.type == Constant::Type::STRING && right.type == Constant::Type::STRING) {
+                    const std::string& l = std::get<std::string>(left.value);
+                    const std::string& r = std::get<std::string>(right.value);
+                    if (bin->op == TokenType::LESS) { out = Constant(l < r); return true; }
+                    if (bin->op == TokenType::LESS_EQUAL) { out = Constant(l <= r); return true; }
+                    if (bin->op == TokenType::GREATER) { out = Constant(l > r); return true; }
+                    if (bin->op == TokenType::GREATER_EQUAL) { out = Constant(l >= r); return true; }
+                }
+            }
+
             if (left.type == Constant::Type::INT && right.type == Constant::Type::INT) {
                 long long l = std::get<long long>(left.value);
                 long long r = std::get<long long>(right.value);
-                // These must produce exactly what the VM would produce for the
-                // same expression, or a constant expression silently means
-                // something different from its runtime equivalent.
                 switch (bin->op) {
-                    // Wrapping (defined) arithmetic, matching the VM. Plain
-                    // l + r / l - r / l * r here was signed-overflow UB.
                     case TokenType::PLUS:  out = Constant(ezarith::wrapAdd(l, r)); return true;
                     case TokenType::MINUS: out = Constant(ezarith::wrapSub(l, r)); return true;
                     case TokenType::STAR:  out = Constant(ezarith::wrapMul(l, r)); return true;
+                    case TokenType::PERCENT:
+                        if (r != 0 && !(l == LLONG_MIN && r == -1)) {
+                            out = Constant(l % r);
+                            return true;
+                        }
+                        break;
+                    case TokenType::AMPERSAND: out = Constant(l & r); return true;
+                    case TokenType::PIPE:      out = Constant(l | r); return true;
+                    case TokenType::CARET:     out = Constant(l ^ r); return true;
+                    case TokenType::LSHIFT:    if (r >= 0 && r < 64) { out = Constant(l << r); return true; } break;
+                    case TokenType::RSHIFT:    if (r >= 0 && r < 64) { out = Constant(l >> r); return true; } break;
+                    case TokenType::LESS:          out = Constant(l < r); return true;
+                    case TokenType::LESS_EQUAL:    out = Constant(l <= r); return true;
+                    case TokenType::GREATER:       out = Constant(l > r); return true;
+                    case TokenType::GREATER_EQUAL: out = Constant(l >= r); return true;
                     case TokenType::SLASH:
-                        // The VM keeps an integer result only when the division is
-                        // exact and promotes to double otherwise. This folded with
-                        // C++ integer division instead, so `5 / 2` compiled to 2
-                        // while `a / b` (a=5, b=2) evaluated to 2.5 at runtime.
-                        // Leave the UB cases (÷0, LLONG_MIN / -1) unfolded so the
-                        // VM reports them.
                         if (!ezarith::divIsUB(l, r)) {
                             if (ezarith::divIsExact(l, r)) out = Constant(l / r);
                             else out = Constant(static_cast<double>(l) / static_cast<double>(r));
@@ -2162,6 +2268,10 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
                     case TokenType::MINUS: out = Constant(l - r); return true;
                     case TokenType::STAR: out = Constant(l * r); return true;
                     case TokenType::SLASH: if (r != 0.0) { out = Constant(l / r); return true; } break;
+                    case TokenType::LESS:          out = Constant(l < r); return true;
+                    case TokenType::LESS_EQUAL:    out = Constant(l <= r); return true;
+                    case TokenType::GREATER:       out = Constant(l > r); return true;
+                    case TokenType::GREATER_EQUAL: out = Constant(l >= r); return true;
                     default: break;
                 }
             }
@@ -2172,12 +2282,18 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
         if (isConstant(un->operand, operand)) {
             if (un->op == TokenType::MINUS) {
                 if (operand.type == Constant::Type::INT) {
-                    // wrapNeg matches the VM's doNegate; plain -x was UB for
-                    // LLONG_MIN.
                     out = Constant(ezarith::wrapNeg(std::get<long long>(operand.value)));
                     return true;
                 } else if (operand.type == Constant::Type::DOUBLE) {
                     out = Constant(-std::get<double>(operand.value));
+                    return true;
+                }
+            } else if (un->op == TokenType::BANG || un->op == TokenType::NOT) {
+                out = Constant(!isConstantTruthy(operand));
+                return true;
+            } else if (un->op == TokenType::TILDE) {
+                if (operand.type == Constant::Type::INT) {
+                    out = Constant(~std::get<long long>(operand.value));
                     return true;
                 }
             }

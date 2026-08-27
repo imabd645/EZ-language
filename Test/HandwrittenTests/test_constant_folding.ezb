@@ -1,0 +1,141 @@
+=== <main> ===
+Constants: 23
+   0 | "=== 1. String Constant Folding ==="
+   1 | "Hello, World!"
+   2 | "abcabcabc"
+   3 | "=== 2. Bitwise & Modulo Constant Folding ==="
+   4 | 15
+   5 | 16
+   6 | 2
+   7 | -1
+   8 | "=== 3. Comparison Constant Folding ==="
+   9 | true
+  10 | "=== 4. Logical & Unary Folding ==="
+  11 | false
+  12 | "=== 5. Builtin Constant Folding ==="
+  13 | 11
+  14 | 65
+  15 | "B"
+  16 | "98765"
+  17 | "=== 6. Dead Code Elimination (When / While) ==="
+  18 | "PASS: thenBranch executed directly"
+  19 | "PASS: elseBranch executed directly"
+  20 | "=== 7. Algebraic Simplifications ==="
+  21 | 42
+  22 | "=== Constant Folding Tests Complete ==="
+--- Code ---
+   0    3       LOAD_CONST    0 ("=== 1. String Constant Folding ===")
+   3    |        PRINT_STR 
+   4    4       LOAD_CONST    1 ("Hello, World!")
+   7    | STORE_GLOBAL_SLOT    0 ("s1")
+  10    |              POP 
+  11    5 LOAD_GLOBAL_SLOT    0 ("s1")
+  14    |        PRINT_STR 
+  15    7       LOAD_CONST    2 ("abcabcabc")
+  18    | STORE_GLOBAL_SLOT    1 ("s2")
+  21    |              POP 
+  22    8 LOAD_GLOBAL_SLOT    1 ("s2")
+  25    |        PRINT_STR 
+  26   10       LOAD_CONST    3 ("=== 2. Bitwise & Modulo Constant Folding ===")
+  29    |        PRINT_STR 
+  30   11       LOAD_CONST    4 (15)
+  33    | STORE_GLOBAL_SLOT    2 ("b1")
+  36    |              POP 
+  37   12 LOAD_GLOBAL_SLOT    2 ("b1")
+  40    |        PRINT_STR 
+  41   14       LOAD_CONST    4 (15)
+  44    | STORE_GLOBAL_SLOT    3 ("b2")
+  47    |              POP 
+  48   15 LOAD_GLOBAL_SLOT    3 ("b2")
+  51    |        PRINT_STR 
+  52   17       LOAD_CONST    5 (16)
+  55    | STORE_GLOBAL_SLOT    4 ("b3")
+  58    |              POP 
+  59   18 LOAD_GLOBAL_SLOT    4 ("b3")
+  62    |        PRINT_STR 
+  63   20       LOAD_CONST    6 (2)
+  66    | STORE_GLOBAL_SLOT    5 ("b4")
+  69    |              POP 
+  70   21 LOAD_GLOBAL_SLOT    5 ("b4")
+  73    |        PRINT_STR 
+  74   23       LOAD_CONST    7 (-1)
+  77    | STORE_GLOBAL_SLOT    6 ("b5")
+  80    |              POP 
+  81   24 LOAD_GLOBAL_SLOT    6 ("b5")
+  84    |        PRINT_STR 
+  85   26       LOAD_CONST    8 ("=== 3. Comparison Constant Folding ===")
+  88    |        PRINT_STR 
+  89   27       LOAD_CONST    9 (true)
+  92    | STORE_GLOBAL_SLOT    7 ("c1")
+  95    |              POP 
+  96   28 LOAD_GLOBAL_SLOT    7 ("c1")
+  99    |        PRINT_STR 
+ 100   30       LOAD_CONST    9 (true)
+ 103    | STORE_GLOBAL_SLOT    8 ("c2")
+ 106    |              POP 
+ 107   31 LOAD_GLOBAL_SLOT    8 ("c2")
+ 110    |        PRINT_STR 
+ 111   33       LOAD_CONST    9 (true)
+ 114    | STORE_GLOBAL_SLOT    9 ("c3")
+ 117    |              POP 
+ 118   34 LOAD_GLOBAL_SLOT    9 ("c3")
+ 121    |        PRINT_STR 
+ 122   36       LOAD_CONST   10 ("=== 4. Logical & Unary Folding ===")
+ 125    |        PRINT_STR 
+ 126   37       LOAD_CONST   11 (false)
+ 129    | STORE_GLOBAL_SLOT   10 ("u1")
+ 132    |              POP 
+ 133   38 LOAD_GLOBAL_SLOT   10 ("u1")
+ 136    |        PRINT_STR 
+ 137   40       LOAD_CONST    9 (true)
+ 140    | STORE_GLOBAL_SLOT   11 ("u2")
+ 143    |              POP 
+ 144   41 LOAD_GLOBAL_SLOT   11 ("u2")
+ 147    |        PRINT_STR 
+ 148   43       LOAD_CONST   12 ("=== 5. Builtin Constant Folding ===")
+ 151    |        PRINT_STR 
+ 152   44       LOAD_CONST   13 (11)
+ 155    | STORE_GLOBAL_SLOT   12 ("l")
+ 158    |              POP 
+ 159   45 LOAD_GLOBAL_SLOT   12 ("l")
+ 162    |        PRINT_STR 
+ 163   47       LOAD_CONST   14 (65)
+ 166    | STORE_GLOBAL_SLOT   13 ("o")
+ 169    |              POP 
+ 170   48 LOAD_GLOBAL_SLOT   13 ("o")
+ 173    |        PRINT_STR 
+ 174   50       LOAD_CONST   15 ("B")
+ 177    | STORE_GLOBAL_SLOT   14 ("ch")
+ 180    |              POP 
+ 181   51 LOAD_GLOBAL_SLOT   14 ("ch")
+ 184    |        PRINT_STR 
+ 185   53       LOAD_CONST   16 ("98765")
+ 188    | STORE_GLOBAL_SLOT   15 ("st")
+ 191    |              POP 
+ 192   54 LOAD_GLOBAL_SLOT   15 ("st")
+ 195    |        PRINT_STR 
+ 196   56       LOAD_CONST   17 ("=== 6. Dead Code Elimination (When / While) ===")
+ 199    |        PRINT_STR 
+ 200   58       LOAD_CONST   18 ("PASS: thenBranch executed directly")
+ 203    |        PRINT_STR 
+ 204   66       LOAD_CONST   19 ("PASS: elseBranch executed directly")
+ 207    |        PRINT_STR 
+ 208   73       LOAD_CONST   20 ("=== 7. Algebraic Simplifications ===")
+ 211    |        PRINT_STR 
+ 212   74       LOAD_CONST   21 (42)
+ 215    | STORE_GLOBAL_SLOT   16 ("val")
+ 218    |              POP 
+ 219   75 LOAD_GLOBAL_SLOT   16 ("val")
+ 222    |        PRINT_STR 
+ 223   76 LOAD_GLOBAL_SLOT   16 ("val")
+ 226    |        PRINT_STR 
+ 227   77 LOAD_GLOBAL_SLOT   16 ("val")
+ 230    |        PRINT_STR 
+ 231   78 LOAD_GLOBAL_SLOT   16 ("val")
+ 234    |        PRINT_STR 
+ 235   79 LOAD_GLOBAL_SLOT   16 ("val")
+ 238    |        PRINT_STR 
+ 239   81       LOAD_CONST   22 ("=== Constant Folding Tests Complete ===")
+ 242    |        PRINT_STR 
+ 243    |         LOAD_NIL 
+ 244    |           RETURN 

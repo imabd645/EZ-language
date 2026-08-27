@@ -242,6 +242,9 @@ private:
       // Convert JUMP_IF_FALSE + JUMP to single op
     
     bool isConstant(const ExprPtr& expr, Constant& out);
+    static bool isConstantTruthy(const Constant& c);
+    static std::string constantToString(const Constant& c);
+    static bool constantEquals(const Constant& a, const Constant& b);
     
     // === Loop Handling ===
     struct LoopContext {

@@ -1,0 +1,81 @@
+// Test Compile-Time Constant Folding & Dead Code Elimination
+
+out "=== 1. String Constant Folding ==="
+s1 = "Hello, " + "World!"
+out s1
+
+s2 = "abc" * 3
+out s2
+
+out "=== 2. Bitwise & Modulo Constant Folding ==="
+b1 = 0xFF & 0x0F
+out b1
+
+b2 = 1 | 2 | 4 | 8
+out b2
+
+b3 = 1 << 4
+out b3
+
+b4 = 100 % 7
+out b4
+
+b5 = ~0
+out b5
+
+out "=== 3. Comparison Constant Folding ==="
+c1 = 10 > 5
+out c1
+
+c2 = "abc" == "abc"
+out c2
+
+c3 = 3.14 <= 3.14159
+out c3
+
+out "=== 4. Logical & Unary Folding ==="
+u1 = !true
+out u1
+
+u2 = !false
+out u2
+
+out "=== 5. Builtin Constant Folding ==="
+l = len("antigravity")
+out l
+
+o = ord("A")
+out o
+
+ch = chr(66)
+out ch
+
+st = str(98765)
+out st
+
+out "=== 6. Dead Code Elimination (When / While) ==="
+when true {
+    out "PASS: thenBranch executed directly"
+} other {
+    out "FAIL: dead else branch executed"
+}
+
+when false {
+    out "FAIL: dead then branch executed"
+} other {
+    out "PASS: elseBranch executed directly"
+}
+
+while false {
+    out "FAIL: dead while loop executed"
+}
+
+out "=== 7. Algebraic Simplifications ==="
+val = 42
+out val + 0
+out 0 + val
+out val - 0
+out val * 1
+out 1 * val
+
+out "=== Constant Folding Tests Complete ==="

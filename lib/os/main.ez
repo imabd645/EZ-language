@@ -2,19 +2,16 @@
 // ezos -- Cross-Platform System Utilities for EZ Language (v2.0)
 // Supports Windows, Linux, and macOS
 //
-//   use "os"
+// NOTE: Does NOT shadow or define 'os', which is a reserved built-in function.
 //
-// Modular layout:
-//   src/ffi.ez        Cross-platform FFI binding layer
-//   src/env.ez        Environment variables + .env loader
-//   src/path.ez       Cross-platform path join/normalize/resolve
-//   src/process.ez    Subprocess execution
-//   src/clipboard.ez  Clipboard read/write
-//   src/shell.ez      Open files, folders, URLs
-//   src/system.ez     Platform, memory, CPU, version
-//   src/dirs.ez       Known folders (home, temp, appdata, config, ...)
-//   src/errors.ez     OSError / EnvError / ProcessError
-//   src/util.ez       Shared helpers
+// Usage:
+//   use "os" as *
+//   out cwd()
+//   out pid()
+//   out homedir()
+//   out env.get("PATH")
+//   out path.join("a", "b")
+//   out sys.cpuCores()
 // ============================================================================
 
 use "src/errors.ez"
@@ -26,15 +23,25 @@ use "src/shell.ez"
 use "src/system.ez"
 use "src/dirs.ez"
 
-export model OS {
+// Submodule instance exports
+export env = OSEnv()
+export path = OSPath()
+export process = OSProcess()
+export clipboard = OSClipboard()
+export shell = OSShell()
+export dirs = OSDirs()
+
+_sysInstance = OSSystem()
+
+export model System {
     init() {
-        self.env = OSEnv()
-        self.path = OSPath()
-        self.process = OSProcess()
-        self.clipboard = OSClipboard()
-        self.shell = OSShell()
-        self.dirs = OSDirs()
-        self._sys = OSSystem()
+        self.env = env
+        self.path = path
+        self.process = process
+        self.clipboard = clipboard
+        self.shell = shell
+        self.dirs = dirs
+        self._sys = _sysInstance
     }
 
     // --- Core Platform API ---
@@ -60,10 +67,36 @@ export model OS {
 
     // --- Filesystem & Directories ---
     task cwd() { give self._sys.cwd() }
-    task chdir(path) { give self._sys.chdir(path) }
+    task chdir(p) { give self._sys.chdir(p) }
     task sleep(ms) { self._sys.sleep(ms) }
     task homedir() { give self.dirs.home() }
     task tmpdir() { give self.dirs.temp() }
 }
 
-export os = OS()
+export sys = System()
+
+// Top-level function exports for direct access
+export task getPlatform() { give _sysInstance.platform() }
+export task isWindows() { give _sysInstance.isWindows() }
+export task isMacOS() { give _sysInstance.isMacOS() }
+export task isLinux() { give _sysInstance.isLinux() }
+export task isPosix() { give _sysInstance.isPosix() }
+
+export task uptime() { give _sysInstance.uptime() }
+export task totalMemory() { give _sysInstance.totalMemory() }
+export task freeMemory() { give _sysInstance.freeMemory() }
+export task memory() { give _sysInstance.memory() }
+export task cpuCores() { give _sysInstance.cpuCores() }
+export task arch() { give _sysInstance.arch() }
+export task pid() { give _sysInstance.pid() }
+export task userName() { give _sysInstance.userName() }
+export task computerName() { give _sysInstance.computerName() }
+export task hostname() { give _sysInstance.hostname() }
+export task executable() { give _sysInstance.executable() }
+export task version() { give _sysInstance.version() }
+
+export task cwd() { give _sysInstance.cwd() }
+export task chdir(p) { give _sysInstance.chdir(p) }
+export task sleep(ms) { _sysInstance.sleep(ms) }
+export task homedir() { give dirs.home() }
+export task tmpdir() { give dirs.temp() }

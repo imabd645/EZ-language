@@ -723,73 +723,43 @@ test["mock"] = mock
 test["Spy"] = Spy
 test["silent"] = |b| { __testState["silent"] = b }
 
-# --- Global Exports ---
-# Allow using without test. prefix
+# --- Prefixed Aliases ---
+export tAssert = assert
+export tAssertFalse = assertFalse
+export tAssertEqual = assertEqual
+export tAssertDeepEqual = assertDeepEqual
+export tAssertNotEqual = assertNotEqual
+export tAssertNull = assertNull
+export tAssertNotNull = assertNotNull
+export tAssertType = assertType
+export tAssertContains = assertContains
+export tAssertInArray = assertInArray
+export tAssertThrows = assertThrows
+export tAssertDoesNotThrow = assertDoesNotThrow
+export tAssertApproxEqual = assertApproxEqual
+export tAssertGreaterThan = assertGreaterThan
+export tAssertLessThan = assertLessThan
 
-# Standard Suite & Test Definitions
-
-export describe = describe
-export it = test["it"]
-export suite = test["suite"]
-export testCase = test["test"]
-export testSummary = test["run"]
-
-# Assertions
-export assert = test["assert"]
-export assertEquals = test["assertEqual"]
-export assertEqual = test["assertEqual"]
-export assertTrue = test["assert"]
-export assertFalse = test["assertFalse"]
-export assertNull = test["assertNull"]
-export assertNotNull = test["assertNotNull"]
-export assertType = test["assertType"]
-export assertContains = test["assertContains"]
-export assertInArray = test["assertInArray"]
-export assertThrows = test["assertThrows"]
-export assertDoesNotThrow = test["assertDoesNotThrow"]
-export assertApproxEqual = test["assertApproxEqual"]
-export assertGreaterThan = test["assertGreaterThan"]
-export assertLessThan = test["assertLessThan"]
-export assertDeepEqual = test["assertDeepEqual"]
-export assertNotEqual = test["assertNotEqual"]
-
-# Prefixed Aliases
-export tAssert = test["assert"]
-export tAssertFalse = test["assertFalse"]
-export tAssertEqual = test["assertEqual"]
-export tAssertDeepEqual = test["assertDeepEqual"]
-export tAssertNotEqual = test["assertNotEqual"]
-export tAssertNull = test["assertNull"]
-export tAssertNotNull = test["assertNotNull"]
-export tAssertType = test["assertType"]
-export tAssertContains = test["assertContains"]
-export tAssertInArray = test["assertInArray"]
-export tAssertThrows = test["assertThrows"]
-export tAssertDoesNotThrow = test["assertDoesNotThrow"]
-export tAssertApproxEqual = test["assertApproxEqual"]
-export tAssertGreaterThan = test["assertGreaterThan"]
-export tAssertLessThan = test["assertLessThan"]
-
-# Suite definition
-
-export tSuite = test["suite"]
-export tIt = test["it"]
-export tTestCase = test["test"]
-export tSkip = test["skip"]
+# Suite definition aliases
+export tDescribe = describe
+export tSuite = suite
+export tIt = it
+export tTestCase = testCase
+export tSkip = skipe
 
 # Hooks
-export tBeforeEach = test["beforeEach"]
-export tAfterEach = test["afterEach"]
-export tBeforeAll = test["beforeAll"]
-export tAfterAll = test["afterAll"]
+export tBeforeEach = beforeEach
+export tAfterEach = afterEach
+export tBeforeAll = beforeAll
+export tAfterAll = afterAll
 
 # Runner
-export tRun = test["run"]
-export tRunTests = test["runTests"]
-export tClear = test["clear"]
+export tRun = run
+export tRunTests = runTests
+export tClear = clear
 
 # Mocks
-export tSpy = test["spy"]
-export tStub = test["stub"]
-export tMock = test["mock"]
+export tSpy = spy
+export tStub = stub
+export tMock = mock
 

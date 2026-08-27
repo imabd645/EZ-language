@@ -1,5 +1,52 @@
-#include "TypeChecker.h"
+#include "typechecker/TypeChecker.h"
 #include <iostream>
+
+bool TypeChecker::isTerminal(const StmtPtr& stmt) const {
+    if (!stmt) return false;
+    return std::visit([this](auto&& arg) -> bool {
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T, GiveStmt*>) return true;
+        if constexpr (std::is_same_v<T, ThrowStmt*>) return true;
+        if constexpr (std::is_same_v<T, EscapeStmt*>) return true;
+        if constexpr (std::is_same_v<T, SkipStmt*>) return true;
+        if constexpr (std::is_same_v<T, BlockStmt*>) {
+            for (const auto& s : arg->statements) {
+                if (isTerminal(s)) return true;
+            }
+            return false;
+        }
+        if constexpr (std::is_same_v<T, WhenStmt*>) {
+            if (arg->elseBranch) {
+                return isTerminal(arg->thenBranch) && isTerminal(arg->elseBranch);
+            }
+            return false;
+        }
+        if constexpr (std::is_same_v<T, TryStmt*>) {
+            bool tryTerm = isTerminal(arg->tryBlock);
+            if (!tryTerm) return false;
+            for (const auto& cb : arg->catchBlocks) {
+                if (!isTerminal(cb.body)) return false;
+            }
+            return true;
+        }
+        if constexpr (std::is_same_v<T, MatchStmt*>) {
+            bool allCasesTerminal = true;
+            bool hasDefault = false;
+            for (const auto& arm : arg->arms) {
+                if (!arm.pattern) {
+                    hasDefault = true;
+                }
+                if (!isTerminal(arm.body)) {
+                    allCasesTerminal = false;
+                    break;
+                }
+            }
+            return hasDefault && allCasesTerminal;
+        }
+        return false;
+    }, stmt->variant);
+}
+
 void TypeChecker::checkStmt(const StmtPtr& stmt) {
     if (!stmt) return;
     std::visit([this](auto&& arg) {
@@ -74,7 +121,17 @@ void TypeChecker::checkTask(const TaskStmt& stmt) {
     TypeInfo prevReturn = currentReturnType;
     currentReturnType = sig.returnType;
     
-    for (const auto& s : stmt.body) checkStmt(s);
+    bool isUnreachable = false;
+    for (const auto& s : stmt.body) {
+        if (isUnreachable) {
+            warn(s, "Unreachable code detected.", "This statement follows a return, throw, break, or continue and will never be executed.");
+            break;
+        }
+        checkStmt(s);
+        if (isTerminal(s)) {
+            isUnreachable = true;
+        }
+    }
     
     currentReturnType = prevReturn;
     endScope();
@@ -101,7 +158,17 @@ void TypeChecker::checkGive(const GiveStmt& stmt) {
 
 void TypeChecker::checkBlock(const BlockStmt& stmt) {
     beginScope();
-    for (const auto& s : stmt.statements) checkStmt(s);
+    bool isUnreachable = false;
+    for (const auto& s : stmt.statements) {
+        if (isUnreachable) {
+            warn(s, "Unreachable code detected.", "This statement follows a return, throw, break, or continue and will never be executed.");
+            break;
+        }
+        checkStmt(s);
+        if (isTerminal(s)) {
+            isUnreachable = true;
+        }
+    }
     endScope();
 }
 

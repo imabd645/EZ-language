@@ -1,0 +1,17 @@
+task testFunction() {
+    out "This is reachable"
+    give 42
+    out "This is unreachable" // Should throw a warning
+}
+
+task testLoop() {
+    repeat i = 0 to 10 {
+        when i == 5 {
+            escape
+            out "This is unreachable after escape" // Should throw a warning
+        }
+    }
+}
+
+testFunction()
+testLoop()

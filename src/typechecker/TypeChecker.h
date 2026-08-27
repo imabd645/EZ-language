@@ -110,6 +110,9 @@ private:
     void warn(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint = "");
     void warn(int line, const std::string& message);
     
+    // Control Flow Analysis
+    bool isTerminal(const StmtPtr& stmt) const;
+
     // Statements
     void checkStmt(const StmtPtr& stmt);
     void checkVarDecl(const VarDeclStmt& stmt);

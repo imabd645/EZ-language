@@ -710,7 +710,34 @@ test["silent"] = |b| { __testState["silent"] = b }
 # --- Global Exports ---
 # Allow using without test. prefix
 
+# Standard Suite & Test Definitions
+export describe = test["describe"]
+export it = test["it"]
+export suite = test["suite"]
+export testCase = test["test"]
+export skip = test["skip"]
+export testSummary = test["run"]
+
 # Assertions
+export assert = test["assert"]
+export assertEquals = test["assertEqual"]
+export assertEqual = test["assertEqual"]
+export assertTrue = test["assert"]
+export assertFalse = test["assertFalse"]
+export assertNull = test["assertNull"]
+export assertNotNull = test["assertNotNull"]
+export assertType = test["assertType"]
+export assertContains = test["assertContains"]
+export assertInArray = test["assertInArray"]
+export assertThrows = test["assertThrows"]
+export assertDoesNotThrow = test["assertDoesNotThrow"]
+export assertApproxEqual = test["assertApproxEqual"]
+export assertGreaterThan = test["assertGreaterThan"]
+export assertLessThan = test["assertLessThan"]
+export assertDeepEqual = test["assertDeepEqual"]
+export assertNotEqual = test["assertNotEqual"]
+
+# Prefixed Aliases
 export tAssert = test["assert"]
 export tAssertFalse = test["assertFalse"]
 export tAssertEqual = test["assertEqual"]
@@ -750,4 +777,3 @@ export tSpy = test["spy"]
 export tStub = test["stub"]
 export tMock = test["mock"]
 
-# tAssertionError removed - EZ uses string throws, not error objects

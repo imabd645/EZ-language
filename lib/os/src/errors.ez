@@ -16,7 +16,7 @@ export model OSError {
     }
 }
 
-export model EnvError < OSError {
+export model EnvError extends OSError {
     task init(message, key = "") {
         super.init(message)
         self.key = str(key)
@@ -30,7 +30,7 @@ export model EnvError < OSError {
     }
 }
 
-export model ProcessError < OSError {
+export model ProcessError extends OSError {
     task init(message, command = "", exitCode = 1) {
         super.init(message, exitCode)
         self.command = str(command)

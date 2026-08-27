@@ -4,6 +4,8 @@
 #include <cctype>
 #include <filesystem>
 #include <memory>
+#include <climits>
+#include <cstdint>
 namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
 #include "utils/EzLibPath.h"

@@ -54,24 +54,22 @@ add_definitions(-DCURL_STATICLIB)
 # Include directories
 include_directories(src)
 
-# MinGW/MSYS2 prefix. Hardcoding C:/msys64 meant the build only worked on a
-# machine with MSYS2 installed at exactly that path; override with
-#   cmake -DMSYS2_PREFIX=D:/msys64/mingw64 ..
-# or set the MSYS2_PREFIX environment variable.
-if(NOT DEFINED MSYS2_PREFIX)
-    if(DEFINED ENV{MSYS2_PREFIX})
-        set(MSYS2_PREFIX $ENV{MSYS2_PREFIX})
-    else()
-        set(MSYS2_PREFIX "C:/msys64/mingw64")
+if(WIN32)
+    if(NOT DEFINED MSYS2_PREFIX)
+        if(DEFINED ENV{MSYS2_PREFIX})
+            set(MSYS2_PREFIX $ENV{MSYS2_PREFIX})
+        else()
+            set(MSYS2_PREFIX "C:/msys64/mingw64")
+        endif()
     endif()
-endif()
-if(EXISTS "${MSYS2_PREFIX}/include")
-    include_directories("${MSYS2_PREFIX}/include")
-    link_directories("${MSYS2_PREFIX}/lib")
-    message(STATUS "Using MinGW prefix: ${MSYS2_PREFIX}")
-else()
-    message(WARNING "MSYS2_PREFIX '${MSYS2_PREFIX}' has no include/ directory; "
-                    "set -DMSYS2_PREFIX=<path-to>/mingw64 if the build cannot find libffi/libuv/curl.")
+    if(EXISTS "${MSYS2_PREFIX}/include")
+        include_directories("${MSYS2_PREFIX}/include")
+        link_directories("${MSYS2_PREFIX}/lib")
+        message(STATUS "Using MinGW prefix: ${MSYS2_PREFIX}")
+    else()
+        message(WARNING "MSYS2_PREFIX '${MSYS2_PREFIX}' has no include/ directory; "
+                        "set -DMSYS2_PREFIX=<path-to>/mingw64 if the build cannot find libffi/libuv/curl.")
+    endif()
 endif()
 
 if(APPLE)

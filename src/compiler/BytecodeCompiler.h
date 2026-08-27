@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
+#include <climits>
+#include <cstdint>
 #include "ast/AST.h"
 #include "ast/ASTArena.h"
 #include "bytecode/Bytecode.h"

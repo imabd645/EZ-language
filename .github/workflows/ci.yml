@@ -106,6 +106,14 @@ jobs:
       shell: msys2 {0}
       run: cygpath -w /mingw64/bin >> "$GITHUB_PATH"
 
+    - name: Copy standard library
+      shell: pwsh
+      run: |
+        if (Test-Path "lib") {
+          Copy-Item -Path "lib" -Destination "build\lib" -Recurse -Force
+          Write-Host "Copied lib/ to build/lib/"
+        }
+
     - name: Smoke test
       shell: pwsh
       run: |
@@ -181,6 +189,7 @@ jobs:
         path: |
           build/ez.exe
           build/*.dll
+          build/lib/**
         retention-days: 14
 
   build-linux:
@@ -203,6 +212,14 @@ jobs:
         cmake -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . -j4
 
+    - name: Copy standard library
+      run: |
+        if [ -d "lib" ]; then
+          mkdir -p build/lib
+          cp -r lib/* build/lib/
+          echo "Copied lib/ to build/lib/"
+        fi
+
     - name: Smoke test
       run: |
         echo 'out "hello from CI"' > smoke.ez
@@ -217,7 +234,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ez-linux-x64
-        path: build/ez
+        path: |
+          build/ez
+          build/lib/**
         retention-days: 14
 
   build-macos:
@@ -241,6 +260,14 @@ jobs:
         cmake -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . -j4
 
+    - name: Copy standard library
+      run: |
+        if [ -d "lib" ]; then
+          mkdir -p build/lib
+          cp -r lib/* build/lib/
+          echo "Copied lib/ to build/lib/"
+        fi
+
     - name: Smoke test
       run: |
         echo 'out "hello from CI"' > smoke.ez
@@ -255,5 +282,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ez-macos-x64
-        path: build/ez
+        path: |
+          build/ez
+          build/lib/**
         retention-days: 14

@@ -204,3 +204,12 @@ if(WIN32)
 else()
     target_link_libraries(ez PRIVATE sqlite3 ffi uv curl ssl crypto dl pthread)
 endif()
+
+# Copy standard library (lib/) directory next to the built interpreter executable
+add_custom_command(TARGET ez POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/lib"
+        "$<TARGET_FILE_DIR:ez>/lib"
+    COMMENT "Copying standard library (lib/) directory next to ez binary"
+)
+

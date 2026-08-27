@@ -111,6 +111,7 @@ endif()
 # Gather all source files explicitly
 set(SOURCES
     src/main.cpp
+    src/testing/TestRunner.cpp
     src/builtins/Builtins.cpp
     src/builtins/Builtins_Buffer.cpp
     src/builtins/Builtins_Concurrency.cpp

@@ -183,8 +183,33 @@ StmtPtr Parser::statement() {
     if (match(TokenType::TRY)) return tryStatement();
     if (match(TokenType::THROW)) return throwStatement();
     if (match(TokenType::EXPORT)) return exportStatement();
+    if (match(TokenType::TEST)) return testStatement();
     
     return expressionStatement();
+}
+
+StmtPtr Parser::testStatement() {
+    int line = previous().line;
+    int column = previous().column;
+    std::string filename = previous().filename;
+    
+    Token nameToken = consume(TokenType::STRING, "Expected string literal for test name");
+    std::string testName = std::get<std::string>(nameToken.literal);
+    
+    // We expect a '{' to begin the block, but lambdaExpression(false, true) does its own checking.
+    // However, it does not expect us to consume it.
+    
+    ExprPtr lambdaExpr = lambdaExpression(false, true); // noParams = true, expects '{' or '=>'
+    
+    ExprPtr callee = makeIdentifierExpr(arena, line, column, 16, filename, "ez_register_test");
+    std::vector<ExprPtr> args;
+    
+    ExprPtr nameExpr = makeLiteralExpr(arena, line, column, nameToken.lexeme.length(), filename, testName);
+    args.push_back(nameExpr);
+    args.push_back(lambdaExpr);
+    
+    ExprPtr call = makeCallExpr(arena, line, column, 16, filename, callee, args);
+    return makeExpressionStmt(arena, line, column, 16, filename, call);
 }
 
 StmtPtr Parser::outStatement() {

@@ -1,0 +1,29 @@
+// test_framework.ez
+// Tests the new built-in testing framework
+
+out "--- Testing the Testing Framework ---"
+out ""
+
+test "Math works" {
+    assert(2 + 2 == 4, "2 + 2 should be 4")
+    assert(10 * 5 == 50)
+}
+
+test "String concatenation" {
+     a = "hello"
+     b = " world"
+    assert(a + b == "hello world")
+}
+
+test "This test will intentionally fail" {
+    // This assertion will throw, causing the test to FAIL
+    assert(1 == 2, "Math is broken!")
+}
+
+test "Array indexing" {
+     arr = [1, 2, 3]
+    assert(arr[1] == 2)
+}
+
+// If run with `ez.exe --test test_framework.ez`, the runner will execute 
+// the tests above and print a nice summary!

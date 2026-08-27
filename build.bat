@@ -48,6 +48,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     -I C:\msys64\mingw64\include ^
     -I src ^
     src/main.cpp ^
+    src/testing/TestRunner.cpp ^
     src/builtins/Builtins.cpp ^
     src/builtins/Builtins_Buffer.cpp ^
     src/builtins/Builtins_Concurrency.cpp ^

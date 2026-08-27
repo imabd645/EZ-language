@@ -56,6 +56,7 @@ enum class TokenKind {
     NOT,
     ASYNC,
     AWAIT,
+    TEST,
     DECORATOR_KW,
     
     // OOP Keywords

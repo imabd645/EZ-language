@@ -74,6 +74,7 @@ private:
     StmtPtr tryStatement();
     StmtPtr throwStatement();
     StmtPtr exportStatement();
+    StmtPtr testStatement();
     
     // Expression parsing (precedence climbing)
     ExprPtr expression();

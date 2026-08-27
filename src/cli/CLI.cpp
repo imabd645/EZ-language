@@ -1,5 +1,6 @@
 #include "cli/CLI.h"
 #include "cli/Version.h"
+#include "testing/TestRunner.h"
 #include "builtins/Builtins.h"
 #include <iostream>
 #include <fstream>
@@ -166,6 +167,10 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     try {
         vm->execute(result.mainFunction);
         EventLoop::instance().run();
+        
+        if (g_isTestMode) {
+            TestRunner::runAllTests(vm);
+        }
     } catch (const RuntimeError& e) {
         // runtimeError() already printed the formatted error + stack trace
         exit(70); 
@@ -201,6 +206,10 @@ void runFile(const std::string& path, bool traceExecution) {
         try {
             vm->execute(mainFunc);
             EventLoop::instance().run();
+            
+            if (g_isTestMode) {
+                TestRunner::runAllTests(vm);
+            }
         } catch (const RuntimeError& e) {
             exit(70); 
         } catch (const std::exception& e) {
@@ -1006,6 +1015,39 @@ int cli_main(int argc, char* argv[]) {
         }
         else if (cmd == "--help" || cmd == "-h") {
             showHelp();
+            return 0;
+        }
+        else if (cmd == "test" || cmd == "--test") {
+            if (argc < 3) {
+                std::cout << "Usage: ez --test <script.ez>" << std::endl;
+                return 1;
+            }
+            g_isTestMode = true;
+            std::string scriptPath = argv[2];
+            g_scriptName = scriptPath;
+            bool traceExecution = false;
+            bool isWatchMode = false;
+            
+            for (int i = 3; i < argc; i++) {
+                std::string arg = argv[i];
+                if (arg == "--trace") traceExecution = true;
+                else if (arg == "--debug") g_debugMode = true;
+                else if (arg == "--no-contracts") g_disableContracts = true;
+                else if (arg == "--no-typecheck") g_disableTypeCheck = true;
+                else if (arg == "--watch" || arg == "-w") isWatchMode = true;
+                else g_scriptArgs.push_back(arg);
+            }
+            
+            if (isWatchMode) {
+                std::vector<std::string> watchArgs;
+                watchArgs.push_back("--test");
+                watchArgs.push_back(scriptPath);
+                for (const auto& a : g_scriptArgs) watchArgs.push_back(a);
+                runWatch("ez", watchArgs); // Or pass full args
+                return 0;
+            }
+            
+            runFile(scriptPath, traceExecution);
             return 0;
         }
         else {

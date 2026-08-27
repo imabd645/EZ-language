@@ -4,31 +4,31 @@ out "============================================="
 out "      PURE EZ OS LIBRARY VERIFICATION        "
 out "============================================="
 
-out "Platform      : " + ov.os.platform()
-out "Uptime (sec)  : " + str(ov.os.uptime())
+out "Platform      : " + ov.sys.platform()
+out "Uptime (sec)  : " + str(ov.sys.uptime())
 
-# Memory Status verification via FFI Kernel32
-totalMem = ov.os.totalMemory() / (1024 * 1024)
-freeMem = ov.os.freeMemory() / (1024 * 1024)
+# Memory Status verification
+totalMem = ov.sys.totalMemory() / (1024 * 1024)
+freeMem = ov.sys.freeMemory() / (1024 * 1024)
 out "Total Memory  : " + str(totalMem) + " MB"
 out "Free Memory   : " + str(freeMem) + " MB"
 
-# Environment manipulation via FFI MSVCRT
-ov.os.env.set("TEST_EZ_VAR", "NativeFFIWorks!")
-out "ENV Variable  : " + ov.os.env.get("TEST_EZ_VAR")
+# Environment manipulation
+ov.env.set("TEST_EZ_VAR", "NativeFFIWorks!")
+out "ENV Variable  : " + ov.env.get("TEST_EZ_VAR")
 
-# Directory navigation via FFI Kernel32
-currDir = ov.os.cwd()
+# Directory navigation
+currDir = ov.sys.cwd()
 out "Current Dir   : " + currDir
 
-# Clipboard Interaction via FFI User32
-readPre = ov.os.clipboard.read()
-ov.os.clipboard.write("Hello from pure EZ FFI Clipboard!")
-readPost = ov.os.clipboard.read()
+# Clipboard Interaction
+readPre = ov.clipboard.read()
+ov.clipboard.write("Hello from pure EZ FFI Clipboard!")
+readPost = ov.clipboard.read()
 out "Clipboard Get : " + readPost
 
-# Exec verification via FFI _popen
-execOut = ov.os.process.exec("echo Pure OS Process Exec Works")
+# Exec verification
+execOut = ov.process.exec("echo Pure OS Process Exec Works")
 out "Exec Output   : " + execOut
 
 out "============================================="

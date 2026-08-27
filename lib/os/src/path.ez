@@ -69,16 +69,32 @@ export model OSPath {
 
     task extname(p) {
         base = self.basename(p)
-        dot = indexOf(base, ".")
-        when dot == -1 { give "" }
-        give substr(base, dot, len(base) - dot)
+        lastDot = -1
+        i = len(base) - 1
+        while i >= 0 {
+            when substr(base, i, 1) == "." {
+                lastDot = i
+                escape
+            }
+            i = i - 1
+        }
+        when lastDot == -1 or lastDot == 0 { give "" }
+        give substr(base, lastDot, len(base) - lastDot)
     }
 
     task stem(p) {
         base = self.basename(p)
-        dot = indexOf(base, ".")
-        when dot == -1 { give base }
-        give substr(base, 0, dot)
+        lastDot = -1
+        i = len(base) - 1
+        while i >= 0 {
+            when substr(base, i, 1) == "." {
+                lastDot = i
+                escape
+            }
+            i = i - 1
+        }
+        when lastDot == -1 { give base }
+        give substr(base, 0, lastDot)
     }
 
     task normalize(p) {

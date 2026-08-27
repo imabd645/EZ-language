@@ -1,4 +1,0 @@
-Hello from EZ!
-Second line
-Third line
-Appended line

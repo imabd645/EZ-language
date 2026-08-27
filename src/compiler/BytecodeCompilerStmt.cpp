@@ -809,6 +809,13 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
         declName = std::get<TaskStmt*>(stmt.inner->variant)->name;
     } else if (std::holds_alternative<ModelStmt*>(stmt.inner->variant)) {
         declName = std::get<ModelStmt*>(stmt.inner->variant)->name;
+    } else if (std::holds_alternative<VarDeclStmt*>(stmt.inner->variant)) {
+        declName = std::get<VarDeclStmt*>(stmt.inner->variant)->name;
+    } else if (std::holds_alternative<ExpressionStmt*>(stmt.inner->variant)) {
+        auto exprStmt = std::get<ExpressionStmt*>(stmt.inner->variant);
+        if (exprStmt->expr && std::holds_alternative<AssignExpr*>(exprStmt->expr->variant)) {
+            declName = std::get<AssignExpr*>(exprStmt->expr->variant)->name;
+        }
     }
 
     compileStmt(stmt.inner);

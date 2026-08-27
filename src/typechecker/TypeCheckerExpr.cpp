@@ -1,5 +1,6 @@
 #include <algorithm>
-#include "TypeChecker.h"
+#include "typechecker/TypeChecker.h"
+#include "utils/StringHelpers.h"
 #include <iostream>
 TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
     if (!expr) return TypeInfo("Any");
@@ -439,7 +440,32 @@ TypeInfo TypeChecker::checkIdentifier(const IdentifierExpr& expr) {
         return TypeInfo("Any");
     }
     
-    error(currentExprContext, "Variable '" + expr.name + "' is used before it is defined.");
+    std::string suggestion;
+    size_t bestDistance = 3;
+    Environment* env = currentEnv;
+    while (env) {
+        for (const auto& pair : env->variables) {
+            size_t d = EZ::Utils::nameDistance(expr.name, pair.first, 2);
+            if (d < bestDistance) {
+                bestDistance = d;
+                suggestion = pair.first;
+            }
+        }
+        for (const auto& pair : env->functions) {
+            size_t d = EZ::Utils::nameDistance(expr.name, pair.first, 2);
+            if (d < bestDistance) {
+                bestDistance = d;
+                suggestion = pair.first;
+            }
+        }
+        env = env->enclosing;
+    }
+    std::string msg = "Variable '" + expr.name + "' is used before it is defined.";
+    std::string hint = "";
+    if (!suggestion.empty()) {
+        hint = "Did you mean '" + suggestion + "'?";
+    }
+    error(currentExprContext, msg, hint);
     return TypeInfo("Any");
 }
 

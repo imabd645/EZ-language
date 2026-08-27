@@ -10,6 +10,7 @@ namespace fs = std::filesystem;
 #include "BytecodeCompiler.h"
 #include "utils/EzLibPath.h"
 #include "utils/WrapArith.h"
+#include "utils/StringHelpers.h"
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
 
@@ -836,29 +837,6 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
 // something close is installed -- because the answer is a typo far more often
 // than a missing package.
 
-// Edit distance, capped: anything past `limit` is not a suggestion worth
-// making, and stopping early keeps this linear in practice.
-static size_t nameDistance(const std::string& a, const std::string& b, size_t limit) {
-    if (a == b) return 0;
-    if (a.size() > b.size() + limit || b.size() > a.size() + limit) return limit + 1;
-
-    std::vector<size_t> previous(b.size() + 1), current(b.size() + 1);
-    for (size_t j = 0; j <= b.size(); ++j) previous[j] = j;
-    for (size_t i = 1; i <= a.size(); ++i) {
-        current[0] = i;
-        size_t best = current[0];
-        for (size_t j = 1; j <= b.size(); ++j) {
-            size_t cost = (std::tolower((unsigned char)a[i - 1]) ==
-                           std::tolower((unsigned char)b[j - 1])) ? 0 : 1;
-            current[j] = std::min({ previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost });
-            best = std::min(best, current[j]);
-        }
-        if (best > limit) return limit + 1;   // no cell in this row can recover
-        previous = current;
-    }
-    return previous[b.size()];
-}
-
 // Installed package names that are close to what was asked for.
 // Only scans <exe_dir>/lib/ — the single canonical library root.
 static std::vector<std::string> similarModules(const std::string& wanted) {
@@ -877,7 +855,7 @@ static std::vector<std::string> similarModules(const std::string& wanted) {
             if (name.size() > 3 && name.substr(name.size() - 3) == ".ez")
                 name = name.substr(0, name.size() - 3);
             if (name == wanted) continue;
-            size_t d = nameDistance(wanted, name, limit);
+            size_t d = EZ::Utils::nameDistance(wanted, name, limit);
             if (d <= limit) scored.push_back({ d, name });
         }
     }

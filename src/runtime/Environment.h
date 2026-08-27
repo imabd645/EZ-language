@@ -103,6 +103,13 @@ public:
         return false;
     }
 
+    std::vector<std::string> getAllNames() const {
+        std::vector<std::string> names;
+        std::shared_lock<std::shared_mutex> lock(mutex);
+        for (const auto& [k, v] : variables) names.push_back(k);
+        return names;
+    }
+
     // Assign to existing variable (walks up parent chain)
     void assign(const std::string& name, const Value& value, int line = 0) {
         {

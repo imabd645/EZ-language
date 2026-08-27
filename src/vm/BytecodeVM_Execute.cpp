@@ -413,7 +413,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         Value v;
                         if (!globalEnv->getIfExists(name, v)) {
                             SYNC_IP();
-                            runtimeError("Undefined variable '" + name + "'");
+                            std::string suggestion = ezDidYouMean(name, globalEnv->getAllNames());
+                            runtimeError("Undefined variable '" + name + "'" + suggestion);
                             RAISE_FAULT();
                         }
                         *stackTop++ = v;

@@ -1,5 +1,0 @@
-use "crypto"
-
-out "Testing Hash.sha256..."
-hash = Hash.sha256("test")
-out "Hash: " + hash

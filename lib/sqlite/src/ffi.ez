@@ -9,18 +9,35 @@
 // ============================================================================
 
 // ── Loading ─────────────────────────────────────────────────────────────────
-// Prefer a real sqlite3.dll if the user has one (their build, their version,
-// their compile options). Fall back to winsqlite3.dll, which ships in System32
-// on every modern Windows and exports the full standard API -- that fallback is
-// what makes this library work with no install step at all.
-__sqlite_lib = os_load_lib("sqlite3.dll")
-__sqlite_which = "sqlite3.dll"
-when typeOf(__sqlite_lib) == "nil" or __sqlite_lib == 0 {
-    __sqlite_lib = os_load_lib("winsqlite3.dll")
-    __sqlite_which = "winsqlite3.dll (system)"
+__sqlite_lib = nil
+__sqlite_which = ""
+
+__candidates = []
+try {
+    when os() == "windows" {
+        __candidates = ["sqlite3.dll", "winsqlite3.dll"]
+    } other when os() == "macos" {
+        __candidates = ["libsqlite3.dylib", "libsqlite3.0.dylib", "libsqlite3.so", "sqlite3.dylib"]
+    } other {
+        __candidates = ["libsqlite3.so.0", "libsqlite3.so", "sqlite3.so", "libsqlite3.dylib"]
+    }
+} catch e {
+    __candidates = ["sqlite3.dll", "winsqlite3.dll", "libsqlite3.so.0", "libsqlite3.so", "libsqlite3.dylib"]
 }
-when typeOf(__sqlite_lib) == "nil" or __sqlite_lib == 0 {
-    throw "ezsqlite: could not load sqlite3.dll or winsqlite3.dll. Put a 64-bit sqlite3.dll on PATH (a 32-bit one will not load into a 64-bit process)."
+
+get cand in __candidates {
+    try {
+        h = os_load_lib(cand)
+        when typeOf(h) != "nil" and h != 0 and h != nil {
+            __sqlite_lib = h
+            __sqlite_which = cand
+            escape
+        }
+    } catch e {}
+}
+
+when typeOf(__sqlite_lib) == "nil" or __sqlite_lib == 0 or __sqlite_lib == nil {
+    throw "ezsqlite: could not load SQLite shared library (tried " + str(__candidates) + ")."
 }
 
 export task sqlite_backend() { give __sqlite_which }

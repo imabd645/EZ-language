@@ -3038,6 +3038,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
 bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypassAsyncCheck,
                               const uint8_t* callSiteIp) {
     if (callee.isNativeFunction()) {
+        auto native = callee.asNativeFunction();
+        int arity = native->arity;
+
+        // Arity gate: fixed-arity natives (arity >= 0) must receive exactly
+        // that many arguments.  Variadic natives (arity == -1) skip the check
+        // and validate args.size() themselves.  Without this, a call site that
+        // passes the wrong count reaches `args[N]` on a too-short vector —
+        // undefined behavior that typically surfaces as 0xc0000005.
+        if (arity >= 0 && static_cast<int>(argCount) != arity) {
+            runtimeError(native->name + "() expected " + std::to_string(arity) +
+                         " argument(s), got " + std::to_string(argCount));
+            return false;
+        }
+
         // Collect args from stack (they sit above the callee)
         Value* oldTop = stackTop;
         std::vector<Value> args(stackTop - argCount, stackTop);

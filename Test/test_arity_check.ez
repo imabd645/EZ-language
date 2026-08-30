@@ -1,0 +1,47 @@
+# Test: arity mismatch on fixed-arity native builtins
+# Each should produce a clean runtime error, NOT a crash (0xc0000005)
+
+out "=== Testing arity checks ==="
+
+# Test 1: stop() with 0 args (arity 1) — the original crash
+try {
+    stop()
+    out "FAIL: stop() should have thrown"
+} catch e {
+    out "PASS: stop() with 0 args => " + str(e)
+}
+
+# Test 2: readFile() with 0 args (arity 1)
+try {
+    readFile()
+    out "FAIL: readFile() should have thrown"
+} catch e {
+    out "PASS: readFile() with 0 args => " + str(e)
+}
+
+# Test 3: writeFile() with 1 arg (arity 2)
+try {
+    writeFile("x")
+    out "FAIL: writeFile() should have thrown"
+} catch e {
+    out "PASS: writeFile() with 1 arg => " + str(e)
+}
+
+# Test 4: len() with 0 args (arity 1)
+try {
+    len()
+    out "FAIL: len() should have thrown"
+} catch e {
+    out "PASS: len() with 0 args => " + str(e)
+}
+
+# Test 5: correct arity still works
+out "PASS: len(hello) = " + str(len("hello"))
+
+# Test 6: variadic builtins (arity -1) still accept any count
+print()
+print("one")
+print("one", "two", "three")
+out "PASS: variadic print() works with 0, 1, 3 args"
+
+out "=== All arity tests complete ==="

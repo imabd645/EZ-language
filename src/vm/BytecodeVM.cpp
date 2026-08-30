@@ -611,8 +611,16 @@ Value BytecodeVM::callFunction(const Value& callee,
     }
 
     if (callee.isNativeFunction()) {
+        auto native = callee.asNativeFunction();
+        int arity = native->arity;
+        if (arity >= 0 && static_cast<int>(args.size()) != arity) {
+            runtimeError(native->name + "() expected " + std::to_string(arity) +
+                         " argument(s), got " + std::to_string(args.size()),
+                         line, filename);
+            return Value();
+        }
         try {
-            return callee.asNativeFunction()->function(*this, args);
+            return native->function(*this, args);
         } catch (const RuntimeError&) {
             // Propagate rather than flatten. A RuntimeError raised by
             // throwException() carries the exception INSTANCE, which is what a

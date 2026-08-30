@@ -425,16 +425,16 @@ export task suite(name, fn) {
 
 # Define a test case
 export task it(testName, testFn) {
-    test = {
+    test1 = {
         "name": testName,
         "fn": testFn,
         "suite": __testState["currentSuite"]
     }
     
     when __testState["currentSuite"] {
-        push(__testState["currentSuite"]["tests"], test)
+        push(__testState["currentSuite"]["tests"], test1)
     } other {
-        push(__testState["suites"], test)
+        push(__testState["suites"], test1)
     }
 }
 
@@ -445,7 +445,7 @@ export task testCase(name, fn) {
 
 # Define a skipped test
 export task skipe(name, fn) {
-    test = {
+    test1 = {
         "name": name,
         "fn": fn,
         "suite": __testState["currentSuite"],
@@ -453,9 +453,9 @@ export task skipe(name, fn) {
     }
     
     when __testState["currentSuite"] {
-        push(__testState["currentSuite"]["tests"], test)
+        push(__testState["currentSuite"]["tests"], test1)
     } other {
-        push(__testState["suites"], test)
+        push(__testState["suites"], test1)
     }
 }
 
@@ -492,28 +492,28 @@ export task afterAll(fn) {
 # --- Test Runner ---
 
 # Run a single test
-task __runTest(test) {
+task __runTest(test1) {
     __testState["totalCount"] = __testState["totalCount"] + 1
-    __testState["currentTest"] = test
+    __testState["currentTest"] = test1
     
     # Check if skipped
-    when has_key(test, "skipped") and test["skipped"] {
+    when has_key(test1, "skipped") and test1["skipped"] {
         __testState["skipCount"] = __testState["skipCount"] + 1
-        __printColor("  - " + test["name"], COLOR_YELLOW)
+        __printColor("  - " + test1["name"], COLOR_YELLOW)
         __print(" [SKIPPED]")
         give "skipped"
     }
     
     # Named owningSuite, not suite: a bare `suite = ...` would replace this
     # module's own suite() task process-wide the first time a test ran.
-    owningSuite = test["suite"]
+    owningSuite = test1["suite"]
     
     # Run beforeEach
     when owningSuite and owningSuite["beforeEach"] {
         try {
             owningSuite["beforeEach"]()
         } catch e {
-            __printColor("  ✗ " + test["name"], COLOR_RED)
+            __printColor("  ✗ " + test1["name"], COLOR_RED)
             __print(" [beforeEach failed: " + str(e) + "]")
             __testState["failCount"] = __testState["failCount"] + 1
             give "fail"
@@ -525,7 +525,7 @@ task __runTest(test) {
     errorMsg = ""
     
     try {
-        test["fn"]()
+        test1["fn"]()
     } catch e {
         passed = false
         errorMsg = str(e)
@@ -547,11 +547,11 @@ task __runTest(test) {
     # Report result
     when passed {
         __testState["passCount"] = __testState["passCount"] + 1
-        __printColor("  ✓ " + test["name"], COLOR_GREEN)
+        __printColor("  ✓ " + test1["name"], COLOR_GREEN)
         give "pass"
     } other {
         __testState["failCount"] = __testState["failCount"] + 1
-        __printColor("  ✗ " + test["name"], COLOR_RED)
+        __printColor("  ✗ " + test1["name"], COLOR_RED)
         __print("\n    " + errorMsg)
         give "fail"
     }

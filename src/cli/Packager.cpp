@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <csignal>
 #include <algorithm>
+#include <filesystem>
 #include "utils/EzLibPath.h"
 #include "runtime/Value.h"
 #include "gc/CycleCollector.h"
@@ -29,8 +30,41 @@
 #include <cstdint>
 
 
-
 #include "cli/CLI.h"
+
+// Forward declaration — findDependencies and bundleDirectoryPackage are mutually recursive.
+void findDependencies(const std::string& filePath, std::set<std::string>& visited,
+                      std::vector<std::pair<std::string, std::string>>& filesToPack,
+                      const std::string& baseDir);
+
+/**
+ * Recursively walks a library directory and bundles every .ez file it contains
+ * into the VFS, then follows each file's own `use` statements via
+ * findDependencies.  This ensures that a directory-style package (e.g.
+ * lib/http/) has ALL its source files available at runtime, not just the
+ * single entry point that `use "http"` resolves to.
+ */
+void bundleDirectoryPackage(const std::string& dirPath,
+                            std::set<std::string>& visited,
+                            std::vector<std::pair<std::string, std::string>>& filesToPack,
+                            const std::string& baseDir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (auto& entry : fs::recursive_directory_iterator(dirPath, ec)) {
+        if (ec) break;
+        if (!entry.is_regular_file()) continue;
+        std::string ext = entry.path().extension().string();
+        if (ext != ".ez") continue;
+
+        std::string fullPath = entry.path().string();
+        std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
+
+        // findDependencies handles deduplication via `visited`, VFS name
+        // computation, and transitive dependency crawling.
+        findDependencies(fullPath, visited, filesToPack, baseDir);
+    }
+}
+
 void findDependencies(const std::string& filePath, std::set<std::string>& visited, std::vector<std::pair<std::string, std::string>>& filesToPack, const std::string& baseDir) {
     std::string normalizedPath = filePath;
     std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
@@ -62,6 +96,17 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
         std::cout << "  -> Packed " << vfsName << " (" << content.length() << " bytes)\n";
     }
     
+    // Compute the directory of the CURRENT file for relative resolution
+    std::string fileDir = normalizedPath;
+    size_t lastSlash = fileDir.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        fileDir = fileDir.substr(0, lastSlash);
+    } else {
+        fileDir = ".";
+    }
+
+    std::string ezlibBase = ezLibBase();
+    
     // Lexer-based search for dependencies
     Lexer lexer(content, normalizedPath);
     auto tokens = lexer.tokenize();
@@ -70,19 +115,43 @@ void findDependencies(const std::string& filePath, std::set<std::string>& visite
             std::string usePath;
             try { usePath = std::get<std::string>(tokens[i+1].literal); } catch(...) { continue; }
             
-            // Try resolving usePath
+            // Build search paths matching compiler resolution order:
+            // 1. Relative to importing file's directory (compiler Step 0)
+            // 2. Exact path as typed
+            // 3. ezlib base paths
             std::vector<std::string> searchPaths = {
+                fileDir + "/" + usePath,
+                fileDir + "/" + usePath + ".ez",
                 usePath,
                 usePath + ".ez",
-                ezLibBase() + usePath + ".ez",
-                ezLibBase() + usePath + "/" + usePath + ".ez",
-                ezLibBase() + usePath + "/main.ez"
+                ezlibBase + usePath,
+                ezlibBase + usePath + ".ez",
+                ezlibBase + usePath + "/" + usePath + ".ez",
+                ezlibBase + usePath + "/main.ez"
             };
             
+            bool found = false;
             for (const auto& sp : searchPaths) {
                 if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
                     findDependencies(sp, visited, filesToPack, baseDir);
+                    found = true;
                     break;
+                }
+            }
+
+            // If we found nothing as a single file, check if it's a directory
+            // package and bundle ALL .ez files in it recursively
+            if (!found) {
+                std::vector<std::string> dirCandidates = {
+                    fileDir + "/" + usePath,
+                    usePath,
+                    ezlibBase + usePath
+                };
+                for (const auto& dirPath : dirCandidates) {
+                    if (std::filesystem::exists(dirPath) && std::filesystem::is_directory(dirPath)) {
+                        bundleDirectoryPackage(dirPath, visited, filesToPack, baseDir);
+                        break;
+                    }
                 }
             }
         }
@@ -224,36 +293,60 @@ bool bundleFile(const std::string& entryScript, const std::string& outputExe, bo
     // Mark main script as visited so we don't pack it twice
     std::string normalizedMain = entryScript;
     std::replace(normalizedMain.begin(), normalizedMain.end(), '\\', '/');
-    // Call findDependencies but tell it to skip adding __main__ to the vector again
-    findDependencies(normalizedMain, visited, filesToPack, baseDir);
-    // Remove the __main__ entry from vector if findDependencies added it (we already added it as __main__.ez)
-    if (filesToPack.size() > 1 && filesToPack.back().first != "__main__.ez" && filesToPack.back().second == buffer.str()) {
-        // We handle duplicate by just not doing anything, as visited prevents loops. 
-        // Wait, to cleanly skip main in findDependencies without hack, just pass it with a dummy visited entry.
-    }
-    
-    // Actually, a better way to not duplicate main is to clear visited and insert it
     visited.insert(normalizedMain);
     
-    // Now crawl the main file's content manually for the first level, then let findDependencies handle the rest
-    // Lexer-based search for dependencies
+    // Compute the entry script's directory for relative resolution
+    std::string entryDir = normalizedMain;
+    size_t entryLastSlash = entryDir.find_last_of("/\\");
+    if (entryLastSlash != std::string::npos) {
+        entryDir = entryDir.substr(0, entryLastSlash);
+    } else {
+        entryDir = ".";
+    }
+    
+    std::string ezlibBase = ezLibBase();
+
+    // Scan the main script for use statements and resolve dependencies
     Lexer lexer(buffer.str(), entryScript);
     auto tokens = lexer.tokenize();
     for (size_t i = 0; i < tokens.size(); i++) {
         if (tokens[i].type == TokenType::USE && i + 1 < tokens.size() && tokens[i+1].type == TokenType::STRING) {
             std::string usePath;
             try { usePath = std::get<std::string>(tokens[i+1].literal); } catch(...) { continue; }
+
+            // Search paths matching compiler resolution order
             std::vector<std::string> searchPaths = {
+                entryDir + "/" + usePath,
+                entryDir + "/" + usePath + ".ez",
                 usePath,
                 usePath + ".ez",
-                ezLibBase() + usePath + ".ez",
-                ezLibBase() + usePath + "/" + usePath + ".ez",
-                ezLibBase() + usePath + "/main.ez"
+                ezlibBase + usePath,
+                ezlibBase + usePath + ".ez",
+                ezlibBase + usePath + "/" + usePath + ".ez",
+                ezlibBase + usePath + "/main.ez"
             };
+
+            bool found = false;
             for (const auto& sp : searchPaths) {
                 if (std::filesystem::exists(sp) && !std::filesystem::is_directory(sp)) {
                     findDependencies(sp, visited, filesToPack, baseDir);
+                    found = true;
                     break;
+                }
+            }
+
+            // If not found as a single file, try as a directory package
+            if (!found) {
+                std::vector<std::string> dirCandidates = {
+                    entryDir + "/" + usePath,
+                    usePath,
+                    ezlibBase + usePath
+                };
+                for (const auto& dirPath : dirCandidates) {
+                    if (std::filesystem::exists(dirPath) && std::filesystem::is_directory(dirPath)) {
+                        bundleDirectoryPackage(dirPath, visited, filesToPack, baseDir);
+                        break;
+                    }
                 }
             }
         }

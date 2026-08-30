@@ -971,10 +971,15 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     // ── Step 1: Virtual File System (bundled executables) ──
     bool foundInVFS = false;
 
-    // VFS keys to try, in priority order
+    // VFS keys to try, in priority order.
+    // absolutePath was set in Step 0 to dir + "/" + path when the importing
+    // file lives in a subdirectory (e.g. "lib/env/src/errors.ez").  This is
+    // exactly the key the bundler uses, so it must be tried first.
     std::vector<std::string> vfsKeys = {
+        absolutePath,
         path,
         path + ".ez",
+        "lib/" + path,
         "lib/" + path + ".ez",
         "lib/" + path + "/" + path + ".ez",
         "lib/" + path + "/main.ez",

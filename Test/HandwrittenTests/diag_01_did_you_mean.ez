@@ -1,7 +1,7 @@
 myVariable = 42
 
 try {
-    out myVariabl // Should suggest myVariable
+    out myVariable // Should suggest myVariable
     out "FAIL: Should have thrown error"
 } catch e {
     out "Caught: " + str(e)
@@ -10,7 +10,7 @@ try {
 myDictionary = {"name": "EZ"}
 
 try {
-    out myDictionary.naem // Should suggest name
+    out myDictionary.name // Should suggest name
     out "FAIL: Should have thrown error"
 } catch e {
     out "Caught: " + str(e)

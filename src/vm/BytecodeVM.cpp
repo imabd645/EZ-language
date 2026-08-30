@@ -613,7 +613,7 @@ Value BytecodeVM::callFunction(const Value& callee,
     if (callee.isNativeFunction()) {
         auto native = callee.asNativeFunction();
         int arity = native->arity;
-        if (arity >= 0 && static_cast<int>(args.size()) != arity) {
+        if (arity >= 0 && static_cast<int>(args.size()) < arity) {
             runtimeError(native->name + "() expected " + std::to_string(arity) +
                          " argument(s), got " + std::to_string(args.size()),
                          line, filename);

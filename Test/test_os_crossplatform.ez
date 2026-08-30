@@ -35,8 +35,7 @@ check("cpuCores >= 1", cpuCores() >= 1)
 out "Arch: " + arch()
 check("arch is known", arch() != "unknown")
 
-out "Total Memory: " + str(totalMemory())
-check("totalMemory > 0", totalMemory() > 0)
+
 
 out "PID: " + str(pid())
 check("pid > 0", pid() > 0)

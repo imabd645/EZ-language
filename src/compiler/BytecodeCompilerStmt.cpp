@@ -1000,9 +1000,23 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     // ── Step 2: Filesystem resolution ──
     if (!foundInVFS) {
         // Helper: try opening a candidate path and claim it if it works.
+        //
+        // std::ifstream happily "opens" a directory on POSIX (Linux/macOS) --
+        // is_open() returns true even though there is nothing to read -- so a
+        // bare package directory (e.g. "lib/testing") was being accepted here
+        // as the resolved module with empty source, before the code ever
+        // reached the "directory package" branch below that looks for
+        // main.ez/package.ez. The module then silently compiled to nothing:
+        // every export (describe, it, suite, getPlatform, Crypto.*, ...)
+        // resolved to nil at the call site instead of raising a resolution
+        // error. fopen()/ifstream fail outright on a directory on Windows,
+        // which is why this only ever showed up on the macOS/Linux CI legs.
+        // Rejecting directories here forces resolution to fall through to
+        // the explicit directory-package handling instead.
         bool found = false;
         auto tryPath = [&](const std::string& candidate) -> bool {
             searched.push_back(candidate);
+            if (fs::is_directory(candidate)) return false;
             std::ifstream f(candidate);
             if (f.is_open()) {
                 absolutePath = candidate;

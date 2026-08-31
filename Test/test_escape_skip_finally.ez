@@ -1,0 +1,58 @@
+# Test: escape and skip must trigger enclosing finally blocks
+# This was a bug — escape/skip emitted raw jumps that bypassed finally.
+
+# === Test 1: escape inside try/finally ===
+log = ""
+i = 0
+while i < 3 {
+    try {
+        when i == 1 { escape }
+        log = log + "body:" + str(i) + " "
+    } finally {
+        log = log + "finally:" + str(i) + " "
+    }
+    i = i + 1
+}
+out "escape test: " + log
+# Expected: escape test: body:0 finally:0 finally:1
+
+# === Test 2: skip inside try/finally ===
+log2 = ""
+j = 0
+while j < 3 {
+    try {
+        when j == 1 {
+            j = j + 1
+            skip
+        }
+        log2 = log2 + "body:" + str(j) + " "
+    } finally {
+        log2 = log2 + "finally:" + str(j) + " "
+    }
+    j = j + 1
+}
+out "skip test: " + log2
+# Expected: skip test: body:0 finally:0 finally:2 body:2 finally:2
+# (j==1 skip triggers finally:2 because j was incremented to 2 before skip)
+
+# === Test 3: Nested try/finally wrapping loop with escape ===
+log3 = ""
+try {
+    k = 0
+    while k < 3 {
+        try {
+            when k == 1 { escape }
+            log3 = log3 + "body:" + str(k) + " "
+        } finally {
+            log3 = log3 + "inner:" + str(k) + " "
+        }
+        k = k + 1
+    }
+    log3 = log3 + "after-loop "
+} finally {
+    log3 = log3 + "outer "
+}
+out "nested test: " + log3
+# Expected: nested test: body:0 inner:0 inner:1 after-loop outer
+
+out "=== All escape/skip/finally tests done ==="

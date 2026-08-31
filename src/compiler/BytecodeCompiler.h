@@ -253,6 +253,7 @@ private:
         size_t start;           // Bytecode offset of loop start
         std::vector<size_t> breaks;    // Jump offsets to patch
         std::vector<size_t> continues; // Loop offsets to patch
+        size_t finallyDepth;    // activeFinallys.size() when loop started
     };
     std::vector<LoopContext> loopStack;
     void startLoop();

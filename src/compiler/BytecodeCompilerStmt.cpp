@@ -2313,6 +2313,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
 void BytecodeCompiler::startLoop() {
     LoopContext loop;
     loop.start = currentChunk().code.size();
+    loop.finallyDepth = current->activeFinallys.size();
     loopStack.push_back(loop);
 }
 
@@ -2322,14 +2323,39 @@ void BytecodeCompiler::endLoop() {
 
 void BytecodeCompiler::emitBreak() {
     if (loopStack.empty()) { errorAt("'break' outside of loop", currentLine); return; }
-    // NOTE: do NOT pop a phantom value here; the value stack is balanced
-    // at this point by the loop body itself.
+
+    // Replay any finally blocks opened INSIDE the current loop before jumping
+    // out of it.  Same inline-replay pattern as compileGive, but scoped: only
+    // finallys pushed after startLoop (finallyDepth) need replaying here --
+    // finallys wrapping the whole loop will run on the normal fall-through
+    // path.  Each replayed finally also needs a TRY_END to pop the VM's
+    // tryStack entry that TRY_START pushed.
+    size_t depth = loopStack.back().finallyDepth;
+    auto pending = current->activeFinallys;
+    for (size_t i = pending.size(); i-- > depth; ) {
+        current->activeFinallys.resize(i);
+        emitOp(OpCode::TRY_END);
+        compileStmt(pending[i].body);
+    }
+    current->activeFinallys = pending;
+
     size_t jumpOffset = emitJump(OpCode::JUMP);
     loopStack.back().breaks.push_back(jumpOffset);
 }
 
 void BytecodeCompiler::emitContinue() {
     if (loopStack.empty()) { errorAt("'continue' outside of loop", currentLine); return; }
+
+    // Same finally-replay as emitBreak -- see comment there.
+    size_t depth = loopStack.back().finallyDepth;
+    auto pending = current->activeFinallys;
+    for (size_t i = pending.size(); i-- > depth; ) {
+        current->activeFinallys.resize(i);
+        emitOp(OpCode::TRY_END);
+        compileStmt(pending[i].body);
+    }
+    current->activeFinallys = pending;
+
     emitLoop(loopStack.back().start);
 }
 

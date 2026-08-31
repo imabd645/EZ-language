@@ -280,13 +280,26 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     }
                 }
 
-                EventLoop::instance().release();
-
+                // Settle the future BEFORE releasing our EventLoop refcount, not
+                // after. set()/setError() synchronously runs every then()
+                // callback on THIS thread, and the await-side callback's whole
+                // job is to push the resume task onto the EventLoop's queue.
+                // release() also wakes the loop (to re-check its exit
+                // condition), so calling it first opened a race: the main
+                // thread could wake on release()'s signal, find the queue
+                // still empty (this thread hadn't reached set() yet) and
+                // pendingIoCount already at 0, and stop the loop entirely --
+                // after which set()'s pushTask() lands in a queue nobody is
+                // draining anymore, and the awaiting script never resumes.
+                // Settling first guarantees the resume task is already queued
+                // by the time release()'s wake-up is observed.
                 if (failed) {
                     ezFut->setError(errorText);
                 } else if (signalResult) {
                     ezFut->set(result);
                 }
+
+                EventLoop::instance().release();
             }).detach();
 
             return Value::makeFuture(ezFut);

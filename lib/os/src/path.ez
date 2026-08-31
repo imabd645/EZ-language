@@ -56,14 +56,36 @@ export model OSPath {
     }
 
     task dirname(p) {
-        p = collapseSeparators(str(p), self.sep())
-        parts = split(p, self.sep())
-        when len(parts) <= 1 { give "" }
+        sep = self.sep()
+        p = collapseSeparators(str(p), sep)
+        when p == "" { give "." }
+
+        isAbs = self.isAbsolute(p)
+
+        // A trailing separator doesn't change the parent -- dirname("/a/b/")
+        // is the same as dirname("/a/b") -- but don't strip the root itself.
+        trimmed = p
+        when len(trimmed) > 1 and endsWith(trimmed, sep) {
+            trimmed = substr(trimmed, 0, len(trimmed) - 1)
+        }
+
+        parts = split(trimmed, sep)
+
+        // One segment left after dropping any trailing separator: either a
+        // bare relative name ("a" -> ".", the conventional dirname of a
+        // single component) or the root itself, however many segments
+        // splitting it produced ("/" -> ["", ""], "/a" -> ["", "a"] -- both
+        // have nothing before the last component, so both are the root).
+        when len(parts) <= 1 {
+            when isAbs { give sep }
+            give "."
+        }
 
         res = parts[0]
         repeat i = 1 to len(parts) - 2 {
-            res = res + self.sep() + parts[i]
+            res = res + sep + parts[i]
         }
+        when res == "" and isAbs { give sep }
         give res
     }
 
@@ -98,19 +120,72 @@ export model OSPath {
     }
 
     task normalize(p) {
-        give collapseSeparators(str(p), self.sep())
+        sep = self.sep()
+        p = collapseSeparators(str(p), sep)
+        when p == "" { give "." }
+
+        isAbs = self.isAbsolute(p)
+
+        // Windows drive prefix ("C:") rides along untouched; only the
+        // segments after it get resolved.
+        prefix = ""
+        rest = p
+        when OSFFI.isWindows and len(p) >= 2 and substr(p, 1, 1) == ":" {
+            prefix = substr(p, 0, 2)
+            rest = substr(p, 2, len(p) - 2)
+        }
+
+        parts = split(rest, sep)
+        stack = []
+        get seg in parts {
+            when seg == "" or seg == "." {
+                // Empty (leading/trailing/duplicate separator) or a no-op
+                // "current directory" segment -- drop it.
+            } other when seg == ".." {
+                when len(stack) > 0 and stack[len(stack) - 1] != ".." {
+                    pop(stack)
+                } other when isAbs {
+                    // ".." above the root clamps at the root, same as
+                    // every mainstream normalize() -- there's nowhere
+                    // higher to go, so it's silently absorbed.
+                } other {
+                    stack = stack + [seg]
+                }
+            } other {
+                stack = stack + [seg]
+            }
+        }
+
+        joined = ""
+        i = 0
+        while i < len(stack) {
+            when i > 0 { joined = joined + sep }
+            joined = joined + stack[i]
+            i = i + 1
+        }
+
+        when isAbs {
+            when joined == "" { give prefix + sep }
+            give prefix + sep + joined
+        }
+        when joined == "" { give "." }
+        give prefix + joined
     }
 
     // Resolve relative paths against a base directory (defaults to cwd).
     task resolve(p, base = nil) {
-        p = self.normalize(p)
-        when self.isAbsolute(p) { give p }
+        p = str(p)
+        when self.isAbsolute(p) { give self.normalize(p) }
 
         when isNil(base) or base == "" {
             base = self._getCwd()
         }
 
-        give self.join(str(base), p)
+        // Normalize AFTER joining, not before -- a ".." in p only cancels
+        // out against base once the two are actually combined; normalizing
+        // p on its own (the old behavior) left a leading ".." in place
+        // with nothing yet to cancel it against.
+        give self.normalize(self.join(str(base), p))
     }
 
     task _getCwd() {

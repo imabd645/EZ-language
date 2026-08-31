@@ -201,7 +201,9 @@ void TypeChecker::checkGet(const GetStmt& stmt) {
     declareVariable(stmt.valueVariable.empty() ? stmt.variable : stmt.valueVariable, TypeInfo("Any"));
     if (!stmt.valueVariable.empty()) declareVariable(stmt.variable, TypeInfo("Any"));
     checkExpr(stmt.iterable);
+    loopDepth++;
     checkStmt(stmt.body);
+    loopDepth--;
     endScope();
 }
 

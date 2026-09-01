@@ -50,6 +50,22 @@ extern GUIState g_gui;
 inline double vNum(const Value& v) { return v.isNumber() ? v.asNumber() : 0.0; }
 inline std::string vStr(const Value& v) { return v.toString(); }
 
+inline std::wstring utf8ToWide(const std::string& utf8) {
+    if (utf8.empty()) return std::wstring();
+    int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), NULL, 0);
+    std::wstring wstr(size, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), &wstr[0], size);
+    return wstr;
+}
+
+inline std::string wideToUtf8(const std::wstring& wide) {
+    if (wide.empty()) return std::string();
+    int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), NULL, 0, NULL, NULL);
+    std::string str(size, 0);
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), &str[0], size, NULL, NULL);
+    return str;
+}
+
 Value fireEventCallback(HWND hwnd, const std::string& eventName, const std::vector<Value>& args = {});
 bool hasEvent(HWND hwnd, const std::string& eventName);
 double registerWidgetHandle(HWND hwnd);

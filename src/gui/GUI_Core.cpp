@@ -141,9 +141,9 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (style.textColor != CLR_INVALID) SetTextColor(hdc, style.textColor);
                 else SetTextColor(hdc, RGB(255, 255, 255));
                 if (style.hFont) SelectObject(hdc, style.hFont);
-                char text[256];
-                GetWindowText(dis->hwndItem, text, 256);
-                DrawText(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                wchar_t text[512] = {0};
+                GetWindowTextW(dis->hwndItem, text, 512);
+                DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                 if (dis->itemState & ODS_FOCUS) {
                     RECT focusRc = dis->rcItem;
                     InflateRect(&focusRc, -3, -3);
@@ -320,14 +320,14 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
     icex.dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_PROGRESS_CLASS | ICC_LISTVIEW_CLASSES | ICC_DATE_CLASSES | ICC_TREEVIEW_CLASSES | ICC_UPDOWN_CLASS | ICC_USEREX_CLASSES;
     InitCommonControlsEx(&icex);
-    WNDCLASSEX wc = {0};
-    wc.cbSize = sizeof(WNDCLASSEX);
+    WNDCLASSEXW wc = {0};
+    wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = EZWndProc;
     wc.hInstance = g_gui.hInstance;
-    wc.lpszClassName = "EZWindowClass";
+    wc.lpszClassName = L"EZWindowClass";
     wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    RegisterClassEx(&wc);
+    RegisterClassExW(&wc);
     g_gui.currentInterpreter = &interp;
 
 
@@ -344,7 +344,8 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_set_title", Value::makeNativeFunction("gui_set_title", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND hwnd = g_gui.handleMap[(int)vNum(args[0])];
-            SetWindowText(hwnd, vStr(args[1]).c_str());
+            std::wstring title = utf8ToWide(vStr(args[1]));
+            SetWindowTextW(hwnd, title.c_str());
             return Value();
         }));
 
@@ -435,11 +436,11 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_window", Value::makeNativeFunction("gui_create_window", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() != 3 && args.size() != 5) return Value();
-            std::string title = vStr(args[0]);
+            std::wstring title = utf8ToWide(vStr(args[0]));
             int x = CW_USEDEFAULT, y = CW_USEDEFAULT, w, h;
             if (args.size() == 3) { w = (int)vNum(args[1]); h = (int)vNum(args[2]); } 
             else { x = (int)vNum(args[1]); y = (int)vNum(args[2]); w = (int)vNum(args[3]); h = (int)vNum(args[4]); }
-            HWND hwnd = CreateWindowEx(0, "EZWindowClass", title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            HWND hwnd = CreateWindowExW(0, L"EZWindowClass", title.c_str(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 x, y, w, h, NULL, NULL, g_gui.hInstance, NULL);
             if (!g_gui.mainWindow) g_gui.mainWindow = hwnd;
             if (g_gui.currentTheme == "dark") { BOOL useD = true; DwmSetWindowAttribute(hwnd, 20, &useD, sizeof(useD)); }
@@ -471,9 +472,9 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_run", Value::makeNativeFunction("gui_run", 0,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             MSG msg;
-            while (GetMessage(&msg, NULL, 0, 0)) {
+            while (GetMessageW(&msg, NULL, 0, 0)) {
                 TranslateMessage(&msg);
-                DispatchMessage(&msg);
+                DispatchMessageW(&msg);
             }
             return Value();
         }));
@@ -481,7 +482,8 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_button", Value::makeNativeFunction("gui_create_button", 7,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-            HWND hwnd = CreateWindow("BUTTON", vStr(args[1]).c_str(), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+            std::wstring text = utf8ToWide(vStr(args[1]));
+            HWND hwnd = CreateWindowExW(0, L"BUTTON", text.c_str(), WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
                 (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), (int)vNum(args[5]), parent, NULL, g_gui.hInstance, NULL);
             g_gui.callbacks[hwnd] = args[6]; // Legacy callback
             return Value(registerWidgetHandle(hwnd));
@@ -490,7 +492,8 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_label", Value::makeNativeFunction("gui_create_label", 6,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-            HWND hwnd = CreateWindow("STATIC", vStr(args[1]).c_str(), WS_VISIBLE | WS_CHILD,
+            std::wstring text = utf8ToWide(vStr(args[1]));
+            HWND hwnd = CreateWindowExW(0, L"STATIC", text.c_str(), WS_VISIBLE | WS_CHILD,
                 (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), (int)vNum(args[5]), parent, NULL, g_gui.hInstance, NULL);
             return Value(registerWidgetHandle(hwnd));
         }));
@@ -498,7 +501,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_input", Value::makeNativeFunction("gui_create_input", 5,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-            HWND hwnd = CreateWindow("EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
+            HWND hwnd = CreateWindowExW(0, L"EDIT", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
                 (int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), parent, NULL, g_gui.hInstance, NULL);
             return Value(registerWidgetHandle(hwnd));
         }));
@@ -506,7 +509,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_dropdown", Value::makeNativeFunction("gui_create_dropdown", 5,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-            HWND hwnd = CreateWindow("COMBOBOX", "", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
+            HWND hwnd = CreateWindowExW(0, L"COMBOBOX", L"", WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST,
                 (int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), parent, NULL, g_gui.hInstance, NULL);
             return Value(registerWidgetHandle(hwnd));
         }));
@@ -514,7 +517,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gui_create_panel", Value::makeNativeFunction("gui_create_panel", 5,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-            HWND hwnd = CreateWindowEx(0, "EZWindowClass", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+            HWND hwnd = CreateWindowExW(0, L"EZWindowClass", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                 (int)vNum(args[1]), (int)vNum(args[2]), (int)vNum(args[3]), (int)vNum(args[4]), parent, NULL, g_gui.hInstance, NULL);
             return Value(registerWidgetHandle(hwnd));
         }));
@@ -523,7 +526,7 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];
             int w = (int)vNum(args[3]), h = (int)vNum(args[4]);
-            HWND hwnd = CreateWindowEx(0, "EZWindowClass", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VSCROLL | WS_HSCROLL,
+            HWND hwnd = CreateWindowExW(0, L"EZWindowClass", L"", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VSCROLL | WS_HSCROLL,
                 (int)vNum(args[1]), (int)vNum(args[2]), w, h, parent, NULL, g_gui.hInstance, NULL);
             SCROLLINFO si = { sizeof(si), SIF_RANGE | SIF_PAGE | SIF_POS, 0, 1000, (UINT)h, 0 };
             SetScrollInfo(hwnd, SB_VERT, &si, true);

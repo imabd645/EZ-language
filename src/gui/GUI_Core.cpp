@@ -479,6 +479,16 @@ void registerGUICoreBuiltins(RuntimeContext& interp) {
             return Value();
         }));
 
+    interp.defineGlobal("gui_process_events", Value::makeNativeFunction("gui_process_events", 0,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            MSG msg;
+            while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+            return Value();
+        }));
+
     interp.defineGlobal("gui_create_button", Value::makeNativeFunction("gui_create_button", 7,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             HWND parent = g_gui.handleMap[(int)vNum(args[0])];

@@ -558,6 +558,13 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
                                                                                    ShowWindow(hwnd, SW_SHOW);
                                                                                    SetTimer(hwnd, 1, 35, NULL);
                                                                                    if (g_spinners.count(hwnd)) g_spinners[hwnd].active = true;
+                                                                                   InvalidateRect(hwnd, NULL, FALSE);
+                                                                                   UpdateWindow(hwnd);
+                                                                                   MSG msg;
+                                                                                   while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+                                                                                       TranslateMessage(&msg);
+                                                                                       DispatchMessageW(&msg);
+                                                                                   }
                                                                                    return Value();
                                                                                }));
 

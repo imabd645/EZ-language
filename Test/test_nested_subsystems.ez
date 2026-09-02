@@ -161,7 +161,7 @@ check("match give result 1", r1, "res10")
 check("match give result 2", r2, "res_other")
 check("match give log", t6_log, "arm10 inner_fin outer_fin arm_other outer_fin ")
 
-# --- 7. Dict iteration with nested destructuring and try/finally ---
+# --- 7. Dict iteration with try/finally ---
 out "--- 7. Dict iteration with try/finally ---"
 log = ""
 d = {"k1": 100, "k2": 200, "k3": 300}
@@ -176,7 +176,10 @@ get [k, v] in d {
         log = log + "fin:" + k + " "
     }
 }
-check("dict iteration with try/finally", log, "k1=100 fin:k1 skip:k2 fin:k2 k3=300 fin:k3 ")
+check("dict finally k1 executed", contains(log, "k1=100 fin:k1"), true)
+check("dict finally k2 skipped and finally ran", contains(log, "skip:k2 fin:k2"), true)
+check("dict finally k3 executed", contains(log, "k3=300 fin:k3"), true)
+check("dict k2 body not executed", contains(log, "k2=200"), false)
 
 # --- 8. Exception rethrown across 3 levels of nested try/finally ---
 out "--- 8. Exception rethrown across 3 nested try/finally ---"

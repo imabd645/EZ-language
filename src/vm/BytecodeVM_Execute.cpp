@@ -1305,15 +1305,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == b.m_data.index()) {
-                            bool res;
-                            if (a.isInteger()) res = (a.asInteger() == b.asInteger());
-                            else if (a.isFloat()) res = (a.asFloat() == b.asFloat());
-                            else if (a.isBool()) res = (a.asBool() == b.asBool());
-                            else if (a.isNil()) res = true;
-                            else { SYNC_IP(); this->stackTop = stackTop; doEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = (a.asInteger() == b.asInteger());
                             stackTop -= 2;
                             *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isFloat() && b.isFloat()) {
+                            bool res = (a.asFloat() == b.asFloat());
+                            stackTop -= 2;
+                            *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isBool() && b.isBool()) {
+                            bool res = (a.asBool() == b.asBool());
+                            stackTop -= 2;
+                            *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isNil() && b.isNil()) {
+                            stackTop -= 2;
+                            *stackTop = Value(true);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;
@@ -1341,15 +1350,24 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         const Value& b = stackTop[-1];
                         const Value& a = stackTop[-2];
-                        if (a.m_data.index() == b.m_data.index()) {
-                            bool res;
-                            if (a.isInteger()) res = (a.asInteger() != b.asInteger());
-                            else if (a.isFloat()) res = (a.asFloat() != b.asFloat());
-                            else if (a.isBool()) res = (a.asBool() != b.asBool());
-                            else if (a.isNil()) res = false;
-                            else { SYNC_IP(); this->stackTop = stackTop; doNotEqual(); stackTop = this->stackTop; LOAD_FRAME(); DISPATCH(); }
+                        if (a.isInteger() && b.isInteger()) {
+                            bool res = (a.asInteger() != b.asInteger());
                             stackTop -= 2;
                             *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isFloat() && b.isFloat()) {
+                            bool res = (a.asFloat() != b.asFloat());
+                            stackTop -= 2;
+                            *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isBool() && b.isBool()) {
+                            bool res = (a.asBool() != b.asBool());
+                            stackTop -= 2;
+                            *stackTop = Value(res);
+                            stackTop++;
+                        } else if (a.isNil() && b.isNil()) {
+                            stackTop -= 2;
+                            *stackTop = Value(false);
                             stackTop++;
                         } else if (a.isInstance()) {
                             bool handled = false;

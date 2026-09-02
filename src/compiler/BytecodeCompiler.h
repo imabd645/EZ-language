@@ -254,6 +254,7 @@ private:
         std::vector<size_t> breaks;    // Jump offsets to patch
         std::vector<size_t> continues; // Loop offsets to patch
         size_t finallyDepth;    // activeFinallys.size() when loop started
+        int scopeDepth;         // scope depth when loop started
     };
     std::vector<LoopContext> loopStack;
     void startLoop();

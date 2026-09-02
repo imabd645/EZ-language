@@ -1,0 +1,262 @@
+# ============================================================================
+# Edge-case tests for escape/skip/finally, throw, give, and loop control flow
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+# === 1. Deeply nested try/finally with escape ===
+out "--- 1. Deeply nested try/finally with escape ---"
+log = ""
+i = 0
+while i < 3 {
+    try {
+        try {
+            when i == 1 { escape }
+            log = log + "body:" + str(i) + " "
+        } finally {
+            log = log + "inner:" + str(i) + " "
+        }
+    } finally {
+        log = log + "outer:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("deeply nested escape", log, "body:0 inner:0 outer:0 inner:1 outer:1 ")
+
+# === 2. escape inside try/catch/finally ===
+out "--- 2. escape inside try/catch/finally ---"
+log = ""
+i = 0
+while i < 3 {
+    try {
+        when i == 1 { escape }
+        log = log + "try:" + str(i) + " "
+    } catch e {
+        log = log + "catch:" + str(i) + " "
+    } finally {
+        log = log + "finally:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("escape with catch/finally", log, "try:0 finally:0 finally:1 ")
+
+# === 3. skip triggers finally on every skipped iteration ===
+out "--- 3. skip on every iteration ---"
+log = ""
+i = 0
+while i < 4 {
+    try {
+        i = i + 1
+        skip
+    } finally {
+        log = log + "f:" + str(i) + " "
+    }
+}
+check("skip every iteration", log, "f:1 f:2 f:3 f:4 ")
+
+# === 4. escape from inner loop only - outer finally unaffected ===
+out "--- 4. inner escape, outer loop continues ---"
+log = ""
+i = 0
+while i < 2 {
+    try {
+        j = 0
+        while j < 3 {
+            try {
+                when j == 1 { escape }
+                log = log + "j:" + str(j) + " "
+            } finally {
+                log = log + "jf:" + str(j) + " "
+            }
+            j = j + 1
+        }
+        log = log + "after-inner:" + str(i) + " "
+    } finally {
+        log = log + "outer:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("inner escape outer continues", log,
+    "j:0 jf:0 jf:1 after-inner:0 outer:0 j:0 jf:0 jf:1 after-inner:1 outer:1 ")
+
+# === 5. throw inside loop try/finally still works (no regression) ===
+out "--- 5. throw inside loop try/finally ---"
+log = ""
+i = 0
+while i < 3 {
+    try {
+        when i == 1 { throw "boom" }
+        log = log + "body:" + str(i) + " "
+    } catch e {
+        log = log + "caught:" + str(e) + " "
+    } finally {
+        log = log + "finally:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("throw still works", log, "body:0 finally:0 caught:boom finally:1 body:2 finally:2 ")
+
+# === 6. give inside loop try/finally still works (no regression) ===
+out "--- 6. give inside loop try/finally ---"
+test6_log = ""
+task earlyReturn() {
+    i = 0
+    while i < 5 {
+        try {
+            when i == 2 {
+                test6_log = test6_log + "returned:" + str(i) + " "
+                give "done"
+            }
+            test6_log = test6_log + "body:" + str(i) + " "
+        } finally {
+            test6_log = test6_log + "finally:" + str(i) + " "
+        }
+        i = i + 1
+    }
+}
+earlyReturn()
+check("give inside loop/finally", test6_log, "body:0 finally:0 body:1 finally:1 returned:2 finally:2 ")
+
+# === 7. escape from get...in loop (for-each) ===
+out "--- 7. escape from get...in loop ---"
+log = ""
+items = [10, 20, 30, 40, 50]
+get item in items {
+    try {
+        when item == 30 { escape }
+        log = log + str(item) + " "
+    } finally {
+        log = log + "f:" + str(item) + " "
+    }
+}
+check("escape from get..in", log, "10 f:10 20 f:20 f:30 ")
+
+
+# === 8. skip from get...in loop (for-each) ===
+out "--- 8. skip from get...in loop ---"
+log = ""
+get item in [1, 2, 3, 4, 5] {
+    try {
+        when item == 3 { skip }
+        log = log + str(item) + " "
+    } finally {
+        log = log + "f:" + str(item) + " "
+    }
+}
+check("skip from get..in", log, "1 f:1 2 f:2 f:3 4 f:4 5 f:5 ")
+
+# === 9. escape without finally (no regression) ===
+out "--- 9. escape without finally ---"
+log = ""
+i = 0
+while i < 5 {
+    when i == 3 { escape }
+    log = log + str(i) + " "
+    i = i + 1
+}
+check("escape no finally", log, "0 1 2 ")
+
+# === 10. skip without finally (no regression) ===
+out "--- 10. skip without finally ---"
+log = ""
+i = 0
+while i < 5 {
+    i = i + 1
+    when i == 3 { skip }
+    log = log + str(i) + " "
+}
+check("skip no finally", log, "1 2 4 5 ")
+
+# === 11. try/finally without catch, escape still runs finally ===
+out "--- 11. try/finally (no catch) with escape ---"
+log = ""
+i = 0
+while i < 3 {
+    try {
+        when i == 1 { escape }
+        log = log + "b:" + str(i) + " "
+    } finally {
+        log = log + "f:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("try/finally no catch escape", log, "b:0 f:0 f:1 ")
+
+# === 12. Multiple escapes in different branches ===
+out "--- 12. Multiple escapes in different branches ---"
+log = ""
+i = 0
+while i < 10 {
+    try {
+        when i == 2 { escape }
+        when i == 5 { escape }
+        log = log + str(i) + " "
+    } finally {
+        log = log + "f:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("multiple escape branches", log, "0 f:0 1 f:1 f:2 ")
+
+# === 13. escape inside nested try - only inner finally runs from escape ===
+out "--- 13. escape inside inner try, outer try wraps loop ---"
+log = ""
+try {
+    i = 0
+    while i < 3 {
+        try {
+            when i == 1 { escape }
+            log = log + "b:" + str(i) + " "
+        } finally {
+            log = log + "if:" + str(i) + " "
+        }
+        i = i + 1
+    }
+    log = log + "done "
+} finally {
+    log = log + "of "
+}
+check("inner finally from escape, outer on fall-through", log, "b:0 if:0 if:1 done of ")
+
+# === 14. skip inside try/catch that throws ===
+out "--- 14. skip and throw interaction ---"
+log = ""
+i = 0
+while i < 4 {
+    try {
+        when i == 1 { throw "err" }
+        when i == 3 {
+            i = i + 1
+            skip
+        }
+        log = log + "b:" + str(i) + " "
+    } catch e {
+        log = log + "c:" + str(i) + " "
+    } finally {
+        log = log + "f:" + str(i) + " "
+    }
+    i = i + 1
+}
+check("skip and throw mix", log, "b:0 f:0 c:1 f:1 b:2 f:2 f:4 ")
+
+# === Summary ===
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="
+when failed > 0 {
+    exit(1)
+}

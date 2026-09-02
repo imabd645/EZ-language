@@ -392,41 +392,32 @@ void BytecodeCompiler::compileRepeat(const RepeatStmt& stmt) {
 }
 
 void BytecodeCompiler::compileGet(const GetStmt& stmt) {
-    // Push the iterable and convert it to an iterator object
+    beginScope();
+
+    // Hidden local: the iterator  (slot N)
+    size_t iterVar = addLocal("<iter>");
     compileExpr(stmt.iterable);
     if (!stmt.valueVariable.empty()) {
         emitOp(OpCode::GET_DICT_ITER);
     } else {
         emitOp(OpCode::GET_ITER);
     }
-
-    beginScope();
-
-    // Hidden local: the iterator  (slot N)
-    size_t iterVar = addLocal("<iter>");
-    current->locals.back().isStackResident = false;
     markInitialized();
-    // GET_ITER leaves the iterator on the stack; store it into iterVar slot.
     emitStoreLocal(iterVar);
-    emitOp(OpCode::POP);
 
     // Loop variable that receives each element (or key)
     size_t loopVar = addLocal(stmt.variable);
-    current->locals.back().isStackResident = false;
-    markInitialized();
     emitOp(OpCode::LOAD_NIL);
+    markInitialized();
     emitStoreLocal(loopVar);
-    emitOp(OpCode::POP);
     
     // Optional second variable for value in dict iteration
     size_t loopValueVar = 0;
     if (!stmt.valueVariable.empty()) {
         loopValueVar = addLocal(stmt.valueVariable);
-        current->locals.back().isStackResident = false;
-        markInitialized();
         emitOp(OpCode::LOAD_NIL);
+        markInitialized();
         emitStoreLocal(loopValueVar);
-        emitOp(OpCode::POP);
     }
 
     startLoop();
@@ -1661,19 +1652,23 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     int retvalSlot = -1;
     if (hasFinally) {
         beginScope(); // Scope for the hidden pending exception variable
-        emitOp(OpCode::LOAD_NIL);
         pendingSlot = addLocal("__pendingExc__" + std::to_string(current->locals.size()));
-        current->locals.back().isStackResident = true; // It is on the stack right now
+        current->locals.back().isStackResident = false;
         markInitialized();
+        emitOp(OpCode::LOAD_NIL);
+        emitStoreLocal(pendingSlot);
+        emitOp(OpCode::POP);
 
         // A second hidden local, to park a `give`'s return value while the
         // finally body runs. The value cannot simply be left on the stack: the
         // finally block opens a scope whose locals are addressed by slot index,
         // and an extra temporary underneath them would shift every one.
-        emitOp(OpCode::LOAD_NIL);
         retvalSlot = addLocal("__retval__" + std::to_string(current->locals.size()));
-        current->locals.back().isStackResident = true;
+        current->locals.back().isStackResident = false;
         markInitialized();
+        emitOp(OpCode::LOAD_NIL);
+        emitStoreLocal(retvalSlot);
+        emitOp(OpCode::POP);
     }
 
     // Register the finally for the try/catch bodies compiled below, so a `give`
@@ -1716,10 +1711,8 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                 beginScope();
                 if (!cb.varName.empty()) {
                     int slot = addLocal(cb.varName);
-                    current->locals.back().isStackResident = false;
                     markInitialized();
                     emitStoreLocal(slot);
-                    emitOp(OpCode::POP);
                 } else {
                     emitOp(OpCode::POP); // No variable bound, discard exception
                 }
@@ -1734,10 +1727,8 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                 beginScope();
                 if (!cb.varName.empty()) {
                     int slot = addLocal(cb.varName);
-                    current->locals.back().isStackResident = false;
                     markInitialized();
                     emitStoreLocal(slot);
-                    emitOp(OpCode::POP);
                 } else {
                     emitOp(OpCode::POP); // No variable bound, discard exception
                 }
@@ -2314,6 +2305,7 @@ void BytecodeCompiler::startLoop() {
     LoopContext loop;
     loop.start = currentChunk().code.size();
     loop.finallyDepth = current->activeFinallys.size();
+    loop.scopeDepth = current->scopeDepth;
     loopStack.push_back(loop);
 }
 
@@ -2339,6 +2331,17 @@ void BytecodeCompiler::emitBreak() {
     }
     current->activeFinallys = pending;
 
+    // Pop any locals created inside the loop that we are jumping out of.
+    int targetDepth = loopStack.back().scopeDepth;
+    for (auto it = current->locals.rbegin(); it != current->locals.rend(); ++it) {
+        if (it->depth <= targetDepth) break;
+        if (it->isCaptured) {
+            emitOp(OpCode::CLOSE_UPVALUE);
+        } else if (it->isStackResident) {
+            emitOp(OpCode::POP);
+        }
+    }
+
     size_t jumpOffset = emitJump(OpCode::JUMP);
     loopStack.back().breaks.push_back(jumpOffset);
 }
@@ -2355,6 +2358,17 @@ void BytecodeCompiler::emitContinue() {
         compileStmt(pending[i].body);
     }
     current->activeFinallys = pending;
+
+    // Pop any locals created inside the loop that we are jumping out of.
+    int targetDepth = loopStack.back().scopeDepth;
+    for (auto it = current->locals.rbegin(); it != current->locals.rend(); ++it) {
+        if (it->depth <= targetDepth) break;
+        if (it->isCaptured) {
+            emitOp(OpCode::CLOSE_UPVALUE);
+        } else if (it->isStackResident) {
+            emitOp(OpCode::POP);
+        }
+    }
 
     emitLoop(loopStack.back().start);
 }

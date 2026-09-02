@@ -13,6 +13,7 @@ static LRESULT CALLBACK EZSpinnerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
     switch (msg) {
         case WM_CREATE: {
             g_spinners[hwnd] = SpinnerData();
+            SetTimer(hwnd, 1, 35, NULL);
             return 0;
         }
         case WM_DESTROY: {
@@ -36,6 +37,10 @@ static LRESULT CALLBACK EZSpinnerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             GetClientRect(hwnd, &rc);
             int width = rc.right - rc.left;
             int height = rc.bottom - rc.top;
+            if (width <= 0 || height <= 0) {
+                EndPaint(hwnd, &ps);
+                return 0;
+            }
 
             HDC memDC = CreateCompatibleDC(hdc);
             HBITMAP memBmp = CreateCompatibleBitmap(hdc, width, height);
@@ -43,15 +48,15 @@ static LRESULT CALLBACK EZSpinnerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
 
             HWND parent = GetParent(hwnd);
             HBRUSH bgBrush = NULL;
-            if (g_gui.styles.count(parent) && g_gui.styles[parent].bgBrush) {
-                bgBrush = g_gui.styles[parent].bgBrush;
-            } else if (g_gui.styles.count(hwnd) && g_gui.styles[hwnd].bgBrush) {
+            if (g_gui.styles.count(hwnd) && g_gui.styles[hwnd].bgBrush) {
                 bgBrush = g_gui.styles[hwnd].bgBrush;
+            } else if (g_gui.styles.count(parent) && g_gui.styles[parent].bgBrush) {
+                bgBrush = g_gui.styles[parent].bgBrush;
             } else if (g_gui.currentTheme == "dark") {
                 if (!g_gui.darkBrush) g_gui.darkBrush = CreateSolidBrush(RGB(30, 30, 30));
                 bgBrush = g_gui.darkBrush;
             } else {
-                bgBrush = (HBRUSH)(COLOR_BTNFACE + 1);
+                bgBrush = GetSysColorBrush(COLOR_WINDOW);
             }
             FillRect(memDC, &rc, bgBrush);
 
@@ -544,13 +549,13 @@ void registerGUIWidgetsBuiltins(RuntimeContext& interp) {
     RegisterClassExW(&wcs);
 
     interp.defineGlobal("gui_create_loading_spinner", Value::makeNativeFunction("gui_create_loading_spinner", 4,
-                                                                                [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-                                                                                    HWND parent = g_gui.handleMap[(int)vNum(args[0])];
-                                                                                    int size = (int)vNum(args[3]);
-                                                                                    HWND hwnd = CreateWindowExW(0, L"EZLoadingSpinner", L"", WS_CHILD,
-                                                                                                                (int)vNum(args[1]), (int)vNum(args[2]), size, size, parent, NULL, g_gui.hInstance, NULL);
-                                                                                    return Value(registerWidgetHandle(hwnd));
-                                                                                }));
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            HWND parent = g_gui.handleMap[(int)vNum(args[0])];
+            int size = (int)vNum(args[3]);
+            HWND hwnd = CreateWindowExW(0, L"EZLoadingSpinner", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+                (int)vNum(args[1]), (int)vNum(args[2]), size, size, parent, NULL, g_gui.hInstance, NULL);
+            return Value(registerWidgetHandle(hwnd));
+        }));
 
     interp.defineGlobal("gui_start_loading_spinner", Value::makeNativeFunction("gui_start_loading_spinner", 1,
                                                                                [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {

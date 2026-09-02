@@ -1,0 +1,154 @@
+# ============================================================================
+# Advanced Buffer, Regex, JSON, and String Subsystems Stress Tests
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+# --- 1. Buffer Allocation, Manipulation & Copying ---
+out "--- 1. Buffer Operations ---"
+b1 = buffer(10)
+check("buffer initial size", buf_size(b1), 10)
+
+buf_fill(b1, 65) # Fill with 'A' (ASCII 65)
+check("buf_to_str after fill", buf_to_str(b1), "AAAAAAAAAA")
+
+b1[0] = 72 # 'H'
+b1[1] = 105 # 'i'
+b1[2] = 33 # '!'
+check("buf byte updates", buf_to_str(b1), "Hi!AAAAAAA")
+
+b2 = buffer(8)
+buf_fill(b2, 48) # '0'
+# Copy "Hi!" (bytes 0..3) from b1 into b2 at target offset 2
+copiedLen = buf_copy(b1, b2, 2, 0, 3)
+check("buf_copy length", copiedLen, 3)
+check("buf_copy result", buf_to_str(b2), "00Hi!000")
+
+bFromStr = buffer("EZLanguage")
+check("buffer from string size", buf_size(bFromStr), 10)
+check("buffer from string conversion", buf_to_str(bFromStr), "EZLanguage")
+
+# --- 2. Regex Pattern Matching, Searching & Offsets ---
+out "--- 2. Regex Matching & Offsets ---"
+text = "The quick brown fox jumps over 123 lazy dogs at 2026."
+
+isMatchFull = re_full_match("2026-09-03", "^\\d{4}-\\d{2}-\\d{2}$")
+check("re_full_match date true", isMatchFull, true)
+
+isMatchFullFail = re_full_match("invalid-date", "^\\d{4}-\\d{2}-\\d{2}$")
+check("re_full_match date false", isMatchFullFail, false)
+
+testCaseInsensitive = re_test(text, "FOX", "i")
+check("re_test case insensitive", testCaseInsensitive, true)
+
+# re_find with capture groups
+matchInfo = re_find(text, "(\\d+)\\s+([a-z]+)")
+check("re_find matched text", matchInfo["text"], "123 lazy")
+check("re_find start offset", matchInfo["start"], 31)
+check("re_find end offset", matchInfo["end"], 39)
+check("re_find group 1", matchInfo["groups"][0], "123")
+check("re_find group 2", matchInfo["groups"][1], "lazy")
+
+# re_find_all
+allNumbers = re_find_all(text, "\\d+")
+check("re_find_all count", len(allNumbers), 2)
+check("re_find_all num 1", allNumbers[0]["text"], "123")
+check("re_find_all num 2", allNumbers[1]["text"], "2026")
+
+# re_replace with backreferences
+replaced = re_replace("John Smith, Alice Brown", "([A-Z][a-z]+) ([A-Z][a-z]+)", "$2, $1")
+check("re_replace backrefs", replaced, "Smith, John, Brown, Alice")
+
+# re_split
+splitWords = re_split("apple,  banana,orange;grape", "[,;]\\s*")
+splitLog = join(splitWords, "|")
+check("re_split with regex delimiter", splitLog, "apple|banana|orange|grape")
+
+escaped = re_escape("a+b*c?(d)[e]{f}.^$")
+check("re_escape special chars", escaped, "a\\+b\\*c\\?\\(d\\)\\[e\\]\\{f\\}\\.\\^\\$")
+
+# --- 3. JSON Serialization and Parsing ---
+out "--- 3. JSON Roundtrip ---"
+dataObj = {
+    "name": "Antigravity",
+    "version": 2,
+    "active": true,
+    "features": ["vm", "gc", "ffi", "async"],
+    "meta": {
+        "build": 2026,
+        "pi": 3.1415
+    }
+}
+
+jsonString = to_json(dataObj)
+parsed = parse_json(jsonString)
+
+check("json roundtrip string prop", parsed["name"], "Antigravity")
+check("json roundtrip number prop", parsed["version"], 2)
+check("json roundtrip bool prop", parsed["active"], true)
+check("json roundtrip array len", len(parsed["features"]), 4)
+check("json roundtrip array item", parsed["features"][1], "gc")
+check("json roundtrip nested dict", parsed["meta"]["build"], 2026)
+
+# JSON cycle detection
+cycleArr = [1, 2]
+push(cycleArr, cycleArr)
+caughtCycle = false
+try {
+    to_json(cycleArr)
+} catch e {
+    caughtCycle = true
+}
+check("json cycle exception caught", caughtCycle, true)
+
+# --- 4. String Encoding, Unicode and Builtins ---
+out "--- 4. String Builtins & Unicode ---"
+urlRaw = "https://example.com/search?q=hello world & tag=ez language"
+encoded = urlEncode(urlRaw)
+decoded = urlDecode(encoded)
+check("urlEncode contains +", contains(encoded, "+"), true)
+check("urlDecode roundtrip", decoded, urlRaw)
+
+ordA = ord("A")
+chrA = chr(65)
+check("ord A", ordA, 65)
+check("chr 65", chrA, "A")
+
+ordEuro = ord("€")
+chrEuro = chr(8364)
+check("ord Euro code point", ordEuro, 8364)
+check("chr 8364 Euro symbol", chrEuro, "€")
+
+paddedStr = "   \t\n  EZ Programming   \r\n "
+check("trim whitespace", trim(paddedStr), "EZ Programming")
+check("startsWith true", startsWith("Hello World", "Hello"), true)
+check("startsWith false", startsWith("Hello World", "World"), false)
+check("endsWith true", endsWith("Hello World", "World"), true)
+check("upper conversion", upper("ez-lang"), "EZ-LANG")
+check("lower conversion", lower("EZ-LANG"), "ez-lang")
+
+strParts = split("a:b:c:d", ":")
+check("split count", len(strParts), 4)
+joined = join(strParts, " -> ")
+check("join result", joined, "a -> b -> c -> d")
+
+charParts = split("EZ", "")
+check("split empty delim", join(charParts, "-"), "E-Z")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

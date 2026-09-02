@@ -589,6 +589,7 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
     } else if (current->scopeDepth > 0) {
         // In namespaced modules (depth 1) or nested functions, tasks are locals
         size_t slot = addLocal(stmt.name);
+        current->locals.back().isStackResident = false;
         markInitialized();
         emitStoreLocal(slot);
     } else {
@@ -669,11 +670,13 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         // ---- Design-by-Contract: ensures (postconditions) ----
         if (!disableContracts && currentEnsuresClauses && !currentEnsuresClauses->empty()) {
             size_t resultSlot = addLocal("__result__");
+            current->locals.back().isStackResident = false;
             markInitialized();
             emitStoreLocal(resultSlot);
             emitOp(OpCode::POP);
 
             size_t resultAliasSlot = addLocal("result");
+            current->locals.back().isStackResident = false;
             markInitialized();
             emitLoadLocal(resultSlot);
             emitStoreLocal(resultAliasSlot);
@@ -1303,6 +1306,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                             slot = static_cast<size_t>(existing);
                         } else {
                             slot = addLocal(local.name);
+                            current->locals.back().isStackResident = false;
                             markInitialized();
                         }
                         // Carry the export flag across the boundary.
@@ -1336,6 +1340,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             // Store into the requested alias
             if (current->scopeDepth > 0) {
                 size_t slot = addLocal(alias);
+                current->locals.back().isStackResident = false;
                 markInitialized();
                 emitStoreLocal(slot);
                 emitOp(OpCode::POP);
@@ -2336,8 +2341,11 @@ void BytecodeCompiler::emitBreak() {
     for (auto it = current->locals.rbegin(); it != current->locals.rend(); ++it) {
         if (it->depth <= targetDepth) break;
         if (it->isCaptured) {
+            size_t slotIdx = std::distance(current->locals.begin(), it.base()) - 1;
             emitOp(OpCode::CLOSE_UPVALUE);
-        } else if (it->isStackResident) {
+            emitByte(static_cast<uint8_t>(slotIdx));
+        }
+        if (it->isStackResident) {
             emitOp(OpCode::POP);
         }
     }
@@ -2364,8 +2372,11 @@ void BytecodeCompiler::emitContinue() {
     for (auto it = current->locals.rbegin(); it != current->locals.rend(); ++it) {
         if (it->depth <= targetDepth) break;
         if (it->isCaptured) {
+            size_t slotIdx = std::distance(current->locals.begin(), it.base()) - 1;
             emitOp(OpCode::CLOSE_UPVALUE);
-        } else if (it->isStackResident) {
+            emitByte(static_cast<uint8_t>(slotIdx));
+        }
+        if (it->isStackResident) {
             emitOp(OpCode::POP);
         }
     }

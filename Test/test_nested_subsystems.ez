@@ -1,0 +1,252 @@
+# ============================================================================
+# Deep nested subsystem stress tests
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+# --- 1. Nested closures capturing across loop iterations with escape ---
+out "--- 1. Nested closures capturing across loops ---"
+funcs=[]
+i = 0
+while i < 3 {
+    x = i * 10
+    j = 0
+    while j < 2 {
+        y = j
+        when i == 1 and j == 1 {
+            escape
+        }
+        # Capture x and y in closure
+        task makeClosure(a, b) {
+            give ||{ give a + b }
+        }
+        push(funcs, makeClosure(x, y))
+        j = j + 1
+    }
+    i = i + 1
+}
+
+res = ""
+get f in funcs {
+    res = res + str(f()) + " "
+}
+check("nested closures capturing across loops", res, "0 1 10 20 21 ")
+
+# --- 2. Try inside catch with throw and finally ---
+out "--- 2. Try inside catch with throw and finally ---"
+log = ""
+try {
+    throw "err1"
+} catch e1 {
+    log = log + "c1:" + str(e1) + " "
+    try {
+        throw "err2"
+    } catch e2 {
+        log = log + "c2:" + str(e2) + " "
+    } finally {
+        log = log + "f_inner "
+    }
+} finally {
+    log = log + "f_outer "
+}
+check("try inside catch", log, "c1:err1 c2:err2 f_inner f_outer ")
+
+# --- 3. Try inside finally with throw caught outside ---
+out "--- 3. Try inside finally ---"
+log = ""
+try {
+    try {
+        log = log + "try1 "
+    } finally {
+        log = log + "fin1 "
+        try {
+            log = log + "fin_try "
+            throw "fin_err"
+        } catch ef {
+            log = log + "fin_caught:" + str(ef) + " "
+        }
+    }
+} catch e {
+    log = log + "outer_caught "
+}
+check("try inside finally", log, "try1 fin1 fin_try fin_caught:fin_err ")
+
+# --- 4. Nested repeat inside get..in inside while with multiple escapes ---
+out "--- 4. Nested repeat in get..in in while ---"
+log = ""
+w = 0
+while w < 2 {
+    items = ["A", "B", "C"]
+    get item in items {
+        when item == "B" and w == 1 {
+            escape
+        }
+        repeat r = 1 to 3 {
+            when r == 2 {
+                skip
+            }
+            log = log + str(w) + item + str(r) + " "
+        }
+    }
+    w = w + 1
+}
+check("nested repeat in get..in in while", log, "0A1 0A3 0B1 0B3 0C1 0C3 1A1 1A3 ")
+
+# --- 5. Match inside while loop with escape and skip in arms ---
+out "--- 5. Match inside while loop with escape/skip ---"
+log = ""
+idx = 0
+while idx < 5 {
+    idx = idx + 1
+    match idx {
+        1 => {
+            log = log + "one "
+        }
+        2 => {
+            log = log + "two(skip) "
+            skip
+        }
+        4 => {
+            log = log + "four(escape) "
+            escape
+        }
+        other => {
+            log = log + "other:" + str(idx) + " "
+        }
+    }
+    log = log + "end:" + str(idx) + " "
+}
+check("match inside while with escape/skip", log, "one end:1 two(skip) other:3 end:3 four(escape) ")
+
+# --- 6. Give inside nested match inside try/finally ---
+out "--- 6. Give inside nested match inside try/finally ---"
+t6_log = ""
+task testMatchGive(val) {
+    try {
+        match val {
+            10 => {
+                try {
+                    t6_log = t6_log + "arm10 "
+                    give "res10"
+                } finally {
+                    t6_log = t6_log + "inner_fin "
+                }
+            }
+            other => {
+                t6_log = t6_log + "arm_other "
+                give "res_other"
+            }
+        }
+    } finally {
+        t6_log = t6_log + "outer_fin "
+    }
+}
+
+r1 = testMatchGive(10)
+r2 = testMatchGive(99)
+check("match give result 1", r1, "res10")
+check("match give result 2", r2, "res_other")
+check("match give log", t6_log, "arm10 inner_fin outer_fin arm_other outer_fin ")
+
+# --- 7. Dict iteration with nested destructuring and try/finally ---
+out "--- 7. Dict iteration with try/finally ---"
+log = ""
+d = {"k1": 100, "k2": 200, "k3": 300}
+get [k, v] in d {
+    try {
+        when k == "k2" {
+            log = log + "skip:" + k + " "
+            skip
+        }
+        log = log + k + "=" + str(v) + " "
+    } finally {
+        log = log + "fin:" + k + " "
+    }
+}
+check("dict iteration with try/finally", log, "k1=100 fin:k1 skip:k2 fin:k2 k3=300 fin:k3 ")
+
+# --- 8. Exception rethrown across 3 levels of nested try/finally ---
+out "--- 8. Exception rethrown across 3 nested try/finally ---"
+log = ""
+try {
+    try {
+        try {
+            log = log + "t3 "
+            throw "deep_err"
+        } finally {
+            log = log + "f3 "
+        }
+    } finally {
+        log = log + "f2 "
+    }
+} catch e {
+    log = log + "c1:" + str(e) + " "
+} finally {
+    log = log + "f1 "
+}
+check("3-level nested try/finally rethrow", log, "t3 f3 f2 c1:deep_err f1 ")
+
+# --- 9. Recursive function with try/finally and early give ---
+out "--- 9. Recursive function with try/finally ---"
+rec_log = ""
+task countDown(n) {
+    try {
+        when n <= 0 {
+            rec_log = rec_log + "base "
+            give 0
+        }
+        rec_log = rec_log + "n:" + str(n) + " "
+        give n + countDown(n - 1)
+    } finally {
+        rec_log = rec_log + "f:" + str(n) + " "
+    }
+}
+
+sumVal = countDown(3)
+check("recursive sum", sumVal, 6)
+check("recursive finally order", rec_log, "n:3 n:2 n:1 base f:0 f:1 f:2 f:3 ")
+
+# --- 10. Nested custom exception model hierarchy ---
+out "--- 10. Nested custom model exceptions ---"
+model AppError {
+    init(msg) {
+        self.message = msg
+    }
+}
+
+model SubError extends AppError {
+    init(msg, code) {
+        super.init(msg)
+        self.code = code
+    }
+}
+
+log = ""
+try {
+    try {
+        throw new SubError("disk full", 500)
+    } catch SubError se {
+        log = log + "caught_sub:" + se.message + ":" + str(se.code) + " "
+    }
+} catch AppError ae {
+    log = log + "caught_app:" + ae.message + " "
+}
+check("custom model exceptions", log, "caught_sub:disk full:500 ")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

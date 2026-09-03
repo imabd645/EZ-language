@@ -1,0 +1,95 @@
+# ============================================================================
+# lib/sandbox/src/sandbox.ez -- Sandbox Controller Implementation
+# ============================================================================
+
+use "runtime" as rt
+use "guard.ez"
+
+_SANDBOX_REGISTRY = {}
+
+export model Sandbox {
+    init(options = {}) {
+        self.allowFS = false
+        self.allowNet = false
+        self.allowProcess = false
+        self.allowFFI = false
+        self.allowRuntime = false
+        self.maxRecursionDepth = 50
+        self.maxInstructions = 100000
+        self.injectedGlobals = {}
+
+        when has_key(options, "allowFS") { self.allowFS = options["allowFS"] }
+        when has_key(options, "allowNet") { self.allowNet = options["allowNet"] }
+        when has_key(options, "allowProcess") { self.allowProcess = options["allowProcess"] }
+        when has_key(options, "allowFFI") { self.allowFFI = options["allowFFI"] }
+        when has_key(options, "allowRuntime") { self.allowRuntime = options["allowRuntime"] }
+        when has_key(options, "maxRecursionDepth") { self.maxRecursionDepth = options["maxRecursionDepth"] }
+        when has_key(options, "maxInstructions") { self.maxInstructions = options["maxInstructions"] }
+    }
+
+    task inject(name, value) {
+        self.injectedGlobals[name] = value
+        give self
+    }
+
+    task injectAll(dict) {
+        get k in keys(dict) {
+            self.injectedGlobals[k] = dict[k]
+        }
+        give self
+    }
+
+    task eval(code) {
+        prevDepth = rt.vm.getMaxRecursionDepth()
+        prevMaxInst = rt.perf.getMaxInstructions()
+
+        # Build injection preamble for safe globals and blocked builtins
+        blockedList = getBlockedBuiltins({
+            "allowFS": self.allowFS,
+            "allowNet": self.allowNet,
+            "allowProcess": self.allowProcess,
+            "allowFFI": self.allowFFI,
+            "allowRuntime": self.allowRuntime
+        })
+
+        # Set VM constraints
+        rt.vm.setMaxRecursionDepth(self.maxRecursionDepth)
+        rt.perf.setMaxInstructions(self.maxInstructions)
+        rt.perf.resetInstructions()
+
+        # Populate registry for object injections
+        get k in keys(self.injectedGlobals) {
+            _SANDBOX_REGISTRY[k] = self.injectedGlobals[k]
+        }
+
+        try {
+            # Construct wrapped evaluation script
+            preamble = ""
+            get b in blockedList {
+                preamble = preamble + b + " = || { throw Exception(\"SecurityError: '" + b + "' is disabled in this sandbox\"); }; "
+            }
+
+            get injKey in keys(self.injectedGlobals) {
+                preamble = preamble + injKey + " = _SANDBOX_REGISTRY[\"" + injKey + "\"]; "
+            }
+
+            wrappedScript = preamble + "\n" + code
+            give eval(wrappedScript)
+        } finally {
+            # Always restore original VM execution bounds
+            rt.vm.setMaxRecursionDepth(prevDepth)
+            rt.perf.setMaxInstructions(prevMaxInst)
+            
+            # Clean up registry
+            get k in keys(self.injectedGlobals) {
+                when has_key(_SANDBOX_REGISTRY, k) {
+                    _SANDBOX_REGISTRY[k] = nil
+                }
+            }
+        }
+    }
+}
+
+export task create(options = {}) {
+    give Sandbox(options)
+}

@@ -1,0 +1,145 @@
+# ============================================================================
+# Test Suite: 'sandbox' Package -- Secure Execution & Isolation
+# ============================================================================
+
+use "sandbox" as sb
+use "runtime" as rt
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task checkTruthy(label, val) {
+    when val {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label + " (expected truthy, got " + str(val) + ")"
+        failed = failed + 1
+    }
+}
+
+out "=== Sandbox Security Test Suite ==="
+
+# --- 1. Pure Computation & Arithmetic ---
+out "--- 1. Pure Safe Execution ---"
+
+box = sb.create()
+res = box.eval("x = 10; y = 25; give x * y + 5")
+check("Safe arithmetic in sandbox", res, 255)
+
+# --- 2. Variable & Function Injection ---
+out "--- 2. Variable & Function Injection ---"
+
+box2 = sb.create()
+box2.inject("TAX_RATE", 0.15)
+box2.inject("calcDiscount", |price| { give price * 0.9 })
+
+injectedRes = box2.eval("
+    price = 100
+    discounted = calcDiscount(price)
+    give discounted * (1 + TAX_RATE)
+")
+check("Injected closure and constant", injectedRes, 103.5)
+
+# --- 3. Blocking File System Access ---
+out "--- 3. File System Protection ---"
+
+fsBlocked = false
+try {
+    box.eval("readFile('some_secret_file.txt')")
+} catch e {
+    when contains(str(e), "SecurityError") and contains(str(e), "readFile") {
+        fsBlocked = true
+    }
+}
+check("readFile blocked with SecurityError", fsBlocked, true)
+
+# --- 4. Blocking Process Termination ---
+out "--- 4. Process Exit Protection ---"
+
+exitBlocked = false
+try {
+    box.eval("exit(1)")
+} catch e {
+    when contains(str(e), "SecurityError") and contains(str(e), "exit") {
+        exitBlocked = true
+    }
+}
+check("exit() blocked with SecurityError", exitBlocked, true)
+
+# --- 5. Blocking Network Builtins ---
+out "--- 5. Network Protection ---"
+
+netBlocked = false
+try {
+    box.eval("http_get('https://example.com')")
+} catch e {
+    when contains(str(e), "SecurityError") and contains(str(e), "http_get") {
+        netBlocked = true
+    }
+}
+check("http_get blocked with SecurityError", netBlocked, true)
+
+# --- 6. Stack Overflow / Recursion Guard ---
+out "--- 6. Recursion Depth Guard ---"
+
+recBox = sb.create({ "maxRecursionDepth": 25 })
+recCaught = false
+
+try {
+    recBox.eval("
+        task infiniteLoop(n) {
+            give infiniteLoop(n + 1)
+        }
+        infiniteLoop(1)
+    ")
+} catch e {
+    when contains(str(e), "RecursionError") {
+        recCaught = true
+    }
+}
+check("Runaway recursion caught by sandbox depth ceiling", recCaught, true)
+
+# --- 7. CPU Budget / Instruction Quota Guard ---
+out "--- 7. Instruction Quota Guard ---"
+
+instBox = sb.create({ "maxInstructions": 500 })
+instCaught = false
+
+try {
+    instBox.eval("
+        count = 0
+        while true {
+            count = count + 1
+        }
+    ")
+} catch e {
+    when contains(str(e), "SecurityError") and contains(str(e), "Instruction limit") {
+        instCaught = true
+    }
+}
+check("Infinite loop stopped by instruction limit", instCaught, true)
+
+# --- 8. Host Environment Integrity & Restoration ---
+out "--- 8. Host Environment Integrity ---"
+
+# Verify host stack limit and instruction limits were cleanly restored
+check("Host recursion depth restored to 4096", rt.vm.getMaxRecursionDepth(), 4096)
+check("Host instruction limit restored to 0 (unlimited)", rt.perf.getMaxInstructions(), 0)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

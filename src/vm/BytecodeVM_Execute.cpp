@@ -250,6 +250,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
     // this is a correct signal.
     #define DISPATCH() { \
         ++instructionCount; \
+        if (__builtin_expect(maxInstructions > 0 && instructionCount >= maxInstructions, 0)) { \
+            throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
+            goto handle_vm_fault; \
+        } \
         if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
         if (__builtin_expect(traceExecution, 0)) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
@@ -263,6 +267,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
     }
     #define INTERPRET_LOOP while (running && !frames.empty() && frames.size() >= startingFrameCount) { \
         ++instructionCount; \
+        if (maxInstructions > 0 && instructionCount >= maxInstructions) { \
+            throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
+            goto handle_vm_fault; \
+        } \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction))

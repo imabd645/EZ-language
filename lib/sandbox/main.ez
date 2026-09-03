@@ -1,0 +1,17 @@
+# ============================================================================
+# sandbox -- Secure, Isolated Execution Sandbox for EZ
+# ============================================================================
+
+use "src/guard.ez"
+use "src/sandbox.ez"
+
+export create = |options = {}| {
+    give Sandbox(options)
+}
+
+export Sandbox
+export FS_BUILTINS
+export NET_BUILTINS
+export PROCESS_BUILTINS
+export FFI_BUILTINS
+export RUNTIME_BUILTINS

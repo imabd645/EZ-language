@@ -13,14 +13,22 @@ export model PerfController {
         give __vm_reset_instruction_count()
     }
 
+    task getMaxInstructions() {
+        give __vm_get_max_instructions()
+    }
+
+    task setMaxInstructions(max) {
+        give __vm_set_max_instructions(max)
+    }
+
     task now() {
-        give now()
+        give clock()
     }
 
     task time(fn) {
-        start = now()
+        start = clock()
         fn()
-        elapsed = now() - start
+        elapsed = clock() - start
         give elapsed
     }
 }

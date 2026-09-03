@@ -1,0 +1,62 @@
+# ============================================================================
+# lib/sandbox/src/guard.ez -- Sandbox Capability & Permission Guards
+# ============================================================================
+
+export FS_BUILTINS = [
+    "readFile",
+    "writeFile",
+    "appendFile",
+    "removeFile",
+    "readLines",
+    "File"
+]
+
+export NET_BUILTINS = [
+    "http_get",
+    "http_post",
+    "fetch"
+]
+
+export PROCESS_BUILTINS = [
+    "exit",
+    "spawn",
+    "system",
+    "panic",
+    "__process_pid",
+    "__process_cwd"
+]
+
+export FFI_BUILTINS = [
+    "loadLibrary",
+    "getProcAddress",
+    "callNative",
+    "makeStruct",
+    "defStruct"
+]
+
+export RUNTIME_BUILTINS = [
+    "__vm_set_max_recursion_depth",
+    "__vm_set_max_instructions"
+]
+
+export task getBlockedBuiltins(options) {
+    blocked = []
+    
+    when not options["allowFS"] {
+        get b in FS_BUILTINS { push(blocked, b) }
+    }
+    when not options["allowNet"] {
+        get b in NET_BUILTINS { push(blocked, b) }
+    }
+    when not options["allowProcess"] {
+        get b in PROCESS_BUILTINS { push(blocked, b) }
+    }
+    when not options["allowFFI"] {
+        get b in FFI_BUILTINS { push(blocked, b) }
+    }
+    when not options["allowRuntime"] {
+        get b in RUNTIME_BUILTINS { push(blocked, b) }
+    }
+
+    give blocked
+}

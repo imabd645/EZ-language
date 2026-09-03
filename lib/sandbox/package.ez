@@ -1,0 +1,9 @@
+{
+  "name": "sandbox",
+  "version": "1.0.0",
+  "main": "main.ez",
+  "description": "Secure, isolated execution sandbox with capability-based permissions, CPU instruction quotas, and stack limits for EZ Language",
+  "dependencies": {
+    "runtime": ">=1.0.0"
+  }
+}

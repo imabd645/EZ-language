@@ -48,6 +48,8 @@ public:
     virtual size_t getCallDepth() const { return 0; }
     virtual uint64_t getInstructionCount() const { return 0; }
     virtual void resetInstructionCount() {}
+    virtual uint64_t getMaxInstructions() const { return 0; }
+    virtual void setMaxInstructions(uint64_t max) {}
     virtual std::vector<Value> getStackTraceFrames() const { return {}; }
 };
 

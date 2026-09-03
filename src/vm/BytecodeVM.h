@@ -93,6 +93,8 @@ public:
     size_t getCallDepth() const override { return frames.size(); }
     uint64_t getInstructionCount() const override { return instructionCount; }
     void resetInstructionCount() override { instructionCount = 0; }
+    uint64_t getMaxInstructions() const override { return maxInstructions; }
+    void setMaxInstructions(uint64_t max) override { maxInstructions = max; }
     std::vector<Value> getStackTraceFrames() const override;
 
     // Initialize global slot table from compiler output (Issue C optimization)
@@ -157,6 +159,7 @@ private:
     // RecursionError.
     size_t maxFrames = 4096;
     uint64_t instructionCount = 0;
+    uint64_t maxInstructions = 0;
     // Working-stack reserve required to be free when a new call frame is
     // installed. Opcode operands are uint8_t-bounded (arg/element counts <= 255)
     // and the compiler never emits an unboundedly deep single expression, so this

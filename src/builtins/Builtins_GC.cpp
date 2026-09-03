@@ -128,6 +128,21 @@ void registerGCBuiltins(RuntimeContext& interp) {
             return Value(true);
         }));
 
+    interp.defineGlobal("__vm_get_max_instructions", Value::makeNativeFunction("__vm_get_max_instructions", 0,
+        [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
+            return Value(static_cast<double>(interp.getMaxInstructions()));
+        }));
+
+    interp.defineGlobal("__vm_set_max_instructions", Value::makeNativeFunction("__vm_set_max_instructions", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isNumber()) {
+                interp.runtimeError("__vm_set_max_instructions expects a number", 0, "");
+                return Value();
+            }
+            interp.setMaxInstructions(static_cast<uint64_t>(args[0].asNumber()));
+            return Value(true);
+        }));
+
     interp.defineGlobal("__stack_trace", Value::makeNativeFunction("__stack_trace", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             return Value::makeArray(interp.getStackTraceFrames());

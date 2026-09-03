@@ -251,6 +251,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
     #define DISPATCH() { \
         ++instructionCount; \
         if (__builtin_expect(maxInstructions > 0 && instructionCount >= maxInstructions, 0)) { \
+            maxInstructions = 0; \
             throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
             goto handle_vm_fault; \
         } \
@@ -268,6 +269,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
     #define INTERPRET_LOOP while (running && !frames.empty() && frames.size() >= startingFrameCount) { \
         ++instructionCount; \
         if (maxInstructions > 0 && instructionCount >= maxInstructions) { \
+            maxInstructions = 0; \
             throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
             goto handle_vm_fault; \
         } \

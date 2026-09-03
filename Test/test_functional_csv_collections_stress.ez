@@ -1,0 +1,153 @@
+# ============================================================================
+# Functional Pipelines, CSV Processing, Dynamic Attributes, Sorting & Slicing
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+# --- 1. Functional Pipelines (map, filter, reduce, find, every, some) ---
+out "--- 1. Functional Pipelines ---"
+
+nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# filter even numbers
+evens = filter(nums, |n| { give n % 2 == 0 })
+check("filter evens length", len(evens), 5)
+check("filter evens values", str(evens), "[2, 4, 6, 8, 10]")
+
+# map squares
+squares = map(evens, |n| { give n * n })
+check("map squares values", str(squares), "[4, 16, 36, 64, 100]")
+
+# reduce sum
+sumSquares = reduce(squares, |acc, n| { give acc + n }, 0)
+check("reduce sum squares", sumSquares, 220)
+
+# find first multiple of 7
+found7 = find(nums, |n| { give n % 7 == 0 })
+check("find multiple of 7", found7, 7)
+
+foundNone = find(nums, |n| { give n > 100 })
+check("find non-existent returns nil", foundNone, nil)
+
+# every / some predicates
+allPositive = every(nums, |n| { give n > 0 })
+check("every positive true", allPositive, true)
+
+allEven = every(nums, |n| { give n % 2 == 0 })
+check("every even false", allEven, false)
+
+hasZero = some(nums, |n| { give n == 0 })
+check("some zero false", hasZero, false)
+
+hasTen = some(nums, |n| { give n == 10 })
+check("some ten true", hasTen, true)
+
+# --- 2. Sorting and Reversing ---
+out "--- 2. Sorting & Reversing ---"
+
+unorderdNums = [42, 12, 88, 3, 99, 5]
+sortedNums = sort(unorderdNums)
+check("sort numeric array", str(sortedNums), "[3, 5, 12, 42, 88, 99]")
+
+words = ["zebra", "apple", "mango", "banana"]
+sortedWords = sort(words)
+check("sort string array", str(sortedWords), "[\"apple\", \"banana\", \"mango\", \"zebra\"]")
+
+revArr = reverse([10, 20, 30, 40])
+check("reverse array", str(revArr), "[40, 30, 20, 10]")
+
+revStr = reverse("Antigravity")
+check("reverse string", revStr, "ytivargitnA")
+
+# --- 3. CSV Parsing and Serialization ---
+out "--- 3. CSV Parsing & Serialization ---"
+
+csvData = "id,name,department\n1,Alice,Engineering\n2,\"Smith, Bob\",Marketing\n3,Charlie,Sales"
+records = parse_csv(csvData)
+
+check("parse_csv records count", len(records), 3)
+check("parse_csv row 0 name", records[0]["name"], "Alice")
+check("parse_csv row 1 quoted name", records[1]["name"], "Smith, Bob")
+check("parse_csv row 2 dept", records[2]["department"], "Sales")
+
+# Serialize back to CSV
+csvOutput = to_csv(records)
+check("to_csv contains header name", contains(csvOutput, "name"), true)
+check("to_csv contains header id", contains(csvOutput, "id"), true)
+check("to_csv contains header department", contains(csvOutput, "department"), true)
+check("to_csv contains Alice", contains(csvOutput, "Alice"), true)
+check("to_csv contains quoted Bob", contains(csvOutput, "\"Smith, Bob\""), true)
+check("to_csv contains Sales", contains(csvOutput, "Sales"), true)
+
+# --- 4. Dynamic Attributes (getattr, setattr, hasattr) ---
+out "--- 4. Dynamic Attributes ---"
+
+# On Dictionary
+dictObj = {"title": "EZ Language", "year": 2026}
+check("hasattr dict true", hasattr(dictObj, "title"), true)
+check("hasattr dict false", hasattr(dictObj, "author"), false)
+check("getattr dict", getattr(dictObj, "title"), "EZ Language")
+
+setattr(dictObj, "author", "Antigravity")
+check("hasattr dict after setattr", hasattr(dictObj, "author"), true)
+check("getattr dict after setattr", getattr(dictObj, "author"), "Antigravity")
+
+# On Model Instance
+model Item {
+    init(name, price) {
+        self.name = name
+        self.price = price
+    }
+}
+
+itemInst = new Item("Gadget", 99)
+check("hasattr instance true", hasattr(itemInst, "price"), true)
+check("hasattr instance false", hasattr(itemInst, "sku"), false)
+check("getattr instance", getattr(itemInst, "price"), 99)
+
+setattr(itemInst, "price", 129)
+setattr(itemInst, "sku", "G-100")
+check("getattr instance price modified", getattr(itemInst, "price"), 129)
+check("getattr instance sku added", getattr(itemInst, "sku"), "G-100")
+
+# --- 5. Array and String Slicing and Ranges ---
+out "--- 5. Slicing & Ranges ---"
+
+sampleArr = [10, 20, 30, 40, 50, 60]
+slice1 = slice(sampleArr, 1, 4) # indices 1, 2, 3 -> [20, 30, 40]
+check("array slice positive", str(slice1), "[20, 30, 40]")
+
+slice2 = slice(sampleArr, 0, 3) # [10, 20, 30]
+check("array slice prefix", str(slice2), "[10, 20, 30]")
+
+slice3 = slice(sampleArr, -3, 6) # [40, 50, 60]
+check("array slice negative start", str(slice3), "[40, 50, 60]")
+
+textSlice = "Antigravity"
+check("string slice middle", slice(textSlice, 4, 8), "grav")
+check("string slice prefix", slice(textSlice, 0, 4), "Anti")
+check("string slice negative", slice(textSlice, -3, 11), "ity")
+
+r1 = range(5)
+check("range 1 arg", str(r1), "[0, 1, 2, 3, 4]")
+
+r2 = range(2, 6)
+check("range 2 args", str(r2), "[2, 3, 4, 5]")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

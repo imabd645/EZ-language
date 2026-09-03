@@ -46,11 +46,7 @@ box2 = sb.create()
 box2.inject("TAX_RATE", 0.15)
 box2.inject("calcDiscount", |price| { give price * 0.9 })
 
-injectedRes = box2.eval(`
-    price = 100
-    discounted = calcDiscount(price)
-    give discounted * (1 + TAX_RATE)
-`)
+injectedRes = box2.eval("price = 100; discounted = calcDiscount(price); give discounted * (1 + TAX_RATE)")
 check("Injected closure and constant", injectedRes, 103.5)
 
 # --- 3. Blocking File System Access ---
@@ -99,12 +95,7 @@ recBox = sb.create({ "maxRecursionDepth": 25 })
 recCaught = false
 
 try {
-    recBox.eval(`
-        task infiniteLoop(n) {
-            give infiniteLoop(n + 1)
-        }
-        infiniteLoop(1)
-    `)
+    recBox.eval("task infiniteLoop(n) { give infiniteLoop(n + 1) }; infiniteLoop(1)")
 } catch e {
     when contains(str(e), "RecursionError") {
         recCaught = true
@@ -119,12 +110,7 @@ instBox = sb.create({ "maxInstructions": 500 })
 instCaught = false
 
 try {
-    instBox.eval(`
-        count = 0
-        while true {
-            count = count + 1
-        }
-    `)
+    instBox.eval("count = 0; while true { count = count + 1 }")
 } catch e {
     when contains(str(e), "SecurityError") and contains(str(e), "Instruction limit") {
         instCaught = true

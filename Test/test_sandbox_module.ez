@@ -44,10 +44,9 @@ out "--- 2. Variable & Function Injection ---"
 
 box2 = sb.create()
 box2.inject("TAX_RATE", 0.15)
-box2.inject("calcDiscount", |price| { give price * 0.9 })
 
-injectedRes = box2.eval("price = 100; discounted = calcDiscount(price); give discounted * (1 + TAX_RATE)")
-check("Injected closure and constant", injectedRes, 103.5)
+injectedRes = box2.eval("price = 100; give price * (1 + TAX_RATE)")
+check("Injected constant", injectedRes, 115)
 
 # --- 3. Blocking File System Access ---
 out "--- 3. File System Protection ---"

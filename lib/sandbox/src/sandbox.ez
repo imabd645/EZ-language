@@ -23,8 +23,8 @@ export model Sandbox {
         when has_key(options, "maxInstructions") { self.maxInstructions = options["maxInstructions"] }
     }
 
-    task inject(name, value) {
-        self.injectedGlobals[name] = value
+    task inject(name, val) {
+        self.injectedGlobals[name] = val
         give self
     }
 
@@ -39,7 +39,6 @@ export model Sandbox {
         prevDepth = rt.vm.getMaxRecursionDepth()
         prevMaxInst = rt.perf.getMaxInstructions()
 
-        # Build list of builtins to block
         blockedList = getBlockedBuiltins({
             "allowFS": self.allowFS,
             "allowNet": self.allowNet,
@@ -47,52 +46,33 @@ export model Sandbox {
             "allowFFI": self.allowFFI
         })
 
-        # Save original builtins & inject temporary blocking closures
-        origBuiltins = {}
+        preamble = ""
         get b in blockedList {
-            origVal = __vm_get_global(b)
-            when origVal != nil {
-                origBuiltins[b] = origVal
-                __vm_set_global(b, |...args| {
-                    throw Exception("SecurityError: '" + b + "' is disabled in this sandbox")
-                })
+            preamble = preamble + b + " = |...args| { throw Exception(\"SecurityError: '" + b + "' is disabled in this sandbox\"); }; "
+        }
+
+        get injKey in keys(self.injectedGlobals) {
+            val = self.injectedGlobals[injKey]
+            t = type(val)
+            when t == "string" {
+                preamble = preamble + injKey + " = \"" + val + "\"; "
+            }
+            when t == "int" or t == "float" or t == "bool" {
+                preamble = preamble + injKey + " = " + str(val) + "; "
             }
         }
 
-        # Save and inject custom variables
-        origInjected = {}
-        get k in keys(self.injectedGlobals) {
-            origInjected[k] = __vm_get_global(k)
-            __vm_set_global(k, self.injectedGlobals[k])
-        }
+        wrappedScript = preamble + "\n" + code
 
-        # Set VM constraints relative to current frame depth immediately before execution
         currDepth = rt.vm.currentDepth()
         rt.vm.setMaxRecursionDepth(currDepth + self.maxRecursionDepth)
         rt.perf.setMaxInstructions(self.maxInstructions)
 
         try {
-            res = eval(code)
-            give res
+            give eval(wrappedScript)
         } finally {
-            # Restore VM bounds
             rt.perf.setMaxInstructions(prevMaxInst)
             rt.vm.setMaxRecursionDepth(prevDepth)
-
-            # Restore blocked builtins
-            get b in keys(origBuiltins) {
-                __vm_set_global(b, origBuiltins[b])
-            }
-
-            # Restore / cleanup injected globals
-            get k in keys(self.injectedGlobals) {
-                prev = origInjected[k]
-                when prev != nil {
-                    __vm_set_global(k, prev)
-                } other {
-                    __vm_set_global(k, nil)
-                }
-            }
         }
     }
 }

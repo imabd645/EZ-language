@@ -34,11 +34,6 @@ export FFI_BUILTINS = [
     "defStruct"
 ]
 
-export RUNTIME_BUILTINS = [
-    "__vm_set_max_recursion_depth",
-    "__vm_set_max_instructions"
-]
-
 export task getBlockedBuiltins(options) {
     blocked = []
     
@@ -53,9 +48,6 @@ export task getBlockedBuiltins(options) {
     }
     when not options["allowFFI"] {
         get b in FFI_BUILTINS { push(blocked, b) }
-    }
-    when not options["allowRuntime"] {
-        get b in RUNTIME_BUILTINS { push(blocked, b) }
     }
 
     give blocked

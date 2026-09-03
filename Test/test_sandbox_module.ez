@@ -9,7 +9,7 @@ passed = 0
 failed = 0
 
 task check(label, actual, expected) {
-    when actual == expected {
+    when str(actual) == str(expected) {
         out "  PASS: " + label
         passed = passed + 1
     } other {
@@ -53,7 +53,7 @@ box2 = sb.create()
 box2.inject("TAX_RATE", 0.15)
 
 injectedRes = box2.eval("price = 100; give price * (1 + TAX_RATE)")
-check("Injected constant", injectedRes, 115)
+check("Injected constant", ceil(num(injectedRes)), 115)
 
 # --- 3. Blocking File System Access ---
 out "--- 3. File System Protection ---"

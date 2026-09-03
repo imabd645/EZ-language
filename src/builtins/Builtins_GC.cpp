@@ -143,33 +143,6 @@ void registerGCBuiltins(RuntimeContext& interp) {
             return Value(true);
         }));
 
-    interp.defineGlobal("__vm_get_global", Value::makeNativeFunction("__vm_get_global", 1,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (args.empty() || !args[0].isString()) return Value();
-            auto env = interp.getCurrentEnv();
-            if (!env) return Value();
-            std::string name = args[0].asString();
-            if (env->contains(name)) return env->get(name);
-            return Value();
-        }));
-
-    interp.defineGlobal("__vm_set_global", Value::makeNativeFunction("__vm_set_global", 2,
-        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (args.size() < 2 || !args[0].isString()) return Value();
-            auto env = interp.getCurrentEnv();
-            if (!env) return Value();
-            std::string name = args[0].asString();
-            env->define(name, args[1]);
-            std::unique_lock<std::shared_mutex> lock(env->slotMutex);
-            for (size_t i = 0; i < env->globalSlotNames.size(); ++i) {
-                if (env->globalSlotNames[i] == name && i < env->globalSlots.size()) {
-                    env->globalSlots[i] = args[1];
-                    break;
-                }
-            }
-            return Value(true);
-        }));
-
     interp.defineGlobal("__stack_trace", Value::makeNativeFunction("__stack_trace", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
             return Value::makeArray(interp.getStackTraceFrames());

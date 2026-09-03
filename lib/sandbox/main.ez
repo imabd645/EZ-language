@@ -9,7 +9,7 @@ export task create(options = {}) {
     give Sandbox(options)
 }
 
-export task eval(code, options = {}) {
+export task run(code, options = {}) {
     box = Sandbox(options)
     give box.eval(code)
 }

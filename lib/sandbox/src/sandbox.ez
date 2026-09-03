@@ -5,15 +5,12 @@
 use "runtime" as rt
 use "guard.ez"
 
-_SANDBOX_REGISTRY = {}
-
 export model Sandbox {
     init(options = {}) {
         self.allowFS = false
         self.allowNet = false
         self.allowProcess = false
         self.allowFFI = false
-        self.allowRuntime = false
         self.maxRecursionDepth = 50
         self.maxInstructions = 100000
         self.injectedGlobals = {}
@@ -22,7 +19,6 @@ export model Sandbox {
         when has_key(options, "allowNet") { self.allowNet = options["allowNet"] }
         when has_key(options, "allowProcess") { self.allowProcess = options["allowProcess"] }
         when has_key(options, "allowFFI") { self.allowFFI = options["allowFFI"] }
-        when has_key(options, "allowRuntime") { self.allowRuntime = options["allowRuntime"] }
         when has_key(options, "maxRecursionDepth") { self.maxRecursionDepth = options["maxRecursionDepth"] }
         when has_key(options, "maxInstructions") { self.maxInstructions = options["maxInstructions"] }
     }
@@ -43,48 +39,58 @@ export model Sandbox {
         prevDepth = rt.vm.getMaxRecursionDepth()
         prevMaxInst = rt.perf.getMaxInstructions()
 
-        # Build injection preamble for safe globals and blocked builtins
+        # Build list of builtins to block
         blockedList = getBlockedBuiltins({
             "allowFS": self.allowFS,
             "allowNet": self.allowNet,
             "allowProcess": self.allowProcess,
-            "allowFFI": self.allowFFI,
-            "allowRuntime": self.allowRuntime
+            "allowFFI": self.allowFFI
         })
 
-        # Set VM constraints relative to current frame depth
+        # Save original builtins & inject temporary blocking closures
+        origBuiltins = {}
+        get b in blockedList {
+            origVal = __vm_get_global(b)
+            when origVal != nil {
+                origBuiltins[b] = origVal
+                __vm_set_global(b, |...args| {
+                    throw Exception("SecurityError: '" + b + "' is disabled in this sandbox")
+                })
+            }
+        }
+
+        # Save and inject custom variables
+        origInjected = {}
+        get k in keys(self.injectedGlobals) {
+            origInjected[k] = __vm_get_global(k)
+            __vm_set_global(k, self.injectedGlobals[k])
+        }
+
+        # Set VM constraints relative to current frame depth immediately before execution
         currDepth = rt.vm.currentDepth()
         rt.vm.setMaxRecursionDepth(currDepth + self.maxRecursionDepth)
         rt.perf.setMaxInstructions(self.maxInstructions)
-        rt.perf.resetInstructions()
-
-        # Populate registry for object injections
-        get k in keys(self.injectedGlobals) {
-            _SANDBOX_REGISTRY[k] = self.injectedGlobals[k]
-        }
 
         try {
-            # Construct wrapped evaluation script
-            preamble = ""
-            get b in blockedList {
-                preamble = preamble + b + " = || { throw Exception(\"SecurityError: '" + b + "' is disabled in this sandbox\"); }; "
-            }
-
-            get injKey in keys(self.injectedGlobals) {
-                preamble = preamble + injKey + " = _SANDBOX_REGISTRY[\"" + injKey + "\"]; "
-            }
-
-            wrappedScript = preamble + "\n" + code
-            give eval(wrappedScript)
+            res = eval(code)
+            give res
         } finally {
-            # Always restore original VM execution bounds
-            rt.vm.setMaxRecursionDepth(prevDepth)
+            # Restore VM bounds
             rt.perf.setMaxInstructions(prevMaxInst)
-            
-            # Clean up registry
+            rt.vm.setMaxRecursionDepth(prevDepth)
+
+            # Restore blocked builtins
+            get b in keys(origBuiltins) {
+                __vm_set_global(b, origBuiltins[b])
+            }
+
+            # Restore / cleanup injected globals
             get k in keys(self.injectedGlobals) {
-                when has_key(_SANDBOX_REGISTRY, k) {
-                    _SANDBOX_REGISTRY[k] = nil
+                prev = origInjected[k]
+                when prev != nil {
+                    __vm_set_global(k, prev)
+                } other {
+                    __vm_set_global(k, nil)
                 }
             }
         }

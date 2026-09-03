@@ -1,0 +1,77 @@
+# ============================================================================
+# Test Suite: Concurrency Worker Pool & Fan-Out / Fan-In Pipelines
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Concurrency Worker Pool Test Suite ==="
+
+# --- 1. Fan-Out Job Dispatcher and Worker Pool ---
+jobQueue = new Channel()
+resultQueue = new Channel()
+processedCounter = new Atomic(0)
+
+task workerTask(workerId, jobs, results, counter) {
+    while not jobs.isClosed() or jobs.size() > 0 {
+        job = jobs.receive()
+        when job != nil {
+            # Compute square of job
+            computed = job * job
+            results.send(computed)
+            counter.add(1)
+        }
+    }
+    give true
+}
+
+# Spawn 3 worker tasks
+w1 = spawn(workerTask, 1, jobQueue, resultQueue, processedCounter)
+w2 = spawn(workerTask, 2, jobQueue, resultQueue, processedCounter)
+w3 = spawn(workerTask, 3, jobQueue, resultQueue, processedCounter)
+
+# Dispatch 6 jobs: [1, 2, 3, 4, 5, 6]
+# Squares: 1, 4, 9, 16, 25, 36 (Sum = 91)
+repeat j = 1 to 6 {
+    jobQueue.send(j)
+}
+jobQueue.close()
+
+# Collector task (Fan-In)
+task collectorTask(results, expectedCount) {
+    totalSum = 0
+    received = 0
+    while received < expectedCount {
+        val = results.receive()
+        when val != nil {
+            totalSum = totalSum + val
+            received = received + 1
+        }
+    }
+    give totalSum
+}
+
+collectorFut = spawn(collectorTask, resultQueue, 6)
+
+awaitAll([w1, w2, w3])
+totalSquaresSum = await collectorFut
+
+check("worker pool processed count", processedCounter.get(), 6)
+check("worker pool total squares sum", totalSquaresSum, 91)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

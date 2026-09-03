@@ -1,0 +1,80 @@
+# ============================================================================
+# Test Suite: Control Flow, Nested Loop Jumps & Short-Circuit Evaluation
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Control Flow & Complex Jumps Test Suite ==="
+
+# --- 1. Short-Circuit Evaluation Side-Effects ---
+sideEffectsLog = ""
+
+task sideEffectTrue(tag) {
+    sideEffectsLog = sideEffectsLog + tag + " "
+    give true
+}
+
+task sideEffectFalse(tag) {
+    sideEffectsLog = sideEffectsLog + tag + " "
+    give false
+}
+
+# 'and' short-circuits on first false
+sideEffectsLog = ""
+resAnd = sideEffectFalse("A") and sideEffectTrue("B")
+check("and short-circuit result", resAnd, false)
+check("and short-circuit side-effects ('B' never evaluated)", sideEffectsLog, "A ")
+
+# 'or' short-circuits on first true
+sideEffectsLog = ""
+resOr = sideEffectTrue("X") or sideEffectFalse("Y")
+check("or short-circuit result", resOr, true)
+check("or short-circuit side-effects ('Y' never evaluated)", sideEffectsLog, "X ")
+
+# --- 2. Nested Repeat & While with Multi-Level Escapes ---
+matrixLog = ""
+repeat r = 1 to 4 {
+    when r == 3 { skip } # skip row 3
+    repeat c = 1 to 4 {
+        when c == 3 { escape } # escape inner loop at col 3
+        matrixLog = matrixLog + str(r) + ":" + str(c) + " "
+    }
+}
+
+# Expected:
+# r=1: 1:1, 1:2
+# r=2: 2:1, 2:2
+# r=3: skipped
+# r=4: 4:1, 4:2
+check("nested loop escape and skip matrix", matrixLog, "1:1 1:2 2:1 2:2 4:1 4:2 ")
+
+# --- 3. While Loop with Complex Condition & Accumulator ---
+count = 0
+sum = 0
+while count < 10 {
+    count = count + 1
+    when count % 3 == 0 { skip }
+    sum = sum + count
+}
+
+# Numbers added: 1, 2, 4, 5, 7, 8, 10
+# Sum: 1+2+4+5+7+8+10 = 37
+check("while loop with skip accumulator", sum, 37)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

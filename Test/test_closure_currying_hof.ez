@@ -1,0 +1,109 @@
+# ============================================================================
+# Test Suite: Closures, Currying, Function Composition & Higher-Order Functions
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Higher-Order Functions & Closures Test Suite ==="
+
+# --- 1. Function Currying (Binary function to unary chain) ---
+task curry2(fn) {
+    give |a| {
+        give |b| {
+            give fn(a, b)
+        }
+    }
+}
+
+addFn = |x, y| { give x + y }
+curriedAdd = curry2(addFn)
+add5 = curriedAdd(5)
+add10 = curriedAdd(10)
+
+check("curried add5(3)", add5(3), 8)
+check("curried add5(20)", add5(20), 25)
+check("curried add10(7)", add10(7), 17)
+
+# --- 2. Function Composition: (f . g)(x) = f(g(x)) ---
+task compose(f, g) {
+    give |x| {
+        give f(g(x))
+    }
+}
+
+doubleFn = |x| { give x * 2 }
+plusOneFn = |x| { give x + 1 }
+
+# double(plusOne(x)) -> (x + 1) * 2
+doubleAfterPlusOne = compose(doubleFn, plusOneFn)
+check("compose doubleAfterPlusOne(3)", doubleAfterPlusOne(3), 8) # (3+1)*2 = 8
+
+# plusOne(double(x)) -> (x * 2) + 1
+plusOneAfterDouble = compose(plusOneFn, doubleFn)
+check("compose plusOneAfterDouble(3)", plusOneAfterDouble(3), 7) # (3*2)+1 = 7
+
+# --- 3. Pipeline Processor with Closures ---
+task pipe(val, fns) {
+    curr = val
+    get fn in fns {
+        curr = fn(curr)
+    }
+    give curr
+}
+
+pipelineRes = pipe(5, [
+    |x| { give x + 10 },  # 15
+    |x| { give x * 2 },   # 30
+    |x| { give x - 5 }    # 25
+])
+check("pipeline transformation result", pipelineRes, 25)
+
+# --- 4. State Encapsulation via Factory Closure ---
+task makeBankAccount(initialBalance) {
+    balance = initialBalance
+    give {
+        "deposit": |amt| {
+            balance = balance + amt
+            give balance
+        },
+        "withdraw": |amt| {
+            when amt > balance { give nil }
+            balance = balance - amt
+            give balance
+        },
+        "getBalance": || {
+            give balance
+        }
+    }
+}
+
+acc1 = makeBankAccount(100)
+acc2 = makeBankAccount(500)
+
+acc1["deposit"](50)
+check("acc1 balance after deposit", acc1["getBalance"](), 150)
+check("acc2 balance unaffected", acc2["getBalance"](), 500)
+
+acc1["withdraw"](30)
+check("acc1 balance after withdrawal", acc1["getBalance"](), 120)
+failedWithdrawal = acc1["withdraw"](200)
+check("acc1 withdrawal over limit returns nil", failedWithdrawal, nil)
+check("acc1 balance unchanged after failed withdrawal", acc1["getBalance"](), 120)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

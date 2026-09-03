@@ -1,0 +1,112 @@
+# ============================================================================
+# Test Suite: Numeric Algorithms & Mathematical Computations
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Numeric Algorithms Test Suite ==="
+
+# --- 1. Greatest Common Divisor (Euclidean Algorithm) ---
+task gcd(a, b) {
+    while b != 0 {
+        temp = b
+        b = a % b
+        a = temp
+    }
+    give a
+}
+
+check("gcd(48, 18)", gcd(48, 18), 6)
+check("gcd(101, 103) coprime", gcd(101, 103), 1)
+check("gcd(270, 192)", gcd(270, 192), 6)
+
+# --- 2. Fast Modular Exponentiation: (base^exp) % mod ---
+task modPow(base, exp, modulus) {
+    when modulus == 1 { give 0 }
+    result = 1
+    b = base % modulus
+    e = exp
+    while e > 0 {
+        when e % 2 == 1 {
+            result = (result * b) % modulus
+        }
+        e = floor(e / 2)
+        b = (b * b) % modulus
+    }
+    give result
+}
+
+check("modPow(2, 10, 1000)", modPow(2, 10, 1000), 24) # 1024 % 1000 = 24
+check("modPow(3, 13, 100)", modPow(3, 13, 100), 23)   # 1594323 % 100 = 23
+check("modPow(7, 256, 13)", modPow(7, 256, 13), 9)
+
+# --- 3. Sieve of Eratosthenes (Prime Generation) ---
+task sieve(limit) {
+    isPrime = []
+    repeat i = 0 to limit {
+        push(isPrime, true)
+    }
+    isPrime[0] = false
+    isPrime[1] = false
+
+    repeat p = 2 to limit {
+        when p * p > limit { escape }
+        when isPrime[p] {
+            repeat multiple = p * p to limit step p {
+                isPrime[multiple] = false
+            }
+        }
+    }
+
+    primes = []
+    repeat k = 2 to limit {
+        when isPrime[k] {
+            push(primes, k)
+        }
+    }
+    give primes
+}
+
+primes30 = sieve(30)
+check("primes up to 30 count", len(primes30), 10)
+check("primes up to 30 list", str(primes30), "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]")
+
+# --- 4. Factorials (Iterative & Tail-like) ---
+task factorial(n) {
+    when n <= 1 { give 1 }
+    acc = 1
+    repeat i = 2 to n {
+        acc = acc * i
+    }
+    give acc
+}
+
+check("factorial(0)", factorial(0), 1)
+check("factorial(5)", factorial(5), 120)
+check("factorial(10)", factorial(10), 3628800)
+
+# --- 5. Floating Point Precision & Arithmetic Helpers ---
+task approxEqual(a, b, epsilon) {
+    give abs(a - b) < epsilon
+}
+
+calcPiApprox = 4.0 * (1.0 - 1.0/3.0 + 1.0/5.0 - 1.0/7.0 + 1.0/9.0 - 1.0/11.0)
+check("pi approximation bounds", approxEqual(calcPiApprox, 3.14159, 0.2), true)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

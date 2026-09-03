@@ -1,0 +1,100 @@
+# ============================================================================
+# Test Suite: Models, Interfaces, Method Overriding & Polymorphism
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Model & Interface Polymorphism Test Suite ==="
+
+# --- 1. Interface Declaration and Implementation ---
+interface Renderable {
+    task render()
+}
+
+model Button implements Renderable {
+    init(label) {
+        self.label = label
+    }
+    task render() {
+        give "<button>" + self.label + "</button>"
+    }
+}
+
+model TextBox implements Renderable {
+    init(text) {
+        self.text = text
+    }
+    task render() {
+        give "<input value=\"" + self.text + "\"/>"
+    }
+}
+
+task drawWidget(w) {
+    give w.render()
+}
+
+btn = new Button("Submit")
+tb = new TextBox("Sample Input")
+
+check("button render", drawWidget(btn), "<button>Submit</button>")
+check("textbox render", drawWidget(tb), "<input value=\"Sample Input\"/>")
+
+# --- 2. Multiple Levels of Method Overriding and Super ---
+model Component {
+    init(id) {
+        self.id = id
+    }
+    task getDetails() {
+        give "Component#" + str(self.id)
+    }
+}
+
+model Container extends Component {
+    init(id, title) {
+        super.init(id)
+        self.title = title
+    }
+    task getDetails() {
+        give super.getDetails() + " [Container:" + self.title + "]"
+    }
+}
+
+model Panel extends Container {
+    init(id, title, color) {
+        super.init(id, title)
+        self.color = color
+    }
+    task getDetails() {
+        give super.getDetails() + " (Color:" + self.color + ")"
+    }
+}
+
+panel = new Panel(101, "MainPanel", "DarkBlue")
+check("multi-level override and super chaining", panel.getDetails(), "Component#101 [Container:MainPanel] (Color:DarkBlue)")
+
+# --- 3. Polymorphic Method Dispatch on Collection ---
+widgets = [new Button("OK"), new TextBox("Search"), new Button("Cancel")]
+renderedOutput = ""
+get w in widgets {
+    renderedOutput = renderedOutput + w.render() + " "
+}
+
+check("polymorphic collection iteration", renderedOutput, "<button>OK</button> <input value=\"Search\"/> <button>Cancel</button> ")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

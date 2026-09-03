@@ -1,0 +1,95 @@
+# ============================================================================
+# Test Suite: Error Handling Hierarchies & Nested Exception Recovery
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Exception Hierarchies Test Suite ==="
+
+# --- 1. Custom Exception Model Hierarchy ---
+model AppError {
+    init(message) {
+        self.message = message
+    }
+}
+
+model ValidationError extends AppError {
+    init(message, field) {
+        super.init(message)
+        self.field = field
+    }
+}
+
+model DatabaseError extends AppError {
+    init(message, code) {
+        super.init(message)
+        self.code = code
+    }
+}
+
+task processForm(email, age) {
+    when len(email) == 0 {
+        throw new ValidationError("Email cannot be empty", "email")
+    }
+    when age < 0 {
+        throw new ValidationError("Age cannot be negative", "age")
+    }
+    when email == "db_error@test.com" {
+        throw new DatabaseError("Connection timeout", 504)
+    }
+    give "OK"
+}
+
+# Test specific validation error catch
+caughtField = ""
+try {
+    processForm("", 25)
+} catch e {
+    caughtField = e.field
+}
+check("validation error caught on field", caughtField, "email")
+
+# Test specific database error catch
+caughtDbCode = 0
+try {
+    processForm("db_error@test.com", 30)
+} catch e {
+    caughtDbCode = e.code
+}
+check("database error caught with code", caughtDbCode, 504)
+
+# --- 2. Exception Recovery and Fallback Results ---
+task safeLookup(dictObj, key, fallback) {
+    res = fallback
+    try {
+        when not contains(dictObj, key) {
+            throw "KeyNotFound"
+        }
+        res = dictObj[key]
+    } catch e {
+        res = fallback
+    }
+    give res
+}
+
+config = {"host": "localhost", "port": 8080}
+check("safeLookup existing key", safeLookup(config, "port", 3000), 8080)
+check("safeLookup missing key fallback", safeLookup(config, "timeout", 5000), 5000)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

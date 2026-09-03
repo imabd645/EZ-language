@@ -1,0 +1,206 @@
+# ============================================================================
+# Test Suite: Advanced Data Structures & Dynamic Collections
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Data Structures Test Suite ==="
+
+# --- 1. Stack (LIFO) Model ---
+model Stack {
+    init() {
+        self.items = []
+    }
+    task push(val) {
+        push(self.items, val)
+    }
+    task pop() {
+        when self.isEmpty() { give nil }
+        give pop(self.items)
+    }
+    task peek() {
+        when self.isEmpty() { give nil }
+        give self.items[len(self.items) - 1]
+    }
+    task isEmpty() {
+        give len(self.items) == 0
+    }
+    task size() {
+        give len(self.items)
+    }
+}
+
+st = new Stack()
+check("stack initially empty", st.isEmpty(), true)
+st.push(10)
+st.push(20)
+st.push(30)
+check("stack size after 3 pushes", st.size(), 3)
+check("stack peek", st.peek(), 30)
+check("stack pop 1", st.pop(), 30)
+check("stack pop 2", st.pop(), 20)
+check("stack pop 3", st.pop(), 10)
+check("stack pop on empty", st.pop(), nil)
+
+# --- 2. Queue (FIFO) Model ---
+model Queue {
+    init() {
+        self.items = []
+    }
+    task enqueue(val) {
+        push(self.items, val)
+    }
+    task dequeue() {
+        when self.isEmpty() { give nil }
+        first = self.items[0]
+        # Remove first element using slice
+        self.items = slice(self.items, 1, len(self.items))
+        give first
+    }
+    task isEmpty() {
+        give len(self.items) == 0
+    }
+    task size() {
+        give len(self.items)
+    }
+}
+
+q = new Queue()
+q.enqueue("A")
+q.enqueue("B")
+q.enqueue("C")
+check("queue size", q.size(), 3)
+check("queue dequeue 1", q.dequeue(), "A")
+check("queue dequeue 2", q.dequeue(), "B")
+check("queue dequeue 3", q.dequeue(), "C")
+check("queue dequeue empty", q.dequeue(), nil)
+
+# --- 3. Binary Search Tree (BST) Model ---
+model TreeNode {
+    init(val) {
+        self.val = val
+        self.left = nil
+        self.right = nil
+    }
+}
+
+model BST {
+    init() {
+        self.root = nil
+    }
+
+    task insert(val) {
+        self.root = self.insertNode(self.root, val)
+    }
+
+    task insertNode(node, val) {
+        when node == nil {
+            give new TreeNode(val)
+        }
+        when val < node.val {
+            node.left = self.insertNode(node.left, val)
+        } other {
+            node.right = self.insertNode(node.right, val)
+        }
+        give node
+    }
+
+    task contains(val) {
+        give self.searchNode(self.root, val)
+    }
+
+    task searchNode(node, val) {
+        when node == nil { give false }
+        when node.val == val { give true }
+        when val < node.val { give self.searchNode(node.left, val) }
+        give self.searchNode(node.right, val)
+    }
+
+    task inorder() {
+        res = []
+        self.traverse(self.root, res)
+        give res
+    }
+
+    task traverse(node, outArr) {
+        when node != nil {
+            self.traverse(node.left, outArr)
+            push(outArr, node.val)
+            self.traverse(node.right, outArr)
+        }
+    }
+}
+
+tree = new BST()
+tree.insert(50)
+tree.insert(30)
+tree.insert(70)
+tree.insert(20)
+tree.insert(40)
+tree.insert(60)
+tree.insert(80)
+
+check("BST contains 40", tree.contains(40), true)
+check("BST contains 99", tree.contains(99), false)
+sortedList = tree.inorder()
+check("BST inorder traversal sorted", str(sortedList), "[20, 30, 40, 50, 60, 70, 80]")
+
+# --- 4. Linked List Model ---
+model ListNode {
+    init(data) {
+        self.data = data
+        self.next = nil
+    }
+}
+
+model LinkedList {
+    init() {
+        self.head = nil
+    }
+    task append(val) {
+        newNode = new ListNode(val)
+        when self.head == nil {
+            self.head = newNode
+            give true
+        }
+        curr = self.head
+        while curr.next != nil {
+            curr = curr.next
+        }
+        curr.next = newNode
+        give true
+    }
+    task toArray() {
+        arr = []
+        curr = self.head
+        while curr != nil {
+            push(arr, curr.data)
+            curr = curr.next
+        }
+        give arr
+    }
+}
+
+ll = new LinkedList()
+ll.append(1)
+ll.append(2)
+ll.append(3)
+check("linked list toArray", str(ll.toArray()), "[1, 2, 3]")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

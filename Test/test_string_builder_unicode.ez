@@ -1,0 +1,86 @@
+# ============================================================================
+# Test Suite: Unicode, UTF-8 Strings, Slicing & StringBuilder
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Unicode & String Operations Test Suite ==="
+
+# --- 1. UTF-8 Multi-byte Characters & Code Points ---
+greeting = "Hello, 世界! 🌍"
+check("contains multi-byte string", contains(greeting, "世界"), true)
+check("contains emoji", contains(greeting, "🌍"), true)
+
+# Greek & Cyrillic & Mathematical symbols
+greekStr = "αβγδε"
+check("greek string length > 0", len(greekStr) > 0, true)
+
+# Code point roundtrips via chr and ord
+codeAlpha = ord("α")
+check("ord alpha", codeAlpha, 945)
+check("chr 945", chr(codeAlpha), "α")
+
+codeOmega = ord("Ω")
+check("ord Omega", codeOmega, 937)
+check("chr 937", chr(codeOmega), "Ω")
+
+# --- 2. String Reversal with Unicode ---
+revAscii = reverse("abcdef")
+check("reverse ascii", revAscii, "fedcba")
+
+# --- 3. StringBuilder Pattern via Array Join ---
+model StringBuilder {
+    init() {
+        self.parts = []
+    }
+    task append(strVal) {
+        push(self.parts, strVal)
+        give self
+    }
+    task appendLine(strVal) {
+        push(self.parts, strVal + "\n")
+        give self
+    }
+    task toString() {
+        give join(self.parts, "")
+    }
+}
+
+sb = new StringBuilder()
+sb.append("SELECT * ")
+sb.append("FROM users ")
+sb.append("WHERE id = 42")
+query = sb.toString()
+check("string builder query", query, "SELECT * FROM users WHERE id = 42")
+
+# --- 4. Large String Concatenation Tree (Testing EZConcatString) ---
+largeStr = ""
+repeat i = 1 to 50 {
+    largeStr = largeStr + "x"
+}
+check("large string length 50", len(largeStr), 50)
+check("large string start", slice(largeStr, 0, 5), "xxxxx")
+
+# --- 5. URL Encoding with Unicode ---
+rawUrl = "https://example.com/search?query=hello+world&lang=en"
+enc = urlEncode(rawUrl)
+dec = urlDecode(enc)
+check("url decode matches original", dec, rawUrl)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

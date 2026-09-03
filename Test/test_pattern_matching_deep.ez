@@ -1,0 +1,97 @@
+# ============================================================================
+# Test Suite: Advanced Pattern Matching & Type Discrimination
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Pattern Matching Deep Test Suite ==="
+
+# --- 1. Literal Value Matching (Ints, Strings, Booleans, Nil) ---
+task describeValue(v) {
+    match v {
+        0 => { give "zero" }
+        1 => { give "one" }
+        true => { give "boolean_true" }
+        false => { give "boolean_false" }
+        nil => { give "nothing" }
+        "hello" => { give "greeting" }
+        other => { give "unknown:" + str(v) }
+    }
+}
+
+check("match int 0", describeValue(0), "zero")
+check("match int 1", describeValue(1), "one")
+check("match bool true", describeValue(true), "boolean_true")
+check("match bool false", describeValue(false), "boolean_false")
+check("match nil", describeValue(nil), "nothing")
+check("match string hello", describeValue("hello"), "greeting")
+check("match wildcard other", describeValue(42), "unknown:42")
+
+# --- 2. Model Type Matching & Polymorphism ---
+model Expr {}
+model NumExpr extends Expr {
+    init(val) { self.val = val }
+}
+model AddExpr extends Expr {
+    init(left, right) {
+        self.left = left
+        self.right = right
+    }
+}
+model MulExpr extends Expr {
+    init(left, right) {
+        self.left = left
+        self.right = right
+    }
+}
+
+task evalExpr(e) {
+    match e {
+        NumExpr => { give e.val }
+        AddExpr => { give evalExpr(e.left) + evalExpr(e.right) }
+        MulExpr => { give evalExpr(e.left) * evalExpr(e.right) }
+        other => { give 0 }
+    }
+}
+
+# (3 + 4) * 5 = 35
+ast = new MulExpr(
+    new AddExpr(new NumExpr(3), new NumExpr(4)),
+    new NumExpr(5)
+)
+
+check("AST evaluator via pattern matching", evalExpr(ast), 35)
+
+# --- 3. Match Inside Loop with Dynamic Accumulation ---
+commands = ["inc", "inc", "double", "add10", "unknown", "inc"]
+state = 0
+
+get cmd in commands {
+    match cmd {
+        "inc" => { state = state + 1 }
+        "double" => { state = state * 2 }
+        "add10" => { state = state + 10 }
+        other => { }
+    }
+}
+
+# 0 -> +1 (1) -> +1 (2) -> *2 (4) -> +10 (14) -> +1 (15)
+check("match in loop state accumulator", state, 15)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

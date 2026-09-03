@@ -1,0 +1,107 @@
+# ============================================================================
+# Test Suite: Buffer Binary Packet Encoding & Protocol Decoding
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Binary Packet Protocol Test Suite ==="
+
+# --- 1. TLV (Type-Length-Value) Binary Packet Encoder ---
+# Packet Format:
+# [Byte 0]: Magic Byte (0xAA = 170)
+# [Byte 1]: Message Type (1 = Ping, 2 = Auth, 3 = Data)
+# [Byte 2]: Payload Length (N)
+# [Bytes 3 .. 3+N-1]: Payload Data
+# [Byte 3+N]: Checksum (XOR of all previous bytes)
+
+task encodePacket(msgType, payloadStr) {
+    payloadLen = len(payloadStr)
+    totalSize = 3 + payloadLen + 1
+    buf = buffer(totalSize)
+
+    buf[0] = 170 # Magic (0xAA)
+    buf[1] = msgType
+    buf[2] = payloadLen
+
+    repeat i = 0 to payloadLen - 1 {
+        charVal = ord(slice(payloadStr, i, i + 1))
+        buf[3 + i] = charVal
+    }
+
+    # Compute XOR checksum
+    chk = 0
+    repeat idx = 0 to 3 + payloadLen - 1 {
+        chk = chk ^ buf[idx]
+    }
+    buf[3 + payloadLen] = chk
+
+    give buf
+}
+
+pkt = encodePacket(3, "EZ_NET")
+check("packet size", buf_size(pkt), 10) # 3 header + 6 payload + 1 checksum = 10
+check("packet magic", pkt[0], 170)
+check("packet type", pkt[1], 3)
+check("packet payload len", pkt[2], 6)
+
+# --- 2. Binary Packet Decoder & Checksum Verification ---
+task decodePacket(buf) {
+    size = buf_size(buf)
+    when size < 4 { give {"valid": false, "error": "packet_too_short"} }
+    when buf[0] != 170 { give {"valid": false, "error": "invalid_magic"} }
+
+    msgType = buf[1]
+    payloadLen = buf[2]
+    when size != 3 + payloadLen + 1 { give {"valid": false, "error": "size_mismatch"} }
+
+    # Verify checksum
+    computedChk = 0
+    repeat idx = 0 to 3 + payloadLen - 1 {
+        computedChk = computedChk ^ buf[idx]
+    }
+    actualChk = buf[3 + payloadLen]
+    when computedChk != actualChk { give {"valid": false, "error": "checksum_failed"} }
+
+    # Extract payload
+    payload = ""
+    repeat i = 0 to payloadLen - 1 {
+        payload = payload + chr(buf[3 + i])
+    }
+
+    give {
+        "valid": true,
+        "type": msgType,
+        "payload": payload
+    }
+}
+
+decoded = decodePacket(pkt)
+check("decoded valid", decoded["valid"], true)
+check("decoded type", decoded["type"], 3)
+check("decoded payload", decoded["payload"], "EZ_NET")
+
+# Corrupt packet checksum
+corruptedPkt = buffer(10)
+buf_copy(pkt, corruptedPkt, 0, 0, 10)
+corruptedPkt[9] = 255 # alter checksum byte
+failedDecode = decodePacket(corruptedPkt)
+check("corrupted packet checksum rejected", failedDecode["valid"], false)
+check("corrupted packet error reason", failedDecode["error"], "checksum_failed")
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

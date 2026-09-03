@@ -1,0 +1,55 @@
+# ============================================================================
+# Test Suite: Serialization Interop (CSV <-> JSON Conversion Pipeline)
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== CSV <-> JSON Interop Test Suite ==="
+
+# --- 1. CSV to JSON Transformation Pipeline ---
+rawCsv = "id,name,role,active\n101,Alice,Lead,true\n102,Bob,Engineer,false"
+parsedRecords = parse_csv(rawCsv)
+
+check("parsed records length", len(parsedRecords), 2)
+check("record 0 id", parsedRecords[0]["id"], "101")
+check("record 0 role", parsedRecords[0]["role"], "Lead")
+
+# Convert to JSON string
+jsonStr = to_json(parsedRecords)
+check("json string contains Alice", contains(jsonStr, "Alice"), true)
+check("json string contains Lead", contains(jsonStr, "Lead"), true)
+
+# Parse back from JSON
+reconstructed = parse_json(jsonStr)
+check("reconstructed array length", len(reconstructed), 2)
+check("reconstructed item 1 name", reconstructed[1]["name"], "Bob")
+check("reconstructed item 1 role", reconstructed[1]["role"], "Engineer")
+
+# --- 2. JSON to CSV Serialization ---
+dataToExport = [
+    {"product": "Laptop", "price": 1200, "qty": 5},
+    {"product": "Mouse", "price": 25, "qty": 50}
+]
+
+exportedCsv = to_csv(dataToExport)
+check("exported csv contains product", contains(exportedCsv, "product"), true)
+check("exported csv contains Laptop", contains(exportedCsv, "Laptop"), true)
+check("exported csv contains Mouse", contains(exportedCsv, "Mouse"), true)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

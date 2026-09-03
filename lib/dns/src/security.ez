@@ -1,0 +1,161 @@
+# ============================================================================
+# lib/dns/src/security.ez -- DNS Security, SPF, DMARC, DKIM & Propagation
+# ============================================================================
+
+use "resolver.ez"
+
+export model DnsSecurity {
+    init(resolver = nil) {
+        when resolver == nil {
+            self.resolver = Resolver()
+        } other {
+            self.resolver = resolver
+        }
+    }
+
+    task getSpf(domain) {
+        txts = self.resolver.resolveTxt(domain)
+        spfRecord = nil
+        get t in txts {
+            when startsWith(t, "v=spf1") {
+                spfRecord = t
+                escape
+            }
+        }
+
+        when spfRecord == nil {
+            give { "configured": false, "raw": nil, "includes": [], "ip4": [], "ip6": [], "policy": nil }
+        }
+
+        parts = split(spfRecord, " ")
+        includes = []
+        ip4List = []
+        ip6List = []
+        policy = nil
+
+        get p in parts {
+            when startsWith(p, "include:") {
+                push(includes, substr(p, 8, len(p) - 8))
+            }
+            when startsWith(p, "ip4:") {
+                push(ip4List, substr(p, 4, len(p) - 4))
+            }
+            when startsWith(p, "ip6:") {
+                push(ip6List, substr(p, 4, len(p) - 4))
+            }
+            when p == "~all" or p == "-all" or p == "+all" or p == "?all" {
+                policy = p
+            }
+        }
+
+        give {
+            "configured": true,
+            "raw": spfRecord,
+            "includes": includes,
+            "ip4": ip4List,
+            "ip6": ip6List,
+            "policy": policy
+        }
+    }
+
+    task getDmarc(domain) {
+        dmarcDomain = "_dmarc." + domain
+        txts = self.resolver.resolveTxt(dmarcDomain)
+        dmarcRecord = nil
+        get t in txts {
+            when startsWith(t, "v=DMARC1") {
+                dmarcRecord = t
+                escape
+            }
+        }
+
+        when dmarcRecord == nil {
+            give { "configured": false, "raw": nil, "policy": nil, "rua": nil, "ruf": nil, "pct": 100 }
+        }
+
+        tags = split(dmarcRecord, ";")
+        policy = nil
+        sp = nil
+        rua = nil
+        ruf = nil
+        pct = 100
+
+        get tag in tags {
+            trimmed = trim(tag)
+            when startsWith(trimmed, "p=") { policy = substr(trimmed, 2, len(trimmed) - 2) }
+            when startsWith(trimmed, "sp=") { sp = substr(trimmed, 3, len(trimmed) - 3) }
+            when startsWith(trimmed, "rua=") { rua = substr(trimmed, 4, len(trimmed) - 4) }
+            when startsWith(trimmed, "ruf=") { ruf = substr(trimmed, 4, len(trimmed) - 4) }
+            when startsWith(trimmed, "pct=") {
+                try { pct = num(substr(trimmed, 4, len(trimmed) - 4)) } catch e {}
+            }
+        }
+
+        give {
+            "configured": true,
+            "raw": dmarcRecord,
+            "policy": policy,
+            "subdomainPolicy": sp,
+            "rua": rua,
+            "ruf": ruf,
+            "pct": pct
+        }
+    }
+
+    task getDkim(domain, selector) {
+        dkimDomain = selector + "._domainkey." + domain
+        txts = self.resolver.resolveTxt(dkimDomain)
+        dkimRecord = nil
+        get t in txts {
+            when startsWith(t, "v=DKIM1") or contains(t, "p=") {
+                dkimRecord = t
+                escape
+            }
+        }
+
+        when dkimRecord == nil {
+            give { "configured": false, "raw": nil, "keyType": nil, "publicKey": nil }
+        }
+
+        tags = split(dkimRecord, ";")
+        keyType = "rsa"
+        publicKey = nil
+
+        get tag in tags {
+            trimmed = trim(tag)
+            when startsWith(trimmed, "k=") { keyType = substr(trimmed, 2, len(trimmed) - 2) }
+            when startsWith(trimmed, "p=") { publicKey = substr(trimmed, 2, len(trimmed) - 2) }
+        }
+
+        give {
+            "configured": true,
+            "raw": dkimRecord,
+            "keyType": keyType,
+            "publicKey": publicKey
+        }
+    }
+
+    task isConfigured(domain) {
+        ips = self.resolver.resolve4(domain)
+        when len(ips) > 0 { give true }
+        cname = self.resolver.resolveCname(domain)
+        when cname != nil { give true }
+        ips6 = self.resolver.resolve6(domain)
+        give len(ips6) > 0
+    }
+
+    task checkPropagation(domain, typeStr = "A") {
+        providers = ["cloudflare", "google", "adguard", "alidns"]
+        results = {}
+        get p in providers {
+            r = Resolver({ "provider": p, "timeout": 5000 })
+            try {
+                records = r.resolve(domain, typeStr)
+                results[p] = { "ok": true, "count": len(records), "records": records }
+            } catch e {
+                results[p] = { "ok": false, "error": str(e) }
+            }
+        }
+        give results
+    }
+}

@@ -1,0 +1,139 @@
+# ============================================================================
+# lib/dns/src/types.ez -- DNS Record Models
+# ============================================================================
+
+export model DnsRecord {
+    init(name, typeNum, typeStr, ttl, rawData) {
+        self.name = name
+        self.typeNum = typeNum
+        self.type = typeStr
+        self.ttl = ttl
+        self.raw = rawData
+    }
+
+    task toString() {
+        give `DnsRecord({self.name} {self.type} TTL={self.ttl} {self.raw})`
+    }
+}
+
+export model ARecord extends DnsRecord {
+    init(name, ttl, rawData, ip) {
+        super.init(name, 1, "A", ttl, rawData)
+        self.ip = ip
+    }
+
+    task toString() {
+        give `ARecord({self.name} -> {self.ip} TTL={self.ttl})`
+    }
+}
+
+export model AAAARecord extends DnsRecord {
+    init(name, ttl, rawData, ip) {
+        super.init(name, 28, "AAAA", ttl, rawData)
+        self.ip = ip
+    }
+
+    task toString() {
+        give `AAAARecord({self.name} -> {self.ip} TTL={self.ttl})`
+    }
+}
+
+export model MXRecord extends DnsRecord {
+    init(name, ttl, rawData, exchange, priority) {
+        super.init(name, 15, "MX", ttl, rawData)
+        self.exchange = exchange
+        self.priority = priority
+    }
+
+    task toString() {
+        give `MXRecord({self.name} -> {self.exchange} prio={self.priority} TTL={self.ttl})`
+    }
+}
+
+export model TXTRecord extends DnsRecord {
+    init(name, ttl, rawData, text) {
+        super.init(name, 16, "TXT", ttl, rawData)
+        self.text = text
+    }
+
+    task toString() {
+        give `TXTRecord({self.name} -> "{self.text}" TTL={self.ttl})`
+    }
+}
+
+export model NSRecord extends DnsRecord {
+    init(name, ttl, rawData, host) {
+        super.init(name, 2, "NS", ttl, rawData)
+        self.host = host
+    }
+
+    task toString() {
+        give `NSRecord({self.name} -> {self.host} TTL={self.ttl})`
+    }
+}
+
+export model CNAMERecord extends DnsRecord {
+    init(name, ttl, rawData, target) {
+        super.init(name, 5, "CNAME", ttl, rawData)
+        self.target = target
+    }
+
+    task toString() {
+        give `CNAMERecord({self.name} -> {self.target} TTL={self.ttl})`
+    }
+}
+
+export model SOARecord extends DnsRecord {
+    init(name, ttl, rawData, primaryNs, adminEmail, serial, refresh, retry, expire, minimumTtl) {
+        super.init(name, 6, "SOA", ttl, rawData)
+        self.primaryNs = primaryNs
+        self.adminEmail = adminEmail
+        self.serial = serial
+        self.refresh = refresh
+        self.retry = retry
+        self.expire = expire
+        self.minimumTtl = minimumTtl
+    }
+
+    task toString() {
+        give `SOARecord({self.name} primary={self.primaryNs} admin={self.adminEmail} serial={self.serial})`
+    }
+}
+
+export model SRVRecord extends DnsRecord {
+    init(name, ttl, rawData, priority, weight, port, target) {
+        super.init(name, 33, "SRV", ttl, rawData)
+        self.priority = priority
+        self.weight = weight
+        self.port = port
+        self.target = target
+    }
+
+    task toString() {
+        give `SRVRecord({self.name} -> {self.target}:{self.port} prio={self.priority} weight={self.weight})`
+    }
+}
+
+export model CAARecord extends DnsRecord {
+    init(name, ttl, rawData, critical, tag, value) {
+        super.init(name, 257, "CAA", ttl, rawData)
+        self.critical = critical
+        self.tag = tag
+        self.value = value
+    }
+
+    task toString() {
+        give `CAARecord({self.name} tag={self.tag} value="{self.value}" critical={self.critical})`
+    }
+}
+
+export model PTRRecord extends DnsRecord {
+    init(name, ttl, rawData, domain) {
+        super.init(name, 12, "PTR", ttl, rawData)
+        self.domain = domain
+    }
+
+    task toString() {
+        give `PTRRecord({self.name} -> {self.domain} TTL={self.ttl})`
+    }
+}

@@ -1,0 +1,138 @@
+# ============================================================================
+# lib/dns/src/parser.ez -- DNS Record Parser
+# ============================================================================
+
+use "types.ez"
+
+task unquote(s) {
+    strVal = trim(str(s))
+    when len(strVal) >= 2 and substr(strVal, 0, 1) == "\"" and substr(strVal, len(strVal) - 1, 1) == "\"" {
+        give substr(strVal, 1, len(strVal) - 2)
+    }
+    give strVal
+}
+
+task cleanDomain(d) {
+    domain = trim(str(d))
+    when len(domain) > 0 and substr(domain, len(domain) - 1, 1) == "." {
+        give substr(domain, 0, len(domain) - 1)
+    }
+    give domain
+}
+
+export task parseRecord(ans) {
+    name = cleanDomain(ans["name"])
+    typeNum = ans["type"]
+    ttl = ans["TTL"]
+    raw = ans["data"]
+
+    # 1: A Record
+    when typeNum == 1 {
+        give ARecord(name, ttl, raw, raw)
+    }
+
+    # 28: AAAA Record
+    when typeNum == 28 {
+        give AAAARecord(name, ttl, raw, raw)
+    }
+
+    # 15: MX Record (format: "priority exchange")
+    when typeNum == 15 {
+        parts = split(trim(raw), " ")
+        prio = 0
+        ex = ""
+        when len(parts) >= 2 {
+            try { prio = num(parts[0]) } catch e { prio = 0 }
+            ex = cleanDomain(parts[1])
+        } other {
+            ex = cleanDomain(raw)
+        }
+        give MXRecord(name, ttl, raw, ex, prio)
+    }
+
+    # 16: TXT Record
+    when typeNum == 16 {
+        give TXTRecord(name, ttl, raw, unquote(raw))
+    }
+
+    # 2: NS Record
+    when typeNum == 2 {
+        give NSRecord(name, ttl, raw, cleanDomain(raw))
+    }
+
+    # 5: CNAME Record
+    when typeNum == 5 {
+        give CNAMERecord(name, ttl, raw, cleanDomain(raw))
+    }
+
+    # 12: PTR Record
+    when typeNum == 12 {
+        give PTRRecord(name, ttl, raw, cleanDomain(raw))
+    }
+
+    # 6: SOA Record (format: "primaryNs adminEmail serial refresh retry expire minimumTtl")
+    when typeNum == 6 {
+        parts = split(trim(raw), " ")
+        pNs = ""
+        admin = ""
+        serial = 0
+        ref = 0
+        ret = 0
+        exp = 0
+        minTtl = 0
+        when len(parts) >= 7 {
+            pNs = cleanDomain(parts[0])
+            admin = cleanDomain(parts[1])
+            try { serial = num(parts[2]) } catch e {}
+            try { ref = num(parts[3]) } catch e {}
+            try { ret = num(parts[4]) } catch e {}
+            try { exp = num(parts[5]) } catch e {}
+            try { minTtl = num(parts[6]) } catch e {}
+        }
+        give SOARecord(name, ttl, raw, pNs, admin, serial, ref, ret, exp, minTtl)
+    }
+
+    # 33: SRV Record (format: "priority weight port target")
+    when typeNum == 33 {
+        parts = split(trim(raw), " ")
+        prio = 0
+        w = 0
+        port = 0
+        target = ""
+        when len(parts) >= 4 {
+            try { prio = num(parts[0]) } catch e {}
+            try { w = num(parts[1]) } catch e {}
+            try { port = num(parts[2]) } catch e {}
+            target = cleanDomain(parts[3])
+        }
+        give SRVRecord(name, ttl, raw, prio, w, port, target)
+    }
+
+    # 257: CAA Record (format: "flags tag value")
+    when typeNum == 257 {
+        parts = split(trim(raw), " ")
+        crit = 0
+        tag = ""
+        val = ""
+        when len(parts) >= 3 {
+            try { crit = num(parts[0]) } catch e {}
+            tag = parts[1]
+            val = unquote(parts[2])
+        }
+        give CAARecord(name, ttl, raw, crit, tag, val)
+    }
+
+    # Fallback generic record
+    give DnsRecord(name, typeNum, str(typeNum), ttl, raw)
+}
+
+export task ipToReverseDomain(ip) {
+    ipStr = trim(str(ip))
+    when contains(ipStr, ".") {
+        octets = split(ipStr, ".")
+        when len(octets) == 4 {
+            give octets[3] + "." + octets[2] + "." + octets[1] + "." + octets[0] + ".in-addr.arpa"
+        }
+    }
+    give ipStr
+}

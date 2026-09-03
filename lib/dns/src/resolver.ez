@@ -1,0 +1,164 @@
+# ============================================================================
+# lib/dns/src/resolver.ez -- DNS Resolver Implementation
+# ============================================================================
+
+use "httpx"
+use "types.ez"
+use "provider.ez"
+use "parser.ez"
+
+export model Resolver {
+    init(options = {}) {
+        self.provider = "cloudflare"
+        self.timeoutMs = 10000
+        self.retries = 2
+        self.dnssec = false
+
+        when has_key(options, "provider") { self.provider = options["provider"] }
+        when has_key(options, "timeout") { self.timeoutMs = options["timeout"] }
+        when has_key(options, "retries") { self.retries = options["retries"] }
+        when has_key(options, "dnssec") { self.dnssec = options["dnssec"] }
+
+        self.baseUrl = getProviderUrl(self.provider)
+        self.client = Http()
+            .withTimeout(self.timeoutMs)
+            .withRetries(self.retries)
+            .withHeader("Accept", "application/dns-json")
+            .withHeader("User-Agent", "EZ-DNS/1.0")
+    }
+
+    task query(domain, typeStr = "A") {
+        url = buildQueryUrl(self.baseUrl, domain, typeStr, self.dnssec)
+        r = self.client.get(url)
+
+        when not r.ok {
+            throw Exception(`dns: DoH query to {self.provider} failed with status {r.status}`)
+        }
+
+        data = r.json()
+        status = 0
+        when has_key(data, "Status") { status = data["Status"] }
+
+        # DNS Status Codes: 0 = NOERROR, 3 = NXDOMAIN, 2 = SERVFAIL, 5 = REFUSED
+        when status == 3 {
+            # NXDOMAIN (Domain does not exist)
+            give []
+        }
+        when status != 0 {
+            throw Exception(`dns: query for {domain} ({typeStr}) returned DNS error status {status}`)
+        }
+
+        when not has_key(data, "Answer") {
+            give []
+        }
+
+        answers = data["Answer"]
+        records = []
+        get ans in answers {
+            push(records, parseRecord(ans))
+        }
+        give records
+    }
+
+    task resolve(domain, typeStr = "A") {
+        give self.query(domain, typeStr)
+    }
+
+    task resolve4(domain) {
+        records = self.query(domain, "A")
+        ips = []
+        get r in records {
+            when r.type == "A" { push(ips, r.ip) }
+        }
+        give ips
+    }
+
+    task resolve6(domain) {
+        records = self.query(domain, "AAAA")
+        ips = []
+        get r in records {
+            when r.type == "AAAA" { push(ips, r.ip) }
+        }
+        give ips
+    }
+
+    task resolveMx(domain) {
+        records = self.query(domain, "MX")
+        mxRecords = []
+        get r in records {
+            when r.type == "MX" { push(mxRecords, r) }
+        }
+        # Sort by priority ascending
+        give sort(mxRecords)
+    }
+
+    task resolveTxt(domain) {
+        records = self.query(domain, "TXT")
+        texts = []
+        get r in records {
+            when r.type == "TXT" { push(texts, r.text) }
+        }
+        give texts
+    }
+
+    task resolveNs(domain) {
+        records = self.query(domain, "NS")
+        hosts = []
+        get r in records {
+            when r.type == "NS" { push(hosts, r.host) }
+        }
+        give hosts
+    }
+
+    task resolveCname(domain) {
+        records = self.query(domain, "CNAME")
+        get r in records {
+            when r.type == "CNAME" { give r.target }
+        }
+        give nil
+    }
+
+    task resolveSoa(domain) {
+        records = self.query(domain, "SOA")
+        get r in records {
+            when r.type == "SOA" { give r }
+        }
+        give nil
+    }
+
+    task resolveSrv(domain) {
+        records = self.query(domain, "SRV")
+        srvs = []
+        get r in records {
+            when r.type == "SRV" { push(srvs, r) }
+        }
+        give srvs
+    }
+
+    task resolveCaa(domain) {
+        records = self.query(domain, "CAA")
+        caas = []
+        get r in records {
+            when r.type == "CAA" { push(caas, r) }
+        }
+        give caas
+    }
+
+    task reverse(ip) {
+        reverseDomain = ipToReverseDomain(ip)
+        records = self.query(reverseDomain, "PTR")
+        domains = []
+        get r in records {
+            when r.type == "PTR" { push(domains, r.domain) }
+        }
+        give domains
+    }
+
+    task lookup(domain) {
+        v4 = self.resolve4(domain)
+        when len(v4) > 0 { give v4[0] }
+        v6 = self.resolve6(domain)
+        when len(v6) > 0 { give v6[0] }
+        give nil
+    }
+}

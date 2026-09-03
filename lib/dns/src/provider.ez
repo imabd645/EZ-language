@@ -1,0 +1,56 @@
+# ============================================================================
+# lib/dns/src/provider.ez -- DNS Providers & Query Builder
+# ============================================================================
+
+export PROVIDERS = {
+    "cloudflare": "https://cloudflare-dns.com/dns-query",
+    "google": "https://dns.google/resolve",
+    "adguard": "https://dns.adguard-dns.com/resolve",
+    "alidns": "https://dns.alidns.com/resolve"
+}
+
+export TYPE_NUMBERS = {
+    "A": 1,
+    "NS": 2,
+    "CNAME": 5,
+    "SOA": 6,
+    "PTR": 12,
+    "MX": 15,
+    "TXT": 16,
+    "AAAA": 28,
+    "SRV": 33,
+    "CAA": 257
+}
+
+export NUMBER_TO_TYPE = {
+    "1": "A",
+    "2": "NS",
+    "5": "CNAME",
+    "6": "SOA",
+    "12": "PTR",
+    "15": "MX",
+    "16": "TXT",
+    "28": "AAAA",
+    "33": "SRV",
+    "257": "CAA"
+}
+
+export task getProviderUrl(providerName) {
+    p = lower(str(providerName))
+    when has_key(PROVIDERS, p) {
+        give PROVIDERS[p]
+    }
+    # Assume custom URL
+    give providerName
+}
+
+export task buildQueryUrl(baseUrl, domain, typeStr, dnssec = false) {
+    sep = "?"
+    when contains(baseUrl, "?") { sep = "&" }
+    
+    url = baseUrl + sep + "name=" + urlEncode(domain) + "&type=" + urlEncode(typeStr)
+    when dnssec {
+        url = url + "&do=1"
+    }
+    give url
+}

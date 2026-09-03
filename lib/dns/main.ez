@@ -1,0 +1,51 @@
+# ============================================================================
+# dns -- Production-Ready DNS Resolver & Record Inspector for EZ
+# ============================================================================
+
+use "src/types.ez"
+use "src/provider.ez"
+use "src/parser.ez"
+use "src/resolver.ez"
+use "src/security.ez"
+
+_defaultResolver = Resolver()
+_defaultSecurity = DnsSecurity(_defaultResolver)
+
+# --- Top-Level Direct Functions ---
+export task resolve(domain, typeStr = "A") { give _defaultResolver.resolve(domain, typeStr) }
+export task resolve4(domain) { give _defaultResolver.resolve4(domain) }
+export task resolve6(domain) { give _defaultResolver.resolve6(domain) }
+export task resolveMx(domain) { give _defaultResolver.resolveMx(domain) }
+export task resolveTxt(domain) { give _defaultResolver.resolveTxt(domain) }
+export task resolveNs(domain) { give _defaultResolver.resolveNs(domain) }
+export task resolveCname(domain) { give _defaultResolver.resolveCname(domain) }
+export task resolveSoa(domain) { give _defaultResolver.resolveSoa(domain) }
+export task resolveSrv(domain) { give _defaultResolver.resolveSrv(domain) }
+export task resolveCaa(domain) { give _defaultResolver.resolveCaa(domain) }
+export task reverse(ip) { give _defaultResolver.reverse(ip) }
+export task lookup(domain) { give _defaultResolver.lookup(domain) }
+
+# --- Security & Validation Functions ---
+export task getSpf(domain) { give _defaultSecurity.getSpf(domain) }
+export task getDmarc(domain) { give _defaultSecurity.getDmarc(domain) }
+export task getDkim(domain, selector) { give _defaultSecurity.getDkim(domain, selector) }
+export task isConfigured(domain) { give _defaultSecurity.isConfigured(domain) }
+export task checkPropagation(domain, typeStr = "A") { give _defaultSecurity.checkPropagation(domain, typeStr) }
+
+# --- Export Classes & Constants ---
+export Resolver
+export DnsSecurity
+export DnsRecord
+export ARecord
+export AAAARecord
+export MXRecord
+export TXTRecord
+export NSRecord
+export CNAMERecord
+export SOARecord
+export SRVRecord
+export CAARecord
+export PTRRecord
+export PROVIDERS
+export TYPE_NUMBERS
+export NUMBER_TO_TYPE

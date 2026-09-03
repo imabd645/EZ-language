@@ -1,0 +1,9 @@
+{
+  "name": "dns",
+  "version": "1.0.0",
+  "main": "main.ez",
+  "description": "DNS resolution, record queries, and domain configuration validator for EZ Language over DNS-over-HTTPS (DoH)",
+  "dependencies": {
+    "httpx": ">=1.0.0"
+  }
+}

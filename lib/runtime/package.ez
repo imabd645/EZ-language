@@ -3,4 +3,8 @@
   "version": "1.0.0",
   "main": "main.ez",
   "description": "Standard runtime and interpreter control subsystem"
+,
+  "dependencies": {
+    "httpx": "^1.0.1"
+  }
 }

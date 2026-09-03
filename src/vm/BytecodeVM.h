@@ -123,14 +123,6 @@ public:
     size_t globalSlotsSize = 0;
 
 private:
-    static constexpr size_t STACK_MAX = 65536;
-    size_t stackMax = STACK_MAX;
-
-    // Stack safety margin. When call stack depth exceeds maxFrames, throw
-    // RecursionError.
-    size_t maxFrames = 4096;
-    uint64_t instructionCount = 0;
-
     // ── Call Frame ────────────────────────────────────────────────────────────
     struct CallFrame {
         BytecodeFunctionPtr function;
@@ -161,24 +153,10 @@ private:
     // ── VM Configuration ──────────────────────────────────────────────────────
     size_t                 stackMax;
 
-    // Maximum EZ call depth.
-    //
-    // Was 512, which is low enough to hit doing ordinary work: walking a deep
-    // tree, or any recursive-descent parse, dies well before the algorithm is
-    // at fault. Python allows 1000 by default and lets you raise it.
-    //
-    // Raising this is cheap because an EZ frame is an element of the `frames`
-    // vector on the heap, not a native stack frame -- run() is a flat dispatch
-    // loop, so EZ-to-EZ recursion does not consume the C stack at all. What it
-    // does consume is operand-stack slots for each frame's locals, and that is
-    // already bounded separately: pushCallFrame checks STACK_HEADROOM against
-    // stackMax and reports a clean overflow, so a function with an unusually
-    // large frame still degrades to an error rather than corrupting anything.
-    //
-    // (Re-entrant paths -- constructors and FFI callbacks, which go through
-    // callFunction and nest a real run() -- are still bounded by the native
-    // stack. Those nest a handful deep in practice, not thousands.)
-    static constexpr size_t FRAMES_MAX = 4096;
+    // Stack safety margin. When call stack depth exceeds maxFrames, throw
+    // RecursionError.
+    size_t maxFrames = 4096;
+    uint64_t instructionCount = 0;
     // Working-stack reserve required to be free when a new call frame is
     // installed. Opcode operands are uint8_t-bounded (arg/element counts <= 255)
     // and the compiler never emits an unboundedly deep single expression, so this

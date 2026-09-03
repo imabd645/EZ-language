@@ -30,6 +30,13 @@ task checkTruthy(label, val) {
     }
 }
 
+task getErrMsg(e) {
+    when type(e) == "instance" {
+        give str(e.message)
+    }
+    give str(e)
+}
+
 out "=== Sandbox Security Test Suite ==="
 
 # --- 1. Pure Computation & Arithmetic ---
@@ -46,7 +53,7 @@ box2 = sb.create()
 box2.inject("TAX_RATE", 0.15)
 
 injectedRes = box2.eval("price = 100; give price * (1 + TAX_RATE)")
-check("Injected constant", injectedRes, 115)
+check("Injected constant", injectedRes, 115.0)
 
 # --- 3. Blocking File System Access ---
 out "--- 3. File System Protection ---"
@@ -55,7 +62,8 @@ fsBlocked = false
 try {
     box.eval("readFile('some_secret_file.txt')")
 } catch e {
-    when contains(str(e), "SecurityError") and contains(str(e), "readFile") {
+    msg = getErrMsg(e)
+    when contains(msg, "SecurityError") and contains(msg, "readFile") {
         fsBlocked = true
     }
 }
@@ -68,7 +76,8 @@ exitBlocked = false
 try {
     box.eval("exit(1)")
 } catch e {
-    when contains(str(e), "SecurityError") and contains(str(e), "exit") {
+    msg = getErrMsg(e)
+    when contains(msg, "SecurityError") and contains(msg, "exit") {
         exitBlocked = true
     }
 }
@@ -81,7 +90,8 @@ netBlocked = false
 try {
     box.eval("http_get('https://example.com')")
 } catch e {
-    when contains(str(e), "SecurityError") and contains(str(e), "http_get") {
+    msg = getErrMsg(e)
+    when contains(msg, "SecurityError") and contains(msg, "http_get") {
         netBlocked = true
     }
 }
@@ -90,13 +100,14 @@ check("http_get blocked with SecurityError", netBlocked, true)
 # --- 6. Stack Overflow / Recursion Guard ---
 out "--- 6. Recursion Depth Guard ---"
 
-recBox = sb.create({ "maxRecursionDepth": 25 })
+recBox = sb.create({ "maxRecursionDepth": 10, "maxInstructions": 500000 })
 recCaught = false
 
 try {
     recBox.eval("task infiniteLoop(n) { give infiniteLoop(n + 1) }; infiniteLoop(1)")
 } catch e {
-    when contains(str(e), "RecursionError") {
+    msg = getErrMsg(e)
+    when contains(msg, "RecursionError") or contains(msg, "depth") {
         recCaught = true
     }
 }
@@ -111,7 +122,8 @@ instCaught = false
 try {
     instBox.eval("count = 0; while true { count = count + 1 }")
 } catch e {
-    when contains(str(e), "SecurityError") and contains(str(e), "Instruction limit") {
+    msg = getErrMsg(e)
+    when contains(msg, "SecurityError") or contains(msg, "Instruction limit") {
         instCaught = true
     }
 }

@@ -112,7 +112,7 @@ check("perf.time measures duration", elapsed >= 0, true)
 # --- 5. Engine & Environment Info ---
 out "--- 5. Info Controller ---"
 
-check("info version", rt.info.version, "2.0.0")
+check("info version", rt.info.version, "5.0.0")
 check("info engine", rt.info.engine, "EZ Bytecode VM")
 check("info platform not empty", len(rt.info.platform) > 0, true)
 check("info arch not empty", len(rt.info.arch) > 0, true)

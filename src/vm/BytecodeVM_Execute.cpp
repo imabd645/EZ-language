@@ -249,6 +249,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
     // exception crosses the dispatch. running is set false ONLY on a fault, so
     // this is a correct signal.
     #define DISPATCH() { \
+        ++instructionCount; \
         if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
         if (__builtin_expect(traceExecution, 0)) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
@@ -261,6 +262,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         break; \
     }
     #define INTERPRET_LOOP while (running && !frames.empty() && frames.size() >= startingFrameCount) { \
+        ++instructionCount; \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         uint8_t instruction = READ_BYTE(); \
         switch (static_cast<OpCode>(instruction))

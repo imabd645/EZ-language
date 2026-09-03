@@ -10,11 +10,11 @@ export model SysController {
     }
 
     task pid() {
-        give pid()
+        give __process_pid()
     }
 
     task cwd() {
-        give cwd()
+        give __process_cwd()
     }
 
     task exit(code) {

@@ -16,6 +16,12 @@
 #include <memory>
 #include <mutex>
 #include <condition_variable>
+#include <filesystem>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 
 void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("gc_disable", Value::makeNativeFunction("gc_disable", 0,
@@ -163,6 +169,24 @@ void registerGCBuiltins(RuntimeContext& interp) {
 #endif
             });
             return dictVal;
+        }));
+
+    interp.defineGlobal("__process_pid", Value::makeNativeFunction("__process_pid", 0,
+        [](RuntimeContext&, const std::vector<Value>&) -> Value {
+#ifdef _WIN32
+            return Value((long long)_getpid());
+#else
+            return Value((long long)getpid());
+#endif
+        }));
+
+    interp.defineGlobal("__process_cwd", Value::makeNativeFunction("__process_cwd", 0,
+        [](RuntimeContext&, const std::vector<Value>&) -> Value {
+            try {
+                return Value(std::filesystem::current_path().string());
+            } catch (...) {
+                return Value("");
+            }
         }));
 
     interp.defineGlobal("exit", Value::makeNativeFunction("exit", 1,

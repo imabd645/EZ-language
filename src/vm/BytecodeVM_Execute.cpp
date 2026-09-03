@@ -3083,17 +3083,15 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
         }
 
         // Collect args from stack (they sit above the callee)
-        Value* oldTop = stackTop;
+        size_t oldTopOffset = static_cast<size_t>(stackTop - stack.data());
         std::vector<Value> args(stackTop - argCount, stackTop);
 
         try {
             Value result = callee.asNativeFunction()->function(*this, args);
             // NOW we pop everything and push the result
-            stackTop -= argCount + 1;
-            // Release the vacated callee + argument slots so their (possibly
-            // heap-object) copies don't linger above the stack top and defeat
-            // the GC. `args`/`result` hold independent copies, so this is safe.
-            clearStackSlots(stackTop, oldTop);
+            stackTop = stack.data() + oldTopOffset - (argCount + 1);
+            Value* oldTopPtr = stack.data() + oldTopOffset;
+            clearStackSlots(stackTop, oldTopPtr);
             push(result);
         } catch (const RuntimeError& e) {
             // A native that reports failure through interp.runtimeError() no

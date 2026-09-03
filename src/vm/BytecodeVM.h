@@ -93,8 +93,12 @@ public:
     size_t getCallDepth() const override { return frames.size(); }
     uint64_t getInstructionCount() const override { return instructionCount; }
     void resetInstructionCount() override { instructionCount = 0; }
-    uint64_t getMaxInstructions() const override { return maxInstructions; }
-    void setMaxInstructions(uint64_t max) override { maxInstructions = max; }
+    uint64_t getMaxInstructions() const override {
+        return (maxInstructions > instructionCount) ? (maxInstructions - instructionCount) : 0;
+    }
+    void setMaxInstructions(uint64_t budget) override {
+        maxInstructions = (budget == 0) ? 0 : (instructionCount + budget);
+    }
     std::vector<Value> getStackTraceFrames() const override;
 
     // Initialize global slot table from compiler output (Issue C optimization)

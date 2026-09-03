@@ -1,0 +1,145 @@
+# ============================================================================
+# Comprehensive File I/O, Streaming File Class, and DateTime Stress Tests
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+tempFile = "_test_stream_io_temp.txt"
+renamedFile = "_test_stream_io_renamed.txt"
+
+# Cleanup before test
+try { File.remove(tempFile) } catch e {}
+try { File.remove(renamedFile) } catch e {}
+
+# --- 1. Whole File I/O Builtins ---
+out "--- 1. Whole File I/O Builtins ---"
+
+writeFile(tempFile, "Line 1: Hello\nLine 2: World\n")
+check("file exists after write", File.exists(tempFile), true)
+
+content = readFile(tempFile)
+check("readFile content match", content, "Line 1: Hello\nLine 2: World\n")
+
+appendFile(tempFile, "Line 3: Appended\n")
+lines = readLines(tempFile)
+check("readLines count", len(lines), 3)
+check("readLines line 0", lines[0], "Line 1: Hello")
+check("readLines line 1", lines[1], "Line 2: World")
+check("readLines line 2", lines[2], "Line 3: Appended")
+
+# --- 2. Streaming File Class (Write, Flush, Tell, Close) ---
+out "--- 2. Streaming File Class (Write) ---"
+
+writer = new File(tempFile, "w")
+check("writer isOpen true", writer.isOpen(), true)
+
+writer.writeLine("Header: Record Start")
+writer.writeLine("Data: 100")
+writer.writeLine("Data: 200")
+writer.write("Footer: End")
+pos = writer.tell()
+check("writer tell pos > 0", pos > 0, true)
+
+writer.flush()
+writer.close()
+check("writer isOpen after close", writer.isOpen(), false)
+
+# --- 3. Streaming File Class (Read, Seek, EOF) ---
+out "--- 3. Streaming File Class (Read) ---"
+
+reader = new File(tempFile, "r")
+l1 = reader.readLine()
+l2 = reader.readLine()
+l3 = reader.readLine()
+l4 = reader.readLine()
+check("reader line 1", l1, "Header: Record Start")
+check("reader line 2", l2, "Data: 100")
+check("reader line 3", l3, "Data: 200")
+check("reader line 4", l4, "Footer: End")
+
+# EOF reached
+eofLine = reader.readLine()
+check("reader at EOF returns nil", eofLine, nil)
+check("reader eof() true", reader.eof(), true)
+
+# Seek back to beginning
+reader.seek(0)
+check("reader eof() after seek(0)", reader.eof(), false)
+prefixBytes = reader.read(6)
+check("reader read(6) bytes", prefixBytes, "Header")
+
+reader.close()
+
+# --- 4. Static File Operations (Size, Rename, Remove) ---
+out "--- 4. Static File Operations ---"
+
+sz = File.size(tempFile)
+check("File.size matches content length", sz > 30, true)
+
+File.rename(tempFile, renamedFile)
+check("old file absent after rename", File.exists(tempFile), false)
+check("new file exists after rename", File.exists(renamedFile), true)
+
+removed = File.remove(renamedFile)
+check("File.remove success", removed, true)
+check("renamed file absent after delete", File.exists(renamedFile), false)
+
+# --- 5. Error Handling for File Operations ---
+out "--- 5. File Error Handling ---"
+
+caughtMissing = false
+try {
+    new File("non_existent_file_123456789.xyz", "r")
+} catch e {
+    caughtMissing = true
+}
+check("missing file throws FileNotFoundError", caughtMissing, true)
+
+caughtInvalidMode = false
+try {
+    new File(tempFile, "invalid_mode_zzz")
+} catch e {
+    caughtInvalidMode = true
+}
+check("invalid mode throws ValueError", caughtInvalidMode, true)
+
+# --- 6. DateTime Subsystem ---
+out "--- 6. DateTime Subsystem ---"
+
+dt = new DateTime(2026, 9, 3, 14, 30, 45)
+check("datetime year", dt.year(), 2026)
+check("datetime month", dt.month(), 9)
+check("datetime day", dt.day(), 3)
+check("datetime hour", dt.hour(), 14)
+check("datetime minute", dt.minute(), 30)
+check("datetime second", dt.second(), 45)
+
+formatted = dt.format("%Y-%m-%d %H:%M:%S")
+check("datetime strftime format", formatted, "2026-09-03 14:30:45")
+
+# Arithmetic: add 3600 seconds (1 hour)
+dtLater = dt.addSeconds(3600)
+check("datetime after 1h hour", dtLater.hour(), 15)
+check("datetime after 1h minute", dtLater.minute(), 30)
+
+# Time diff in milliseconds
+diffMs = dtLater.diff(dt)
+check("datetime diff 1 hour in ms", diffMs, 3600000)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

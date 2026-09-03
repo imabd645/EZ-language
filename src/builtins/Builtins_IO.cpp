@@ -398,6 +398,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
                 return Value();
             }
             auto offset = static_cast<std::streamoff>(args[1].asNumber());
+            fs->clear();
             fs->seekg(offset, std::ios::beg);
             fs->seekp(offset, std::ios::beg);
             return Value(true);

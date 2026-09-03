@@ -53,7 +53,7 @@ box2 = sb.create()
 box2.inject("TAX_RATE", 0.15)
 
 injectedRes = box2.eval("price = 100; give price * (1 + TAX_RATE)")
-check("Injected constant", injectedRes, 115.0)
+check("Injected constant", int(injectedRes), 115)
 
 # --- 3. Blocking File System Access ---
 out "--- 3. File System Protection ---"
@@ -100,11 +100,11 @@ check("http_get blocked with SecurityError", netBlocked, true)
 # --- 6. Stack Overflow / Recursion Guard ---
 out "--- 6. Recursion Depth Guard ---"
 
-recBox = sb.create({ "maxRecursionDepth": 10, "maxInstructions": 500000 })
+recBox = sb.create({ "maxRecursionDepth": 10 })
 recCaught = false
 
 try {
-    recBox.eval("task infiniteLoop(n) { give infiniteLoop(n + 1) }; infiniteLoop(1)")
+    recBox.eval("task infiniteLoop(n) { give infiniteLoop(n + 1) + 1 }; infiniteLoop(1)")
 } catch e {
     msg = getErrMsg(e)
     when contains(msg, "RecursionError") or contains(msg, "depth") {

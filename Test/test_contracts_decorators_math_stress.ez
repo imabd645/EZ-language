@@ -1,0 +1,188 @@
+# ============================================================================
+# Contracts, Decorators, Cached optimization, Spread/Rest, and Bitwise Math
+# ============================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+# --- 1. Design-by-Contract: requires and ensures ---
+out "--- 1. Contracts (requires & ensures) ---"
+
+task safeSqrt(val)
+requires val >= 0, "val must be non-negative"
+ensures result >= 0, "result must be non-negative"
+{
+    give sqrt(val)
+}
+
+check("contract safeSqrt success", safeSqrt(16), 4)
+
+caughtPrecondition = false
+preconditionMsg = ""
+try {
+    safeSqrt(-9)
+} catch e {
+    caughtPrecondition = true
+    preconditionMsg = str(e)
+}
+check("precondition violation caught", caughtPrecondition, true)
+check("precondition message contains detail", contains(preconditionMsg, "val must be non-negative"), true)
+
+task brokenDivide(a, b)
+requires b != 0, "division by zero"
+ensures result < 0, "result must be strictly negative"
+{
+    give a / b
+}
+
+caughtPostcondition = false
+postconditionMsg = ""
+try {
+    brokenDivide(10, 2) # returns 5 >= 0, violating postcondition
+} catch e {
+    caughtPostcondition = true
+    postconditionMsg = str(e)
+}
+check("postcondition violation caught", caughtPostcondition, true)
+check("postcondition message contains detail", contains(postconditionMsg, "result must be strictly negative"), true)
+
+# --- 2. Custom Decorators & Stacking ---
+out "--- 2. Custom Decorators & Stacking ---"
+
+task addPrefix(fn) {
+    give |x| {
+        give "Prefix:" + str(fn(x))
+    }
+}
+
+task addSuffix(fn) {
+    give |x| {
+        give str(fn(x)) + ":Suffix"
+    }
+}
+
+# Stacking decorators: applied bottom-up -> addSuffix runs first on inner, then addPrefix on outer
+@addPrefix
+@addSuffix
+task formatGreeting(name) {
+    give "Hello(" + name + ")"
+}
+
+check("decorator stacking bottom-up", formatGreeting("Antigravity"), "Prefix:Hello(Antigravity):Suffix")
+
+# --- 3. Native @cached Optimization on Models ---
+out "--- 3. Native @cached Optimization ---"
+
+model HeavyComputer {
+    init(base) {
+        self.base = base
+        self.computeCount = 0
+    }
+
+    @cached
+    task expensiveCompute() {
+        self.computeCount = self.computeCount + 1
+        give self.base * self.base + 100
+    }
+
+    task updateBase(newBase) {
+        self.base = newBase
+    }
+}
+
+hc = new HeavyComputer(10)
+res1 = hc.expensiveCompute() # 10*10 + 100 = 200
+check("cached compute initial result", res1, 200)
+check("cached compute count is 1", hc.computeCount, 1)
+
+# Second call should hit the cache: computeCount must remain 1
+res2 = hc.expensiveCompute()
+check("cached compute second call result", res2, 200)
+check("cached compute count remained 1 (hit cache)", hc.computeCount, 1)
+
+# Mutating instance field dirties the cache
+hc.updateBase(20)
+res3 = hc.expensiveCompute() # 20*20 + 100 = 500
+check("cached compute after mutation result", res3, 500)
+check("cached compute recomputed on dirty cache", hc.computeCount, 2)
+
+# --- 4. Variadics, Spread Operator & Rest Parameters ---
+out "--- 4. Variadics, Spread & Rest ---"
+
+task multiplyAll(multiplier, ...nums) {
+    product = 1
+    get x in nums {
+        product = product * x
+    }
+    give product * multiplier
+}
+
+check("variadic call direct", multiplyAll(10, 2, 3, 4), 240)
+
+rawList = [2, 3, 4]
+check("variadic call via spread", multiplyAll(10, ...rawList), 240)
+
+# Array spread in literal
+a1 = [1, 2]
+a2 = [3, 4]
+aMerged = [0, ...a1, ...a2, 5]
+check("array spread length", len(aMerged), 6)
+check("array spread item 0", aMerged[0], 0)
+check("array spread item 2", aMerged[2], 2)
+check("array spread item 4", aMerged[4], 4)
+check("array spread item 5", aMerged[5], 5)
+
+# Rest params in lambdas
+combineLambda = |base, ...parts| {
+    s = str(base)
+    get p in parts {
+        s = s + "-" + str(p)
+    }
+    give s
+}
+check("lambda rest parameters", combineLambda("EZ", "VM", "GC", "JIT"), "EZ-VM-GC-JIT")
+
+# --- 5. Bitwise Operations and Math Functions ---
+out "--- 5. Bitwise Operations & Math ---"
+
+# Bitwise AND, OR, XOR, NOT, Shifts
+valAnd = 12 & 10 # 1100 & 1010 = 1000 (8)
+valOr = 12 | 10  # 1100 | 1010 = 1110 (14)
+valXor = 12 ^ 10 # 1100 ^ 1010 = 0110 (6)
+valShl = 1 << 4  # 16
+valShr = 32 >> 2 # 8
+valNot = ~0      # -1
+
+check("bitwise AND", valAnd, 8)
+check("bitwise OR", valOr, 14)
+check("bitwise XOR", valXor, 6)
+check("bitwise SHL", valShl, 16)
+check("bitwise SHR", valShr, 8)
+check("bitwise NOT", valNot, -1)
+
+# Math functions
+check("math abs negative", abs(-42), 42)
+check("math floor", floor(3.9), 3)
+check("math ceil", ceil(3.1), 4)
+check("math round down", round(3.4), 3)
+check("math round up", round(3.6), 4)
+check("math pow", pow(2, 5), 32)
+check("math min", min(10, 20), 10)
+check("math max", max(10, 20), 20)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

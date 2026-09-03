@@ -52,8 +52,9 @@ export model Sandbox {
             "allowRuntime": self.allowRuntime
         })
 
-        # Set VM constraints
-        rt.vm.setMaxRecursionDepth(self.maxRecursionDepth)
+        # Set VM constraints relative to current frame depth
+        currDepth = rt.vm.currentDepth()
+        rt.vm.setMaxRecursionDepth(currDepth + self.maxRecursionDepth)
         rt.perf.setMaxInstructions(self.maxInstructions)
         rt.perf.resetInstructions()
 

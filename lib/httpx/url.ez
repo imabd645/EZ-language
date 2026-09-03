@@ -1,0 +1,194 @@
+# ============================================================================
+# httpx/url.ez — taking a URL apart and putting one together
+#
+# Parsed here rather than with WinHttpCrackUrl so the result is inspectable and
+# testable without a network, and so a malformed URL fails with something
+# readable instead of a Windows error code.
+# ============================================================================
+
+export task parseUrl(url) {
+    when url == nil { throw Exception("httpx: no URL given") }
+    rest = trim(str(url))
+    when rest == "" { throw Exception("httpx: the URL is empty") }
+
+    scheme = "https"
+    when contains(rest, "://") {
+        pieces = split(rest, "://")
+        scheme = lower(pieces[0])
+        rest = join(slice(pieces, 1, len(pieces)), "://")
+    }
+    other when startsWith(rest, "//") { rest = substr(rest, 2, len(rest) - 2) }
+
+    when scheme != "http" and scheme != "https" {
+        throw Exception(`httpx: '{scheme}' is not a scheme this client speaks -- use http or https`)
+    }
+
+    fragment = nil
+    when contains(rest, "#") {
+        at = indexOf(rest, "#")
+        fragment = substr(rest, at + 1, len(rest) - at - 1)
+        rest = substr(rest, 0, at)
+    }
+
+    query = ""
+    when contains(rest, "?") {
+        at = indexOf(rest, "?")
+        query = substr(rest, at + 1, len(rest) - at - 1)
+        rest = substr(rest, 0, at)
+    }
+
+    authority = rest
+    path = "/"
+    when contains(rest, "/") {
+        at = indexOf(rest, "/")
+        authority = substr(rest, 0, at)
+        path = substr(rest, at, len(rest) - at)
+    }
+
+    # Credentials in the URL are legal and occasionally used; they belong in an
+    # Authorization header, not in the host.
+    user = nil
+    secret = nil
+    when contains(authority, "@") {
+        at = lastIndexOf(authority, "@")
+        credentials = substr(authority, 0, at)
+        authority = substr(authority, at + 1, len(authority) - at - 1)
+        when contains(credentials, ":") {
+            colon = indexOf(credentials, ":")
+            user = substr(credentials, 0, colon)
+            secret = substr(credentials, colon + 1, len(credentials) - colon - 1)
+        }
+        other { user = credentials }
+    }
+
+    port = 80
+    when scheme == "https" { port = 443 }
+    host = authority
+    # An IPv6 literal is bracketed, and the colons inside it are not a port.
+    when startsWith(authority, "[") {
+        close = indexOf(authority, "]")
+        when close < 0 { throw Exception(`httpx: '{url}' has an unclosed IPv6 address`) }
+        host = substr(authority, 1, close - 1)
+        remainder = substr(authority, close + 1, len(authority) - close - 1)
+        when startsWith(remainder, ":") { port = portNumber(substr(remainder, 1, len(remainder) - 1), url) }
+    }
+    other when contains(authority, ":") {
+        colon = indexOf(authority, ":")
+        host = substr(authority, 0, colon)
+        port = portNumber(substr(authority, colon + 1, len(authority) - colon - 1), url)
+    }
+
+    when host == "" { throw Exception(`httpx: '{url}' has no host`) }
+
+    target = path
+    when query != "" { target = path + "?" + query }
+
+    give {
+        "scheme": scheme,
+        "host": host,
+        "port": port,
+        "path": path,
+        "query": query,
+        "target": target,
+        "fragment": fragment,
+        "user": user,
+        "password": secret,
+        "secure": scheme == "https"
+    }
+}
+
+task portNumber(text, url) {
+    body = trim(text)
+    digits = true
+    get ch in split(body, "") {
+        when indexOf("0123456789", ch) < 0 { digits = false }
+    }
+    when body == "" or digits == false {
+        throw Exception(`httpx: '{url}' has an invalid port`)
+    }
+    value = num(body)
+    when value < 1 or value > 65535 {
+        throw Exception(`httpx: port {value} in '{url}' is out of range`)
+    }
+    give value
+}
+
+task lastIndexOf(text, needle) {
+    found = -1
+    repeat i = 0 to len(text) - 1 {
+        when substr(text, i, len(needle)) == needle { found = i }
+    }
+    give found
+}
+
+# ── query strings ───────────────────────────────────────────────────────────
+
+# A list value becomes a repeated key, which is how every server reads
+# ?tag=a&tag=b. A nil is an absent parameter, not the text "nil".
+export task encodeQuery(params) {
+    when params == nil { give "" }
+    parts = []
+    get name in keys(params) {
+        value = params[name]
+        when value != nil {
+            when type(value) == "array" {
+                get item in value {
+                    when item != nil { push(parts, url_encode(str(name)) + "=" + url_encode(str(item))) }
+                }
+            }
+            other when type(value) == "bool" {
+                flag = "false"
+                when value { flag = "true" }
+                push(parts, url_encode(str(name)) + "=" + flag)
+            }
+            other { push(parts, url_encode(str(name)) + "=" + url_encode(str(value))) }
+        }
+    }
+    give join(parts, "&")
+}
+
+export task decodeQuery(text) {
+    result = {}
+    when text == nil or text == "" { give result }
+    body = str(text)
+    when contains(body, "?") {
+        at = indexOf(body, "?")
+        body = substr(body, at + 1, len(body) - at - 1)
+    }
+    get pair in split(body, "&") {
+        when pair != "" {
+            at = indexOf(pair, "=")
+            when at < 0 { result[url_decode(pair)] = "" }
+            other {
+                name = url_decode(substr(pair, 0, at))
+                value = url_decode(substr(pair, at + 1, len(pair) - at - 1))
+                # A repeated key collects into a list rather than the last one
+                # silently winning.
+                when has_key(result, name) {
+                    when type(result[name]) == "array" { push(result[name], value) }
+                    other { result[name] = [result[name], value] }
+                }
+                other { result[name] = value }
+            }
+        }
+    }
+    give result
+}
+
+export task addQuery(url, params) {
+    when params == nil or len(keys(params)) == 0 { give url }
+    extra = encodeQuery(params)
+    when extra == "" { give url }
+    joiner = "?"
+    when contains(url, "?") { joiner = "&" }
+    give str(url) + joiner + extra
+}
+
+# Reassembles a parsed URL, for logging and for following a redirect by hand.
+export task buildUrl(parts) {
+    text = parts["scheme"] + "://" + parts["host"]
+    isDefault = (parts["scheme"] == "https" and parts["port"] == 443) or
+                (parts["scheme"] == "http" and parts["port"] == 80)
+    when isDefault == false { text = text + ":" + str(parts["port"]) }
+    give text + parts["target"]
+}

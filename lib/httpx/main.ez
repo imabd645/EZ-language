@@ -1,0 +1,462 @@
+# ============================================================================
+# httpx — an HTTP client that tells you what happened
+#
+#   use "httpx"
+#
+#   r = HTTP.get("https://api.example.com/users/1")
+#   when r.ok { give r.json() }
+#   when r.status == 404 { give nil }
+#   r.raiseForStatus()
+#
+# EZ's built-in http_get and http_post return the body and nothing else. The
+# `http` package is built on them and reports statusCode = 200 for everything,
+# with the comment "Native doesn't return status" -- so nothing in EZ could
+# tell a 404 from a 200, or read a Location header, or send a PUT.
+#
+# This goes through WinHTTP instead: real status codes, real response headers,
+# any verb, and byte-exact bodies in both directions.
+# ============================================================================
+
+use "httpx/native.ez"
+use "httpx/url.ez"
+
+export DEFAULT_AGENT = "ez-httpx/1.0"
+export DEFAULT_TIMEOUT_MS = 30000
+
+# ============================================================================
+# Response
+# ============================================================================
+
+export model Response {
+
+    init(status, headers, body, url, method, elapsedMs) {
+        self.status = status
+        self.headers = headers
+        self.body = body
+        self.url = url
+        self.method = method
+        self.elapsedMs = elapsedMs
+        self.ok = status >= 200 and status < 300
+    }
+
+    task isRedirect() { give self.status >= 300 and self.status < 400 }
+    task isClientError() { give self.status >= 400 and self.status < 500 }
+    task isServerError() { give self.status >= 500 }
+
+    # Header lookup is case-insensitive, because the case a server chooses is
+    # not something you should have to know.
+    task header(name) {
+        key = lower(str(name))
+        when has_key(self.headers, key) { give self.headers[key] }
+        give nil
+    }
+
+    task hasHeader(name) { give self.header(name) != nil }
+
+    task contentType() {
+        value = self.header("content-type")
+        when value == nil { give nil }
+        when contains(value, ";") { give trim(split(value, ";")[0]) }
+        give trim(value)
+    }
+
+    task isJson() {
+        kind = self.contentType()
+        when kind == nil { give false }
+        give contains(kind, "json")
+    }
+
+    task contentLength() { give len(self.body) }
+
+    # Parsed body. Throws with the start of the body attached, because "invalid
+    # JSON" without the text is a message you cannot act on -- most often it is
+    # an HTML error page from a proxy.
+    task json() {
+        try { give parse_json(self.body) }
+        catch (e) {
+            throw Exception(`httpx: {self.url} did not return valid JSON: {preview(self.body)}`)
+        }
+    }
+
+    # nil instead of a throw, for the common "parse it if you can" case.
+    task jsonOr(fallback) {
+        try { give parse_json(self.body) }
+        catch (e) { give fallback }
+    }
+
+    task text() { give self.body }
+
+    task bytes() {
+        octets = []
+        repeat i = 0 to len(self.body) - 1 { push(octets, ord(substr(self.body, i, 1))) }
+        give octets
+    }
+
+    # Writes the body byte for byte. Safe for images and archives.
+    task save(path) {
+        writeFile(path, self.body)
+        give len(self.body)
+    }
+
+    # For the "this must have worked" case. The message carries the status and
+    # the start of the body, which is where the reason almost always is.
+    task raiseForStatus() {
+        when self.ok { give self }
+        throw Exception(`httpx: {self.method} {self.url} returned {self.status} {statusText(self.status)}: {preview(self.body)}`)
+    }
+
+    task toString() { give `Response({self.status} {statusText(self.status)}, {len(self.body)} bytes)` }
+}
+
+task preview(body) {
+    text = trim(str(body))
+    when text == "" { give "(empty body)" }
+    when len(text) <= 200 { give text }
+    give substr(text, 0, 200) + "…"
+}
+
+# ============================================================================
+# Http — the client
+# ============================================================================
+
+export model Http {
+
+    init() {
+        self.baseUrl = nil
+        self.defaultHeaders = {}
+        self.timeoutMs = DEFAULT_TIMEOUT_MS
+        self.agent = DEFAULT_AGENT
+        self.followRedirects = true
+        self.insecure = false
+        self.retries = 0
+        self.retryDelayMs = 200
+        self.transport = nil
+    }
+
+    # ── configuration, all chainable ────────────────────────────────────────
+
+    task withBaseUrl(url) {
+        self.baseUrl = url
+        give self
+    }
+
+    task withHeader(name, value) {
+        self.defaultHeaders[name] = value
+        give self
+    }
+
+    task withHeaders(headers) {
+        get name in keys(headers) { self.defaultHeaders[name] = headers[name] }
+        give self
+    }
+
+    task withTimeout(milliseconds) {
+        self.timeoutMs = milliseconds
+        give self
+    }
+
+    task withAgent(agent) {
+        self.agent = agent
+        give self
+    }
+
+    task withBearer(token) { give self.withHeader("Authorization", "Bearer " + str(token)) }
+
+    task withBasicAuth(user, secret) {
+        give self.withHeader("Authorization", "Basic " + base64(str(user) + ":" + str(secret)))
+    }
+
+    task withoutRedirects() {
+        self.followRedirects = false
+        give self
+    }
+
+    # Only for a server whose certificate you cannot fix -- a development box
+    # with a self-signed certificate. Never for anything that matters.
+    task allowInvalidCertificates() {
+        self.insecure = true
+        give self
+    }
+
+    # Replace the network entirely. `fn(request)` receives the same dictionary
+    # the WinHTTP layer would (host, port, path, secure, method, headers, body,
+    # …) and returns { ok, status, headers, body, error }.
+    #
+    # This is what makes a client built on httpx testable without a server: an
+    # API wrapper can be checked for the URL it builds, the verb it uses and
+    # the body it sends, which is most of what such a wrapper can get wrong.
+    task useTransport(fn) {
+        self.transport = fn
+        give self
+    }
+
+    # Retries apply to transport failures and 5xx/429 only. A 404 is an answer,
+    # not a failure, and retrying it just makes four of them.
+    task withRetries(count, delayMs = nil) {
+        self.retries = count
+        when delayMs != nil { self.retryDelayMs = delayMs }
+        give self
+    }
+
+    # ── verbs ───────────────────────────────────────────────────────────────
+
+    task get(url, options = nil) { give self.send("GET", url, options) }
+    task head(url, options = nil) { give self.send("HEAD", url, options) }
+    task delete(url, options = nil) { give self.send("DELETE", url, options) }
+    task post(url, options = nil) { give self.send("POST", url, options) }
+    task put(url, options = nil) { give self.send("PUT", url, options) }
+    task patch(url, options = nil) { give self.send("PATCH", url, options) }
+
+    # `options` may carry: headers, query, body, json, form, timeoutMs.
+    task send(method, url, options = nil) {
+        opts = options
+        when opts == nil { opts = {} }
+
+        target = self.resolve(url)
+        when opts["query"] != nil { target = addQuery(target, opts["query"]) }
+        parts = parseUrl(target)
+
+        headers = {}
+        get name in keys(self.defaultHeaders) { headers[name] = self.defaultHeaders[name] }
+        when opts["headers"] != nil {
+            get name in keys(opts["headers"]) { headers[name] = opts["headers"][name] }
+        }
+        # Credentials in the URL belong in a header, which is also where they
+        # stop appearing in logs of the request line.
+        when parts["user"] != nil and has_key(headers, "Authorization") == false {
+            headers["Authorization"] = "Basic " + base64(str(parts["user"]) + ":" + str(parts["password"]))
+        }
+
+        body = self.buildBody(opts, headers)
+
+        request = {
+            "host": parts["host"],
+            "port": parts["port"],
+            "path": parts["target"],
+            "secure": parts["secure"],
+            "method": method,
+            "headers": formatHeaders(headers),
+            "body": body,
+            "timeoutMs": pickTimeout(opts["timeoutMs"], self.timeoutMs),
+            "followRedirects": self.followRedirects,
+            "insecure": self.insecure,
+            "agent": self.agent
+        }
+
+        attempt = 0
+        started = clock()
+        while true {
+            result = nil
+            when self.transport != nil {
+                handler = self.transport
+                result = handler(request)
+            }
+            other { result = perform(request) }
+            when result["ok"] {
+                response = Response(result["status"], parseHeaders(result["headers"]),
+                                    result["body"], target, method, clock() - started)
+                when self.shouldRetry(response.status) == false or attempt >= self.retries {
+                    give response
+                }
+            }
+            other when attempt >= self.retries {
+                throw Exception(result["error"])
+            }
+            attempt = attempt + 1
+            sleepMs(self.retryDelayMs * attempt)
+        }
+    }
+
+    # 429 and 5xx are the ones worth trying again: the server said "not now",
+    # not "no".
+    task shouldRetry(status) {
+        when status == 429 { give true }
+        give status >= 500
+    }
+
+    task resolve(url) {
+        when self.baseUrl == nil { give url }
+        when contains(str(url), "://") { give url }
+        left = self.baseUrl
+        when endsWith(left, "/") { left = substr(left, 0, len(left) - 1) }
+        right = str(url)
+        when startsWith(right, "/") == false { right = "/" + right }
+        give left + right
+    }
+
+    # Exactly one of json / form / body, with the matching Content-Type set
+    # unless the caller already chose one.
+    task buildBody(opts, headers) {
+        chosen = 0
+        when opts["json"] != nil { chosen = chosen + 1 }
+        when opts["form"] != nil { chosen = chosen + 1 }
+        when opts["body"] != nil { chosen = chosen + 1 }
+        when chosen > 1 {
+            throw Exception("httpx: give only one of json, form or body")
+        }
+        when opts["json"] != nil {
+            setDefaultHeader(headers, "Content-Type", "application/json")
+            give to_json(opts["json"])
+        }
+        when opts["form"] != nil {
+            setDefaultHeader(headers, "Content-Type", "application/x-www-form-urlencoded")
+            give encodeQuery(opts["form"])
+        }
+        when opts["body"] != nil { give str(opts["body"]) }
+        give ""
+    }
+
+    # ── files ───────────────────────────────────────────────────────────────
+
+    # Fetches and writes byte for byte. Returns the response, so the status and
+    # content type are still there to check.
+    task download(url, path, options = nil) {
+        response = self.send("GET", url, options)
+        response.raiseForStatus()
+        writeFile(path, response.body)
+        give response
+    }
+
+    task upload(url, path, options = nil) {
+        opts = options
+        when opts == nil { opts = {} }
+        opts["body"] = readFile(path)
+        give self.send("POST", url, opts)
+    }
+}
+
+# ── header handling ─────────────────────────────────────────────────────────
+
+task setDefaultHeader(headers, name, value) {
+    get existing in keys(headers) {
+        when lower(existing) == lower(name) { give nil }
+    }
+    headers[name] = value
+    give nil
+}
+
+export task formatHeaders(headers) {
+    lines = []
+    get name in keys(headers) {
+        value = headers[name]
+        when value != nil {
+            # A newline in a header value is how a request gets split into two;
+            # stripping them is not optional.
+            push(lines, str(name) + ": " + stripBreaks(str(value)))
+        }
+    }
+    give join(lines, "\r\n")
+}
+
+task stripBreaks(value) {
+    cleaned = replace(value, "\r", "")
+    give replace(cleaned, "\n", "")
+}
+
+# The raw response block into a dictionary keyed by lower-case name. The first
+# line is the status line and has no colon, so it is skipped.
+export task parseHeaders(raw) {
+    result = {}
+    when raw == nil or raw == "" { give result }
+    get line in split(str(raw), "\r\n") {
+        when line != "" and contains(line, ":") {
+            at = indexOf(line, ":")
+            name = lower(trim(substr(line, 0, at)))
+            value = trim(substr(line, at + 1, len(line) - at - 1))
+            when name != "" {
+                # Set-Cookie legitimately repeats, and joining with a comma
+                # would corrupt cookies containing one.
+                when has_key(result, name) {
+                    when type(result[name]) == "array" { push(result[name], value) }
+                    other { result[name] = [result[name], value] }
+                }
+                other { result[name] = value }
+            }
+        }
+    }
+    give result
+}
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+task pickTimeout(given, fallback) {
+    when given == nil { give fallback }
+    give given
+}
+
+task sleepMs(milliseconds) {
+    when milliseconds <= 0 { give nil }
+    until = clock() + milliseconds
+    while clock() < until { }
+    give nil
+}
+
+B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+# Local rather than pulled from `crypto`, so an HTTP client does not drag a
+# cryptography package in for one Authorization header.
+export task base64(text) {
+    body = str(text)
+    total = len(body)
+    result = ""
+    i = 0
+    while i < total {
+        b0 = ord(substr(body, i, 1))
+        b1 = 0
+        b2 = 0
+        have = 1
+        when i + 1 < total { b1 = ord(substr(body, i + 1, 1))  have = 2 }
+        when i + 2 < total { b2 = ord(substr(body, i + 2, 1))  have = 3 }
+        n = b0 * 65536 + b1 * 256 + b2
+        result = result + substr(B64_ALPHABET, floor(n / 262144) % 64, 1) +
+                          substr(B64_ALPHABET, floor(n / 4096) % 64, 1)
+        when have > 1 { result = result + substr(B64_ALPHABET, floor(n / 64) % 64, 1) }
+        other { result = result + "=" }
+        when have > 2 { result = result + substr(B64_ALPHABET, n % 64, 1) }
+        other { result = result + "=" }
+        i = i + 3
+    }
+    give result
+}
+
+STATUS_TEXT = {
+    "200": "OK", "201": "Created", "202": "Accepted", "204": "No Content",
+    "301": "Moved Permanently", "302": "Found", "303": "See Other",
+    "304": "Not Modified", "307": "Temporary Redirect", "308": "Permanent Redirect",
+    "400": "Bad Request", "401": "Unauthorized", "402": "Payment Required",
+    "403": "Forbidden", "404": "Not Found", "405": "Method Not Allowed",
+    "408": "Request Timeout", "409": "Conflict", "410": "Gone",
+    "413": "Payload Too Large", "415": "Unsupported Media Type",
+    "422": "Unprocessable Entity", "429": "Too Many Requests",
+    "500": "Internal Server Error", "501": "Not Implemented", "502": "Bad Gateway",
+    "503": "Service Unavailable", "504": "Gateway Timeout"
+}
+
+export task statusText(status) {
+    key = str(status)
+    when has_key(STATUS_TEXT, key) { give STATUS_TEXT[key] }
+    when status >= 200 and status < 300 { give "Success" }
+    when status >= 300 and status < 400 { give "Redirect" }
+    when status >= 400 and status < 500 { give "Client Error" }
+    when status >= 500 { give "Server Error" }
+    give "Unknown"
+}
+
+# ── shorthands ──────────────────────────────────────────────────────────────
+
+# A ready-made client, so the common case needs no setup:
+#
+#   HTTP.get("https://example.com")
+#
+# `get` is a loop keyword in EZ, so a module-level task by that name could be
+# defined but never called. As a method it is unambiguous, which is why the
+# shorthand is an object rather than a set of functions.
+export HTTP = Http()
+
+# The two-line case: fetch JSON, or fail loudly.
+export task getJson(url, options = nil) { give HTTP.send("GET", url, options).raiseForStatus().json() }
+export task postJson(url, payload) {
+    give HTTP.send("POST", url, { "json": payload }).raiseForStatus().json()
+}
+export task fetchUrl(url, options = nil) { give HTTP.send("GET", url, options) }
+export task download(url, path) { give HTTP.download(url, path) }

@@ -1,0 +1,354 @@
+# ============================================================================
+# httpx/native.ez — HTTP through WinHTTP
+#
+# EZ's built-in http_get/http_post return the response body and nothing else:
+# no status code, no response headers. That is enough to fetch a page and not
+# enough to talk to an API, where 200 and 404 arrive as the same value and the
+# only way to tell them apart is to guess from the body.
+#
+# WinHTTP is on every Windows machine, speaks TLS, takes any verb, and reports
+# the status. This module is the thin layer over it; nothing above this file
+# knows about handles.
+#
+# Bodies are byte-exact in both directions. `os_write_string` copies the whole
+# string with memcpy, and `os_buffer_from_ptr` copies back the same way, so an
+# image survives the round trip -- which matters the moment anyone uploads one.
+# ============================================================================
+
+# WinHttpOpen access types
+ACCESS_DEFAULT_PROXY = 0
+ACCESS_AUTOMATIC_PROXY = 4
+
+WINHTTP_FLAG_SECURE = 8388608                  # 0x00800000
+
+# WinHttpQueryHeaders
+QUERY_STATUS_CODE = 19
+QUERY_RAW_HEADERS_CRLF = 22
+QUERY_FLAG_NUMBER = 536870912                  # 0x20000000
+ERROR_INSUFFICIENT_BUFFER = 122
+
+# WinHttpSetOption
+OPTION_SECURITY_FLAGS = 31
+OPTION_DISABLE_FEATURE = 63
+DISABLE_REDIRECTS = 2
+# IGNORE_UNKNOWN_CA | IGNORE_CERT_DATE_INVALID | IGNORE_CERT_CN_INVALID |
+# IGNORE_CERT_WRONG_USAGE
+SECURITY_IGNORE_ALL = 13056                    # 0x3300
+
+_lib = nil
+_kernel = nil
+_fn = {}
+_ready = false
+_probed = false
+
+task probe() {
+    when _probed { give _ready }
+    _probed = true
+    try {
+        _lib = os_load_lib("winhttp.dll")
+        when _lib == nil or _lib == 0 { give false }
+        names = ["WinHttpOpen", "WinHttpConnect", "WinHttpOpenRequest", "WinHttpSendRequest",
+                 "WinHttpReceiveResponse", "WinHttpQueryHeaders", "WinHttpQueryDataAvailable",
+                 "WinHttpReadData", "WinHttpCloseHandle", "WinHttpSetTimeouts", "WinHttpSetOption"]
+        get name in names {
+            handle = os_get_func(_lib, name)
+            when handle == nil or handle == 0 { give false }
+            _fn[name] = handle
+        }
+        _kernel = os_load_lib("kernel32.dll")
+        when _kernel != nil and _kernel != 0 {
+            _fn["GetLastError"] = os_get_func(_kernel, "GetLastError")
+        }
+        _ready = true
+    }
+    catch (e) { _ready = false }
+    give _ready
+}
+
+export task isAvailable() { give probe() }
+
+task lastError() {
+    when has_key(_fn, "GetLastError") == false { give 0 }
+    give os_call(_fn["GetLastError"], "u32")
+}
+
+# ── string marshalling ──────────────────────────────────────────────────────
+
+# WinHTTP takes LPCWSTR everywhere. EZ strings are UTF-8, so passing one
+# directly hands the API a string it reads as garbage after the first byte.
+task wide(text) {
+    body = str(text)
+    total = len(body)
+    buf = os_alloc((total + 1) * 2)
+    index = 0
+    repeat i = 0 to total - 1 {
+        code = ord(substr(body, i, 1))
+        os_write_byte(buf, index, code % 256)
+        os_write_byte(buf, index + 1, floor(code / 256) % 256)
+        index = index + 2
+    }
+    os_write_byte(buf, index, 0)
+    os_write_byte(buf, index + 1, 0)
+    give buf
+}
+
+# UTF-16 back to an EZ string. Headers are ASCII in practice, but a server that
+# sends something else should not corrupt everything after it.
+task fromWide(ptr, byteLength) {
+    result = ""
+    index = 0
+    while index + 1 < byteLength {
+        code = os_read_byte(ptr, index) + os_read_byte(ptr, index + 1) * 256
+        index = index + 2
+        when code == 0 { give result }
+        # A surrogate pair is one character split across two code units.
+        when code >= 55296 and code <= 56319 and index + 1 < byteLength {
+            low = os_read_byte(ptr, index) + os_read_byte(ptr, index + 1) * 256
+            when low >= 56320 and low <= 57343 {
+                code = 65536 + (code - 55296) * 1024 + (low - 56320)
+                index = index + 2
+            }
+        }
+        result = result + encodeUtf8(code)
+    }
+    give result
+}
+
+task encodeUtf8(code) {
+    when code < 128 { give chr(code) }
+    when code < 2048 {
+        give chr(192 + floor(code / 64)) + chr(128 + code % 64)
+    }
+    when code < 65536 {
+        give chr(224 + floor(code / 4096)) + chr(128 + floor(code / 64) % 64) + chr(128 + code % 64)
+    }
+    give chr(240 + floor(code / 262144)) + chr(128 + floor(code / 4096) % 64) +
+         chr(128 + floor(code / 64) % 64) + chr(128 + code % 64)
+}
+
+task freeAll(pointers) {
+    get p in pointers {
+        when p != nil and p != 0 {
+            try { os_free(p) } catch (e) { }
+        }
+    }
+    give nil
+}
+
+# ── the request ─────────────────────────────────────────────────────────────
+
+# `request` is
+#   { host, port, path, secure, method, headers (raw CRLF string), body,
+#     timeoutMs, followRedirects, insecure, agent }
+#
+# Returns { ok, status, headers, body, error }. A transport failure comes back
+# as ok:false with an error rather than a throw, so the caller decides whether
+# a DNS failure is fatal.
+export task perform(request) {
+    when probe() == false {
+        give failure("httpx: winhttp.dll is unavailable -- this package needs Windows")
+    }
+
+    session = 0
+    connection = 0
+    handle = 0
+    owned = []
+
+    try {
+        agent = wide(request["agent"])
+        push(owned, agent)
+        session = os_call(_fn["WinHttpOpen"], "ptr", agent, ACCESS_AUTOMATIC_PROXY, 0, 0, 0)
+        # Automatic proxy discovery needs Windows 8.1; fall back rather than
+        # failing on a machine that does not have it.
+        when session == 0 {
+            session = os_call(_fn["WinHttpOpen"], "ptr", agent, ACCESS_DEFAULT_PROXY, 0, 0, 0)
+        }
+        when session == 0 {
+            freeAll(owned)
+            give failure(`httpx: could not start a WinHTTP session (error {lastError()})`)
+        }
+
+        timeout = request["timeoutMs"]
+        when timeout == nil or timeout <= 0 { timeout = 30000 }
+        os_call(_fn["WinHttpSetTimeouts"], "int", session, timeout, timeout, timeout, timeout)
+
+        host = wide(request["host"])
+        push(owned, host)
+        connection = os_call(_fn["WinHttpConnect"], "ptr", session, host, request["port"], 0)
+        when connection == 0 {
+            code = lastError()
+            closeAll(session, 0, 0)
+            freeAll(owned)
+            give failure(`httpx: could not connect to {request["host"]}:{request["port"]} ({describeError(code)})`)
+        }
+
+        verb = wide(upper(str(request["method"])))
+        path = wide(request["path"])
+        push(owned, verb)
+        push(owned, path)
+        flags = 0
+        when request["secure"] { flags = WINHTTP_FLAG_SECURE }
+        handle = os_call(_fn["WinHttpOpenRequest"], "ptr", connection, verb, path, 0, 0, 0, flags)
+        when handle == 0 {
+            code = lastError()
+            closeAll(session, connection, 0)
+            freeAll(owned)
+            give failure(`httpx: could not open the request (error {code})`)
+        }
+
+        when request["followRedirects"] == false {
+            optionBuf = os_alloc(4)
+            os_write_int32(optionBuf, 0, DISABLE_REDIRECTS)
+            os_call(_fn["WinHttpSetOption"], "int", handle, OPTION_DISABLE_FEATURE, optionBuf, 4)
+            os_free(optionBuf)
+        }
+        # Only when explicitly asked: certificate checking is the whole point
+        # of using TLS, and turning it off silently would be indefensible.
+        when request["insecure"] {
+            securityBuf = os_alloc(4)
+            os_write_int32(securityBuf, 0, SECURITY_IGNORE_ALL)
+            os_call(_fn["WinHttpSetOption"], "int", handle, OPTION_SECURITY_FLAGS, securityBuf, 4)
+            os_free(securityBuf)
+        }
+
+        headerText = request["headers"]
+        headerPtr = 0
+        headerLen = 0
+        when headerText != nil and headerText != "" {
+            headerPtr = wide(headerText)
+            push(owned, headerPtr)
+            headerLen = len(headerText)
+        }
+
+        body = request["body"]
+        bodyPtr = 0
+        bodyLen = 0
+        when body != nil and len(body) > 0 {
+            bodyLen = len(body)
+            bodyPtr = os_alloc(bodyLen + 1)
+            push(owned, bodyPtr)
+            # One memcpy, and embedded NULs survive it -- a body written a byte
+            # at a time would be unusably slow for anything real.
+            os_write_string(bodyPtr, 0, body)
+        }
+
+        sent = os_call(_fn["WinHttpSendRequest"], "int", handle, headerPtr, headerLen,
+                       bodyPtr, bodyLen, bodyLen, 0)
+        when sent == 0 {
+            code = lastError()
+            closeAll(session, connection, handle)
+            freeAll(owned)
+            give failure(`httpx: sending the request failed ({describeError(code)})`)
+        }
+
+        received = os_call(_fn["WinHttpReceiveResponse"], "int", handle, 0)
+        when received == 0 {
+            code = lastError()
+            closeAll(session, connection, handle)
+            freeAll(owned)
+            give failure(`httpx: no response ({describeError(code)})`)
+        }
+
+        status = readStatus(handle)
+        headers = readHeaders(handle)
+        payload = readBody(handle)
+
+        closeAll(session, connection, handle)
+        freeAll(owned)
+        give { "ok": true, "status": status, "headers": headers, "body": payload, "error": nil }
+    }
+    catch (e) {
+        closeAll(session, connection, handle)
+        freeAll(owned)
+        give failure(`httpx: {e.message}`)
+    }
+}
+
+task failure(message) {
+    give { "ok": false, "status": 0, "headers": "", "body": "", "error": message }
+}
+
+task closeAll(session, connection, handle) {
+    get h in [handle, connection, session] {
+        when h != nil and h != 0 {
+            try { os_call(_fn["WinHttpCloseHandle"], "int", h) } catch (e) { }
+        }
+    }
+    give nil
+}
+
+task readStatus(handle) {
+    statusBuf = os_alloc(4)
+    sizeBuf = os_alloc(4)
+    os_write_int32(statusBuf, 0, 0)
+    os_write_int32(sizeBuf, 0, 4)
+    ok = os_call(_fn["WinHttpQueryHeaders"], "int", handle,
+                 QUERY_STATUS_CODE + QUERY_FLAG_NUMBER, 0, statusBuf, sizeBuf, 0)
+    status = 0
+    when ok != 0 { status = os_read_int32(statusBuf, 0) }
+    os_free(statusBuf)
+    os_free(sizeBuf)
+    give status
+}
+
+# WinHttpQueryHeaders has no way to report a size except by failing, so the
+# first call is expected to fail with ERROR_INSUFFICIENT_BUFFER.
+task readHeaders(handle) {
+    sizeBuf = os_alloc(4)
+    os_write_int32(sizeBuf, 0, 0)
+    os_call(_fn["WinHttpQueryHeaders"], "int", handle, QUERY_RAW_HEADERS_CRLF, 0, 0, sizeBuf, 0)
+    needed = os_read_int32(sizeBuf, 0)
+    when needed <= 0 {
+        os_free(sizeBuf)
+        give ""
+    }
+    buf = os_alloc(needed + 2)
+    os_write_int32(sizeBuf, 0, needed)
+    ok = os_call(_fn["WinHttpQueryHeaders"], "int", handle, QUERY_RAW_HEADERS_CRLF, 0, buf, sizeBuf, 0)
+    text = ""
+    when ok != 0 { text = fromWide(buf, needed) }
+    os_free(buf)
+    os_free(sizeBuf)
+    give text
+}
+
+# Reads until the server is done. QueryDataAvailable handles chunked encoding
+# for us, so this loop is the same either way.
+task readBody(handle) {
+    pieces = []
+    reading = true
+    while reading {
+        availBuf = os_alloc(4)
+        os_write_int32(availBuf, 0, 0)
+        ok = os_call(_fn["WinHttpQueryDataAvailable"], "int", handle, availBuf)
+        available = os_read_int32(availBuf, 0)
+        os_free(availBuf)
+        when ok == 0 or available <= 0 { reading = false }
+        other {
+            chunk = os_alloc(available + 1)
+            readBuf = os_alloc(4)
+            os_write_int32(readBuf, 0, 0)
+            os_call(_fn["WinHttpReadData"], "int", handle, chunk, available, readBuf)
+            got = os_read_int32(readBuf, 0)
+            when got > 0 { push(pieces, buf_to_str(os_buffer_from_ptr(chunk, got))) }
+            other { reading = false }
+            os_free(chunk)
+            os_free(readBuf)
+        }
+    }
+    give join(pieces, "")
+}
+
+# The WinHTTP error codes people actually hit, in words. A bare 12029 tells
+# nobody anything.
+task describeError(code) {
+    when code == 12002 { give "timed out" }
+    when code == 12007 { give "the host name could not be resolved" }
+    when code == 12029 { give "could not connect to the server" }
+    when code == 12030 { give "the connection was closed by the server" }
+    when code == 12152 { give "the server sent an invalid response" }
+    when code == 12175 { give "a TLS error -- the certificate may be invalid or expired" }
+    when code == 12045 { give "the server's certificate authority is not trusted" }
+    when code == 12044 { give "the server asked for a client certificate" }
+    give `error {code}`
+}

@@ -1,0 +1,328 @@
+# ============================================================================
+# httpx — test suite
+#   ez test.ez
+#
+# Everything that can be checked without a network is. The live section runs
+# against the EZ package registry, which is a real HTTPS server with a stable
+# 200, a stable 404 and a binary file of known length; if the network is down
+# it is skipped and the skip is reported rather than passing quietly.
+# ============================================================================
+
+use "httpx"
+use "httpx/url.ez"
+use "httpx/native.ez"
+
+PASS = 0
+FAIL = 0
+SKIPPED = 0
+REGISTRY = "https://packages.ez-lang.site"
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) { PASS = PASS + 1 }
+    other {
+        FAIL = FAIL + 1
+        out `  FAIL {label}`
+        out `    expected: {expected}`
+        out `    actual:   {actual}`
+    }
+}
+task throws(label, fn) {
+    try {
+        fn()
+        FAIL = FAIL + 1
+        out `  FAIL {label} (expected a throw)`
+    }
+    catch (e) { PASS = PASS + 1 }
+}
+task throwsSaying(label, fragment, fn) {
+    try {
+        fn()
+        FAIL = FAIL + 1
+        out `  FAIL {label} (expected a throw)`
+    }
+    catch (e) {
+        when contains(str(e.message), fragment) { PASS = PASS + 1 }
+        other {
+            FAIL = FAIL + 1
+            out `  FAIL {label}`
+            out `    expected the message to mention: {fragment}`
+            out `    actual:   {e.message}`
+        }
+    }
+}
+
+out "httpx tests"
+
+# ── the transport is present ────────────────────────────────────────────────
+check("winhttp is available", isAvailable(), true)
+
+# ── URLs ────────────────────────────────────────────────────────────────────
+u = parseUrl("https://api.example.com/v1/users?page=2&sort=name#top")
+check("scheme", u["scheme"], "https")
+check("host", u["host"], "api.example.com")
+check("path", u["path"], "/v1/users")
+check("query", u["query"], "page=2&sort=name")
+check("the request target is path and query", u["target"], "/v1/users?page=2&sort=name")
+check("fragment", u["fragment"], "top")
+check("https implies 443", u["port"], 443)
+check("and is secure", u["secure"], true)
+# The fragment is a browser concept and must never reach the server.
+check("the fragment is not in the target", contains(u["target"], "#"), false)
+
+check("http implies 80", parseUrl("http://example.com")["port"], 80)
+check("http is not secure", parseUrl("http://example.com")["secure"], false)
+check("an explicit port", parseUrl("http://example.com:8080/x")["port"], 8080)
+check("a bare host gets a root path", parseUrl("https://example.com")["path"], "/")
+check("a scheme-relative url defaults to https", parseUrl("//example.com/x")["scheme"], "https")
+check("a url with no scheme", parseUrl("example.com/x")["host"], "example.com")
+check("a path with no query", parseUrl("https://example.com/a/b")["target"], "/a/b")
+check("a query with no path", parseUrl("https://example.com?a=1")["target"], "/?a=1")
+check("a trailing slash is kept", parseUrl("https://example.com/dir/")["path"], "/dir/")
+
+# Credentials in a URL are legal and belong in a header, not the host.
+creds = parseUrl("https://user:secret@example.com/x")
+check("user", creds["user"], "user")
+check("password", creds["password"], "secret")
+check("the host is not polluted", creds["host"], "example.com")
+check("a user with no password", parseUrl("https://user@example.com/")["user"], "user")
+
+# The colons in an IPv6 literal are not a port.
+six = parseUrl("http://[2001:db8::1]:8080/x")
+check("ipv6 host", six["host"], "2001:db8::1")
+check("ipv6 port", six["port"], 8080)
+check("ipv6 without a port", parseUrl("http://[::1]/x")["port"], 80)
+
+throwsSaying("an unsupported scheme is refused", "not a scheme", || parseUrl("ftp://example.com"))
+throwsSaying("a bad port is refused", "invalid port", || parseUrl("http://example.com:abc/"))
+throwsSaying("a port out of range is refused", "out of range", || parseUrl("http://example.com:99999/"))
+throwsSaying("an unclosed ipv6 address is refused", "IPv6", || parseUrl("http://[::1/x"))
+throws("an empty url is refused", || parseUrl(""))
+throws("a nil url is refused", || parseUrl(nil))
+throws("a url with no host is refused", || parseUrl("https:///path"))
+
+check("round trip", buildUrl(parseUrl("https://example.com/a?b=1")), "https://example.com/a?b=1")
+check("a default port is not written back", buildUrl(parseUrl("https://example.com:443/a")),
+      "https://example.com/a")
+check("a non-default port is", buildUrl(parseUrl("http://example.com:8080/a")),
+      "http://example.com:8080/a")
+
+# ── query strings ───────────────────────────────────────────────────────────
+check("encodes", encodeQuery({ "a": "1" }), "a=1")
+check("escapes", contains(encodeQuery({ "q": "a b&c" }), "a%20b%26c"), true)
+# A nil is an absent parameter, not the text "nil".
+check("skips nil", encodeQuery({ "a": "1", "b": nil }), "a=1")
+check("booleans are words", encodeQuery({ "on": true }), "on=true")
+# A list becomes a repeated key, which is how every server reads it.
+check("a list repeats the key", encodeQuery({ "tag": ["a", "b"] }), "tag=a&tag=b")
+check("nil params", encodeQuery(nil), "")
+
+back = decodeQuery("a=1&b=hello%20world&c")
+check("decodes", back["a"], "1")
+check("unescapes", back["b"], "hello world")
+check("a valueless key", back["c"], "")
+# A repeated key collects rather than the last one silently winning.
+check("collects repeats", to_json(decodeQuery("t=a&t=b")["t"]), to_json(["a", "b"]))
+check("decodes past a ?", decodeQuery("http://x?a=1")["a"], "1")
+check("round trips", decodeQuery(encodeQuery({ "x": "a=b&c" }))["x"], "a=b&c")
+
+check("adds a query", addQuery("http://x/y", { "a": "1" }), "http://x/y?a=1")
+check("appends to an existing one", addQuery("http://x/y?z=0", { "a": "1" }), "http://x/y?z=0&a=1")
+check("adds nothing for an empty dictionary", addQuery("http://x/y", {}), "http://x/y")
+
+# ── headers ─────────────────────────────────────────────────────────────────
+check("formats one", formatHeaders({ "Accept": "application/json" }), "Accept: application/json")
+check("joins with CRLF",
+      contains(formatHeaders({ "A": "1", "B": "2" }), "\r\n"), true)
+check("skips nil values", formatHeaders({ "A": "1", "B": nil }), "A: 1")
+# A newline in a header value is how a request gets split into two.
+check("strips CR and LF from values",
+      formatHeaders({ "X": "a\r\nEvil: yes" }), "X: aEvil: yes")
+
+parsed = parseHeaders("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nX-Count: 7\r\n\r\n")
+check("parses a header", parsed["content-type"], "application/json")
+check("names are lower-cased", parsed["x-count"], "7")
+# The status line has no colon and must not become a header.
+check("the status line is skipped", has_key(parsed, "http/1.1 200 ok"), false)
+check("empty input", len(keys(parseHeaders(""))), 0)
+check("nil input", len(keys(parseHeaders(nil))), 0)
+check("a value containing a colon survives",
+      parseHeaders("Location: https://x/y\r\n")["location"], "https://x/y")
+# Set-Cookie legitimately repeats, and joining with a comma would corrupt any
+# cookie containing one.
+repeated = parseHeaders("Set-Cookie: a=1\r\nSet-Cookie: b=2\r\n")
+check("repeated headers collect", to_json(repeated["set-cookie"]), to_json(["a=1", "b=2"]))
+
+# ── base64, for Authorization ───────────────────────────────────────────────
+check("base64", base64("user:pass"), "dXNlcjpwYXNz")
+check("base64 pads one", base64("ab"), "YWI=")
+check("base64 pads two", base64("a"), "YQ==")
+check("base64 needs no padding", base64("abc"), "YWJj")
+check("base64 of empty", base64(""), "")
+check("a long one", base64("the quick brown fox"), "dGhlIHF1aWNrIGJyb3duIGZveA==")
+
+# ── status text ─────────────────────────────────────────────────────────────
+check("200", statusText(200), "OK")
+check("404", statusText(404), "Not Found")
+check("429", statusText(429), "Too Many Requests")
+check("500", statusText(500), "Internal Server Error")
+check("an unlisted 2xx", statusText(299), "Success")
+check("an unlisted 4xx", statusText(499), "Client Error")
+check("something else entirely", statusText(0), "Unknown")
+
+# ── the response model, without a network ───────────────────────────────────
+r = Response(200, { "content-type": "application/json; charset=utf-8" },
+             "{\"a\":1}", "https://x/y", "GET", 12)
+check("ok", r.ok, true)
+check("status", r.status, 200)
+check("json", r.json()["a"], 1)
+check("text", r.text(), "{\"a\":1}")
+check("length", r.contentLength(), 7)
+# The case a server chooses is not something you should have to know.
+check("headers are case-insensitive", r.header("Content-Type") != nil, true)
+check("a missing header is nil", r.header("nope"), nil)
+check("hasHeader", r.hasHeader("content-type"), true)
+# The charset is not part of the type.
+check("content type without parameters", r.contentType(), "application/json")
+check("isJson", r.isJson(), true)
+check("raiseForStatus returns the response", r.raiseForStatus().status, 200)
+
+notFound = Response(404, {}, "no such thing", "https://x/y", "GET", 5)
+check("not ok", notFound.ok, false)
+check("client error", notFound.isClientError(), true)
+check("not a server error", notFound.isServerError(), false)
+throwsSaying("raiseForStatus throws the status", "404", || notFound.raiseForStatus())
+# The reason is almost always in the body, so it goes in the message.
+throwsSaying("and the body", "no such thing", || notFound.raiseForStatus())
+
+server = Response(503, {}, "", "https://x/y", "GET", 5)
+check("server error", server.isServerError(), true)
+throwsSaying("an empty body is said to be empty", "empty body", || server.raiseForStatus())
+
+redirect = Response(302, { "location": "https://elsewhere/" }, "", "https://x/y", "GET", 1)
+check("redirect", redirect.isRedirect(), true)
+check("the location is readable", redirect.header("location"), "https://elsewhere/")
+
+# An HTML error page from a proxy is the usual cause, so it must be in the
+# message rather than a bare "invalid JSON".
+html = Response(200, {}, "<html>gateway error</html>", "https://x/y", "GET", 1)
+throwsSaying("bad json says what arrived", "gateway error", || html.json())
+check("jsonOr falls back instead", html.jsonOr("fallback"), "fallback")
+
+check("bytes", to_json(Response(200, {}, "AB", "u", "GET", 1).bytes()), to_json([65, 66]))
+
+# ── client configuration ────────────────────────────────────────────────────
+c = Http()
+check("a default timeout", c.timeoutMs, 30000)
+check("redirects are followed by default", c.followRedirects, true)
+# Certificate checking is the point of TLS; it must never be off by default.
+check("certificates are checked by default", c.insecure, false)
+check("no retries by default", c.retries, 0)
+
+c.withBaseUrl("https://api.example.com/v1/").withTimeout(5000).withBearer("t0ken")
+check("the base url is set", c.baseUrl, "https://api.example.com/v1/")
+check("the timeout is set", c.timeoutMs, 5000)
+check("bearer", c.defaultHeaders["Authorization"], "Bearer t0ken")
+check("chaining returns the client", str(type(c.withAgent("x"))), "instance")
+
+check("a relative path joins the base", c.resolve("users"), "https://api.example.com/v1/users")
+check("a leading slash is not doubled", c.resolve("/users"), "https://api.example.com/v1/users")
+# An absolute URL must win, or a client with a base url could never call
+# anything else.
+check("an absolute url is left alone", c.resolve("https://other.test/x"), "https://other.test/x")
+
+basic = Http().withBasicAuth("user", "pass")
+check("basic auth", basic.defaultHeaders["Authorization"], "Basic dXNlcjpwYXNz")
+
+# Bodies: one of json / form / body, with the matching content type.
+jsonHeaders = {}
+jsonBody = Http().buildBody({ "json": { "a": 1 } }, jsonHeaders)
+check("json body", jsonBody, to_json({ "a": 1 }))
+check("json content type", jsonHeaders["Content-Type"], "application/json")
+formHeaders = {}
+formBody = Http().buildBody({ "form": { "a": "1" } }, formHeaders)
+check("form body", formBody, "a=1")
+check("form content type", formHeaders["Content-Type"], "application/x-www-form-urlencoded")
+# A content type the caller chose must not be overwritten.
+chosen = { "Content-Type": "application/vnd.api+json" }
+Http().buildBody({ "json": { "a": 1 } }, chosen)
+check("an explicit content type wins", chosen["Content-Type"], "application/vnd.api+json")
+check("a raw body is untouched", Http().buildBody({ "body": "raw" }, {}), "raw")
+check("no body", Http().buildBody({}, {}), "")
+throwsSaying("only one body kind", "only one",
+             || Http().buildBody({ "json": {}, "body": "x" }, {}))
+
+# Retries are for "not now", not for "no": a 404 retried is just four 404s.
+retrier = Http().withRetries(3, 10)
+check("retries a 500", retrier.shouldRetry(500), true)
+check("retries a 503", retrier.shouldRetry(503), true)
+check("retries a 429", retrier.shouldRetry(429), true)
+check("does not retry a 404", retrier.shouldRetry(404), false)
+check("does not retry a 200", retrier.shouldRetry(200), false)
+check("does not retry a 401", retrier.shouldRetry(401), false)
+
+# ── live, against a real HTTPS server ───────────────────────────────────────
+LIVE = false
+try {
+    probe = Http().withTimeout(20000).get(REGISTRY + "/api/v1/packages?limit=1")
+    LIVE = probe.status > 0
+}
+catch (e) { LIVE = false }
+
+when LIVE == false {
+    SKIPPED = 22
+    out "  (network unavailable -- 22 live assertions skipped)"
+}
+other {
+    live = Http().withTimeout(30000)
+
+    ok = live.get(REGISTRY + "/api/v1/packages?limit=2")
+    check("a real 200", ok.status, 200)
+    check("ok", ok.ok, true)
+    check("a real content type", ok.contentType(), "application/json")
+    check("a parsed body", ok.json()["total"] > 0, true)
+    check("the body is not empty", ok.contentLength() > 0, true)
+    check("timing is recorded", ok.elapsedMs >= 0, true)
+    check("the url is remembered", contains(ok.url, "packages"), true)
+
+    # The whole reason this package exists: 404 must not look like 200.
+    missing = live.get(REGISTRY + "/api/v1/nothing-here")
+    check("a real 404", missing.status, 404)
+    check("not ok", missing.ok, false)
+    check("a client error", missing.isClientError(), true)
+    check("with a body to explain it", missing.contentLength() > 0, true)
+    throwsSaying("raiseForStatus reports it", "404", || missing.raiseForStatus())
+
+    # HEAD returns headers and no body, which is the point of it.
+    headOnly = live.head(REGISTRY + "/api/v1/packages?limit=1")
+    check("HEAD works", headOnly.status, 200)
+    check("HEAD has no body", headOnly.contentLength(), 0)
+
+    # A verb the built-in client cannot send at all.
+    putResult = live.put(REGISTRY + "/api/v1/packages", { "json": { "x": 1 } })
+    check("PUT reaches the server", putResult.status > 0, true)
+    check("and is refused with a real status", putResult.ok, false)
+
+    # Query parameters through the options.
+    withQuery = live.get(REGISTRY + "/api/v1/packages", { "query": { "limit": 1 } })
+    check("query options are sent", withQuery.status, 200)
+
+    # A binary file of known length. If anything in the path treated the bytes
+    # as text, this would not match.
+    tarball = live.get(REGISTRY + "/api/v1/packages/ratelimit/1.0.0/download")
+    check("a binary download succeeds", tarball.status, 200)
+    check("of exactly the published length", tarball.contentLength(), 7532)
+    check("and it is gzip", ord(substr(tarball.body, 0, 1)), 31)
+    check("with the second magic byte", ord(substr(tarball.body, 1, 1)), 139)
+    tarball.save("httpx_binary_check.tmp")
+    check("the saved file is the same length", len(readFile("httpx_binary_check.tmp")), 7532)
+    File.remove("httpx_binary_check.tmp")
+
+    # A host that cannot resolve must fail with something readable.
+    throwsSaying("a dead host is explained", "resolved",
+                 || Http().withTimeout(5000).get("https://no-such-host.invalid/"))
+}
+
+out ""
+when SKIPPED > 0 { out `  skipped {SKIPPED}` }
+out `  passed {PASS}   failed {FAIL}`
+when FAIL > 0 { exit(1) }

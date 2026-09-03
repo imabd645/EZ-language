@@ -1,0 +1,19 @@
+{
+  "name": "httpx",
+  "version": "1.0.1",
+  "description": "HTTP client for EZ over WinHTTP. Real status codes and response headers, any verb, byte-exact bodies, JSON and form helpers, retries and downloads.",
+  "author": "Abdullah Masood",
+  "main": "main.ez",
+  "license": "MIT",
+  "keywords": [
+    "http",
+    "client",
+    "rest",
+    "api",
+    "request",
+    "winhttp",
+    "json"
+  ],
+  "repository": "https://github.com/imabd645/EZ",
+  "dependencies": {}
+}

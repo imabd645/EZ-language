@@ -60,6 +60,7 @@ public:
     // Populated once at startup from the VM's global environment; empty in
     // contexts that never registered builtins, which simply disables the check.
     static std::unordered_set<std::string> builtinNames;
+    static bool suppressWarnings;
 
     // Seed existing global slot for eval() to prevent collisions
     void setGlobalSlot(const std::string& name, uint16_t slot);

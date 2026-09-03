@@ -12,6 +12,7 @@ namespace fs = std::filesystem;
 
 std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem;
 std::unordered_set<std::string> BytecodeCompiler::builtinNames;
+bool BytecodeCompiler::suppressWarnings = false;
 
 // Helper to get directory of a file
 

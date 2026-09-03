@@ -1,4 +1,5 @@
 #include "typechecker/TypeChecker.h"
+#include "compiler/BytecodeCompiler.h"
 #include <iostream>
 #include <fstream>
 #include <functional>
@@ -23,7 +24,7 @@ void TypeChecker::error(const StmtPtr& stmt, const std::string& message, const s
 
 void TypeChecker::error(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint) {
     hadError = true;
-    std::cerr << "Type Error at line " << line << ", column " << column << ":\n\n";
+    std::cerr << "\033[31mType Error\033[0m at line " << line << ", column " << column << ":\n\n";
 
     // Fix 2.3: use in-memory source registry (populated by Lexer) instead of re-opening the file
     if (!filename.empty() && line > 0) {
@@ -46,7 +47,7 @@ void TypeChecker::error(int line, int column, int length, const std::string& fil
 }
 
 void TypeChecker::error(int line, const std::string& message) {
-    error(line, 0, 0, "", message, "");
+    error(line, 1, 1, "", message, "");
 }
 
 void TypeChecker::warn(const ExprPtr& expr, const std::string& message, const std::string& hint) {
@@ -60,6 +61,7 @@ void TypeChecker::warn(const StmtPtr& stmt, const std::string& message, const st
 }
 
 void TypeChecker::warn(int line, int column, int length, const std::string& filename, const std::string& message, const std::string& hint) {
+    if (BytecodeCompiler::suppressWarnings) return;
     std::cerr << "\033[33mType Warning\033[0m at line " << line << ", column " << column << ":\n\n";
 
     // Fix 2.3: use in-memory source registry instead of re-opening the file per warning

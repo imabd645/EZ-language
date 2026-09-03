@@ -2059,6 +2059,7 @@ void BytecodeCompiler::error(const std::string& message) {
 // Reported once per name per compilation. `num = num + 1` in a loop is one
 // mistake, not one per line.
 void BytecodeCompiler::warnBuiltinAssignment(const std::string& name, size_t line) {
+    if (suppressWarnings) return;
     if (builtinNames.find(name) == builtinNames.end()) return;
     if (!warnedBuiltins.insert(name).second) return;
 

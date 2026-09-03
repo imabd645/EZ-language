@@ -41,6 +41,7 @@
 namespace fs = std::filesystem;
 bool g_disableContracts = false;
 bool g_disableTypeCheck = false;
+bool g_noWarnings = false;
 // Set by --debug. Gates the "Local variables:" dump on an uncaught
 // exception's traceback -- off by default because those values can include
 // things a script's own output never would (passwords, tokens, request
@@ -151,6 +152,7 @@ void runFromSource(const std::string& source, const std::string& path, bool trac
     
     BytecodeCompiler compiler(arena);
     compiler.disableContracts = g_disableContracts;
+    BytecodeCompiler::suppressWarnings = g_noWarnings;
     
     CompileResult result = compiler.compile(statements);
     if (!result.success) {
@@ -700,6 +702,8 @@ void showHelp() {
     std::cout << "  --debug           Show local variables in an uncaught exception's traceback" << std::endl;
     std::cout << "  --no-typecheck    Disable the static type checker" << std::endl;
     std::cout << "  --no-contracts    Disable contract enforcement" << std::endl;
+    std::cout << "  --no-warnings     Disable compiler and typechecker warnings" << std::endl;
+    std::cout << "  -W                Short alias for --no-warnings" << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
     std::cout << "  out \"text\"        Print to console" << std::endl;
     std::cout << "  in                Read input from user" << std::endl;
@@ -808,7 +812,37 @@ int cli_main(int argc, char* argv[]) {
     }
     
     if (argc > 1) {
-        std::string cmd = argv[1];
+        int argStart = 1;
+        bool leadingTrace = false;
+        while (argStart < argc) {
+            std::string a = argv[argStart];
+            if (a == "--trace" || a == "-trace") {
+                leadingTrace = true;
+                argStart++;
+            } else if (a == "--debug" || a == "-debug") {
+                g_debugMode = true;
+                argStart++;
+            } else if (a == "--no-contracts") {
+                g_disableContracts = true;
+                argStart++;
+            } else if (a == "--no-typecheck") {
+                g_disableTypeCheck = true;
+                argStart++;
+            } else if (a == "--no-warnings" || a == "-W" || a == "-no-warnings") {
+                g_noWarnings = true;
+                BytecodeCompiler::suppressWarnings = true;
+                argStart++;
+            } else {
+                break;
+            }
+        }
+
+        if (argStart >= argc) {
+            runRepl(leadingTrace);
+            return 0;
+        }
+
+        std::string cmd = argv[argStart];
 
         // Answered from the binary alone, so it is checked before anything
         // that touches the filesystem. Without this the argument falls through
@@ -820,17 +854,17 @@ int cli_main(int argc, char* argv[]) {
         }
 
         if (cmd == "-c" || cmd == "--eval" || cmd == "-e") {
-            if (argc < 3) {
+            if (argStart + 1 >= argc) {
                 std::cerr << "Argument expected for the -c option" << std::endl;
                 std::cerr << "Usage: ez -c <code> [args...]" << std::endl;
                 return 1;
             }
-            std::string code = argv[2];
+            std::string code = argv[argStart + 1];
             g_scriptName = "-c";
             g_scriptArgs.clear();
-            bool traceExecution = false;
+            bool traceExecution = leadingTrace;
             bool passThrough = false;
-            for (int i = 3; i < argc; i++) {
+            for (int i = argStart + 2; i < argc; i++) {
                 std::string arg = argv[i];
                 if (passThrough) {
                     g_scriptArgs.push_back(arg);
@@ -844,6 +878,9 @@ int cli_main(int argc, char* argv[]) {
                     g_disableContracts = true;
                 } else if (arg == "--no-typecheck") {
                     g_disableTypeCheck = true;
+                } else if (arg == "--no-warnings" || arg == "-W" || arg == "-no-warnings") {
+                    g_noWarnings = true;
+                    BytecodeCompiler::suppressWarnings = true;
                 } else {
                     g_scriptArgs.push_back(arg);
                 }
@@ -853,14 +890,14 @@ int cli_main(int argc, char* argv[]) {
         }
 
         if (cmd == "--watch" || cmd == "-w" || cmd == "watch") {
-            if (argc < 3) {
+            if (argStart + 1 >= argc) {
                 std::cerr << "Argument expected for watch mode" << std::endl;
                 std::cerr << "Usage: ez --watch <file.ez> [args...]" << std::endl;
                 return 1;
             }
-            std::string targetScript = argv[2];
+            std::string targetScript = argv[argStart + 1];
             std::vector<std::string> extraArgs;
-            for (int i = 3; i < argc; i++) {
+            for (int i = argStart + 2; i < argc; i++) {
                 extraArgs.push_back(argv[i]);
             }
             runWatch(targetScript, extraArgs);
@@ -1051,7 +1088,7 @@ int cli_main(int argc, char* argv[]) {
             return 0;
         }
         else {
-            bool traceExecution = false;
+            bool traceExecution = leadingTrace;
             bool compileToEzc = false;
             bool dumpToEzasm = false;
             bool isWatchMode = false;
@@ -1064,7 +1101,7 @@ int cli_main(int argc, char* argv[]) {
             g_scriptName = cmd;
             g_scriptArgs.clear();
             bool passThrough = false;
-            for (int i = 2; i < argc; i++) {
+            for (int i = argStart + 1; i < argc; i++) {
                 std::string arg = argv[i];
                 if (passThrough) {
                     g_scriptArgs.push_back(arg);
@@ -1084,6 +1121,9 @@ int cli_main(int argc, char* argv[]) {
                     g_disableContracts = true;
                 } else if (arg == "--no-typecheck") {
                     g_disableTypeCheck = true;
+                } else if (arg == "--no-warnings" || arg == "-W" || arg == "-no-warnings") {
+                    g_noWarnings = true;
+                    BytecodeCompiler::suppressWarnings = true;
                 } else {
                     g_scriptArgs.push_back(arg);
                 }
@@ -1095,6 +1135,7 @@ int cli_main(int argc, char* argv[]) {
                 if (g_debugMode) watchArgs.push_back("--debug");
                 if (g_disableContracts) watchArgs.push_back("--no-contracts");
                 if (g_disableTypeCheck) watchArgs.push_back("--no-typecheck");
+                if (g_noWarnings) watchArgs.push_back("--no-warnings");
                 for (const auto& a : g_scriptArgs) watchArgs.push_back(a);
                 runWatch(cmd, watchArgs);
                 return 0;
@@ -1122,6 +1163,9 @@ int cli_main(int argc, char* argv[]) {
             g_disableContracts = true;
         } else if (arg == "--no-typecheck") {
             g_disableTypeCheck = true;
+        } else if (arg == "--no-warnings" || arg == "-W" || arg == "-no-warnings") {
+            g_noWarnings = true;
+            BytecodeCompiler::suppressWarnings = true;
         }
     }
     runRepl(traceExecution);

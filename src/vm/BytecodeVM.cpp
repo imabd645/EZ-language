@@ -134,6 +134,7 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     auto savedFrameUpvalues = std::move(frameUpvalues);
     auto savedTryStack = std::move(tryStack);
     size_t stackOffset = stackTop - stack.data();
+    Value* oldStackData = stack.data();
     bool savedRunning = running;
     bool savedException = isExceptionPending;
 
@@ -181,6 +182,16 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     // and FFI callbacks take is callFunction(), which had the same hole plus a
     // tryStack-ownership bug of its own.)
     auto restoreState = [&]() {
+        Value* newStackData = stack.data();
+        ptrdiff_t stackDiff = newStackData - oldStackData;
+        if (stackDiff != 0) {
+            for (auto& f : savedFrames) {
+                f.slots = f.slots + stackDiff;
+            }
+            for (auto& tb : savedTryStack) {
+                tb.stackTop = tb.stackTop + stackDiff;
+            }
+        }
         frames = std::move(savedFrames);
         frameUpvalues = std::move(savedFrameUpvalues);
         tryStack = std::move(savedTryStack);
@@ -640,6 +651,7 @@ Value BytecodeVM::callFunction(const Value& callee,
 
     // Save current stack state to prevent corruption if dispatchCall fails
     size_t stackBefore = stackTop - stack.data();
+    Value* oldStackData = stack.data();
     size_t framesBefore = frames.size();
     bool savedRunning = running;
     running = true;
@@ -666,6 +678,16 @@ Value BytecodeVM::callFunction(const Value& callee,
     // Constructors arrive here via instantiate(); FFI callbacks, sort
     // comparators and any other builtin that calls back into EZ do too.
     auto restoreState = [&]() {
+        Value* newStackData = stack.data();
+        ptrdiff_t stackDiff = newStackData - oldStackData;
+        if (stackDiff != 0) {
+            for (auto& f : frames) {
+                f.slots = f.slots + stackDiff;
+            }
+            for (auto& tb : tryStack) {
+                tb.stackTop = tb.stackTop + stackDiff;
+            }
+        }
         stackTop = stack.data() + stackBefore;
         frames.resize(framesBefore);
         running = savedRunning;

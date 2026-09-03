@@ -161,6 +161,7 @@ public:
     // GC Control Flags (Python-like)
     void disable() { std::lock_guard<std::mutex> lock(mutex_); disabled_ = true; }
     void enable()  { std::lock_guard<std::mutex> lock(mutex_); disabled_ = false; }
+    bool isEnabled() const { std::lock_guard<std::mutex> lock(mutex_); return !disabled_; }
 
     // Statistics
     size_t trackedCount()     const { std::lock_guard<std::mutex> lock(mutex_); return young_tracked_.size() + old_tracked_.size(); }

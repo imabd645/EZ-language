@@ -1,0 +1,23 @@
+# ============================================================================
+# lib/runtime/src/stack.ez -- Call Stack and Introspection Controller
+# ============================================================================
+
+export model StackController {
+    init() {}
+
+    task trace() {
+        give __stack_trace()
+    }
+
+    task currentDepth() {
+        give __vm_current_depth()
+    }
+
+    task maxDepth() {
+        give __vm_get_max_recursion_depth()
+    }
+
+    task setMaxDepth(depth) {
+        give __vm_set_max_recursion_depth(depth)
+    }
+}

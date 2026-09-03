@@ -1,0 +1,132 @@
+# ============================================================================
+# Test Suite: 'runtime' Standard Library Module & Interpreter Controls
+# ============================================================================
+
+use "runtime" as rt
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== Runtime Module Test Suite ==="
+
+# --- 1. Garbage Collector Controller ---
+out "--- 1. GC Controller ---"
+
+check("gc isEnabled initial", rt.gc.isEnabled(), true)
+
+rt.gc.disable()
+check("gc isEnabled after disable", rt.gc.isEnabled(), false)
+
+rt.gc.enable()
+check("gc isEnabled after enable", rt.gc.isEnabled(), true)
+
+rt.gc.collect()
+check("gc collect runs cleanly", true, true)
+
+stats = rt.gc.stats()
+check("gc stats has tracked", contains(stats, "tracked"), true)
+check("gc stats has cycles", contains(stats, "cycles"), true)
+check("gc stats has enabled", stats["enabled"], true)
+
+# --- 2. VM Recursion Depth & Call Stack ---
+out "--- 2. VM Controller & Recursion Depth ---"
+
+initialMax = rt.vm.getMaxRecursionDepth()
+check("initial max recursion depth is 4096", initialMax, 4096)
+
+# Test dynamic reduction of max depth
+rt.vm.setMaxRecursionDepth(50)
+check("max depth set to 50", rt.vm.getMaxRecursionDepth(), 50)
+
+task recurse(n) {
+    when n <= 0 { give 0 }
+    give recurse(n - 1) + 1
+}
+
+# Recursion under 50 should succeed
+check("recurse(20) under limit", recurse(20), 20)
+
+# Recursion over 50 should throw RecursionError
+hitRecursionError = false
+try {
+    recurse(100)
+} catch e {
+    hitRecursionError = true
+}
+check("recurse(100) throws RecursionError", hitRecursionError, true)
+
+# Restore and test deep recursion
+rt.vm.setMaxRecursionDepth(10000)
+check("max depth raised to 10000", rt.vm.getMaxRecursionDepth(), 10000)
+check("recurse(2000) deep recursion succeeds", recurse(2000), 2000)
+
+# Restore default
+rt.vm.setMaxRecursionDepth(4096)
+check("max depth restored to 4096", rt.vm.getMaxRecursionDepth(), 4096)
+
+# --- 3. Stack Controller ---
+out "--- 3. Stack Controller ---"
+
+task helperFrame() {
+    give rt.stack.trace()
+}
+
+traceFrames = helperFrame()
+check("stack trace has frames", len(traceFrames) > 0, true)
+check("stack trace top frame has function", contains(traceFrames[0], "function"), true)
+check("stack trace top frame has file", contains(traceFrames[0], "file"), true)
+check("stack trace top frame has line", contains(traceFrames[0], "line"), true)
+
+# --- 4. Performance & Instruction Profiler ---
+out "--- 4. Perf Controller ---"
+
+instructionsBefore = rt.perf.instructions()
+check("instructions > 0", instructionsBefore > 0, true)
+
+rt.perf.resetInstructions()
+# Run a loop to consume instructions
+sum = 0
+repeat i = 1 to 100 {
+    sum = sum + i
+}
+instructionsAfter = rt.perf.instructions()
+check("instructions incremented after loop", instructionsAfter > 100, true)
+
+elapsed = rt.perf.time(|| {
+    repeat k = 1 to 500 {}
+})
+check("perf.time measures duration", elapsed >= 0, true)
+
+# --- 5. Engine & Environment Info ---
+out "--- 5. Info Controller ---"
+
+check("info version", rt.info.version, "2.0.0")
+check("info engine", rt.info.engine, "EZ Bytecode VM")
+check("info platform not empty", len(rt.info.platform) > 0, true)
+check("info arch not empty", len(rt.info.arch) > 0, true)
+check("info pointer size is 8", rt.info.pointerSize, 8)
+check("info endianness is little", rt.info.endianness, "little")
+
+# --- 6. Sys Controller ---
+out "--- 6. Sys Controller ---"
+
+check("sys argv is array", len(rt.sys.argv()) >= 0, true)
+check("sys pid > 0", rt.sys.pid() > 0, true)
+check("sys cwd not empty", len(rt.sys.cwd()) > 0, true)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

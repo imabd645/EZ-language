@@ -41,6 +41,14 @@ public:
     // reachable set. Default is a no-op for contexts with no value stack.
     virtual void releaseStaleStackSlots() {}
     virtual std::shared_ptr<Environment> getCurrentEnv() const = 0;
+
+    // VM limits & introspection
+    virtual size_t getMaxRecursionDepth() const { return 4096; }
+    virtual void setMaxRecursionDepth(size_t depth) {}
+    virtual size_t getCallDepth() const { return 0; }
+    virtual uint64_t getInstructionCount() const { return 0; }
+    virtual void resetInstructionCount() {}
+    virtual std::vector<Value> getStackTraceFrames() const { return {}; }
 };
 
 #endif // RUNTIME_CONTEXT_H

@@ -1,0 +1,6 @@
+{
+  "name": "runtime",
+  "version": "1.0.0",
+  "main": "main.ez",
+  "description": "Standard runtime and interpreter control subsystem"
+}

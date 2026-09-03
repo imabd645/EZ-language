@@ -879,3 +879,30 @@ void BytecodeVM::printStackTrace() const {
         }
     }
 }
+
+std::vector<Value> BytecodeVM::getStackTraceFrames() const {
+    std::vector<Value> result;
+    for (auto it = frames.rbegin(); it != frames.rend(); ++it) {
+        int currentLine = it->line;
+        if (it->function && !it->function->chunk.lines.empty()) {
+            size_t offset = (size_t)(it->ip - it->function->chunk.code.data());
+            if (offset > 0) offset--;
+            if (offset < it->function->chunk.lines.size()) {
+                currentLine = (int)it->function->chunk.lines[offset];
+            }
+        }
+        std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
+        std::string file = it->filename.empty() ? "<unknown>" : it->filename;
+        
+        Value frameDict = Value::makeDictionary();
+        auto dict = frameDict.asDictionaryPtr();
+        dict->modifyMap([&](auto& m) {
+            m["function"] = Value(fn);
+            m["file"] = Value(file);
+            m["line"] = Value(static_cast<double>(currentLine));
+        });
+        result.push_back(frameDict);
+    }
+    return result;
+}
+

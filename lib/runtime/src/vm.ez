@@ -1,0 +1,19 @@
+# ============================================================================
+# lib/runtime/src/vm.ez -- Virtual Machine Controller
+# ============================================================================
+
+export model VMController {
+    init() {}
+
+    task getMaxRecursionDepth() {
+        give __vm_get_max_recursion_depth()
+    }
+
+    task setMaxRecursionDepth(depth) {
+        give __vm_set_max_recursion_depth(depth)
+    }
+
+    task currentDepth() {
+        give __vm_current_depth()
+    }
+}

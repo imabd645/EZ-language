@@ -1,0 +1,20 @@
+# ============================================================================
+# lib/runtime/src/info.ez -- Engine & Platform Introspection Info
+# ============================================================================
+
+export model InfoController {
+    init() {
+        self._info = __engine_info()
+        self.version = self._info["version"]
+        self.engine = self._info["engine"]
+        self.platform = self._info["platform"]
+        self.arch = self._info["arch"]
+        self.pointerSize = self._info["pointer_size"]
+        self.endianness = self._info["endianness"]
+        self.compiler = self._info["compiler"]
+    }
+
+    task getAll() {
+        give self._info
+    }
+}

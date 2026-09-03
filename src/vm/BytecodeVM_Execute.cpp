@@ -3398,9 +3398,9 @@ std::string BytecodeVM::calleeNameAtCallSite(const uint8_t* callSiteIp) const {
 
 void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, ClosureState cs) {
     // Enforce maximum call depth to catch unbounded recursion cleanly
-    if (frames.size() >= FRAMES_MAX) {
+    if (frames.size() >= maxFrames) {
         throwException("RecursionError",
-            "maximum call depth of " + std::to_string(FRAMES_MAX) + " exceeded"
+            "maximum call depth of " + std::to_string(maxFrames) + " exceeded"
             "\n  Hint: usually a recursive task with no base case, or one whose"
             "\n  base case is never reached.");
         return;

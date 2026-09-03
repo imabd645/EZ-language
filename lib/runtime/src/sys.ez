@@ -1,0 +1,24 @@
+# ============================================================================
+# lib/runtime/src/sys.ez -- System, Process and Environment Controller
+# ============================================================================
+
+export model SysController {
+    init() {}
+
+    task argv() {
+        give argv
+    }
+
+    task pid() {
+        give pid()
+    }
+
+    task cwd() {
+        give cwd()
+    }
+
+    task exit(code) {
+        when code == nil { code = 0 }
+        exit(code)
+    }
+}

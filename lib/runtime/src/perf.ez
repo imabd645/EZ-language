@@ -1,0 +1,26 @@
+# ============================================================================
+# lib/runtime/src/perf.ez -- Performance and Instruction Profiler
+# ============================================================================
+
+export model PerfController {
+    init() {}
+
+    task instructions() {
+        give __vm_instruction_count()
+    }
+
+    task resetInstructions() {
+        give __vm_reset_instruction_count()
+    }
+
+    task now() {
+        give now()
+    }
+
+    task time(fn) {
+        start = now()
+        fn()
+        elapsed = now() - start
+        give elapsed
+    }
+}

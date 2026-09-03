@@ -1,0 +1,39 @@
+# ============================================================================
+# lib/runtime/src/gc.ez -- Garbage Collector Controller
+# ============================================================================
+
+export model GCController {
+    init() {}
+
+    task enable() {
+        give gc_enable()
+    }
+
+    task disable() {
+        give gc_disable()
+    }
+
+    task isEnabled() {
+        give __gc_is_enabled()
+    }
+
+    task collect() {
+        give gc_collect()
+    }
+
+    task tracked() {
+        give gc_tracked()
+    }
+
+    task cyclesCollected() {
+        give gc_cycles_collected()
+    }
+
+    task setThresholds(minInterval, maxObjects) {
+        give gc_set_thresholds(minInterval, maxObjects)
+    }
+
+    task stats() {
+        give __gc_stats()
+    }
+}

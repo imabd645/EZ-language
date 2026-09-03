@@ -87,6 +87,14 @@ public:
     }
     std::shared_ptr<Environment> getCurrentEnv() const override { return globalEnv; }
 
+    // VM limits & introspection
+    size_t getMaxRecursionDepth() const override { return maxFrames; }
+    void setMaxRecursionDepth(size_t depth) override { maxFrames = depth; }
+    size_t getCallDepth() const override { return frames.size(); }
+    uint64_t getInstructionCount() const override { return instructionCount; }
+    void resetInstructionCount() override { instructionCount = 0; }
+    std::vector<Value> getStackTraceFrames() const override;
+
     // Initialize global slot table from compiler output (Issue C optimization)
     // Seeds globalSlots[] from CompileResult and pre-populates any
     // built-ins already stored in globalEnv.
@@ -109,7 +117,20 @@ public:
     bool isAsyncTask = false;
     std::shared_ptr<EZFuture> taskFuture;
 
+    // Fast local access via vector index instead of map lookup (Issue C)
+    // Direct pointer to global slots data for zero-overhead access
+    Value* globalSlotsData = nullptr;
+    size_t globalSlotsSize = 0;
+
 private:
+    static constexpr size_t STACK_MAX = 65536;
+    size_t stackMax = STACK_MAX;
+
+    // Stack safety margin. When call stack depth exceeds maxFrames, throw
+    // RecursionError.
+    size_t maxFrames = 4096;
+    uint64_t instructionCount = 0;
+
     // ── Call Frame ────────────────────────────────────────────────────────────
     struct CallFrame {
         BytecodeFunctionPtr function;

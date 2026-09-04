@@ -1,0 +1,69 @@
+# ============================================================================
+# Test Suite: 'bakchodi' Package
+# ============================================================================
+
+use "bakchodi"
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task checkTruthy(label, val) {
+    when val {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label + " (expected truthy, got " + str(val) + ")"
+        failed = failed + 1
+    }
+}
+
+out "=== Bakchodi Package Test Suite ==="
+
+# --- 1. Email Model Instantiation ---
+out "--- 1. Email Model ---"
+email = Email("smtp.gmail.com", 587, "test@gmail.com", "fake-pass")
+check("Email server configured", email.server, "smtp.gmail.com")
+check("Email port configured", email.port, 587)
+check("Email username configured", email.username, "test@gmail.com")
+
+# --- 2. Screen & Mouse Automation Queries ---
+out "--- 2. Desktop Automation Functions ---"
+res = screenSize()
+checkTruthy("Screen width is positive", res["width"] > 0)
+checkTruthy("Screen height is positive", res["height"] > 0)
+
+curPos = getMousePos()
+checkTruthy("Mouse X position returned", curPos["x"] >= 0)
+checkTruthy("Mouse Y position returned", curPos["y"] >= 0)
+
+# Test mouse movement to current position
+moveMouse(curPos["x"], curPos["y"])
+check("Mouse movement executed", true, true)
+
+# --- 3. Timing and Beep Pranks ---
+out "--- 3. Utilities and Audio ---"
+t0 = DateTime().timestamp()
+sleep(50)
+t1 = DateTime().timestamp()
+checkTruthy("Sleep executed for >= 40ms", (t1 - t0) >= 40)
+
+# Test beep without crashing
+beep(800, 50)
+check("Beep executed cleanly", true, true)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

@@ -1,0 +1,18 @@
+use "auto" as auto   # `use "pkg"` alone spreads the exports as GLOBALS;
+                    # the auto.x form needs an explicit alias.
+
+sz = auto.size()
+print("Screen is " + sz.width + "x" + sz.height)
+
+pos = auto.pos()
+print("Mouse is currently at " + pos.x + ", " + pos.y)
+
+print("Opening start menu...")
+auto.press("lwin")
+wait(1000)
+
+print("Typing hello...")
+auto.type("hello")
+
+print("Done!")
+

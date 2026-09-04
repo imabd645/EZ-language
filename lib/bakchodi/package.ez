@@ -1,0 +1,6 @@
+name = "bakchodi"
+version = "1.0.0"
+description = "Desktop automation, auto-typing, SMTP email dispatch, and prank utilities for EZ"
+author = "EZ Community"
+license = "MIT"
+main = "main.ez"

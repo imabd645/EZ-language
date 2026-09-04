@@ -1,0 +1,219 @@
+// ============================================================================
+// email / mime.ez -- RFC 2822 Payload Builder
+//
+// Converts a Message object into a raw SMTP payload string. Handles three
+// content strategies:
+//
+//   plain        → Content-Type: text/plain
+//   html only    → Content-Type: text/html
+//   with attach  → Content-Type: multipart/mixed
+//                  └─ part: text/plain or text/html
+//                  └─ part(s): application/octet-stream (base64-encoded file)
+//
+// This file owns all string manipulation for building payloads. It does NOT
+// touch curl or file I/O — that belongs in client.ez and ffi.ez.
+// ============================================================================
+use "errors.ez"
+use "message.ez"
+
+// Builds the RFC 2822 Date header using the built-in DateTime class.
+//
+// RFC 2822 format:  "Sat, 19 Jul 2026 17:05:50 +0500"
+// DateTime.format() uses strftime specifiers:
+//   %d  zero-padded day      %H:%M:%S  time
+//   %Y  4-digit year         %z        UTC offset (+0500)
+// The abbreviated weekday and month names are produced from lookup arrays
+// because strftime's %a and %b are locale-dependent (may output local language).
+task __buildDate() {
+    now = DateTime()
+
+    // Locale-independent day/month abbreviations required by RFC 2822
+    days   = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    dayName   = days[now.weekday()]
+    monthName = months[now.month() - 1]
+
+    // Zero-pad day, hour, minute, second to 2 digits for RFC 2822 conformance
+    d  = str(now.day())
+    when len(d) < 2 { d = "0" + d }
+    hh = str(now.hour())
+    when len(hh) < 2 { hh = "0" + hh }
+    mm = str(now.minute())
+    when len(mm) < 2 { mm = "0" + mm }
+    ss = str(now.second())
+    when len(ss) < 2 { ss = "0" + ss }
+
+    // %z gives the local UTC offset in +HHMM form (e.g. +0500)
+    tz = now.format("%z")
+
+    give "Date: " + dayName + ", " + d + " " + monthName + " " + str(now.year()) +
+         " " + hh + ":" + mm + ":" + ss + " " + tz + "\r\n"
+}
+
+// Builds a unique Message-ID to prevent deduplication by mail servers.
+// Uses DateTime().timestamp() (ms since epoch) for guaranteed uniqueness.
+task __buildMessageId(fromDomain) {
+    ts = str(DateTime().timestamp())
+    give "Message-ID: <" + ts + "@" + fromDomain + ">\r\n"
+}
+
+// Extracts the domain part of an email address (after the @).
+task __domain(email) {
+    parts = split(email, "@")
+    when len(parts) > 1 { give parts[1] }
+    give "localhost"
+}
+
+// Joins an array of addresses into a comma-separated string for headers.
+task __addrList(arr) {
+    out_str = ""
+    repeat i = 0 to len(arr) - 1 {
+        when i > 0 { out_str = out_str + ", " }
+        out_str = out_str + arr[i]
+    }
+    give out_str
+}
+
+// Encodes a string to standard MIME base64 (with +/ and = padding).
+// EZ has b64url_encode (URL-safe alphabet: -_) built-in. We use it then
+// convert to standard alphabet:  - → +,  _ → /,  add = padding.
+task __base64Encode(data) {
+    // Use native URL-safe base64, then convert alphabet and add padding
+    urlb64 = b64url_encode(data)
+    // Convert URL-safe chars to standard chars
+    standard = replace(replace(urlb64, "-", "+"), "_", "/")
+    // Add = padding to reach a multiple of 4
+    rem = len(standard) % 4
+    when rem == 2 { standard = standard + "==" }
+    when rem == 3 { standard = standard + "=" }
+    give standard
+}
+
+// Wraps base64 output at 76 chars per line as required by MIME spec.
+task __wrapBase64(encoded) {
+    result = ""
+    total = len(encoded)
+    i = 0
+    while i < total {
+        endIdx = i + 76
+        when endIdx > total { endIdx = total }
+        result = result + substr(encoded, i, endIdx - i) + "\r\n"
+        i = i + 76
+    }
+    give result
+}
+
+// Builds a MIME attachment part for a single file.
+// Throws AttachmentError if the file cannot be read.
+task __buildAttachmentPart(filePath, boundary) {
+    fileContent = ""
+    success = false
+    try {
+        fileContent = readFile(filePath)
+        success = true
+    } catch (e) {
+        throw AttachmentError(filePath, "File not found or unreadable.")
+    }
+
+    // Extract filename from path
+    pathParts = split(filePath, "\\")
+    fileName = pathParts[len(pathParts) - 1]
+    // Also handle forward slashes
+    fwdParts = split(fileName, "/")
+    fileName = fwdParts[len(fwdParts) - 1]
+
+    encoded = __wrapBase64(__base64Encode(fileContent))
+
+    part = "--" + boundary + "\r\n"
+    part = part + "Content-Type: application/octet-stream; name=\"" + fileName + "\"\r\n"
+    part = part + "Content-Transfer-Encoding: base64\r\n"
+    part = part + "Content-Disposition: attachment; filename=\"" + fileName + "\"\r\n"
+    part = part + "\r\n"
+    part = part + encoded
+    give part
+}
+
+// Builds the full RFC 2822 payload string from a Message object.
+// This is the main entry point called by SmtpClient.
+export task buildPayload(msg) {
+    boundary = "EZ_BOUNDARY_" + str(clock())
+    hasAttach = len(msg._attachments) > 0
+
+    // ── Headers ──────────────────────────────────────────────────────────────
+    payload = ""
+
+    // Date and Message-ID are required by RFC 5321 to avoid spam filters
+    payload = payload + __buildDate()
+    payload = payload + __buildMessageId(__domain(msg._from))
+
+    // Addressing headers
+    payload = payload + "From: " + msg._from + "\r\n"
+    payload = payload + "To: " + __addrList(msg._to) + "\r\n"
+
+    when len(msg._cc) > 0 {
+        payload = payload + "Cc: " + __addrList(msg._cc) + "\r\n"
+    }
+
+    // BCC is intentionally omitted from headers — addresses are passed only
+    // to the SMTP envelope (RCPT TO), never written into the message headers.
+
+    payload = payload + "Subject: " + msg._subject + "\r\n"
+
+    when len(msg._replyTo) > 0 {
+        payload = payload + "Reply-To: " + msg._replyTo + "\r\n"
+    }
+
+    when len(msg._priority) > 0 {
+        payload = payload + "X-Priority: " + msg._priority + "\r\n"
+        when msg._priority == "1" { payload = payload + "Importance: High\r\n" }
+        when msg._priority == "5" { payload = payload + "Importance: Low\r\n" }
+    }
+
+    // Custom headers
+    hKeys = keys(msg._headers)
+    get k in hKeys {
+        payload = payload + k + ": " + msg._headers[k] + "\r\n"
+    }
+
+    // ── Body ─────────────────────────────────────────────────────────────────
+    when hasAttach {
+        // multipart/mixed: one or more body parts + attachment parts
+        payload = payload + "MIME-Version: 1.0\r\n"
+        payload = payload + "Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n"
+        payload = payload + "\r\n"
+
+        // Body part
+        payload = payload + "--" + boundary + "\r\n"
+        when len(msg._htmlBody) > 0 {
+            payload = payload + "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+            payload = payload + msg._htmlBody + "\r\n"
+        } other {
+            payload = payload + "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+            payload = payload + msg._textBody + "\r\n"
+        }
+
+        // Attachment parts
+        get filePath in msg._attachments {
+            payload = payload + __buildAttachmentPart(filePath, boundary)
+        }
+
+        payload = payload + "--" + boundary + "--\r\n"
+
+    } other when len(msg._htmlBody) > 0 {
+        // HTML only — no attachments
+        payload = payload + "MIME-Version: 1.0\r\n"
+        payload = payload + "Content-Type: text/html; charset=UTF-8\r\n"
+        payload = payload + "\r\n"
+        payload = payload + msg._htmlBody + "\r\n"
+
+    } other {
+        // Plain text only
+        payload = payload + "Content-Type: text/plain; charset=UTF-8\r\n"
+        payload = payload + "\r\n"
+        payload = payload + msg._textBody + "\r\n"
+    }
+
+    give payload
+}

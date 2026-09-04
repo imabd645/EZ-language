@@ -1,0 +1,67 @@
+// ============================================================================
+// email / errors.ez -- Structured Exception Models
+//
+// All exceptions thrown by this library are instances of these models.
+// Callers can match on the model name in a catch block, e.g.:
+//
+//   try {
+//       client.send(msg)
+//   } catch (e) {
+//       out e.toString()
+//   }
+//
+// Never throw raw strings from this library — always use one of these.
+// ============================================================================
+use "ffi.ez"
+
+// Base exception. Thrown for unexpected conditions that don't fit a
+// more specific type.
+export model EmailError {
+    init(message) {
+        self.message = str(message)
+    }
+    task toString() { give "EmailError: " + self.message }
+}
+
+// Thrown when libcurl cannot establish a TCP/TLS connection to the
+// SMTP server. curlCode is the raw integer from curl_easy_perform.
+export model SmtpConnectionError {
+    init(server, port, curlCode) {
+        self.server   = str(server)
+        self.port     = port
+        self.curlCode = curlCode
+        self.message  = "Could not connect to " + self.server + ":" + str(port) + " (curl code " + str(curlCode) + ")"
+    }
+    task toString() { give "SmtpConnectionError: " + self.message }
+}
+
+// Thrown when the SMTP server rejects the credentials (curl code 67).
+export model SmtpAuthError {
+    init(username) {
+        self.username = str(username)
+        self.message  = "Authentication failed for user '" + self.username + "'. Check your password or App Password."
+    }
+    task toString() { give "SmtpAuthError: " + self.message }
+}
+
+// Thrown when an attachment file cannot be read from disk.
+export model AttachmentError {
+    init(filePath, reason) {
+        self.filePath = str(filePath)
+        self.reason   = str(reason)
+        self.message  = "Cannot attach '" + self.filePath + "': " + self.reason
+    }
+    task toString() { give "AttachmentError: " + self.message }
+}
+
+// Maps a raw curl integer result code to the appropriate structured exception.
+// Called by SmtpClient after curl_easy_perform fails.
+export task mapCurlError(code, server, port, username) {
+    when code == CURLE_COULDNT_RESOLVE_HOST or code == 7 or code == CURLE_SSL_CONNECT_ERROR {
+        throw SmtpConnectionError(server, port, code)
+    }
+    when code == CURLE_AUTH_ERROR {
+        throw SmtpAuthError(username)
+    }
+    throw EmailError("SMTP send failed (curl code " + str(code) + ")")
+}

@@ -1,0 +1,162 @@
+// ============================================================================
+// ezemail / client.ez -- SmtpClient Model
+//
+// Owns the curl handle lifecycle and the temp-file lifecycle. Nothing in this
+// file touches payload formatting — that belongs in mime.ez.
+//
+// Resource safety contract:
+//   The temp file is ALWAYS deleted, the curl handle is ALWAYS cleaned up,
+//   and the recipient slist is ALWAYS freed, regardless of whether send
+//   succeeds or fails. This is enforced by the caught = false / finally
+//   pattern (EZ does not run finally after `give`, so we track failure
+//   manually and clean up in all branches).
+//
+// Usage:
+//   client = SmtpClient("smtp.gmail.com", 587, "me@gmail.com", "apppass")
+//   client.send(Message().to("alice@example.com").subject("Hi").text("Hello"))
+// ============================================================================
+use "ffi.ez"
+use "errors.ez"
+use "message.ez"
+use "mime.ez"
+
+export model SmtpClient {
+    // server   — SMTP hostname, e.g. "smtp.gmail.com"
+    // port     — 465 (SMTPS implicit SSL), 587 (STARTTLS), 25 (plain)
+    // username — login / email address
+    // password — password or App Password
+    init(server, port, username, password) {
+        self.server   = str(server)
+        self.port     = port
+        self.username = str(username)
+        self.password = str(password)
+
+        // Security defaults — safe for production
+        self.useSsl       = true
+        self.verifyCert   = true
+        self.useNativeCa  = true    // use Windows certificate store
+        self.caBundlePath = ""      // optional: path to a custom ca-bundle.crt
+        self.minTls       = CURL_SSLVERSION_TLSv1_2
+
+        // Debug flag — prints the full curl handshake to stdout
+        self.verbose = false
+    }
+
+    // Sends an email described by a Message object.
+    // Throws SmtpConnectionError, SmtpAuthError, AttachmentError, or EmailError
+    // on failure. Always cleans up the temp file and curl handle.
+    task send(msg) {
+        // Validate fields before touching curl
+        msg.validate()
+
+        // Build MIME payload (may throw AttachmentError)
+        payload = buildPayload(msg)
+
+        // Write payload to a temp file in the OS temp directory.
+        // We include the PID-like clock value to avoid collisions between
+        // concurrent sends in different threads.
+        tempPath = "ez_email_" + str(clock()) + ".tmp"
+
+        writeFile(tempPath, payload)
+
+        // All cleanup is tracked so we can call it on every exit path.
+        curlHandle  = 0
+        rcptSlist   = 0
+        fileHandle  = 0
+        sendErr     = nil
+
+        try {
+            // ── Init curl ────────────────────────────────────────────────────
+            curlHandle = os_call(__CurlFFI["init"], "ptr")
+            when curlHandle == 0 {
+                throw EmailError("curl_easy_init() returned null. Is libcurl installed?")
+            }
+
+            // ── Server URL ───────────────────────────────────────────────────
+            urlStr = ""
+            when self.port == 465 {
+                urlStr = "smtps://" + self.server + ":" + str(self.port)
+            } other {
+                urlStr = "smtp://" + self.server + ":" + str(self.port)
+            }
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_URL, urlStr)
+
+            // ── Auth ─────────────────────────────────────────────────────────
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_USERNAME, self.username)
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_PASSWORD, self.password)
+
+            // ── Envelope From ────────────────────────────────────────────────
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_MAIL_FROM, "<" + msg._from + ">")
+
+            // ── Envelope RCPT (To + CC + BCC) ────────────────────────────────
+            allRcpt = msg.allRecipients()
+            rcptSlist = 0
+            get addr in allRcpt {
+                rcptSlist = os_call(__CurlFFI["slist_append"], "ptr", rcptSlist, addr)
+            }
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_MAIL_RCPT, rcptSlist)
+
+            // ── TLS / SSL ────────────────────────────────────────────────────
+            when self.useSsl {
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_USE_SSL, 3)   // CURLUSESSL_ALL
+            }
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSLVERSION, self.minTls)
+
+            when self.verifyCert {
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSL_VERIFYPEER, 1)
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSL_VERIFYHOST, 2)
+                when self.useNativeCa {
+                    os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA)
+                }
+                when len(self.caBundlePath) > 0 {
+                    os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_CAINFO, self.caBundlePath)
+                }
+            } other {
+                // Insecure mode — never use in production
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSL_VERIFYPEER, 0)
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_SSL_VERIFYHOST, 0)
+            }
+
+            // ── Verbose debug ────────────────────────────────────────────────
+            when self.verbose {
+                os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_VERBOSE, 1)
+            }
+
+            // ── Payload file ─────────────────────────────────────────────────
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_UPLOAD, 1)
+            fileHandle = os_call(__MsvcrtFFI["fopen"], "ptr", tempPath, "rb")
+            when fileHandle == 0 {
+                throw EmailError("Failed to open temp payload file: " + tempPath)
+            }
+            os_call(__CurlFFI["setopt"], "int", curlHandle, CURLOPT_READDATA, fileHandle)
+
+            // ── Perform ──────────────────────────────────────────────────────
+            res = os_call(__CurlFFI["perform"], "int", curlHandle)
+            when res != CURLE_OK {
+                // Map to structured error; this will throw
+                mapCurlError(res, self.server, self.port, self.username)
+            }
+
+        } catch (e) {
+            sendErr = e
+        }
+
+        // ── Always cleanup ────────────────────────────────────────────────────
+        when fileHandle != 0 {
+            os_call(__MsvcrtFFI["fclose"], "int", fileHandle)
+        }
+        when rcptSlist != 0 {
+            os_call(__CurlFFI["slist_free"], "ptr", rcptSlist)
+        }
+        when curlHandle != 0 {
+            os_call(__CurlFFI["cleanup"], "ptr", curlHandle)
+        }
+        // Always delete the temp file — success or failure
+        os_call(__MsvcrtFFI["remove"], "int", tempPath)
+
+        // Re-throw if an error occurred
+        when typeOf(sendErr) != "nil" { throw sendErr }
+
+        give true
+    }
+}

@@ -1,0 +1,191 @@
+# ============================================================================
+# EZ Auto Library (pyautogui clone)
+# Desktop automation for keyboard and mouse control via Win32 FFI
+# ============================================================================
+
+__u32 = os_load_lib("User32.dll")
+
+model AutoFFI {
+    static setCursorPos = os_get_func(__u32, "SetCursorPos")
+    static getCursorPos = os_get_func(__u32, "GetCursorPos")
+    static mouseEvent = os_get_func(__u32, "mouse_event")
+    static keybdEvent = os_get_func(__u32, "keybd_event")
+    static getSystemMetrics = os_get_func(__u32, "GetSystemMetrics")
+    static vkKeyScanA = os_get_func(__u32, "VkKeyScanA")
+    static mapVirtualKeyA = os_get_func(__u32, "MapVirtualKeyA")
+}
+
+KEYEVENTF_EXTENDEDKEY = 0x0001
+
+# Mouse constants
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
+MOUSEEVENTF_MIDDLEDOWN = 0x0020
+MOUSEEVENTF_MIDDLEUP = 0x0040
+MOUSEEVENTF_WHEEL = 0x0800
+KEYEVENTF_KEYUP = 0x0002
+
+# Standard specific keys map
+VK_MAP = {
+    "backspace": 0x08, "tab": 0x09, "enter": 0x0D, "shift": 0x10, "ctrl": 0x11, "alt": 0x12,
+    "pause": 0x13, "capslock": 0x14, "escape": 0x1B, "space": 0x20, "pageup": 0x21, "pagedown": 0x22,
+    "end": 0x23, "home": 0x24, "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
+    "printscreen": 0x2C, "insert": 0x2D, "delete": 0x2E,
+    "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34, "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
+    "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45, "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
+    "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F, "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
+    "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59, "z": 0x5A,
+    "lwin": 0x5B, "rwin": 0x5C, 
+    "num0": 0x60, "num1": 0x61, "num2": 0x62, "num3": 0x63, "num4": 0x64, "num5": 0x65,
+    "num6": 0x66, "num7": 0x67, "num8": 0x68, "num9": 0x69,
+    "multiply": 0x6A, "add": 0x6B, "separator": 0x6C, "subtract": 0x6D, "decimal": 0x6E, "divide": 0x6F,
+    "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73, "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77, "f9": 0x78,
+    "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+    "numlock": 0x90, "scrolllock": 0x91,
+    "lshift": 0xA0, "rshift": 0xA1, "lctrl": 0xA2, "rctrl": 0xA3, "lalt": 0xA4, "ralt": 0xA5,
+    "volumemute": 0xAD, "volumedown": 0xAE, "volumeup": 0xAF,
+    "nexttrack": 0xB0, "prevtrack": 0xB1, "mediastop": 0xB2, "mediaplay": 0xB3
+}
+
+export task move(x, y) {
+    os_call(AutoFFI.setCursorPos, "int", x, y)
+}
+
+export task pos() {
+    pt = os_struct_alloc(["i32", "i32"])
+    os_call(AutoFFI.getCursorPos, "int", pt)
+    vals = os_struct_unpack(["i32", "i32"], pt)
+    give { "x": vals[0], "y": vals[1] }
+}
+
+export task click(btn = "left") {
+    down = MOUSEEVENTF_LEFTDOWN
+    up = MOUSEEVENTF_LEFTUP
+    when btn == "right" { 
+        down = MOUSEEVENTF_RIGHTDOWN 
+        up = MOUSEEVENTF_RIGHTUP 
+    }
+    when btn == "middle" { 
+        down = MOUSEEVENTF_MIDDLEDOWN 
+        up = MOUSEEVENTF_MIDDLEUP 
+    }
+    
+    os_call(AutoFFI.mouseEvent, "int", down, 0, 0, 0, 0)
+    os_call(AutoFFI.mouseEvent, "int", up, 0, 0, 0, 0)
+}
+
+export task scroll(amount) {
+    os_call(AutoFFI.mouseEvent, "int", MOUSEEVENTF_WHEEL, 0, 0, amount, 0)
+}
+
+export task down(keyStr) {
+    vk = VK_MAP[lower(keyStr)]
+    when vk == nil {
+        when len(keyStr) == 1 {
+            buf = buffer(keyStr)
+            addr = os_buffer_addr(buf)
+            byte_val = os_read_byte(addr, 0)
+            res = os_call(AutoFFI.vkKeyScanA, "int", byte_val)
+            vk = res % 256
+        }
+    }
+    when vk != nil {
+        scan = os_call(AutoFFI.mapVirtualKeyA, "int", vk, 0)
+        flags = 0
+        when vk >= 0x21 and vk <= 0x2E { flags = KEYEVENTF_EXTENDEDKEY }
+        when vk == 0x5B or vk == 0x5C { flags = KEYEVENTF_EXTENDEDKEY }
+        os_call(AutoFFI.keybdEvent, "int", vk, scan, flags, 0)
+    }
+}
+
+export task up(keyStr) {
+    vk = VK_MAP[lower(keyStr)]
+    when vk == nil {
+        when len(keyStr) == 1 {
+            buf = buffer(keyStr)
+            addr = os_buffer_addr(buf)
+            byte_val = os_read_byte(addr, 0)
+            res = os_call(AutoFFI.vkKeyScanA, "int", byte_val)
+            vk = res % 256
+        }
+    }
+    when vk != nil {
+        scan = os_call(AutoFFI.mapVirtualKeyA, "int", vk, 0)
+        flags = KEYEVENTF_KEYUP
+        when vk >= 0x21 and vk <= 0x2E { flags = flags + KEYEVENTF_EXTENDEDKEY }
+        when vk == 0x5B or vk == 0x5C { flags = flags + KEYEVENTF_EXTENDEDKEY }
+        os_call(AutoFFI.keybdEvent, "int", vk, scan, flags, 0)
+    }
+}
+
+export task press(keyStr) {
+    down(keyStr)
+    up(keyStr)
+}
+
+# Named typeText, not type.
+#
+# It was `type` before, which took over the global type() for the whole
+# process -- and because auto's version returns nothing, every later type(x)
+# silently produced nil instead of the type name. Nothing errored; code that
+# branched on type() just started taking the wrong branch.
+#
+# Unlike min/max/range, this one cannot serve both: type("abc") is a
+# perfectly ordinary builtin call, indistinguishable from asking auto to
+# press those keys.
+export task typeText(text) {
+    buf = buffer(text)
+    sz = buf_size(buf)
+    addr = os_buffer_addr(buf)
+    
+    repeat i = 0 to sz - 1 {
+        byte_val = os_read_byte(addr, i)
+        
+        # Get Virtual Key Code and Shift State
+        res = os_call(AutoFFI.vkKeyScanA, "int", byte_val)
+        
+        vkCode = res % 256
+        rem = res % 256
+        shiftState = ((res - rem) / 256) % 256
+        
+        # shiftState bit 1 is SHIFT
+        needsShift = (shiftState % 2) == 1
+        
+        scanCode = os_call(AutoFFI.mapVirtualKeyA, "int", vkCode, 0)
+        
+        when needsShift {
+            shiftScan = os_call(AutoFFI.mapVirtualKeyA, "int", 0x10, 0)
+            os_call(AutoFFI.keybdEvent, "int", 0x10, shiftScan, 0, 0) # shift down
+        }
+        
+        os_call(AutoFFI.keybdEvent, "int", vkCode, scanCode, 0, 0)
+        os_call(AutoFFI.keybdEvent, "int", vkCode, scanCode, KEYEVENTF_KEYUP, 0)
+        
+        when needsShift {
+            shiftScan = os_call(AutoFFI.mapVirtualKeyA, "int", 0x10, 0)
+            os_call(AutoFFI.keybdEvent, "int", 0x10, shiftScan, KEYEVENTF_KEYUP, 0) # shift up
+        }
+    }
+}
+
+export task size() {
+    w = os_call(AutoFFI.getSystemMetrics, "int", 0) # SM_CXSCREEN
+    h = os_call(AutoFFI.getSystemMetrics, "int", 1) # SM_CYSCREEN
+    give { "width": w, "height": h }
+}
+
+
+
+export task is_down(keyStr) {
+    vk = VK_MAP[lower(keyStr)]
+    when vk == nil { give false }
+    
+    # GetAsyncKeyState
+    state = os_call(os_get_func(__u32, "GetAsyncKeyState"), "int", vk)
+    
+    # The most significant bit is set if the key is down
+    give (state < 0)
+}
+

@@ -1,0 +1,63 @@
+// ============================================================================
+// email v2.0 -- SMTP Email for EZ, over pure libcurl FFI.
+//
+//   use "email"
+//
+//   // Full builder API
+//   client = connect("smtp.gmail.com", 587, "me@gmail.com", "apppass")
+//   client.send(
+//       Message()
+//           .from("me@gmail.com")
+//           .to("alice@example.com")
+//           .subject("Hello!")
+//           .html("<h1>Hi Alice!</h1>")
+//           .attach("report.pdf")
+//   )
+//
+//   // Quick helper for simple cases
+//   send_quick("smtp.gmail.com", 587, "me@gmail.com", "apppass",
+//              "me@gmail.com", "alice@example.com", "Hi", "Hello!")
+//
+// This file is the public surface only. The work lives in src/:
+//
+//   src/ffi.ez      the only file that touches os_load_lib / os_call
+//   src/errors.ez   structured exception models (EmailError, SmtpAuthError, etc.)
+//   src/message.ez  fluent Message builder (to/cc/bcc/attach/html/text/priority)
+//   src/mime.ez     RFC 2822 MIME payload builder with base64 attachments
+//   src/client.ez   SmtpClient: curl lifecycle, temp file cleanup, error mapping
+//
+// There is no C++ in this package. It calls the libcurl C API directly.
+// ============================================================================
+
+use "src/ffi.ez"
+use "src/errors.ez"
+use "src/message.ez"
+use "src/mime.ez"
+use "src/client.ez"
+
+// Creates and returns a configured SmtpClient.
+//
+//   client = connect("smtp.gmail.com", 587, "me@gmail.com", "apppass")
+//
+export task connect(server, port, username, password) {
+    give SmtpClient(server, port, username, password)
+}
+
+// One-shot send without creating a client object. Useful for quick scripts
+// where you only send one email.
+//
+//   send_quick("smtp.gmail.com", 587, "me@gmail.com", "pass",
+//              "me@gmail.com", "bob@example.com", "Hi", "Hello Bob!")
+//
+export task send_quick(server, port, username, password, fromAddr, toAddr, subject, body) {
+    client = connect(server, port, username, password)
+    msg = Message()
+        .from(fromAddr)
+        .to(toAddr)
+        .subject(subject)
+        .text(body)
+    give client.send(msg)
+}
+
+// Returns which libcurl DLL is backing this session.
+export task backend() { give email_backend() }

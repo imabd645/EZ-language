@@ -1,0 +1,150 @@
+// ============================================================================
+// email / message.ez -- Email Message Builder
+//
+// A fluent builder for composing an email before handing it to SmtpClient.
+// Every setter returns `self` so calls can be chained:
+//
+//   msg = Message()
+//       .from("me@gmail.com")
+//       .to("alice@example.com")
+//       .cc("bob@example.com")
+//       .bcc("audit@company.com")
+//       .subject("Hello!")
+//       .html("<h1>Hi Alice!</h1>")
+//       .attach("report.pdf")
+//       .priority("high")
+//       .header("X-Campaign", "summer25")
+//
+// Only `from`, `to`, and `subject` are required. The client will throw
+// EmailError if any of the three are missing when send() is called.
+// ============================================================================
+use "errors.ez"
+
+export model Message {
+    init() {
+        self._from        = ""
+        self._to          = []    // array of strings
+        self._cc          = []
+        self._bcc         = []
+        self._subject     = ""
+        self._textBody    = ""
+        self._htmlBody    = ""
+        self._attachments = []    // array of file paths
+        self._replyTo     = ""
+        self._priority    = ""    // "1" high, "3" normal, "5" low
+        self._headers     = {}    // custom header key->value dict
+    }
+
+    // ── Required fields ──────────────────────────────────────────────────────
+
+    // Sets the From address.
+    task from(addr) {
+        self._from = str(addr)
+        give self
+    }
+
+    // Sets one or more To recipients. Accepts a string or an array of strings.
+    task to(addr) {
+        when typeOf(addr) == "array" {
+            get a in addr { push(self._to, str(a)) }
+        } other {
+            push(self._to, str(addr))
+        }
+        give self
+    }
+
+    // Sets the email subject line.
+    task subject(text) {
+        self._subject = str(text)
+        give self
+    }
+
+    // ── Body ─────────────────────────────────────────────────────────────────
+
+    // Sets a plain-text body. If both text() and html() are set, the library
+    // sends a multipart/alternative so clients can choose the best version.
+    task text(body) {
+        self._textBody = str(body)
+        give self
+    }
+
+    // Sets an HTML body.
+    task html(body) {
+        self._htmlBody = str(body)
+        give self
+    }
+
+    // ── Optional recipients ───────────────────────────────────────────────────
+
+    // Adds CC recipient(s). Accepts a string or array.
+    task cc(addr) {
+        when typeOf(addr) == "array" {
+            get a in addr { push(self._cc, str(a)) }
+        } other {
+            push(self._cc, str(addr))
+        }
+        give self
+    }
+
+    // Adds BCC recipient(s). Accepts a string or array.
+    // BCC headers are never written into the payload — addresses are only
+    // passed to the SMTP server via the RCPT TO envelope command.
+    task bcc(addr) {
+        when typeOf(addr) == "array" {
+            get a in addr { push(self._bcc, str(a)) }
+        } other {
+            push(self._bcc, str(addr))
+        }
+        give self
+    }
+
+    // ── Extras ───────────────────────────────────────────────────────────────
+
+    // Attaches a local file to the email.
+    task attach(filePath) {
+        push(self._attachments, str(filePath))
+        give self
+    }
+
+    // Sets a Reply-To address.
+    task replyTo(addr) {
+        self._replyTo = str(addr)
+        give self
+    }
+
+    // Sets the message priority. Accepts "high", "normal", or "low".
+    task priority(level) {
+        when level == "high"   { self._priority = "1" }
+        when level == "normal" { self._priority = "3" }
+        when level == "low"    { self._priority = "5" }
+        give self
+    }
+
+    // Adds a custom email header.
+    task header(key, value) {
+        self._headers[str(key)] = str(value)
+        give self
+    }
+
+    // ── Validation ───────────────────────────────────────────────────────────
+
+    // Validates that all required fields are present.
+    // Called by SmtpClient.send() before building the payload.
+    task validate() {
+        when len(self._from) == 0    { throw EmailError("Message is missing a 'from' address.") }
+        when len(self._to) == 0      { throw EmailError("Message is missing at least one 'to' recipient.") }
+        when len(self._subject) == 0 { throw EmailError("Message is missing a 'subject'.") }
+        when len(self._textBody) == 0 and len(self._htmlBody) == 0 {
+            throw EmailError("Message must have at least a text() or html() body.")
+        }
+    }
+
+    // Returns all envelope recipients (To + CC + BCC) for the RCPT TO list.
+    task allRecipients() {
+        all = []
+        get a in self._to  { push(all, a) }
+        get a in self._cc  { push(all, a) }
+        get a in self._bcc { push(all, a) }
+        give all
+    }
+}

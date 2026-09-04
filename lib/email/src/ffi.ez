@@ -1,0 +1,75 @@
+// ============================================================================
+// email / ffi.ez -- The FFI binding layer.
+//
+// This is the ONLY file that is allowed to touch os_load_lib / os_get_func /
+// os_call / os_alloc. Everything above it works in EZ values. If libcurl's
+// C API ever changes shape, this file absorbs it.
+//
+// DLL loading strategy:
+//   1. Try libcurl-4.dll  (shipped with most EZ distributions)
+//   2. Try libcurl.dll    (alternative name on some Windows installs)
+//   If neither is found, a clear human-readable error is thrown.
+// ============================================================================
+
+__curl_lib = os_load_lib("libcurl-4.dll")
+__curl_which = "libcurl-4.dll"
+when typeOf(__curl_lib) == "nil" or __curl_lib == 0 {
+    __curl_lib = os_load_lib("libcurl.dll")
+    __curl_which = "libcurl.dll"
+}
+when typeOf(__curl_lib) == "nil" or __curl_lib == 0 {
+    throw "email: could not load libcurl-4.dll or libcurl.dll. Ensure a 64-bit libcurl DLL is on PATH."
+}
+
+__msv = os_load_lib("msvcrt.dll")
+when typeOf(__msv) == "nil" or __msv == 0 {
+    throw "email: could not load msvcrt.dll."
+}
+
+// ── Function Tables ──────────────────────────────────────────────────────────
+// Plain dictionaries of function pointers (model static fields not supported).
+
+export __CurlFFI = {
+    "init":         os_get_func(__curl_lib, "curl_easy_init"),
+    "setopt":       os_get_func(__curl_lib, "curl_easy_setopt"),
+    "perform":      os_get_func(__curl_lib, "curl_easy_perform"),
+    "cleanup":      os_get_func(__curl_lib, "curl_easy_cleanup"),
+    "slist_append": os_get_func(__curl_lib, "curl_slist_append"),
+    "slist_free":   os_get_func(__curl_lib, "curl_slist_free_all"),
+    "strerror":     os_get_func(__curl_lib, "curl_easy_strerror")
+}
+
+export __MsvcrtFFI = {
+    "fopen":  os_get_func(__msv, "fopen"),
+    "fclose": os_get_func(__msv, "fclose"),
+    "remove": os_get_func(__msv, "remove")
+}
+
+// ── libcurl Option Constants ─────────────────────────────────────────────────
+export CURLOPT_URL          = 10002
+export CURLOPT_USERNAME     = 10173
+export CURLOPT_PASSWORD     = 10174
+export CURLOPT_MAIL_FROM    = 10186
+export CURLOPT_MAIL_RCPT    = 10187
+export CURLOPT_READDATA     = 10009
+export CURLOPT_UPLOAD       = 46
+export CURLOPT_SSL_VERIFYPEER = 64
+export CURLOPT_SSL_VERIFYHOST = 81
+export CURLOPT_USE_SSL      = 119
+export CURLOPT_VERBOSE      = 41
+export CURLOPT_CAINFO       = 10065
+export CURLOPT_SSLVERSION   = 32
+export CURLOPT_SSL_OPTIONS  = 216
+export CURLSSLOPT_NATIVE_CA = 16
+export CURL_SSLVERSION_TLSv1_2 = 5
+
+// ── libcurl Result Codes ─────────────────────────────────────────────────────
+export CURLE_OK             = 0
+// CURLE_COULDNT_RESOLVE_HOST = 6, CURLE_COULDNT_CONNECT = 7, CURLE_SSL_CONNECT_ERROR = 35
+export CURLE_COULDNT_RESOLVE_HOST = 6
+export CURLE_AUTH_ERROR     = 67   // CURLE_AUTH_ERROR (auth failure)
+export CURLE_SSL_CONNECT_ERROR = 35
+export CURLE_OPERATION_TIMEDOUT = 28
+
+// Returns which DLL was loaded for diagnostics.
+export task email_backend() { give __curl_which }

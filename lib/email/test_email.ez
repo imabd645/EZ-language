@@ -1,0 +1,184 @@
+// ============================================================================
+// test_email.ez -- Test Suite for email v2.0
+//
+// Tests that can run without real SMTP credentials:
+//   1. Message builder — field setting and chaining
+//   2. Message validation — throws on missing fields
+//   3. MIME payload — plain, HTML, multipart structure
+//   4. Attachment error — AttachmentError on missing file
+//   5. Connection error — SmtpConnectionError on bogus server
+//   6. Backend DLL reporting
+// ============================================================================
+use "email"
+
+passes = 0
+fails  = 0
+
+task check(name, got, expected) {
+    when got == expected {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  got='" + str(got) + "' expected='" + str(expected) + "'"
+    }
+}
+
+task check_throws(name, needle, fn) {
+    threw = false
+    msg   = ""
+    try { fn() } catch (e) {
+        threw = true
+        when typeOf(e) == "instance" { msg = e.toString() } other { msg = str(e) }
+    }
+    when not threw {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected a throw, got none"
+    } other when len(needle) > 0 and len(split(msg, needle)) < 2 {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  threw but message lacked '" + needle + "': " + msg
+    } other {
+        passes = passes + 1
+        out "  [PASS] " + name
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+out "=== 1. Message Builder ==="
+
+msg = Message()
+    .from("alice@example.com")
+    .to("bob@example.com")
+    .cc("charlie@example.com")
+    .bcc("audit@company.com")
+    .subject("Test Subject")
+    .text("Hello Bob!")
+    .priority("high")
+    .header("X-Custom", "EZMailer")
+
+check("from field",       msg._from,          "alice@example.com")
+check("to field",         msg._to[0],         "bob@example.com")
+check("cc field",         msg._cc[0],         "charlie@example.com")
+check("bcc field",        msg._bcc[0],        "audit@company.com")
+check("subject field",    msg._subject,       "Test Subject")
+check("text body",        msg._textBody,      "Hello Bob!")
+check("priority high",    msg._priority,      "1")
+check("custom header",    msg._headers["X-Custom"], "EZMailer")
+
+// Multiple To recipients
+msg2 = Message().from("a@x.com").to(["b@x.com", "c@x.com"]).subject("Hi").text("Hey")
+check("multiple to count", len(msg2._to), 2)
+check("multiple to[0]",   msg2._to[0],   "b@x.com")
+check("multiple to[1]",   msg2._to[1],   "c@x.com")
+
+// allRecipients includes to + cc + bcc
+msg3 = Message()
+    .from("a@x.com")
+    .to("b@x.com")
+    .cc("c@x.com")
+    .bcc("d@x.com")
+    .subject("S")
+    .text("B")
+all = msg3.allRecipients()
+check("allRecipients count", len(all), 3)
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "=== 2. Message Validation ==="
+
+check_throws("missing from", "missing a 'from'", || {
+    Message().to("b@x.com").subject("S").text("B").validate()
+})
+check_throws("missing to", "missing at least one", || {
+    Message().from("a@x.com").subject("S").text("B").validate()
+})
+check_throws("missing subject", "missing a 'subject'", || {
+    Message().from("a@x.com").to("b@x.com").text("B").validate()
+})
+check_throws("missing body", "text() or html()", || {
+    Message().from("a@x.com").to("b@x.com").subject("S").validate()
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "=== 3. MIME Payload Builder ==="
+
+plainMsg = Message()
+    .from("a@x.com")
+    .to("b@x.com")
+    .subject("Plain Test")
+    .text("Hello plain!")
+
+plainPayload = buildPayload(plainMsg)
+check("plain: has From",    len(split(plainPayload, "From: a@x.com")) > 1,     true)
+check("plain: has To",      len(split(plainPayload, "To: b@x.com")) > 1,       true)
+check("plain: has Subject", len(split(plainPayload, "Subject: Plain Test")) > 1, true)
+check("plain: content-type text", len(split(plainPayload, "text/plain")) > 1,  true)
+check("plain: has Date",    len(split(plainPayload, "Date:")) > 1,             true)
+check("plain: has Message-ID", len(split(plainPayload, "Message-ID:")) > 1,    true)
+
+htmlMsg = Message()
+    .from("a@x.com")
+    .to("b@x.com")
+    .subject("HTML Test")
+    .html("<h1>Hi!</h1>")
+
+htmlPayload = buildPayload(htmlMsg)
+check("html: content-type html", len(split(htmlPayload, "text/html")) > 1, true)
+check("html: has MIME-Version",  len(split(htmlPayload, "MIME-Version")) > 1,  true)
+
+multiMsg = Message()
+    .from("a@x.com")
+    .to("b@x.com")
+    .subject("Attach Test")
+    .text("See attached.")
+    .attach("C:\\Windows\\System32\\notepad.exe")
+
+multiPayload = buildPayload(multiMsg)
+check("multipart: has boundary",          len(split(multiPayload, "EZ_BOUNDARY_")) > 1, true)
+check("multipart: has multipart/mixed",   len(split(multiPayload, "multipart/mixed")) > 1, true)
+check("multipart: has Content-Disposition", len(split(multiPayload, "Content-Disposition")) > 1, true)
+check("multipart: base64 encoded",        len(split(multiPayload, "base64")) > 1, true)
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "=== 4. Attachment Error ==="
+
+check_throws("AttachmentError on missing file", "AttachmentError", || {
+    msg = Message()
+        .from("a@x.com")
+        .to("b@x.com")
+        .subject("S")
+        .text("B")
+        .attach("C:\\does_not_exist_12345.pdf")
+    buildPayload(msg)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "=== 5. Connection Error (Bogus Server) ==="
+
+check_throws("SmtpConnectionError on bad server", "SmtpConnectionError", || {
+    client = connect("invalid.server.local", 587, "user", "pass")
+    msg = Message()
+        .from("a@x.com")
+        .to("b@x.com")
+        .subject("S")
+        .text("B")
+    client.send(msg)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "=== 6. DLL Backend ==="
+
+b = backend()
+check("backend is string", typeOf(b) == "string", true)
+check("backend non-empty", len(b) > 0, true)
+out "  Backend DLL: " + b
+
+// ─────────────────────────────────────────────────────────────────────────────
+out ""
+out "============================================"
+out "Results: " + str(passes) + " passed, " + str(fails) + " failed"
+out "============================================"

@@ -1,0 +1,55 @@
+# ============================================================================
+# lib/sysinfo/src/memory.ez -- RAM & Virtual Memory Metrics
+# ============================================================================
+
+use "ffi.ez"
+
+export task memory() {
+    fn = __SysFFI["GlobalMemoryStatusEx"]
+    when fn == nil or fn == 0 {
+        give {
+            "totalMb": 0,
+            "availMb": 0,
+            "usedMb": 0,
+            "loadPercent": 0
+        }
+    }
+
+    buf = buffer(64)
+    addr = os_buffer_addr(buf)
+    os_write_int32(addr, 0, 64)
+    os_call(fn, "int", addr)
+
+    load = os_read_int32(addr, 4)
+    totalPhys = os_read_int64(addr, 8)
+    availPhys = os_read_int64(addr, 16)
+    usedPhys = totalPhys - availPhys
+
+    mb = 1024.0 * 1024.0
+    give {
+        "totalMb": round(totalPhys / mb, 2),
+        "availMb": round(availPhys / mb, 2),
+        "usedMb": round(usedPhys / mb, 2),
+        "loadPercent": load
+    }
+}
+
+export task ramTotalMb() {
+    m = memory()
+    give m["totalMb"]
+}
+
+export task ramUsedMb() {
+    m = memory()
+    give m["usedMb"]
+}
+
+export task ramFreeMb() {
+    m = memory()
+    give m["availMb"]
+}
+
+export task ramLoadPercent() {
+    m = memory()
+    give m["loadPercent"]
+}

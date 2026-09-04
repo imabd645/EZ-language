@@ -1,0 +1,43 @@
+# ============================================================================
+# sysinfo -- System, Hardware & Process Metrics Monitor for EZ
+# ============================================================================
+
+use "src/ffi.ez"
+use "src/cpu.ez"
+use "src/memory.ez"
+use "src/disk.ez"
+use "src/host.ez"
+use "src/process.ez"
+
+# CPU
+export cpuPercent
+export cpuCores
+
+# Memory
+export memory
+export ramTotalMb
+export ramUsedMb
+export ramFreeMb
+export ramLoadPercent
+
+# Disk
+export disk
+export diskFreeGb
+export diskTotalGb
+export diskUsedGb
+
+# Host & Power
+export hostname
+export username
+export platform
+export uptimeMs
+export uptimeHours
+export uptimeHuman
+export battery
+export summary
+
+# Process
+export processes
+export findProcess
+export isProcessRunning
+export kill

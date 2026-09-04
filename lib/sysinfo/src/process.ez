@@ -1,0 +1,80 @@
+# ============================================================================
+# lib/sysinfo/src/process.ez -- Process Enumeration & Control
+# ============================================================================
+
+use "ffi.ez"
+
+export task processes(maxCount = 500) {
+    procs = []
+    fnSnap = __SysFFI["CreateToolhelp32Snapshot"]
+    fnFirst = __SysFFI["Process32First"]
+    fnNext = __SysFFI["Process32Next"]
+    fnClose = __SysFFI["CloseHandle"]
+
+    when fnSnap == nil or fnFirst == nil { give procs }
+
+    h = os_call(fnSnap, "ptr", 2, 0) # TH32CS_SNAPPROCESS = 2
+    when h == 0 or h == -1 { give procs }
+
+    buf = buffer(568)
+    addr = os_buffer_addr(buf)
+    os_write_int32(addr, 0, 568)
+
+    ok = os_call(fnFirst, "int", h, addr)
+    count = 0
+
+    while ok != 0 and count < maxCount {
+        pid = os_read_int32(addr, 8)
+        threads = os_read_int32(addr, 28)
+        ppid = os_read_int32(addr, 32)
+        name = readZeroTerminatedString(addr + 44, 260)
+
+        when len(name) > 0 {
+            push(procs, {
+                "pid": pid,
+                "ppid": ppid,
+                "threads": threads,
+                "name": name
+            })
+            count = count + 1
+        }
+        ok = os_call(fnNext, "int", h, addr)
+    }
+
+    os_call(fnClose, "int", h)
+    give procs
+}
+
+export task findProcess(nameQuery) {
+    all = processes()
+    matches = []
+    q = lower(nameQuery)
+    get p in all {
+        when contains(lower(p["name"]), q) {
+            push(matches, p)
+        }
+    }
+    give matches
+}
+
+export task isProcessRunning(nameQuery) {
+    m = findProcess(nameQuery)
+    give len(m) > 0
+}
+
+export task kill(pid) {
+    fnOpen = __SysFFI["OpenProcess"]
+    fnTerm = __SysFFI["TerminateProcess"]
+    fnClose = __SysFFI["CloseHandle"]
+
+    # PROCESS_TERMINATE = 0x0001
+    hProc = os_call(fnOpen, "ptr", 1, 0, pid)
+    when hProc == 0 or hProc == -1 {
+        system("taskkill /F /PID " + str(pid) + " > nul 2>&1")
+        give true
+    }
+
+    res = os_call(fnTerm, "int", hProc, 1)
+    os_call(fnClose, "int", hProc)
+    give res != 0
+}

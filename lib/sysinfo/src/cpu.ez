@@ -1,0 +1,48 @@
+# ============================================================================
+# lib/sysinfo/src/cpu.ez -- CPU Usage & Cores
+# ============================================================================
+
+use "ffi.ez"
+
+export task cpuCores() {
+    fn = __SysFFI["GetSystemInfo"]
+    when fn == nil or fn == 0 { give 1 }
+    buf = buffer(48)
+    addr = os_buffer_addr(buf)
+    os_call(fn, "void", addr)
+    cores = os_read_int32(addr, 32)
+    when cores <= 0 { cores = 1 }
+    give cores
+}
+
+export task cpuPercent(sampleMs = 100) {
+    fn = __SysFFI["GetSystemTimes"]
+    when fn == nil or fn == 0 { give 0.0 }
+
+    b1 = buffer(24)
+    addr1 = os_buffer_addr(b1)
+    os_call(fn, "int", addr1, addr1 + 8, addr1 + 16)
+    idle1 = os_read_int64(addr1, 0)
+    kern1 = os_read_int64(addr1, 8)
+    user1 = os_read_int64(addr1, 16)
+
+    stop(sampleMs)
+
+    b2 = buffer(24)
+    addr2 = os_buffer_addr(b2)
+    os_call(fn, "int", addr2, addr2 + 8, addr2 + 16)
+    idle2 = os_read_int64(addr2, 0)
+    kern2 = os_read_int64(addr2, 8)
+    user2 = os_read_int64(addr2, 16)
+
+    idleDiff = idle2 - idle1
+    kernDiff = kern2 - kern1
+    userDiff = user2 - user1
+    totalSys = kernDiff + userDiff
+
+    when totalSys <= 0 { give 0.0 }
+    percent = ((totalSys - idleDiff) * 100.0) / totalSys
+    when percent < 0.0 { percent = 0.0 }
+    when percent > 100.0 { percent = 100.0 }
+    give percent
+}

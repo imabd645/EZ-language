@@ -1,0 +1,79 @@
+# ============================================================================
+# lib/sysinfo/src/disk.ez -- Storage and Drive Space
+# ============================================================================
+
+use "ffi.ez"
+
+export task disk(drive = "C:") {
+    fn = __SysFFI["GetDiskFreeSpaceExA"]
+    when fn == nil or fn == 0 {
+        give {
+            "drive": drive,
+            "totalGb": 0,
+            "freeGb": 0,
+            "usedGb": 0,
+            "usedPercent": 0
+        }
+    }
+
+    # Format drive string like "C:\\\0"
+    drvStr = drive
+    when not contains(drvStr, "\\") {
+        drvStr = drvStr + "\\"
+    }
+    drvStr = drvStr + "\0"
+
+    drvBuf = buffer(drvStr)
+    drvAddr = os_buffer_addr(drvBuf)
+
+    diskBuf = buffer(24)
+    diskAddr = os_buffer_addr(diskBuf)
+
+    res = os_call(fn, "int", drvAddr, diskAddr, diskAddr + 8, diskAddr + 16)
+    when res == 0 {
+        give {
+            "drive": drive,
+            "totalGb": 0,
+            "freeGb": 0,
+            "usedGb": 0,
+            "usedPercent": 0
+        }
+    }
+
+    freeCaller = os_read_int64(diskAddr, 0)
+    totalBytes = os_read_int64(diskAddr, 8)
+    totalFree = os_read_int64(diskAddr, 16)
+    usedBytes = totalBytes - totalFree
+
+    gb = 1024.0 * 1024.0 * 1024.0
+    totalGb = round(totalBytes / gb, 2)
+    freeGb = round(totalFree / gb, 2)
+    usedGb = round(usedBytes / gb, 2)
+    usedPercent = 0.0
+    when totalBytes > 0 {
+        usedPercent = round((usedBytes * 100.0) / totalBytes, 1)
+    }
+
+    give {
+        "drive": drive,
+        "totalGb": totalGb,
+        "freeGb": freeGb,
+        "usedGb": usedGb,
+        "usedPercent": usedPercent
+    }
+}
+
+export task diskFreeGb(drive = "C:") {
+    d = disk(drive)
+    give d["freeGb"]
+}
+
+export task diskTotalGb(drive = "C:") {
+    d = disk(drive)
+    give d["totalGb"]
+}
+
+export task diskUsedGb(drive = "C:") {
+    d = disk(drive)
+    give d["usedGb"]
+}

@@ -1,0 +1,32 @@
+# ============================================================================
+# lib/sysinfo/src/ffi.ez -- Windows Win32 FFI Bindings
+# ============================================================================
+
+__k32 = os_load_lib("Kernel32.dll")
+__adv = os_load_lib("Advapi32.dll")
+
+export __SysFFI = {
+    "GetTickCount64":           os_get_func(__k32, "GetTickCount64"),
+    "GlobalMemoryStatusEx":     os_get_func(__k32, "GlobalMemoryStatusEx"),
+    "GetSystemInfo":            os_get_func(__k32, "GetSystemInfo"),
+    "GetSystemTimes":           os_get_func(__k32, "GetSystemTimes"),
+    "GetDiskFreeSpaceExA":      os_get_func(__k32, "GetDiskFreeSpaceExA"),
+    "GetSystemPowerStatus":     os_get_func(__k32, "GetSystemPowerStatus"),
+    "GetComputerNameA":         os_get_func(__k32, "GetComputerNameA"),
+    "CreateToolhelp32Snapshot": os_get_func(__k32, "CreateToolhelp32Snapshot"),
+    "Process32First":           os_get_func(__k32, "Process32First"),
+    "Process32Next":            os_get_func(__k32, "Process32Next"),
+    "CloseHandle":              os_get_func(__k32, "CloseHandle"),
+    "OpenProcess":              os_get_func(__k32, "OpenProcess"),
+    "TerminateProcess":         os_get_func(__k32, "TerminateProcess")
+}
+
+export task readZeroTerminatedString(addr, maxLen = 260) {
+    s = ""
+    repeat i = 0 to maxLen - 1 {
+        b = os_read_byte(addr, i)
+        when b == 0 { escape }
+        s = s + chr(b)
+    }
+    give s
+}

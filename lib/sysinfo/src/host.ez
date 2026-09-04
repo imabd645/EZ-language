@@ -1,0 +1,126 @@
+# ============================================================================
+# lib/sysinfo/src/host.ez -- Hostname, Username, Uptime, Battery & Power Status
+# ============================================================================
+
+use "ffi.ez"
+use "cpu.ez"
+use "memory.ez"
+use "disk.ez"
+
+__adv = os_load_lib("Advapi32.dll")
+__getUserName = os_get_func(__adv, "GetUserNameA")
+
+export task uptimeMs() {
+    fn = __SysFFI["GetTickCount64"]
+    when fn == nil or fn == 0 { give 0 }
+    give os_call(fn, "u64")
+}
+
+export task uptimeHours() {
+    give round(uptimeMs() / 3600000.0, 2)
+}
+
+export task uptimeHuman() {
+    totalSec = floor(uptimeMs() / 1000.0)
+    days = floor(totalSec / 86400.0)
+    rem1 = totalSec % 86400
+    hours = floor(rem1 / 3600.0)
+    rem2 = rem1 % 3600
+    mins = floor(rem2 / 60.0)
+    secs = rem2 % 60
+
+    parts = []
+    when days > 0 { push(parts, str(days) + "d") }
+    when hours > 0 or days > 0 { push(parts, str(hours) + "h") }
+    push(parts, str(mins) + "m")
+    push(parts, str(secs) + "s")
+
+    give join(parts, " ")
+}
+
+export task hostname() {
+    fn = __SysFFI["GetComputerNameA"]
+    when fn == nil or fn == 0 { give "localhost" }
+    nameBuf = buffer(256)
+    nameAddr = os_buffer_addr(nameBuf)
+    sizeBuf = buffer(4)
+    sizeAddr = os_buffer_addr(sizeBuf)
+    os_write_int32(sizeAddr, 0, 256)
+    os_call(fn, "int", nameAddr, sizeAddr)
+    lenStr = os_read_int32(sizeAddr, 0)
+    compName = ""
+    repeat i = 0 to lenStr - 1 {
+        ch = os_read_byte(nameAddr, i)
+        compName = compName + chr(ch)
+    }
+    give compName
+}
+
+export task username() {
+    when __getUserName == nil or __getUserName == 0 { give "user" }
+    nb = buffer(256)
+    na = os_buffer_addr(nb)
+    sb = buffer(4)
+    sa = os_buffer_addr(sb)
+    os_write_int32(sa, 0, 256)
+    res = os_call(__getUserName, "int", na, sa)
+    when res == 0 { give "user" }
+    l = os_read_int32(sa, 0)
+    u = ""
+    repeat i = 0 to l - 2 {
+        u = u + chr(os_read_byte(na, i))
+    }
+    give u
+}
+
+export task platform() {
+    give "windows"
+}
+
+export task battery() {
+    fn = __SysFFI["GetSystemPowerStatus"]
+    when fn == nil or fn == 0 {
+        give {
+            "percent": 100,
+            "powerSource": "AC Power",
+            "isCharging": false
+        }
+    }
+
+    pBuf = buffer(12)
+    pAddr = os_buffer_addr(pBuf)
+    os_call(fn, "int", pAddr)
+    ac = os_read_byte(pAddr, 0)
+    flag = os_read_byte(pAddr, 1)
+    percent = os_read_byte(pAddr, 2)
+
+    powerSource = "On Battery"
+    when ac == 1 { powerSource = "AC Power" }
+    when ac == 255 { powerSource = "Unknown" }
+
+    isCharging = (flag % 16) >= 8
+
+    give {
+        "percent": percent,
+        "powerSource": powerSource,
+        "isCharging": isCharging
+    }
+}
+
+export task summary() {
+    mem = memory()
+    d = disk("C:")
+    give {
+        "hostname": hostname(),
+        "username": username(),
+        "platform": platform(),
+        "uptime": uptimeHuman(),
+        "cpu": {
+            "cores": cpuCores(),
+            "percent": cpuPercent(100)
+        },
+        "memory": mem,
+        "disk": d,
+        "battery": battery()
+    }
+}

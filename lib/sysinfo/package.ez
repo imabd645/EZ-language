@@ -1,0 +1,9 @@
+{
+  "name": "sysinfo",
+  "version": "1.0.0",
+  "description": "Hardware and system metrics monitor for EZ: CPU, RAM, Disk, Process enumeration, Uptime, and Battery status",
+  "author": "imabd645",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/ezlib",
+  "dependencies": {}
+}

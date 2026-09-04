@@ -1,0 +1,104 @@
+# ============================================================================
+# Test Suite: 'sysinfo' Package
+# ============================================================================
+
+use "sysinfo" as sys
+
+passed = 0
+failed = 0
+
+task checkTruthy(label, val) {
+    when val {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label + " (expected truthy, got " + str(val) + ")"
+        failed = failed + 1
+    }
+}
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+out "=== SysInfo Package Test Suite ==="
+
+# --- 1. CPU Metrics ---
+out "--- 1. CPU Metrics ---"
+cores = sys.cpuCores()
+checkTruthy("CPU core count is >= 1 (got " + str(cores) + ")", cores >= 1)
+
+cpu = sys.cpuPercent(100)
+checkTruthy("CPU usage is a valid percent: " + str(cpu) + "%", cpu >= 0.0 and cpu <= 100.0)
+
+# --- 2. Memory (RAM) Metrics ---
+out "--- 2. Memory (RAM) Metrics ---"
+mem = sys.memory()
+checkTruthy("Total RAM > 0 (" + str(mem["totalMb"]) + " MB)", mem["totalMb"] > 0)
+checkTruthy("Available RAM > 0 (" + str(mem["availMb"]) + " MB)", mem["availMb"] > 0)
+checkTruthy("Used RAM > 0 (" + str(mem["usedMb"]) + " MB)", mem["usedMb"] > 0)
+checkTruthy("Memory Load percentage valid (" + str(mem["loadPercent"]) + "%)", mem["loadPercent"] >= 0 and mem["loadPercent"] <= 100)
+
+check("ramTotalMb matches memory()", sys.ramTotalMb(), mem["totalMb"])
+check("ramUsedMb matches memory()", sys.ramUsedMb(), mem["usedMb"])
+check("ramFreeMb matches memory()", sys.ramFreeMb(), mem["availMb"])
+check("ramLoadPercent matches memory()", sys.ramLoadPercent(), mem["loadPercent"])
+
+# --- 3. Disk Metrics ---
+out "--- 3. Storage & Disk Metrics ---"
+d = sys.disk("C:")
+checkTruthy("Disk Total > 0 (" + str(d["totalGb"]) + " GB)", d["totalGb"] > 0)
+checkTruthy("Disk Free > 0 (" + str(d["freeGb"]) + " GB)", d["freeGb"] > 0)
+checkTruthy("Disk Used > 0 (" + str(d["usedGb"]) + " GB)", d["usedGb"] > 0)
+check("diskTotalGb matches disk()", sys.diskTotalGb("C:"), d["totalGb"])
+check("diskFreeGb matches disk()", sys.diskFreeGb("C:"), d["freeGb"])
+
+# --- 4. Host, Uptime & Battery ---
+out "--- 4. Host & Power Metrics ---"
+hName = sys.hostname()
+checkTruthy("Hostname is not empty (" + hName + ")", len(hName) > 0)
+
+uName = sys.username()
+checkTruthy("Username is not empty (" + uName + ")", len(uName) > 0)
+
+check("Platform is windows", sys.platform(), "windows")
+
+upH = sys.uptimeHours()
+checkTruthy("Uptime hours is positive (" + str(upH) + " hrs)", upH > 0)
+
+upHuman = sys.uptimeHuman()
+checkTruthy("Uptime human string formatted (" + upHuman + ")", len(upHuman) > 0)
+
+bat = sys.battery()
+checkTruthy("Battery percent returned (" + str(bat["percent"]) + "%)", bat["percent"] >= 0)
+checkTruthy("Power source returned (" + bat["powerSource"] + ")", len(bat["powerSource"]) > 0)
+
+summ = sys.summary()
+check("Summary contains hostname", summ["hostname"], hName)
+check("Summary contains platform", summ["platform"], "windows")
+
+# --- 5. Process Enumeration ---
+out "--- 5. Process Enumeration ---"
+procs = sys.processes(20)
+checkTruthy("Listed at least 5 processes (got " + str(len(procs)) + ")", len(procs) >= 5)
+
+firstProc = procs[0]
+checkTruthy("Process has valid PID: " + str(firstProc["pid"]), firstProc["pid"] >= 0)
+checkTruthy("Process has name: " + firstProc["name"], len(firstProc["name"]) > 0)
+
+# Check if current interpreter is found
+hasEz = sys.isProcessRunning("ez")
+checkTruthy("sys.isProcessRunning('ez') finds ez executable", hasEz)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

@@ -43,8 +43,10 @@ struct PermissionReport {
 };
 
 class PermissionScanner {
+    friend struct PermissionReport;
 public:
     static PermissionReport scan(const std::string& mainScriptPath);
+    static std::string extractHostFromUrl(const std::string& url);
 
 private:
     static void scanFile(const std::string& filePath, PermissionReport& report);
@@ -53,7 +55,6 @@ private:
     static void scanExpression(ExprPtr expr, const std::string& currentFile, PermissionReport& report);
 
     static std::string extractStringLiteral(ExprPtr expr);
-    static std::string extractHostFromUrl(const std::string& url);
     static std::string resolveModulePath(const std::string& currentFile, const std::string& importPath, std::string* outPkgDir = nullptr);
     static void checkPackageManifest(const std::string& dirPath, PermissionReport& report);
 };

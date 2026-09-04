@@ -7,6 +7,7 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <cstdint>
 
 namespace MiniJson {
     enum Type { ALL_NULL, OBJECT, ARRAY, STRING, NUMBER, BOOLEAN };

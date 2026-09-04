@@ -1,6 +1,0 @@
-{
-  "name": "auto",
-  "version": "1.0.1",
-  "description": "Desktop automation library for keyboard and mouse control via Win32 API.",
-  "main": "main.ez"
-}

@@ -20,6 +20,7 @@ Welcome to the official EZ Language Documentation. The documentation is organize
 | **[07. Standard Library & Packages](user/07_Standard_Library.md)** | Core built-in functions and the `ezlib` ecosystem. |
 | **[08. Native C / Win32 FFI](user/08_Native_FFI.md)** | Calling C DLLs, pointer manipulation, native memory buffers, and callbacks. |
 | **[09. Native GUI Development](user/09_GUI_Development.md)** | Building modern Windows desktop applications with native GUI controls. |
+| **[10. Capability Security](user/10_Capability_Security.md)** | Safe execution sandbox, granular permissions, static analyzer, and manifests. |
 
 ---
 

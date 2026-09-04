@@ -1,4 +1,5 @@
 #include "FFI_Internal.h"
+#include "runtime/SecurityPolicy.h"
 
 // ============================================================================
 // Loading libraries and calling into them.
@@ -136,11 +137,13 @@ void registerFFICall(RuntimeContext& interp) {
     interp.defineGlobal("os_load_lib", Value::makeNativeFunction("os_load_lib", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) return Value();
+            std::string libName = args[0].asString();
+            if (!SecurityPolicy::checkFFI(interp, libName)) return Value();
 #ifdef _WIN32
-            HMODULE handle = LoadLibraryA(args[0].asString().c_str());
+            HMODULE handle = LoadLibraryA(libName.c_str());
             return Value((long long)(reinterpret_cast<uintptr_t>(handle)));
 #else
-            void* handle = dlopen(args[0].asString().c_str(), RTLD_LAZY);
+            void* handle = dlopen(libName.c_str(), RTLD_LAZY);
             return Value((long long)(reinterpret_cast<uintptr_t>(handle)));
 #endif
         }));

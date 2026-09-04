@@ -1,5 +1,6 @@
 #include "runtime/objects/EZObjects.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/SecurityPolicy.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/EZFuture.h"
 #include "builtins/Builtins.h"
@@ -69,7 +70,11 @@ void registerCoreBuiltins(RuntimeContext& interp) {
                 interp.runtimeError("system() expects a command string", 0, "");
                 return Value();
             }
-            int res = std::system(args[0].asString().c_str());
+            std::string cmd = args[0].asString();
+            if (!SecurityPolicy::checkProcess(interp, cmd)) {
+                return Value();
+            }
+            int res = std::system(cmd.c_str());
             return Value(static_cast<long long>(res));
         }));
 }

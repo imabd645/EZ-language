@@ -146,6 +146,7 @@ set(SOURCES
     src/parser/ParserExpr.cpp
     src/parser/ParserStmt.cpp
     src/runtime/Runtime.cpp
+    src/runtime/SecurityPolicy.cpp
     src/typechecker/TypeChecker.cpp
     src/typechecker/TypeCheckerExpr.cpp
     src/typechecker/TypeCheckerStmt.cpp

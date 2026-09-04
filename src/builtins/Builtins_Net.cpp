@@ -1,6 +1,7 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/SecurityPolicy.h"
 
 #include <curl/curl.h>
 #include <string>
@@ -224,6 +225,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty()) { interp.throwException("TypeError", "http_get() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
+            if (!SecurityPolicy::checkNet(interp, url)) return Value();
             CURL* curl = get_curl_handle();
             if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
             std::string res;
@@ -264,6 +266,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.size() < 2) { interp.throwException("TypeError", "http_post() expects URL and body", 0, ""); return Value(); }
             std::string url = args[0].toString();
+            if (!SecurityPolicy::checkNet(interp, url)) return Value();
             std::string body = args[1].toString();
             CURL* curl = get_curl_handle();
             if (!curl) { interp.throwException("NetworkError", "CURL init failed", 0, ""); return Value(); }
@@ -314,6 +317,7 @@ void registerNetBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty()) { interp.throwException("TypeError", "fetch() expects URL", 0, ""); return Value(); }
             std::string url = args[0].toString();
+            if (!SecurityPolicy::checkNet(interp, url)) return Value();
             Value options;
             if (args.size() > 1) options = args[1];
             

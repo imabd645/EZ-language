@@ -37,6 +37,7 @@
 #include <sys/wait.h>
 #endif
 #include <cstdint>
+#include "runtime/SecurityPolicy.h"
 
 namespace fs = std::filesystem;
 bool g_disableContracts = false;
@@ -47,6 +48,58 @@ bool g_noWarnings = false;
 // things a script's own output never would (passwords, tokens, request
 // bodies), not just because the trace is noisy.
 bool g_debugMode = false;
+
+static bool parseSecurityOption(const std::string& arg) {
+    if (arg == "--safe" || arg == "-safe") {
+        SecurityPolicy::safeMode = true;
+        return true;
+    }
+    if (arg == "--allow-all" || arg == "-A") {
+        SecurityPolicy::allowAll = true;
+        return true;
+    }
+    if (arg == "--allow-ffi") {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowFFI = true;
+        return true;
+    }
+    if (arg == "--allow-process" || arg == "--allow-run") {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowProcess = true;
+        return true;
+    }
+    if (arg == "--allow-net") {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowNet = true;
+        return true;
+    }
+    if (arg.rfind("--allow-net=", 0) == 0) {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowedNetHosts.push_back(arg.substr(12));
+        return true;
+    }
+    if (arg == "--allow-read") {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowRead = true;
+        return true;
+    }
+    if (arg.rfind("--allow-read=", 0) == 0) {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowedReadPaths.push_back(arg.substr(13));
+        return true;
+    }
+    if (arg == "--allow-write") {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowWrite = true;
+        return true;
+    }
+    if (arg.rfind("--allow-write=", 0) == 0) {
+        SecurityPolicy::safeMode = true;
+        SecurityPolicy::allowedWritePaths.push_back(arg.substr(14));
+        return true;
+    }
+    return false;
+}
 
 /**
  * Read a line without echoing it, so a password never appears on screen or in
@@ -698,12 +751,20 @@ void showHelp() {
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
+    std::cout << "  --safe            Run in capability-based safe execution sandbox" << std::endl;
+    std::cout << "  --allow-all, -A   Grant all permissions (bypasses --safe restrictions)" << std::endl;
+    std::cout << "  --allow-read[=p]  Grant file read permission (optionally restricted to path)" << std::endl;
+    std::cout << "  --allow-write[=p] Grant file write permission (optionally restricted to path)" << std::endl;
+    std::cout << "  --allow-net[=h]   Grant network access (optionally restricted to host)" << std::endl;
+    std::cout << "  --allow-ffi       Grant native FFI access" << std::endl;
+    std::cout << "  --allow-process   Grant process execution (system/exec) access" << std::endl;
     std::cout << "  --trace           Trace bytecode execution" << std::endl;
     std::cout << "  --debug           Show local variables in an uncaught exception's traceback" << std::endl;
     std::cout << "  --no-typecheck    Disable the static type checker" << std::endl;
     std::cout << "  --no-contracts    Disable contract enforcement" << std::endl;
     std::cout << "  --no-warnings     Disable compiler and typechecker warnings" << std::endl;
     std::cout << "  -W                Short alias for --no-warnings" << std::endl;
+    std::cout << std::endl;
     std::cout << "EZ Language Syntax:" << std::endl;
     std::cout << "  out \"text\"        Print to console" << std::endl;
     std::cout << "  in                Read input from user" << std::endl;
@@ -832,6 +893,8 @@ int cli_main(int argc, char* argv[]) {
                 g_noWarnings = true;
                 BytecodeCompiler::suppressWarnings = true;
                 argStart++;
+            } else if (parseSecurityOption(a)) {
+                argStart++;
             } else {
                 break;
             }
@@ -881,6 +944,8 @@ int cli_main(int argc, char* argv[]) {
                 } else if (arg == "--no-warnings" || arg == "-W" || arg == "-no-warnings") {
                     g_noWarnings = true;
                     BytecodeCompiler::suppressWarnings = true;
+                } else if (parseSecurityOption(arg)) {
+                    // Security option processed
                 } else {
                     g_scriptArgs.push_back(arg);
                 }
@@ -1124,6 +1189,8 @@ int cli_main(int argc, char* argv[]) {
                 } else if (arg == "--no-warnings" || arg == "-W" || arg == "-no-warnings") {
                     g_noWarnings = true;
                     BytecodeCompiler::suppressWarnings = true;
+                } else if (parseSecurityOption(arg)) {
+                    // Security option processed
                 } else {
                     g_scriptArgs.push_back(arg);
                 }

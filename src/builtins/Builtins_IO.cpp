@@ -1,6 +1,7 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/SecurityPolicy.h"
 #include "gc/CycleCollector.h"
 #include <iostream>
 #include <fstream>
@@ -143,14 +144,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "readFile() expects string path", 0, ""); return Value(); }
             std::string path = args[0].asString();
-            // std::ios::binary: without it Windows opens in TEXT mode and
-            // collapses every CRLF to LF on the way in, which silently corrupts
-            // every non-text file. The matching writeFile() expanded LF back to
-            // CRLF, so a read/write round-trip of a PNG grew by one byte per
-            // 0x0A in the image and produced a file no decoder would accept.
-            // Whole-file I/O must be byte-exact; the line-oriented calls below
-            // (readLines/writeLine/appendLine) stay in text mode, where newline
-            // translation is exactly what is wanted.
+            if (!SecurityPolicy::checkRead(interp, path)) return Value();
             std::ifstream file(path, std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "'", 0, ""); return Value(); }
             std::stringstream buffer;
@@ -164,10 +158,8 @@ void registerIOBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.throwException("TypeError", "writeFile() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::string content = args[1].asString();
+            if (!SecurityPolicy::checkWrite(interp, path)) return Value();
             
-            // Binary, to match readFile() -- see the note there. In text mode
-            // every LF in `content` was written as CRLF, so saving an uploaded
-            // image corrupted it.
             std::ofstream file(path, std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for writing", 0, ""); return Value(); }
             file.write(content.data(), content.size());
@@ -180,6 +172,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.throwException("TypeError", "appendFile() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::string content = args[1].asString();
+            if (!SecurityPolicy::checkWrite(interp, path)) return Value();
             
             std::ofstream file(path, std::ios::app | std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for appending", 0, ""); return Value(); }
@@ -191,6 +184,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isString()) { interp.throwException("TypeError", "readLines() expects string path", 0, ""); return Value(); }
             std::string path = args[0].asString();
+            if (!SecurityPolicy::checkRead(interp, path)) return Value();
             std::ifstream file(path);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "'", 0, ""); return Value(); }
             std::vector<Value> lines;
@@ -207,6 +201,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.throwException("TypeError", "writeLine() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::string content = args[1].asString();
+            if (!SecurityPolicy::checkWrite(interp, path)) return Value();
             
             std::ofstream file(path);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for writing", 0, ""); return Value(); }
@@ -220,6 +215,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
             if (!args[1].isString()) { interp.throwException("TypeError", "appendLine() expects string content", 0, ""); return Value(); }
             std::string path = args[0].asString();
             std::string content = args[1].asString();
+            if (!SecurityPolicy::checkWrite(interp, path)) return Value();
             
             std::ofstream file(path, std::ios::app);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for appending", 0, ""); return Value(); }
@@ -255,6 +251,12 @@ void registerIOBuiltins(RuntimeContext& interp) {
 
             std::string path = args[1].asString();
             std::string mode = args[2].asString();
+
+            if (mode == "r" || mode == "rb") {
+                if (!SecurityPolicy::checkRead(interp, path)) return Value();
+            } else {
+                if (!SecurityPolicy::checkWrite(interp, path)) return Value();
+            }
 
             std::ios::openmode flags = static_cast<std::ios::openmode>(0);
             if (mode == "r") {

@@ -170,7 +170,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
             // image corrupted it.
             std::ofstream file(path, std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for writing", 0, ""); return Value(); }
-            file << content;
+            file.write(content.data(), content.size());
             return Value(true);
         }));
 
@@ -183,7 +183,7 @@ void registerIOBuiltins(RuntimeContext& interp) {
             
             std::ofstream file(path, std::ios::app | std::ios::binary);
             if (!file.is_open()) { interp.throwException("FileNotFoundError", "Could not open file '" + path + "' for appending", 0, ""); return Value(); }
-            file << content;
+            file.write(content.data(), content.size());
             return Value(true);
         }));
 

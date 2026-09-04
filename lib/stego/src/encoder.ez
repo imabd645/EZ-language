@@ -1,0 +1,232 @@
+# ============================================================================
+# lib/stego/src/encoder.ez -- LSB Steganography Encoder & Decoder
+# ============================================================================
+
+use "bmp.ez"
+use "crypto.ez"
+
+HEADER_SIZE = 11 # 4 magic ("EZST") + 4 length + 1 flags + 2 checksum
+
+export task capacity(bmpPath) {
+    imgData = readFile(bmpPath)
+    when len(imgData) < 54 {
+        throw "Invalid BMP file: file too small"
+    }
+
+    imgBuf = buffer(imgData)
+    imgAddr = os_buffer_addr(imgBuf)
+
+    when os_read_byte(imgAddr, 0) != 0x42 or os_read_byte(imgAddr, 1) != 0x4D {
+        throw "Invalid BMP file: missing 'BM' header"
+    }
+
+    width = os_read_int32(imgAddr, 18)
+    height = os_read_int32(imgAddr, 22)
+    bpp = os_read_byte(imgAddr, 28)
+    pixelOffset = os_read_int32(imgAddr, 10)
+
+    totalBytes = len(imgData)
+    pixelBytes = totalBytes - pixelOffset
+    maxSecretBytes = floor(pixelBytes / 8) - HEADER_SIZE
+    when maxSecretBytes < 0 { maxSecretBytes = 0 }
+
+    give {
+        "width": width,
+        "height": height,
+        "bpp": bpp,
+        "pixelBytes": pixelBytes,
+        "maxSecretBytes": maxSecretBytes
+    }
+}
+
+export task hasSecret(bmpPath) {
+    try {
+        imgData = readFile(bmpPath)
+        when len(imgData) < 54 + (HEADER_SIZE * 8) { give false }
+
+        imgBuf = buffer(imgData)
+        imgAddr = os_buffer_addr(imgBuf)
+        pixelOffset = os_read_int32(imgAddr, 10)
+
+        magic = ""
+        bitIdx = 0
+        repeat byteIdx = 0 to 3 {
+            val = 0
+            repeat b = 0 to 7 {
+                pxVal = os_read_byte(imgAddr, pixelOffset + bitIdx)
+                bit = pxVal & 1
+                val = (val << 1) | bit
+                bitIdx = bitIdx + 1
+            }
+            magic = magic + chr(val)
+        }
+        give (magic == "EZST")
+    } catch e {
+        give false
+    }
+}
+
+export task encode(inputBmpPath, outputBmpPath, secretText, password = nil) {
+    imgData = readFile(inputBmpPath)
+    when len(imgData) < 54 {
+        throw "Invalid BMP file: too small"
+    }
+
+    imgBuf = buffer(imgData)
+    imgAddr = os_buffer_addr(imgBuf)
+
+    when os_read_byte(imgAddr, 0) != 0x42 or os_read_byte(imgAddr, 1) != 0x4D {
+        throw "Invalid BMP file: missing BM header"
+    }
+
+    pixelOffset = os_read_int32(imgAddr, 10)
+    totalBytes = len(imgData)
+    pixelBytes = totalBytes - pixelOffset
+
+    secretLen = len(secretText)
+    isEnc = (password != nil and len(password) > 0)
+    checkSum = 0
+    when isEnc { checkSum = passwordChecksum(password) }
+
+    totalSecretBytes = HEADER_SIZE + secretLen
+    totalBitsNeeded = totalSecretBytes * 8
+
+    when totalBitsNeeded > pixelBytes {
+        throw "Image too small: capacity is " + str(floor(pixelBytes / 8) - HEADER_SIZE) + " bytes, but secret is " + str(secretLen) + " bytes"
+    }
+
+    payBuf = buffer(totalSecretBytes)
+    payAddr = os_buffer_addr(payBuf)
+
+    # 1. Magic "EZST"
+    os_write_byte(payAddr, 0, 0x45)
+    os_write_byte(payAddr, 1, 0x5A)
+    os_write_byte(payAddr, 2, 0x53)
+    os_write_byte(payAddr, 3, 0x54)
+
+    # 2. Length (u32 little endian)
+    os_write_int32(payAddr, 4, secretLen)
+
+    # 3. Flags (0 = plaintext, 1 = encrypted)
+    when isEnc {
+        os_write_byte(payAddr, 8, 1)
+    } other {
+        os_write_byte(payAddr, 8, 0)
+    }
+
+    # 4. Checksum (u16 little endian)
+    os_write_byte(payAddr, 9, checkSum & 255)
+    os_write_byte(payAddr, 10, (checkSum >> 8) & 255)
+
+    # 5. Payload Data
+    secBuf = buffer(secretText)
+    secAddr = os_buffer_addr(secBuf)
+    passLen = 0
+    when isEnc { passLen = len(password) }
+
+    repeat i = 0 to secretLen - 1 {
+        bVal = os_read_byte(secAddr, i)
+        when isEnc {
+            keyCh = ord(substr(password, i % passLen, 1))
+            bVal = bVal ^ keyCh
+        }
+        os_write_byte(payAddr, HEADER_SIZE + i, bVal)
+    }
+
+    # Embed bits into pixel bytes
+    bitIdx = 0
+    repeat byteIdx = 0 to totalSecretBytes - 1 {
+        curByte = os_read_byte(payAddr, byteIdx)
+        repeat b = 0 to 7 {
+            bit = (curByte >> (7 - b)) & 1
+            targetAddr = pixelOffset + bitIdx
+            origPixelVal = os_read_byte(imgAddr, targetAddr)
+            newPixelVal = (origPixelVal & 254) | bit
+            os_write_byte(imgAddr, targetAddr, newPixelVal)
+            bitIdx = bitIdx + 1
+        }
+    }
+
+    writeFile(outputBmpPath, buf_to_str(imgBuf))
+    give true
+}
+
+export task decode(bmpPath, password = nil) {
+    imgData = readFile(bmpPath)
+    when len(imgData) < 54 + (HEADER_SIZE * 8) {
+        throw "Invalid BMP file or file too small for steganography"
+    }
+
+    imgBuf = buffer(imgData)
+    imgAddr = os_buffer_addr(imgBuf)
+    pixelOffset = os_read_int32(imgAddr, 10)
+
+    # Read Header (HEADER_SIZE bytes = 88 bits)
+    headerBytes = []
+    bitIdx = 0
+    repeat byteIdx = 0 to HEADER_SIZE - 1 {
+        val = 0
+        repeat b = 0 to 7 {
+            pxVal = os_read_byte(imgAddr, pixelOffset + bitIdx)
+            bit = pxVal & 1
+            val = (val << 1) | bit
+            bitIdx = bitIdx + 1
+        }
+        push(headerBytes, val)
+    }
+
+    # Verify Magic "EZST"
+    when headerBytes[0] != 0x45 or headerBytes[1] != 0x5A or headerBytes[2] != 0x53 or headerBytes[3] != 0x54 {
+        throw "No hidden steganography data found in this image (missing EZST magic header)"
+    }
+
+    secretLen = headerBytes[4] | (headerBytes[5] << 8) | (headerBytes[6] << 16) | (headerBytes[7] << 24)
+    isEnc = (headerBytes[8] == 1)
+    storedChecksum = headerBytes[9] | (headerBytes[10] << 8)
+
+    when isEnc {
+        when password == nil or len(password) == 0 {
+            throw "This hidden message is encrypted with a password. Please provide a password."
+        }
+        actualChecksum = passwordChecksum(password)
+        when actualChecksum != storedChecksum {
+            throw "Incorrect password: password checksum verification failed."
+        }
+    }
+
+    passLen = 0
+    when isEnc { passLen = len(password) }
+
+    outBuf = buffer(secretLen)
+    outAddr = os_buffer_addr(outBuf)
+
+    repeat byteIdx = 0 to secretLen - 1 {
+        val = 0
+        repeat b = 0 to 7 {
+            pxVal = os_read_byte(imgAddr, pixelOffset + bitIdx)
+            bit = pxVal & 1
+            val = (val << 1) | bit
+            bitIdx = bitIdx + 1
+        }
+
+        when isEnc {
+            keyCh = ord(substr(password, byteIdx % passLen, 1))
+            val = val ^ keyCh
+        }
+
+        os_write_byte(outAddr, byteIdx, val)
+    }
+
+    give buf_to_str(outBuf)
+}
+
+export task encodeFile(inputBmpPath, outputBmpPath, secretFilePath, password = nil) {
+    fileData = readFile(secretFilePath)
+    give encode(inputBmpPath, outputBmpPath, fileData, password)
+}
+
+export task decodeFile(bmpPath, outputSecretFilePath, password = nil) {
+    extractedData = decode(bmpPath, password)
+    writeFile(outputSecretFilePath, extractedData)
+    give true
+}

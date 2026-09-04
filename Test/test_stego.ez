@@ -1,0 +1,86 @@
+# ============================================================================
+# Test Suite: 'stego' Package (Image Steganography)
+# ============================================================================
+
+use "stego" as stego
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task checkTruthy(label, val) {
+    when val {
+        out "  PASS: " + label
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label + " (expected truthy, got " + str(val) + ")"
+        failed = failed + 1
+    }
+}
+
+out "=== Stego (Image Steganography) Test Suite ==="
+
+# --- 1. Carrier Image Creation & Capacity ---
+out "--- 1. Carrier Creation & Capacity ---"
+stego.createCarrier("test_carrier.bmp", 120, 100, "#2E8B57") # 12,000 pixels = 36,000 color bytes
+checkTruthy("Carrier BMP file exists", len(readFile("test_carrier.bmp")) > 0)
+
+cap = stego.capacity("test_carrier.bmp")
+check("Carrier width is 120", cap["width"], 120)
+check("Carrier height is 100", cap["height"], 100)
+checkTruthy("Max secret capacity >= 4000 bytes (" + str(cap["maxSecretBytes"]) + ")", cap["maxSecretBytes"] >= 4000)
+check("Clean carrier hasSecret is false", stego.hasSecret("test_carrier.bmp"), false)
+
+# --- 2. Plaintext Stego Encode & Decode ---
+out "--- 2. Plaintext Hide & Reveal ---"
+secret1 = "Hello World! This is a secret message hidden inside BMP pixels."
+stego.encode("test_carrier.bmp", "test_secret_plain.bmp", secret1)
+
+check("Encoded image hasSecret is true", stego.hasSecret("test_secret_plain.bmp"), true)
+revealed1 = stego.decode("test_secret_plain.bmp")
+check("Extracted plaintext matches original", revealed1, secret1)
+
+# --- 3. Password Encrypted Stego ---
+out "--- 3. Password Encrypted Stego ---"
+secret2 = "Confidential financial statement: Q4 Revenue is $42,000,000"
+password = "super-secret-vault-key-2026"
+stego.encode("test_carrier.bmp", "test_secret_enc.bmp", secret2, password)
+
+revealed2 = stego.decode("test_secret_enc.bmp", password)
+check("Decrypted secret matches original", revealed2, secret2)
+
+# Verify wrong password failure
+wrongPassThrew = false
+try {
+    stego.decode("test_secret_enc.bmp", "wrongPassword123")
+} catch e {
+    wrongPassThrew = true
+}
+check("Decoding with wrong password throws error", wrongPassThrew, true)
+
+# --- 4. File Embedding & Extraction ---
+out "--- 4. File Embedding & Extraction ---"
+fileContent = "{\n  \"apiKey\": \"ez_prod_998811\",\n  \"admin\": true\n}"
+writeFile("secret_config.json", fileContent)
+
+stego.encodeFile("test_carrier.bmp", "test_file_stego.bmp", "secret_config.json", "filePass")
+stego.decodeFile("test_file_stego.bmp", "extracted_config.json", "filePass")
+
+extractedContent = readFile("extracted_config.json")
+check("Extracted file content matches original", extractedContent, fileContent)
+
+out ""
+out "=============================="
+out "Results: " + str(passed) + " passed, " + str(failed) + " failed"
+out "=============================="

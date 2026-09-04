@@ -1,0 +1,26 @@
+# ============================================================================
+# lib/stego/src/crypto.ez -- XOR Stream Cipher & Checksum
+# ============================================================================
+
+export task passwordChecksum(passStr) {
+    sum = 0
+    pLen = len(passStr)
+    repeat i = 0 to pLen - 1 {
+        c = ord(substr(passStr, i, 1))
+        sum = (sum * 31 + c) % 65535
+    }
+    give sum
+}
+
+export task applyCipher(dataBuf, length, passStr) {
+    pLen = len(passStr)
+    when pLen == 0 { give dataBuf }
+    addr = os_buffer_addr(dataBuf)
+
+    repeat i = 0 to length - 1 {
+        keyCh = ord(substr(passStr, i % pLen, 1))
+        bVal = os_read_byte(addr, i)
+        os_write_byte(addr, i, bVal ^ keyCh)
+    }
+    give dataBuf
+}

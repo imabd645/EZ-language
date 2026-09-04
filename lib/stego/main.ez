@@ -1,0 +1,16 @@
+# ============================================================================
+# stego -- Image Steganography for EZ
+# ============================================================================
+
+use "src/bmp.ez"
+use "src/crypto.ez"
+use "src/encoder.ez"
+
+export createCarrier
+export parseHexColor
+export capacity
+export hasSecret
+export encode
+export decode
+export encodeFile
+export decodeFile

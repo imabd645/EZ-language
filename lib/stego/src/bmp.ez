@@ -1,0 +1,94 @@
+# ============================================================================
+# lib/stego/src/bmp.ez -- BMP Image Utilities and Carrier Generator
+# ============================================================================
+
+task hexDigit(ch) {
+    c = ord(lower(ch))
+    when c >= 48 and c <= 57 { give c - 48 }
+    when c >= 97 and c <= 102 { give c - 87 }
+    give 0
+}
+
+task hexByte(s) {
+    when len(s) < 2 { give 0 }
+    give hexDigit(substr(s, 0, 1)) * 16 + hexDigit(substr(s, 1, 1))
+}
+
+export task parseHexColor(hexStr) {
+    s = hexStr
+    when len(s) > 0 and substr(s, 0, 1) == "#" {
+        s = substr(s, 1, len(s) - 1)
+    }
+    when len(s) == 3 {
+        c0 = substr(s, 0, 1)
+        c1 = substr(s, 1, 1)
+        c2 = substr(s, 2, 1)
+        s = c0 + c0 + c1 + c1 + c2 + c2
+    }
+    when len(s) != 6 {
+        give { "r": 70, "g": 130, "b": 180 }
+    }
+
+    give {
+        "r": hexByte(substr(s, 0, 2)),
+        "g": hexByte(substr(s, 2, 2)),
+        "b": hexByte(substr(s, 4, 2))
+    }
+}
+
+export task createCarrier(outputPath, width = 300, height = 200, color = "#4682B4") {
+    rgb = parseHexColor(color)
+    r = rgb["r"]
+    g = rgb["g"]
+    b = rgb["b"]
+
+    rowSize = floor((width * 3 + 3) / 4) * 4
+    imageSize = rowSize * height
+    fileSize = 54 + imageSize
+
+    buf = buffer(fileSize)
+    addr = os_buffer_addr(buf)
+
+    # 1. BMP Header (14 bytes)
+    os_write_byte(addr, 0, 0x42) # 'B'
+    os_write_byte(addr, 1, 0x4D) # 'M'
+    os_write_int32(addr, 2, fileSize)
+    os_write_int32(addr, 6, 0)
+    os_write_int32(addr, 10, 54) # Pixel offset
+
+    # 2. DIB Header (40 bytes)
+    os_write_int32(addr, 14, 40)
+    os_write_int32(addr, 18, width)
+    os_write_int32(addr, 22, height)
+    os_write_byte(addr, 26, 1) # Planes = 1
+    os_write_byte(addr, 27, 0)
+    os_write_byte(addr, 28, 24) # 24 bpp
+    os_write_byte(addr, 29, 0)
+    os_write_int32(addr, 30, 0) # BI_RGB
+    os_write_int32(addr, 34, imageSize)
+    os_write_int32(addr, 38, 2835)
+    os_write_int32(addr, 42, 2835)
+    os_write_int32(addr, 46, 0)
+    os_write_int32(addr, 50, 0)
+
+    # 3. Pixel Data (BGR format)
+    repeat y = 0 to height - 1 {
+        rowOffset = 54 + y * rowSize
+        repeat x = 0 to width - 1 {
+            pxOffset = rowOffset + x * 3
+            curB = (b + floor((x * 20) / width)) % 256
+            curG = (g + floor((y * 20) / height)) % 256
+            curR = r % 256
+
+            os_write_byte(addr, pxOffset + 0, curB)
+            os_write_byte(addr, pxOffset + 1, curG)
+            os_write_byte(addr, pxOffset + 2, curR)
+        }
+        repeat pad = (width * 3) to rowSize - 1 {
+            os_write_byte(addr, rowOffset + pad, 0)
+        }
+    }
+
+    writeFile(outputPath, buf_to_str(buf))
+    give true
+}

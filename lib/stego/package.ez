@@ -1,0 +1,9 @@
+{
+  "name": "stego",
+  "version": "1.0.0",
+  "description": "Image Steganography for EZ: Hide and extract secret text and files inside BMP images using LSB bit manipulation with optional encryption",
+  "author": "imabd645",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/ezlib",
+  "dependencies": {}
+}

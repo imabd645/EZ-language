@@ -1,6 +1,12 @@
-name = "bakchodi"
-version = "1.0.0"
-description = "Desktop automation, auto-typing, SMTP email dispatch, and prank utilities for EZ"
-author = "EZ Community"
-license = "MIT"
-main = "main.ez"
+{
+  "name": "bakchodi",
+  "version": "1.0.0",
+  "description": "Desktop automation, auto-typing, SMTP email dispatch, and prank utilities for EZ",
+  "author": "imabd645",
+  "main": "main.ez",
+  "repository": "https://github.com/imabd645/ezlib",
+  "dependencies": {
+    "auto": "^1.0.0",
+    "email": "^1.0.0"
+  }
+}

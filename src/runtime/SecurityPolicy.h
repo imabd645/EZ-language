@@ -14,6 +14,7 @@ public:
     static bool allowNet;
     static bool allowRead;
     static bool allowWrite;
+    static bool noPrompt;
 
     static std::vector<std::string> allowedReadPaths;
     static std::vector<std::string> allowedWritePaths;
@@ -21,7 +22,11 @@ public:
 
     static void reset();
 
-    // Permission checks: return true if allowed, or throw PermissionError via interp and return false.
+    // Interactive prompt check & execution
+    static bool isInteractiveTerminal();
+    static bool promptUser(const std::string& capability, const std::string& detail);
+
+    // Permission checks: return true if allowed, or prompt if interactive, or throw PermissionError via interp and return false.
     static bool checkFFI(RuntimeContext& interp, const std::string& libraryName = "");
     static bool checkProcess(RuntimeContext& interp, const std::string& command = "");
     static bool checkNet(RuntimeContext& interp, const std::string& targetHostOrUrl = "");

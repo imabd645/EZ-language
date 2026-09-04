@@ -72,6 +72,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/bytecode/serializer/BytecodeSerializer.cpp ^
     src/cli/CLI.cpp ^
     src/cli/Packager.cpp ^
+    src/cli/PermissionScanner.cpp ^
     src/cli/REPL.cpp ^
     src/compiler/BytecodeCompiler.cpp ^
     src/compiler/BytecodeCompilerExpr.cpp ^

@@ -21,6 +21,7 @@
 #include "compiler/BytecodeCompiler.h"
 #include "bytecode/serializer/BytecodeSerializer.h"
 #include "cli/PackageManager.h"
+#include "cli/PermissionScanner.h"
 #include "utils/EzLibPath.h"
 #include <map>
 #include <filesystem>
@@ -96,6 +97,10 @@ static bool parseSecurityOption(const std::string& arg) {
     if (arg.rfind("--allow-write=", 0) == 0) {
         SecurityPolicy::safeMode = true;
         SecurityPolicy::allowedWritePaths.push_back(arg.substr(14));
+        return true;
+    }
+    if (arg == "--no-prompt") {
+        SecurityPolicy::noPrompt = true;
         return true;
     }
     return false;
@@ -748,10 +753,12 @@ void showHelp() {
     std::cout << "  ez config registry [url]    Show or set the registry" << std::endl;
     std::cout << std::endl;
     std::cout << "  ez bundle <file.ez> [out.exe] [--gui] [--icon app.ico]  Create a standalone executable" << std::endl;
+    std::cout << "  ez permissions <file.ez>    Analyze required security capabilities for a script" << std::endl;
     std::cout << "  ez --help         Show this help message" << std::endl;
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "  --safe            Run in capability-based safe execution sandbox" << std::endl;
+    std::cout << "  --no-prompt       Do not prompt interactively for permissions in --safe mode" << std::endl;
     std::cout << "  --allow-all, -A   Grant all permissions (bypasses --safe restrictions)" << std::endl;
     std::cout << "  --allow-read[=p]  Grant file read permission (optionally restricted to path)" << std::endl;
     std::cout << "  --allow-write[=p] Grant file write permission (optionally restricted to path)" << std::endl;
@@ -765,27 +772,6 @@ void showHelp() {
     std::cout << "  --no-warnings     Disable compiler and typechecker warnings" << std::endl;
     std::cout << "  -W                Short alias for --no-warnings" << std::endl;
     std::cout << std::endl;
-    std::cout << "EZ Language Syntax:" << std::endl;
-    std::cout << "  out \"text\"        Print to console" << std::endl;
-    std::cout << "  in                Read input from user" << std::endl;
-    std::cout << "  x = 5             Variable assignment" << std::endl;
-    std::cout << "  when condition    If statement" << std::endl;
-    std::cout << "  other             Else clause" << std::endl;
-    std::cout << "  repeat i=0 to 10  For loop" << std::endl;
-    std::cout << "  while condition   While loop" << std::endl;
-    std::cout << "  get x in arr      Foreach loop" << std::endl;
-    std::cout << "  task name()       Function definition" << std::endl;
-    std::cout << "  give value        Return from function" << std::endl;
-    std::cout << "  escape            Break from loop" << std::endl;
-    std::cout << "  skip              Continue to next iteration" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Built-in Functions:" << std::endl;
-    std::cout << "  len, push, pop, str, num, type" << std::endl;
-    std::cout << "  substr, split, join, replace, trim" << std::endl;
-    std::cout << "  upper, lower, reverse, sort, contains" << std::endl;
-    std::cout << "  floor, ceil, abs, sqrt, pow, round" << std::endl;
-    std::cout << "  min, max, rand, randint, range" << std::endl;
-    std::cout << "  indexOf, slice, print, input" << std::endl;
 }
 
 // Defined in runtime/Runtime.cpp. String interning is opt-in per thread and only
@@ -1114,6 +1100,20 @@ int cli_main(int argc, char* argv[]) {
                 outputExe += ".exe";
             }
             return bundleFile(entryScript, outputExe, isGui, iconPath) ? 0 : 1;
+        }
+        else if (cmd == "permissions" || cmd == "perm") {
+            if (argc < 3) {
+                std::cout << "Usage: ez permissions <script.ez>" << std::endl;
+                return 1;
+            }
+            std::string targetScript = argv[2];
+            if (!fs::exists(targetScript)) {
+                std::cerr << "Error: File '" << targetScript << "' not found." << std::endl;
+                return 1;
+            }
+            PermissionReport report = PermissionScanner::scan(targetScript);
+            std::cout << report.generateReportText() << std::endl;
+            return 0;
         }
         else if (cmd == "--help" || cmd == "-h") {
             showHelp();

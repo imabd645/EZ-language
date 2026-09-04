@@ -23,7 +23,7 @@ task checkThrowsPermissionError(label, fn) {
         fn()
     } catch e {
         threw = true
-        out "    [Caught expected PermissionError]: " + str(e)
+        out "    [Caught expected PermissionError]: " + str(e.message)
     }
     check(label, threw, true)
 }

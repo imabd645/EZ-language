@@ -178,6 +178,13 @@ public:
                     std::cout << "    " << pad(key, 20) << deps[key].asString() << "\n";
                 }
             }
+            const auto& perms = versions[0]["permissions"];
+            if (!perms.items.empty()) {
+                std::cout << "\n  declared permissions:\n";
+                for (const auto& item : perms.items) {
+                    std::cout << "    - " << item.asString() << "\n";
+                }
+            }
         }
         return true;
     }
@@ -358,6 +365,7 @@ public:
             "  \"main\": \"main.ez\",\n"
             "  \"license\": \"MIT\",\n"
             "  \"keywords\": [],\n"
+            "  \"permissions\": [],\n"
             "  \"dependencies\": {}\n"
             "}\n");
         ezreg::writeFileText((dir / "main.ez").string(),

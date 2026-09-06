@@ -1,5 +1,15 @@
 #include "Parser.h"
 #include <iostream>
+
+static bool isPropertyNameToken(TokenType t) {
+    return t == TokenType::IDENTIFIER || 
+           t == TokenType::TRUE || 
+           t == TokenType::FALSE || 
+           t == TokenType::NIL ||
+           (static_cast<int>(t) >= static_cast<int>(TokenType::OUT) && 
+            static_cast<int>(t) <= static_cast<int>(TokenType::ENSURES));
+}
+
 ExprPtr Parser::expression() {
     return assignment();
 }
@@ -237,7 +247,10 @@ ExprPtr Parser::call() {
             expr = makeIndexExpr(arena, op.line, op.column, op.lexeme.length(), op.filename, expr, index);
         } else if (match(TokenType::DOT) || match(TokenType::QUESTION_DOT)) {
             bool isOptional = previous().type == TokenType::QUESTION_DOT;
-            // Allow keywords as property names
+            Token op = previous();
+            if (isAtEnd() || !isPropertyNameToken(peek().type)) {
+                throw ParseError("Expected property name after '" + op.lexeme + "'", op.line);
+            }
             advance();
             Token name = previous();
             expr = makePropertyAccessExpr(arena, name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);
@@ -250,10 +263,13 @@ ExprPtr Parser::call() {
             if (temp < tokens.size() && (tokens[temp].type == TokenType::DOT || tokens[temp].type == TokenType::QUESTION_DOT)) {
                 current = temp; // Skip newlines
                 bool isOptional = tokens[current].type == TokenType::QUESTION_DOT;
+                Token op = tokens[current];
                 advance(); // Consume DOT or QUESTION_DOT
                 
                 // Now must have an identifier (or keyword)
-                if (isAtEnd()) throw ParseError("Expected property name after property access operator", peek().line);
+                if (isAtEnd() || !isPropertyNameToken(peek().type)) {
+                    throw ParseError("Expected property name after '" + op.lexeme + "'", op.line);
+                }
                 advance(); 
                 Token name = previous();
                 expr = makePropertyAccessExpr(arena, name.line, name.column, name.lexeme.length(), name.filename, expr, name.lexeme, isOptional);

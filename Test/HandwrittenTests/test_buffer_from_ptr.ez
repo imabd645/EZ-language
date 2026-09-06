@@ -1,0 +1,84 @@
+# ============================================================================
+# Test: os_buffer_from_ptr type safety, memory guard, and roundtrip
+# ============================================================================
+
+out "=== Testing os_buffer_from_ptr Safety & Functionality ==="
+
+# 1. Normal roundtrip using native allocated memory
+mem = os_alloc(16)
+when mem != 0 {
+    # Write some bytes
+    os_write_byte(mem, 0, 65)
+    os_write_byte(mem, 1, 66)
+    os_write_byte(mem, 2, 67)
+    os_write_byte(mem, 3, 0)
+
+    buf = os_buffer_from_ptr(mem, 4)
+    when buf_size(buf) == 4 {
+        out "PASS: os_buffer_from_ptr created buffer of size 4"
+    } other {
+        out "FAIL: os_buffer_from_ptr wrong size: " + str(buf_size(buf))
+    }
+
+    strVal = buf_to_str(buf)
+    when strVal == "ABC\0" or strVal == "ABC" or buf[0] == 65 {
+        out "PASS: Buffer data matches memory content"
+    } other {
+        out "FAIL: Buffer content mismatch: " + str(strVal)
+    }
+
+    os_free(mem)
+}
+
+# 2. Zero-size buffer
+zeroBuf = os_buffer_from_ptr(0, 0)
+when buf_size(zeroBuf) == 0 {
+    out "PASS: Zero-size buffer successfully created"
+} other {
+    out "FAIL: Zero-size buffer failed"
+}
+
+# 3. Type checking for non-number arguments
+typeErrorCaught = false
+try {
+    os_buffer_from_ptr("not_a_ptr", 10)
+} catch (e) {
+    typeErrorCaught = true
+}
+
+when typeErrorCaught {
+    out "PASS: Caught type error for non-number ptr"
+} other {
+    out "FAIL: Expected type error for non-number ptr"
+}
+
+# 4. Negative size error
+negSizeCaught = false
+try {
+    os_buffer_from_ptr(123456, -5)
+} catch (e) {
+    negSizeCaught = true
+}
+
+when negSizeCaught {
+    out "PASS: Caught error for negative size"
+} other {
+    out "FAIL: Expected error for negative size"
+}
+
+# 5. Invalid memory address guarded by SAFE_MEMORY_OP (SEH/VEH)
+# Address 0x1 is invalid and must not crash the process
+invalidPtrCaught = false
+try {
+    os_buffer_from_ptr(1, 1024)
+} catch (e) {
+    invalidPtrCaught = true
+}
+
+when invalidPtrCaught {
+    out "PASS: Access violation on invalid pointer caught safely without crash"
+} other {
+    out "FAIL: Expected access violation error on invalid pointer"
+}
+
+out "=== Test Complete ==="

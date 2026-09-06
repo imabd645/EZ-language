@@ -1,5 +1,6 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
+#include "builtins/FFI/FFI_Internal.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
 #include <string>
@@ -84,21 +85,36 @@ void registerBufferBuiltins(RuntimeContext& interp) {
     // os_buffer_from_ptr(ptr_as_int, size) - For FFI
     interp.defineGlobal("os_buffer_from_ptr", Value::makeNativeFunction("os_buffer_from_ptr", 2,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isNumber() || !args[1].isNumber()) {
+                interp.runtimeError("os_buffer_from_ptr() expects (ptr: number, size: number)", 0, "");
+                return Value();
+            }
             uintptr_t ptr = static_cast<uintptr_t>(args[0].asNumber());
             int size = static_cast<int>(args[1].asNumber());
-            if (size < 0) return Value();
+            if (size < 0) {
+                interp.runtimeError("os_buffer_from_ptr() size cannot be negative", 0, "");
+                return Value();
+            }
+            if (size == 0) {
+                return Value(std::make_shared<EZBuffer>(0));
+            }
+            if (!ptr) {
+                interp.runtimeError("os_buffer_from_ptr() cannot read from null pointer with non-zero size", 0, "");
+                return Value();
+            }
             
             std::vector<uint8_t> data(size);
-            if (ptr && size > 0) {
-                memcpy(data.data(), reinterpret_cast<void*>(ptr), size);
-            }
+            SAFE_MEMORY_OP(interp, memcpy(data.data(), reinterpret_cast<void*>(ptr), size));
             return Value(std::make_shared<EZBuffer>(data));
         }));
 
     // os_buffer_addr(buffer) -> returns address as long long
     interp.defineGlobal("os_buffer_addr", Value::makeNativeFunction("os_buffer_addr", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isBuffer()) return Value(0LL);
+            if (!args[0].isBuffer()) {
+                interp.runtimeError("os_buffer_addr() expects buffer", 0, "");
+                return Value();
+            }
             auto& data = args[0].asBuffer();
             return Value(static_cast<long long>(reinterpret_cast<uintptr_t>(data.data())));
         }));

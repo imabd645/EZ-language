@@ -499,54 +499,32 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
             }
 
-#ifdef _WIN32
-            std::vector<HANDLE> handles;
-            handles.reserve(futures.size());
-            for (auto& v : futures) {
-                handles.push_back(v.asFuture()->hEvent);
-            }
-
-            // Plain `false`, not FALSE: the Win32 TRUE/FALSE macros are #undef'd
-            // project-wide because they collide with TokenKind::TRUE/FALSE.
-            // Blocked on other threads' futures, holding nothing of our own.
-            // INFINITE, so without this a collector would wait out its whole
-            // timeout on a thread parked here.
-            DWORD result;
-            {
-                GCSafeRegion safe;
-                result = WaitForMultipleObjects((DWORD)handles.size(), handles.data(), false, INFINITE);
-            }
-            if (result >= WAIT_OBJECT_0 && result < WAIT_OBJECT_0 + handles.size()) {
-                size_t index = result - WAIT_OBJECT_0;
-                return futures[index].asFuture()->get();
-            }
-#else
-            // No WaitForMultipleObjects off Windows, and each EZFuture owns its
-            // own condition variable, so there is no single object to wait on.
             // Register a completion callback on every future that signals one
-            // shared condvar instead -- this blocks rather than polls. then()
-            // runs the callback immediately when that future has already
-            // resolved, so a future that finished before we got here is picked
-            // up without waiting. The captured shared_ptrs keep the shared state
-            // alive for callbacks that never fire.
+            // shared condvar. This blocks without polling, supports any number
+            // of futures (lifting the Win32 WaitForMultipleObjects 64-handle limit),
+            // and works across all platforms. then() runs immediately if a future
+            // is already resolved.
             auto mtx   = std::make_shared<std::mutex>();
             auto cv    = std::make_shared<std::condition_variable>();
             auto fired = std::make_shared<bool>(false);
 
             for (auto& v : futures) {
                 v.asFuture()->then([mtx, cv, fired]() {
-                    { std::lock_guard<std::mutex> lk(*mtx); *fired = true; }
+                    {
+                        std::lock_guard<std::mutex> lk(*mtx);
+                        *fired = true;
+                    }
                     cv->notify_all();
                 });
             }
             {
+                GCSafeRegion safe;
                 std::unique_lock<std::mutex> lk(*mtx);
                 cv->wait(lk, [&fired] { return *fired; });
             }
             for (auto& v : futures) {
                 if (v.asFuture()->isReady()) return v.asFuture()->get();
             }
-#endif
 
             interp.runtimeError("awaitAny() failed to wait", 0, "");
             return Value();

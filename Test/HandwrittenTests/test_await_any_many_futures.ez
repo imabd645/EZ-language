@@ -1,0 +1,38 @@
+# ============================================================================
+# Test: awaitAny with >64 futures (lifting the Win32 WaitForMultipleObjects limit)
+# ============================================================================
+
+out "=== Testing awaitAny With >64 Futures ==="
+
+# 1. Spawn 80 concurrent tasks (> 64)
+futures = []
+repeat i = 1 to 80 {
+    taskVal = i
+    fut = spawn(|| => taskVal * 2)
+    push(futures,fut)
+}
+
+when len(futures) == 80 {
+    out "PASS: Successfully created 80 futures"
+} other {
+    out "FAIL: Expected 80 futures, got " + str(len(futures))
+}
+
+# 2. Await any of the 80 futures
+anyResult = awaitAny(futures)
+when typeOf(anyResult) == "integer" and anyResult >= 2 and anyResult <= 160 {
+    out "PASS: awaitAny successfully returned result from >64 futures: " + str(anyResult)
+} other {
+  
+    out "FAIL: awaitAny failed on >64 futures, returned " + str(anyResult)
+}
+
+# 3. Await all 80 futures to verify completion
+allResults = awaitAll(futures)
+when len(allResults) == 80 {
+    out "PASS: awaitAll successfully gathered all 80 results"
+} other {
+    out "FAIL: awaitAll expected 80 results, got " + str(len(allResults))
+}
+
+out "=== Test Complete ==="

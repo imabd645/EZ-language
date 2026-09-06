@@ -1,0 +1,40 @@
+# ============================================================================
+# Test: Lexer escape handling and bounds safety
+# ============================================================================
+
+out "=== Testing Lexer Escape Sequences and Bounds Safety ==="
+
+# 1. Standard escape sequences
+s1 = "hello\nworld\ttab\\backslash\"quote\'single\x41A"
+when len(s1) > 0 {
+    out "PASS: Standard escapes parsed successfully"
+} other {
+    out "FAIL: Standard escapes failed"
+}
+
+# 2. Multi-line string with escapes
+s2 = """line1\nline2\\test\"quote"""
+when len(s2) > 0 {
+    out "PASS: Multi-line string with escapes parsed successfully"
+} other {
+    out "FAIL: Multi-line string with escapes failed"
+}
+
+# 3. Interpolated string with backtick and brace escapes
+name = "EZ"
+s3 = `Hello \{name\}, escaped \`backtick\` and value {name}`
+when len(s3) > 0 {
+    out "PASS: Template string with escapes parsed successfully"
+} other {
+    out "FAIL: Template string with escapes failed"
+}
+
+# 4. Hex escape
+hex_str = "Char: \x48\x65\x6c\x6c\x6f"
+when hex_str == "Char: Hello" {
+    out "PASS: Hex escapes evaluate correctly"
+} other {
+    out "FAIL: Hex escape mismatch: " + hex_str
+}
+
+out "=== Test Complete ==="

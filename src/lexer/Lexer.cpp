@@ -72,6 +72,7 @@ bool Lexer::isAtEnd() const {
 }
 
 char Lexer::advance() {
+    if (isAtEnd()) return '\0';
     char c = source[current++];
     if (c == '\n') {
         line++;
@@ -365,6 +366,10 @@ void Lexer::scanString() {
         
         if (peek() == '\\' && !isAtEnd()) {
             advance();
+            if (isAtEnd()) {
+                error("Unterminated string");
+                return;
+            }
             char escaped = advance();
             switch (escaped) {
                 case 'n': value += '\n'; break;
@@ -609,6 +614,9 @@ void Lexer::scanInterpolatedString() {
                     case '}': currentText += '}'; break;
                     default: currentText += escaped; break;
                 }
+            } else {
+                error("Unterminated template string");
+                return;
             }
         } else if (peek() == '{') {
             // Save current text as a string part

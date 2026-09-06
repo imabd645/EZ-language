@@ -2336,7 +2336,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             auto inst = v.asInstance();
                             auto currentClass = inst->klass;
                             while (currentClass) {
-                                if (currentClass->name == className) {
+                                if (currentClass->name == className || currentClass->implementsInterface(className)) {
+                                    result = true;
+                                    break;
+                                }
+                                currentClass = currentClass->parent;
+                            }
+                        } else if (v.isClass()) {
+                            auto currentClass = v.asClass();
+                            while (currentClass) {
+                                if (currentClass->name == className || currentClass->implementsInterface(className)) {
                                     result = true;
                                     break;
                                 }
@@ -2453,7 +2462,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         for (int i = 0; i < interfaceCount; i++) {
                             Value v = *(--stackTop);
                             if (v.type() == ValueType::INTERFACE) {
-                                interfaces.push_back(std::get<std::shared_ptr<EZInterface>>(v.m_data));
+                                auto iface = std::get<std::shared_ptr<EZInterface>>(v.m_data);
+                                interfaces.push_back(iface);
+                                klass->interfaces.push_back(iface->name);
                             }
                         }
 

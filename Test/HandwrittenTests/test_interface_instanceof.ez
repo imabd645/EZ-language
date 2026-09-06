@@ -1,0 +1,89 @@
+# ============================================================================
+# Test: Interface instanceof, pattern matching, and typed catch
+# ============================================================================
+
+out "=== Testing Interface InstanceOf / Pattern Matching ==="
+
+interface Reader {
+    task read()
+}
+
+interface Writer {
+    task write(data)
+}
+
+model TextDocument implements Reader, Writer {
+    task read() {
+        give "read data"
+    }
+    task write(data) {
+        give "wrote " + str(data)
+    }
+}
+
+model SubDocument extends TextDocument {
+}
+
+model Unrelated {
+    task read() {
+        give "unrelated read"
+    }
+}
+
+doc = TextDocument()
+sub = SubDocument()
+unrel = Unrelated()
+
+# Test 1: Direct interface match
+match doc {
+    Reader => out "PASS: doc is Reader"
+    other => out "FAIL: doc should be Reader"
+}
+
+# Test 2: Second interface match
+match doc {
+    Writer => out "PASS: doc is Writer"
+    other => out "FAIL: doc should be Writer"
+}
+
+# Test 3: Subclass interface match
+match sub {
+    Reader => out "PASS: sub is Reader"
+    other => out "FAIL: sub should be Reader"
+}
+
+# Test 4: Subclass second interface match
+match sub {
+    Writer => out "PASS: sub is Writer"
+    other => out "FAIL: sub should be Writer"
+}
+
+# Test 5: Unrelated class does not match interface pattern
+match unrel {
+    Reader => out "FAIL: unrel should not match Reader"
+    other => out "PASS: unrel correctly fell through"
+}
+
+# Test 6: Typed catch with interface
+interface ErrorReporter {
+    task report()
+}
+
+model CustomReportError implements ErrorReporter {
+    init(msg) {
+        self.msg = msg
+    }
+    task report() {
+        give "Error: " + self.msg
+    }
+}
+
+try {
+    throw CustomReportError("contract broken")
+} catch (ErrorReporter err) {
+    out "PASS: Caught via ErrorReporter interface: " + err.report()
+} catch e {
+    out "FAIL: Caught via fallback instead of ErrorReporter"
+}
+
+out "=== Test Complete ==="

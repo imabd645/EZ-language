@@ -18,6 +18,7 @@ struct EZClass {
     std::unordered_map<std::string, Value> methods;
     std::unordered_map<std::string, Value> staticMembers;
     std::unordered_map<std::string, bool>  visibility;
+    std::vector<std::string> interfaces;
 
     // ── Attribute-hook presence, cached ──────────────────────────────────────
     //
@@ -103,6 +104,15 @@ struct EZClass {
     bool hasMethod(const std::string& name) const {
         std::shared_lock<std::shared_mutex> lk(class_mutex);
         return methods.count(name) > 0;
+    }
+
+    bool implementsInterface(const std::string& ifaceName) const {
+        std::shared_lock<std::shared_mutex> lk(class_mutex);
+        for (const auto& iface : interfaces) {
+            if (iface == ifaceName) return true;
+        }
+        if (parent) return parent->implementsInterface(ifaceName);
+        return false;
     }
 
     // Method lookup that walks the inheritance chain, unlike getMethod() which

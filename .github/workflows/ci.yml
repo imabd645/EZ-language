@@ -5,6 +5,10 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  workflow_call:
+    # Lets release.yaml invoke this workflow directly, so a release is
+    # built and tested through the exact same jobs as every normal CI run —
+    # never a separate, unverified build path.
 
 jobs:
   build-windows:

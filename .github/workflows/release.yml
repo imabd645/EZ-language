@@ -1,0 +1,150 @@
+name: Release EZ
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'   # e.g. v5.0.1
+
+permissions:
+  contents: write   # required to create a release and upload assets
+
+jobs:
+  # Runs the exact same build+test jobs as normal CI. A release can never be
+  # cut from a state the test suite hasn't verified.
+  build:
+    uses: ./.github/workflows/ci.yaml
+
+  # Single source of truth for the version string, so every downstream job
+  # (and the filenames it produces) agrees on it.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------
+  # Windows installer (.exe) — NSIS
+  # ---------------------------------------------------------------------
+  package-windows:
+    needs: [ build, prepare ]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-windows-x64
+          path: payload
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $payload = "$env:GITHUB_WORKSPACE\payload"
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/DPAYLOADDIR=$payload" `
+            "/DAPPVERSION=${{ needs.prepare.outputs.version }}" `
+            installer\windows\installer.nsi
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ez-windows-installer
+          path: installer/windows/ez-v${{ needs.prepare.outputs.version }}-windows-x64-setup.exe
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # Linux installer (.deb) — dpkg-deb
+  # ---------------------------------------------------------------------
+  package-linux:
+    needs: [ build, prepare ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Linux build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-linux-x64
+          path: payload
+
+      - name: Build .deb package
+        run: |
+          chmod +x installer/linux/build_deb.sh
+          ./installer/linux/build_deb.sh "${{ needs.prepare.outputs.version }}" payload
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ez-linux-installer
+          path: ez-v${{ needs.prepare.outputs.version }}-linux-x64.deb
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # macOS installer (.pkg) — pkgbuild
+  # ---------------------------------------------------------------------
+  package-macos:
+    needs: [ build, prepare ]
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-macos-x64
+          path: payload
+
+      - name: Build .pkg package
+        run: |
+          chmod +x installer/macos/build_pkg.sh
+          ./installer/macos/build_pkg.sh "${{ needs.prepare.outputs.version }}" payload
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ez-macos-installer
+          path: ez-v${{ needs.prepare.outputs.version }}-macos-x64.pkg
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # Publish everything as one GitHub Release
+  # ---------------------------------------------------------------------
+  publish-release:
+    needs: [ prepare, package-windows, package-linux, package-macos ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-windows-installer
+          path: dist
+
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-linux-installer
+          path: dist
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: ez-macos-installer
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EZ v${{ needs.prepare.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/*

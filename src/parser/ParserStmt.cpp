@@ -631,32 +631,24 @@ StmtPtr Parser::tryStatement() {
     while (match(TokenType::CATCH)) {
         std::string typeName = "";
         std::string varName = "";
-        // Allow 'catch (Type var)' or 'catch (Type)' or 'catch (var)'
+        // Allow 'catch (Type var)' or 'catch (var)'
         if (match(TokenType::LPAREN)) {
             Token t = consume(TokenType::IDENTIFIER, "Expected type name or variable name");
             if (check(TokenType::IDENTIFIER)) {
                 typeName = t.lexeme;
                 varName = advance().lexeme;
             } else {
-                if (t.lexeme.length() > 0 && t.lexeme[0] >= 'A' && t.lexeme[0] <= 'Z') {
-                    typeName = t.lexeme;
-                } else {
-                    varName = t.lexeme;
-                }
+                varName = t.lexeme;
             }
             consume(TokenType::RPAREN, "Expected ')' after catch configuration");
-        } else {
-            // Allow 'catch Type var' or 'catch Type' or 'catch var'
-            Token t = consume(TokenType::IDENTIFIER, "Expected type or variable name after 'catch'");
+        } else if (check(TokenType::IDENTIFIER)) {
+            // Allow 'catch Type var' or 'catch var'
+            Token t = advance();
             if (check(TokenType::IDENTIFIER)) {
                 typeName = t.lexeme;
                 varName = advance().lexeme;
             } else {
-                if (t.lexeme.length() > 0 && t.lexeme[0] >= 'A' && t.lexeme[0] <= 'Z') {
-                    typeName = t.lexeme;
-                } else {
-                    varName = t.lexeme;
-                }
+                varName = t.lexeme;
             }
         }
         

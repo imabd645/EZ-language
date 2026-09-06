@@ -1,0 +1,62 @@
+out "=== Testing Catch Variable Names ==="
+
+// Case 1: Uppercase single identifier in catch (E)
+try {
+    throw "error_from_case_1"
+} catch (E) {
+    out "Caught: " + str(E)
+    when str(E) != "error_from_case_1" {
+        out "FAIL: Case 1"
+    } other {
+        out "PASS: Case 1"
+    }
+}
+
+// Case 2: Uppercase single identifier in catch Err (no parens)
+try {
+    throw "error_from_case_2"
+} catch Err {
+    out "Caught: " + str(Err)
+    when str(Err) != "error_from_case_2" {
+        out "FAIL: Case 2"
+    } other {
+        out "PASS: Case 2"
+    }
+}
+
+// Case 3: Typed catch with uppercase type and lowercase variable: catch (TypeError err)
+try {
+    throw new TypeError("type error message")
+} catch (TypeError err) {
+    out "Caught TypeError: " + str(err.message)
+    when str(err.message) != "type error message" {
+        out "FAIL: Case 3"
+    } other {
+        out "PASS: Case 3"
+    }
+} catch e {
+    out "FAIL: Case 3 fell to catch-all"
+}
+
+// Case 4: Typed catch without parens: catch TypeError err
+try {
+    throw new TypeError("type error message 2")
+} catch TypeError err {
+    out "Caught TypeError: " + str(err.message)
+    when str(err.message) != "type error message 2" {
+        out "FAIL: Case 4"
+    } other {
+        out "PASS: Case 4"
+    }
+} catch e {
+    out "FAIL: Case 4 fell to catch-all"
+}
+
+// Case 5: Bare catch without variable: catch { ... }
+try {
+    throw "ignored error"
+} catch {
+    out "PASS: Case 5 bare catch"
+}
+
+out "=== Test Complete ==="

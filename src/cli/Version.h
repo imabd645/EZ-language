@@ -8,7 +8,7 @@
 // at all and the version only appeared in the website copy, which is how it
 // drifted out of step with the actual release.
 #define EZ_VERSION_MAJOR 5
-#define EZ_VERSION_MINOR 0
+#define EZ_VERSION_MINOR 1
 #define EZ_VERSION_PATCH 0
 
 #define EZ_STRINGIFY_(x) #x

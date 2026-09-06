@@ -275,8 +275,7 @@ void TypeChecker::checkStruct(const StructStmt& stmt) {
 }
 
 void TypeChecker::checkInterface(const InterfaceStmt& stmt) {
-    // Interface currently only defines signatures which are registered in first pass (if they were).
-    // Let's just traverse it in case we add default implementations later.
+    declareVariable(stmt.name, TypeInfo("Interface"));
 }
 
 void TypeChecker::checkTry(const TryStmt& stmt) {
@@ -299,7 +298,18 @@ void TypeChecker::checkThrow(const ThrowStmt& stmt) {
 void TypeChecker::checkMatch(const MatchStmt& stmt) {
     checkExpr(stmt.subject);
     for (const auto& arm : stmt.arms) {
-        if (arm.pattern) checkExpr(arm.pattern);
+        if (arm.pattern) {
+            bool isTypePattern = false;
+            if (auto* idPtr = std::get_if<IdentifierExpr*>(&arm.pattern->variant)) {
+                const std::string& name = (*idPtr)->name;
+                if (!name.empty() && std::isupper((unsigned char)name[0])) {
+                    isTypePattern = true;
+                }
+            }
+            if (!isTypePattern) {
+                checkExpr(arm.pattern);
+            }
+        }
         beginScope();
         checkStmt(arm.body);
         endScope();

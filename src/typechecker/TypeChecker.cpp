@@ -273,6 +273,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             declareFunction(structStmt->name, sig);
         } else if (std::holds_alternative<InterfaceStmt*>(stmt->variant)) {
             auto interfaceStmt = std::get<InterfaceStmt*>(stmt->variant);
+            declareVariable(interfaceStmt->name, TypeInfo("Interface"));
             for (const auto& method : interfaceStmt->methods) {
                 FunctionSignature methodSig;
                 for (const auto& p : method.params) methodSig.paramNames.push_back(p);
@@ -347,6 +348,27 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
                     for (const auto& member : model->members) {
                         if (member.isMethod) scanBodyForSelfProps(member.body);
                     }
+                } else if (std::holds_alternative<InterfaceStmt*>(innerStmt->variant)) {
+                    auto interfaceStmt = std::get<InterfaceStmt*>(innerStmt->variant);
+                    declareVariable(interfaceStmt->name, TypeInfo("Interface"));
+                    for (const auto& method : interfaceStmt->methods) {
+                        FunctionSignature methodSig;
+                        for (const auto& p : method.params) methodSig.paramNames.push_back(p);
+                        for (const auto& t : method.paramTypes) methodSig.paramTypes.push_back(TypeInfo::fromAST(t));
+                        methodSig.returnType = TypeInfo::fromAST(method.returnType);
+                        declareFunction(interfaceStmt->name + "." + method.name, methodSig);
+                    }
+                } else if (std::holds_alternative<StructStmt*>(innerStmt->variant)) {
+                    auto structStmt = std::get<StructStmt*>(innerStmt->variant);
+                    FunctionSignature sig;
+                    for (size_t i = 0; i < structStmt->fields.size(); ++i) {
+                        sig.paramNames.push_back(structStmt->fields[i]);
+                        TypeInfo fieldType = TypeInfo::fromAST(structStmt->types[i]);
+                        sig.paramTypes.push_back(fieldType);
+                        declareVariable(structStmt->name + "." + structStmt->fields[i], fieldType);
+                    }
+                    sig.returnType = TypeInfo(structStmt->name);
+                    declareFunction(structStmt->name, sig);
                 }
             }
         }

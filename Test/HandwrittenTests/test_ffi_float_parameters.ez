@@ -16,6 +16,13 @@ when crt == 0 or type(crt) == "nil" {
     crt = os_load_lib("libm.so")
 }
 
+when crt == 0 or type(crt) == "nil" {
+    crt = os_load_lib("libSystem.B.dylib")
+}
+when crt == 0 or type(crt) == "nil" {
+    crt = os_load_lib("libm.dylib")
+}
+
 when crt != 0 and type(crt) != "nil" {
     out "PASS: C runtime math library loaded"
 } other {

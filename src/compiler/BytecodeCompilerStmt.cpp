@@ -459,15 +459,53 @@ void BytecodeCompiler::compileGet(const GetStmt& stmt) {
     endScope();
 }
 
+void BytecodeCompiler::scanDeclaredTypes(const std::vector<StmtPtr>& stmts) {
+    for (const auto& stmt : stmts) {
+        if (!stmt) continue;
+        std::visit([this](auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, ModelStmt*>) {
+                declaredTypes.insert(arg->name);
+            } else if constexpr (std::is_same_v<T, InterfaceStmt*>) {
+                declaredTypes.insert(arg->name);
+            } else if constexpr (std::is_same_v<T, ExportStmt*>) {
+                if (arg->inner) scanDeclaredTypes({arg->inner});
+            } else if constexpr (std::is_same_v<T, BlockStmt*>) {
+                scanDeclaredTypes(arg->statements);
+            }
+        }, stmt->variant);
+    }
+}
+
+bool BytecodeCompiler::isTypeMatchPattern(const std::string& name) const {
+    if (name.empty()) return false;
+
+    // If it's a local variable, upvalue, or static in the current scope, it's a variable value pattern
+    if (current) {
+        if (const_cast<BytecodeCompiler*>(this)->resolveLocal(name) != -1) return false;
+        if (const_cast<BytecodeCompiler*>(this)->resolveUpvalue(name) != -1) return false;
+        if (!const_cast<BytecodeCompiler*>(this)->resolveStatic(name).empty()) return false;
+    }
+
+    // Check built-in primitive and runtime type names
+    static const std::unordered_set<std::string> builtinTypes = {
+        "Integer", "Float", "Number", "String", "Boolean", "Array", "Dictionary", "Function", "Nil",
+        "File", "Buffer", "Regex", "DateTime", "Timer", "Atomic", "Channel", "Exception",
+        "TypeError", "ValueError", "IndexError", "KeyError", "FileNotFoundError", "NetworkError",
+        "PermissionError", "IOError", "SyntaxError", "RegexError"
+    };
+    if (builtinTypes.count(name)) return true;
+
+    // Check user-declared models and interfaces
+    if (declaredTypes.count(name)) return true;
+
+    return false;
+}
+
 void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
     compileExpr(stmt.subject);
 
     std::vector<size_t> endJumps;
-
-    // Built-in primitive type names for type-match arms
-    static const std::unordered_set<std::string> primitiveTypes = {
-        "Integer", "Float", "Number", "String", "Boolean", "Array", "Dictionary", "Nil"
-    };
 
     for (const auto& arm : stmt.arms) {
         if (!arm.pattern) {
@@ -476,12 +514,12 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
             compileStmt(arm.body);
             endJumps.push_back(emitJump(OpCode::JUMP));
         } else {
-            // Detect type-match pattern: a bare uppercase identifier like String, Integer, User
+            // Detect type-match pattern: primitive types or declared models/interfaces (not in-scope variables)
             bool isTypePattern = false;
             std::string typeName;
             if (auto* idPtr = std::get_if<IdentifierExpr*>(&arm.pattern->variant)) {
                 const std::string& name = (*idPtr)->name;
-                if (!name.empty() && std::isupper((unsigned char)name[0])) {
+                if (isTypeMatchPattern(name)) {
                     isTypePattern = true;
                     typeName = name;
                 }
@@ -499,7 +537,7 @@ void BytecodeCompiler::compileMatch(const MatchStmt& stmt) {
                           static_cast<uint8_t>(nameIdx & 0xFF));
                 emitOp(OpCode::IS_INSTANCE_OF);    // [..., bool]
             } else {
-                // Regular value equality match
+                // Regular value equality match (evaluates constants, variables, or expressions)
                 compileExpr(arm.pattern);
                 emitOp(OpCode::EQUAL);
             }
@@ -1363,6 +1401,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     }
 
 void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
+    declaredTypes.insert(stmt.name);
     // 0. Outermost first, so the innermost decorator is applied first -- same
     //    ordering fix as compileTask(); see the note there.
     for (const auto& dec : stmt.userDecorators) {
@@ -1595,6 +1634,7 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
 }
 
 void BytecodeCompiler::compileInterface(const InterfaceStmt& stmt) {
+    declaredTypes.insert(stmt.name);
     // Push method names as constants
     for (const auto& method : stmt.methods) {
         size_t methodIdx = identifierConstant(method.name);

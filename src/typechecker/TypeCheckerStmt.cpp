@@ -306,8 +306,23 @@ void TypeChecker::checkMatch(const MatchStmt& stmt) {
             bool isTypePattern = false;
             if (auto* idPtr = std::get_if<IdentifierExpr*>(&arm.pattern->variant)) {
                 const std::string& name = (*idPtr)->name;
-                if (!name.empty() && std::isupper((unsigned char)name[0])) {
+                static const std::unordered_set<std::string> builtinTypes = {
+                    "Integer", "Float", "Number", "String", "Boolean", "Array", "Dictionary", "Function", "Nil",
+                    "File", "Buffer", "Regex", "DateTime", "Timer", "Atomic", "Channel", "Exception",
+                    "TypeError", "ValueError", "IndexError", "KeyError", "FileNotFoundError", "NetworkError",
+                    "PermissionError", "IOError", "SyntaxError", "RegexError"
+                };
+                if (builtinTypes.count(name) || declaredModels.count(name)) {
                     isTypePattern = true;
+                } else if (currentEnv) {
+                    Environment* env = currentEnv;
+                    while (env) {
+                        if (env->variables.count(name) && (env->variables[name].baseType == "Interface" || env->variables[name].baseType == "Struct")) {
+                            isTypePattern = true;
+                            break;
+                        }
+                        env = env->enclosing;
+                    }
                 }
             }
             if (!isTypePattern) {

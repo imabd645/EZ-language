@@ -139,6 +139,9 @@ private:
     // than once per assignment.
     std::unordered_set<std::string> warnedBuiltins;
     std::unordered_map<std::string, std::vector<StmtPtr>> astCache;
+    std::unordered_set<std::string> declaredTypes;
+    void scanDeclaredTypes(const std::vector<StmtPtr>& stmts);
+    bool isTypeMatchPattern(const std::string& name) const;
 
     uint16_t globalSlotFor(const std::string& name);
     

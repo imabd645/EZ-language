@@ -63,6 +63,9 @@ CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) 
     std::unique_ptr<Compiler> compilerFrame(new Compiler("<main>", 0, nullptr));
     current = compilerFrame.get();
 
+    declaredTypes.clear();
+    scanDeclaredTypes(statements);
+
     // Compile all statements
     try {
         for (size_t i = 0; i < statements.size(); ++i) {

@@ -150,6 +150,7 @@ FunctionSignature* TypeChecker::resolveFunction(const std::string& name) {
 bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins) {
     hadError = false;
     hasImports = false;
+    declaredModels.clear();
     currentEnv = new Environment();
     
     for (const auto& builtin : builtins) {
@@ -174,6 +175,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
             declareFunction(task->name, sig);
         } else if (std::holds_alternative<ModelStmt*>(stmt->variant)) {
             auto model = std::get<ModelStmt*>(stmt->variant);
+            declaredModels.insert(model->name);
             FunctionSignature sig;
             for (const auto& p : model->initParams) sig.paramNames.push_back(p);
             for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));

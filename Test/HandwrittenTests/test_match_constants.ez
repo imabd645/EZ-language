@@ -1,0 +1,108 @@
+# ============================================================================
+# Test: Match statement with uppercase constants, local variables, and types
+# ============================================================================
+
+out "=== Testing Match Statement Constants vs Types ==="
+
+# 1. Global uppercase constants
+HTTP_OK = 200
+HTTP_NOT_FOUND = 404
+HTTP_SERVER_ERROR = 500
+MODE_PROD = "PRODUCTION"
+
+task handleStatus(code) {
+    match code {
+        HTTP_OK => { give "OK" }
+        HTTP_NOT_FOUND => { give "Not Found" }
+        HTTP_SERVER_ERROR => { give "Server Error" }
+        other => { give "Unknown: " + str(code) }
+    }
+}
+
+when handleStatus(200) == "OK" {
+    out "PASS: Matched HTTP_OK constant (200)"
+} other {
+    out "FAIL: HTTP_OK constant match failed"
+}
+
+when handleStatus(404) == "Not Found" {
+    out "PASS: Matched HTTP_NOT_FOUND constant (404)"
+} other {
+    out "FAIL: HTTP_NOT_FOUND constant match failed"
+}
+
+when handleStatus(500) == "Server Error" {
+    out "PASS: Matched HTTP_SERVER_ERROR constant (500)"
+} other {
+    out "FAIL: HTTP_SERVER_ERROR constant match failed"
+}
+
+when handleStatus(999) == "Unknown: 999" {
+    out "PASS: Correctly fell through to other"
+} other {
+    out "FAIL: Fallthrough to other failed"
+}
+
+# 2. String constant match
+task checkMode(m) {
+    match m {
+        MODE_PROD => { give "prod" }
+        other => { give "non-prod" }
+    }
+}
+
+when checkMode("PRODUCTION") == "prod" {
+    out "PASS: Matched string constant MODE_PROD"
+} other {
+    out "FAIL: String constant MODE_PROD match failed"
+}
+
+when checkMode("DEV") == "non-prod" {
+    out "PASS: Non-prod mode fell through"
+} other {
+    out "FAIL: Non-prod fallthrough failed"
+}
+
+# 3. Local variables and mixed type patterns
+model Customer {
+    init(name) {
+        self.name = name
+    }
+}
+
+task inspectValue(v) {
+    LOCAL_KEY = 42
+    match v {
+        LOCAL_KEY => { give "matched local 42" }
+        Customer => { give "matched Customer model" }
+        String => { give "matched String primitive: " + v }
+        other => { give "matched other" }
+    }
+}
+
+when inspectValue(42) == "matched local 42" {
+    out "PASS: Matched local variable LOCAL_KEY"
+} other {
+    out "FAIL: Local variable match failed"
+}
+
+c = Customer("Alice")
+when inspectValue(c) == "matched Customer model" {
+    out "PASS: Matched Customer model type"
+} other {
+    out "FAIL: Customer model type match failed"
+}
+
+when inspectValue("hello") == "matched String primitive: hello" {
+    out "PASS: Matched String primitive type"
+} other {
+    out "FAIL: String primitive type match failed"
+}
+
+when inspectValue(999) == "matched other" {
+    out "PASS: Fallthrough for unmatched value"
+} other {
+    out "FAIL: Unmatched value fallthrough failed"
+}
+
+out "=== Test Complete ==="

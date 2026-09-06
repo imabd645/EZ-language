@@ -365,6 +365,24 @@ void PermissionScanner::scanExpression(ExprPtr expr, const std::string& currentF
                     f.column = expr->column;
                     report.addFinding(f);
                 }
+                // 6. File constructor call (e.g. File("path", "w"))
+                else if (funcName == "File") {
+                    std::string pathStr = (!node->arguments.empty()) ? extractStringLiteral(node->arguments[0]) : "<dynamic>";
+                    std::string modeStr = (node->arguments.size() >= 2) ? extractStringLiteral(node->arguments[1]) : "r";
+                    
+                    PermissionFinding f;
+                    if (modeStr.find('w') != std::string::npos || modeStr.find('a') != std::string::npos || modeStr.find('+') != std::string::npos) {
+                        f.type = "WRITE";
+                    } else {
+                        f.type = "READ";
+                    }
+                    f.operation = "File(" + modeStr + ")";
+                    f.target = pathStr;
+                    f.file = currentFile;
+                    f.line = expr->line;
+                    f.column = expr->column;
+                    report.addFinding(f);
+                }
             }
 
             scanExpression(node->callee, currentFile, report);

@@ -1,0 +1,88 @@
+# ============================================================================
+# Test: FFI 32-bit float (f32) and 64-bit float (f64/double) parameters
+# ============================================================================
+
+out "=== Testing FFI Float Parameters (f32 & f64) ==="
+
+# Load C runtime library
+crt = os_load_lib("msvcrt.dll")
+when crt == 0 or type(crt) == "nil" {
+    crt = os_load_lib("ucrtbase.dll")
+}
+when crt == 0 or type(crt) == "nil" {
+    crt = os_load_lib("libm.so.6")
+}
+when crt == 0 or type(crt) == "nil" {
+    crt = os_load_lib("libm.so")
+}
+
+when crt != 0 and type(crt) != "nil" {
+    out "PASS: C runtime math library loaded"
+} other {
+    out "FAIL: Could not load C runtime library"
+}
+
+# 1. Test 32-bit float single argument: sqrtf(25.0) -> 5.0
+f_sqrtf = os_get_func(crt, "sqrtf")
+when f_sqrtf == 0 or type(f_sqrtf) == "nil" {
+    # Fallback to sqrt if sqrtf not exported directly
+    f_sqrtf = os_get_func(crt, "sqrt")
+}
+
+when f_sqrtf != 0 {
+    res_sqrtf = os_call_sig(f_sqrtf, "f32", ["f32"], 25.0)
+    when str(res_sqrtf) == "5" or str(res_sqrtf) == "5.0" or (res_sqrtf >= 4.99 and res_sqrtf <= 5.01) {
+        out "PASS: os_call_sig sqrtf(25.0) returned 5.0"
+    } other {
+        out "FAIL: os_call_sig sqrtf(25.0) returned " + str(res_sqrtf)
+    }
+
+    res_arr_sqrtf = os_call_sig_arr(f_sqrtf, "f32", ["f32"], [25.0])
+    when str(res_arr_sqrtf) == "5" or str(res_arr_sqrtf) == "5.0" or (res_arr_sqrtf >= 4.99 and res_arr_sqrtf <= 5.01) {
+        out "PASS: os_call_sig_arr sqrtf(25.0) returned 5.0"
+    } other {
+        out "FAIL: os_call_sig_arr sqrtf(25.0) returned " + str(res_arr_sqrtf)
+    }
+}
+
+# 2. Test 32-bit float multi arguments: powf(2.0, 3.0) -> 8.0
+f_powf = os_get_func(crt, "powf")
+when f_powf == 0 or type(f_powf) == "nil" {
+    f_powf = os_get_func(crt, "pow")
+}
+
+when f_powf != 0 {
+    res_powf = os_call_sig(f_powf, "f32", ["f32", "f32"], 2.0, 3.0)
+    when str(res_powf) == "8" or str(res_powf) == "8.0" or (res_powf >= 7.99 and res_powf <= 8.01) {
+        out "PASS: os_call_sig powf(2.0, 3.0) returned 8.0"
+    } other {
+        out "FAIL: os_call_sig powf(2.0, 3.0) returned " + str(res_powf)
+    }
+
+    res_arr_powf = os_call_sig_arr(f_powf, "f32", ["f32", "f32"], [2.0, 3.0])
+    when str(res_arr_powf) == "8" or str(res_arr_powf) == "8.0" or (res_arr_powf >= 7.99 and res_arr_powf <= 8.01) {
+        out "PASS: os_call_sig_arr powf(2.0, 3.0) returned 8.0"
+    } other {
+        out "FAIL: os_call_sig_arr powf(2.0, 3.0) returned " + str(res_arr_powf)
+    }
+}
+
+# 3. Test 64-bit double multi arguments: pow(3.0, 4.0) -> 81.0
+f_pow = os_get_func(crt, "pow")
+when f_pow != 0 {
+    res_pow = os_call_sig(f_pow, "f64", ["f64", "f64"], 3.0, 4.0)
+    when str(res_pow) == "81" or str(res_pow) == "81.0" or (res_pow >= 80.99 and res_pow <= 81.01) {
+        out "PASS: os_call_sig pow(3.0, 4.0) returned 81.0"
+    } other {
+        out "FAIL: os_call_sig pow(3.0, 4.0) returned " + str(res_pow)
+    }
+
+    res_arr_pow = os_call_sig_arr(f_pow, "double", ["double", "double"], [3.0, 4.0])
+    when str(res_arr_pow) == "81" or str(res_arr_pow) == "81.0" or (res_arr_pow >= 80.99 and res_arr_pow <= 81.01) {
+        out "PASS: os_call_sig_arr pow(3.0, 4.0) returned 81.0"
+    } other {
+        out "FAIL: os_call_sig_arr pow(3.0, 4.0) returned " + str(res_arr_pow)
+    }
+}
+
+out "=== Test Complete ==="

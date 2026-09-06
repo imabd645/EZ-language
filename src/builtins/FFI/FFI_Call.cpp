@@ -240,6 +240,7 @@ void registerFFICall(RuntimeContext& interp) {
             std::vector<void*> argValues(argc);
             std::vector<intptr_t> iArgs(argc, 0);
             std::vector<double> fArgs(argc, 0.0);
+            std::vector<float> f32Args(argc, 0.0f);
             std::vector<std::string> tempStrings(argc);
             
             for (size_t i = 0; i < argc; i++) {
@@ -248,7 +249,12 @@ void registerFFICall(RuntimeContext& interp) {
 
                 std::string type = sigArray[i].isString() ? sigArray[i].asString() : "ptr";
 
-                if (type == "float" || type == "double" || type == "f32" || type == "f64") {
+                if (type == "f32") {
+                    argTypes[i] = &ffi_type_float;
+                    if (args[valIdx].isInteger())    f32Args[i] = (float)args[valIdx].asInteger();
+                    else if (args[valIdx].isNumber()) f32Args[i] = (float)args[valIdx].asFloat();
+                    argValues[i] = &f32Args[i];
+                } else if (type == "float" || type == "double" || type == "f64") {
                     // A double parameter must land in an XMM register: give it the
                     // real floating type, not a reinterpreted integer.
                     argTypes[i] = &ffi_type_double;
@@ -294,13 +300,19 @@ void registerFFICall(RuntimeContext& interp) {
             std::vector<void*>       argValues(argc);
             std::vector<intptr_t>    iArgs(argc, 0);
             std::vector<double>      fArgs(argc, 0.0);
+            std::vector<float>       f32Args(argc, 0.0f);
             std::vector<std::string> tempStrings(argc);
 
             for (size_t i = 0; i < argc; i++) {
                 std::string type = sigArray[i].isString() ? sigArray[i].asString() : "ptr";
                 const Value& val = (i < userArgs.size()) ? userArgs[i] : Value();
 
-                if (type == "float" || type == "double" || type == "f32" || type == "f64") {
+                if (type == "f32") {
+                    argTypes[i]  = &ffi_type_float;
+                    if (val.isInteger())     f32Args[i] = (float)val.asInteger();
+                    else if (val.isNumber()) f32Args[i] = (float)val.asFloat();
+                    argValues[i] = &f32Args[i];
+                } else if (type == "float" || type == "double" || type == "f64") {
                     argTypes[i]  = &ffi_type_double;
                     if (val.isInteger())     fArgs[i] = (double)val.asInteger();
                     else if (val.isNumber()) fArgs[i] = val.asFloat();

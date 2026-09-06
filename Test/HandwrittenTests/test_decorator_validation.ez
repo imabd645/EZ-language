@@ -43,6 +43,7 @@ model CachedCalculator {
 calc = CachedCalculator()
 v1 = calc.getMultiple()
 v2 = calc.getMultiple()
+out calc.computations
 when v1 == 20 and v2 == 20 {
     out "PASS: Method decorator @cached works"
 } other {

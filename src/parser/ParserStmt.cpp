@@ -169,7 +169,7 @@ StmtPtr Parser::statement() {
         if (!persistPath.empty()) model.persistPath = persistPath;
         return modelNode;
     }
-    if (isCached || isAudited || isSnapshot || !userDecorators.empty()) {
+    if (isCached || isAudited || isSnapshot || !persistPath.empty() || rateLimitCfg != nullptr || !userDecorators.empty()) {
         throw ParseError("Decorators can only be applied to 'model' or 'task' declarations", peek().line);
     }
 

@@ -1,0 +1,65 @@
+# ============================================================================
+# Test: Decorator validation on tasks and models
+# ============================================================================
+
+out "=== Testing Decorator Validation ==="
+
+# 1. Valid model decorators: @audited, @snapshot
+@audited
+@snapshot
+model BankAccount {
+    init(balance) {
+        self.balance = balance
+    }
+    task deposit(amount) {
+        self.balance = self.balance + amount
+    }
+}
+
+acc = BankAccount(100)
+acc.deposit(50)
+when acc.balance == 150 {
+    out "PASS: Model decorators @audited and @snapshot work"
+} other {
+    out "FAIL: Model decorators failed"
+}
+
+# 2. Valid method decorator: @cached
+model CachedCalculator {
+    factor = 2
+    computations = 0
+
+    @cached
+    task getMultiple() {
+        self.computations = self.computations + 1
+        give self.factor * 10
+    }
+
+    task setFactor(f) {
+        self.factor = f
+    }
+}
+
+calc = CachedCalculator()
+v1 = calc.getMultiple()
+v2 = calc.getMultiple()
+when v1 == 20 and v2 == 20 {
+    out "PASS: Method decorator @cached works"
+} other {
+    out "FAIL: Method decorator @cached failed"
+}
+
+# 3. Valid task decorator: @ratelimit
+@ratelimit(10, "second")
+task limitedTask(x) {
+    give x + 1
+}
+
+when limitedTask(5) == 6 {
+    out "PASS: Task decorator @ratelimit works"
+} other {
+    out "FAIL: Task decorator @ratelimit failed"
+}
+
+out "=== Test Complete ==="
+

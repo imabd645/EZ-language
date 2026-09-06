@@ -1,0 +1,64 @@
+# ============================================================================
+# Test: Loop control statements (skip and escape) in all loop types
+# ============================================================================
+
+out "=== Testing Loop Control (skip & escape) ==="
+
+# 1. while loop with skip and escape
+count = 0
+sum = 0
+while count < 10 {
+    count = count + 1
+    when count == 3 {
+        skip
+    }
+    when count == 7 {
+        escape
+    }
+    sum = sum + count
+}
+# sum should be 1 + 2 + 4 + 5 + 6 = 18
+when sum == 18 {
+    out "PASS: while loop with skip and escape"
+} other {
+    out "FAIL: while loop sum is " + str(sum)
+}
+
+# 2. repeat loop with skip and escape
+repeatSum = 0
+repeat i = 1 to 10 {
+    when i == 2 {
+        skip
+    }
+    when i == 6 {
+        escape
+    }
+    repeatSum = repeatSum + i
+}
+# repeatSum should be 1 + 3 + 4 + 5 = 13
+when repeatSum == 13 {
+    out "PASS: repeat loop with skip and escape"
+} other {
+    out "FAIL: repeat loop sum is " + str(repeatSum)
+}
+
+# 3. get-in loop with skip and escape
+items = [10, 20, 30, 40, 50]
+getSum = 0
+get x in items {
+    when x == 20 {
+        skip
+    }
+    when x == 40 {
+        escape
+    }
+    getSum = getSum + x
+}
+# getSum should be 10 + 30 = 40
+when getSum == 40 {
+    out "PASS: get loop with skip and escape"
+} other {
+    out "FAIL: get loop sum is " + str(getSum)
+}
+
+out "=== Test Complete ==="

@@ -49,7 +49,7 @@ bool TypeChecker::isTerminal(const StmtPtr& stmt) const {
 
 void TypeChecker::checkStmt(const StmtPtr& stmt) {
     if (!stmt) return;
-    std::visit([this](auto&& arg) {
+    std::visit([this, &stmt](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VarDeclStmt*>) checkVarDecl(*arg);
         else if constexpr (std::is_same_v<T, TaskStmt*>) checkTask(*arg);
@@ -70,10 +70,14 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
         else if constexpr (std::is_same_v<T, StaticStmt*>) checkStatic(*arg);
         else if constexpr (std::is_same_v<T, EscapeStmt*>) {
             if (loopDepth == 0) {
-                error(0, "break or continue statement outside of a loop"); // EscapeStmt does not store line currently
+                error(stmt->line, stmt->column, stmt->length, stmt->filename, "Cannot use 'escape' outside of a loop.");
             }
         }
-        else if constexpr (std::is_same_v<T, SkipStmt*>) {} // No checking needed
+        else if constexpr (std::is_same_v<T, SkipStmt*>) {
+            if (loopDepth == 0) {
+                error(stmt->line, stmt->column, stmt->length, stmt->filename, "Cannot use 'skip' outside of a loop.");
+            }
+        }
         else if constexpr (std::is_same_v<T, UseStmt*>) {
             hasImports = true;
             if (!arg->alias.empty()) {

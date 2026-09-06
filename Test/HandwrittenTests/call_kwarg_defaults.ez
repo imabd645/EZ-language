@@ -1,0 +1,43 @@
+out "=== Testing Keyword Arguments with Default Values ==="
+
+task configure(a, b = "default_b", c = "default_c") {
+    give a + ":" + b + ":" + c
+}
+
+// Case 1: Positional only
+res1 = configure("A")
+out res1
+if (res1 != "A:default_b:default_c") {
+    out "FAIL: Case 1"
+} else {
+    out "PASS: Case 1"
+}
+
+// Case 2: Keyword for last param, omitting middle default param
+res2 = configure("A", c = "custom_c")
+out res2
+if (res2 != "A:default_b:custom_c") {
+    out "FAIL: Case 2"
+} else {
+    out "PASS: Case 2"
+}
+
+// Case 3: Keyword for middle param, omitting last default param
+res3 = configure("A", b = "custom_b")
+out res3
+if (res3 != "A:custom_b:default_c") {
+    out "FAIL: Case 3"
+} else {
+    out "PASS: Case 3"
+}
+
+// Case 4: All keyword args out of order
+res4 = configure(c = "3", a = "1", b = "2")
+out res4
+if (res4 != "1:2:3") {
+    out "FAIL: Case 4"
+} else {
+    out "PASS: Case 4"
+}
+
+out "=== Test Complete ==="

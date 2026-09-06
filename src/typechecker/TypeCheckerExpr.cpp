@@ -287,127 +287,117 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
             size_t minRequired = substitutedSig.isVariadic ? (substitutedSig.minArgs > 0 ? substitutedSig.minArgs - 1 : 0) : substitutedSig.minArgs;
             
             // Resolve Keyword Arguments
+            bool hasKeywords = false;
             if (expr.argNames.size() > 0) {
-                bool hasKeywords = false;
                 for (const auto& kw : expr.argNames) {
                     if (!kw.empty()) { hasKeywords = true; break; }
                 }
-                if (hasKeywords) {
-                    std::vector<ExprPtr> newArgs(substitutedSig.paramTypes.size(), nullptr);
-                    std::vector<TypeInfo> newArgTypes(substitutedSig.paramTypes.size(), TypeInfo("Any"));
-                    std::vector<bool> provided(substitutedSig.paramTypes.size(), false);
-                    
-                    for (size_t i = 0; i < expr.arguments.size(); ++i) {
-                        if (!expr.argNames[i].empty()) {
-                            // Keyword arg
-                            auto it = std::find(substitutedSig.paramNames.begin(), substitutedSig.paramNames.end(), expr.argNames[i]);
-                            if (it == substitutedSig.paramNames.end()) {
-                                error(expr.callee, "Function '" + name + "' has no parameter named '" + expr.argNames[i] + "'.");
-                                continue;
-                            }
-                            size_t idx = std::distance(substitutedSig.paramNames.begin(), it);
-                            if (provided[idx]) {
-                                error(expr.callee, "Duplicate argument for parameter '" + expr.argNames[i] + "'.");
-                            }
-                            newArgs[idx] = expr.arguments[i];
-                            newArgTypes[idx] = argTypes[i];
-                            provided[idx] = true;
-                        } else {
-                            // Positional arg
-                            if (i >= substitutedSig.paramTypes.size()) {
-                                error(expr.callee, "Too many arguments provided.");
-                                continue;
-                            }
-                            if (provided[i]) {
-                                error(expr.callee, "Positional argument follows keyword argument for the same parameter.");
-                            }
-                            newArgs[i] = expr.arguments[i];
-                            newArgTypes[i] = argTypes[i];
-                            provided[i] = true;
-                        }
-                    }
-                    
-                    // Filter out nullptrs (optional arguments not provided)
-                    std::vector<ExprPtr> finalArgs;
-                    std::vector<TypeInfo> finalArgTypes;
-                    for (size_t i = 0; i < newArgs.size(); ++i) {
-                        if (newArgs[i]) {
-                            finalArgs.push_back(newArgs[i]);
-                            finalArgTypes.push_back(newArgTypes[i]);
-                        } else if (i < minRequired) {
-                            error(expr.callee, "Missing required argument '" + substitutedSig.paramNames[i] + "'.");
-                        }
-                    }
-                    
-                    // Mutate the AST to reorder the arguments
-                    CallExpr* mutExpr = const_cast<CallExpr*>(&expr);
-                    mutExpr->arguments = finalArgs;
-                    mutExpr->argNames.clear();
-                    
-                    argTypes = finalArgTypes;
-                }
             }
-            if (!substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
-                std::string signatureStr = "Function signature: " + name + "(";
-                for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
-                    if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
-                    signatureStr += substitutedSig.paramTypes[j].toString();
-                    if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
-                }
-                signatureStr += ")";
-                std::string msg;
-                if (minRequired == substitutedSig.paramTypes.size()) {
-                    msg = "'" + name + "' expected " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
-                } else {
-                    msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
-                }
-                error(expr.callee, msg, signatureStr);
-            } else if (substitutedSig.isVariadic && argTypes.size() < minRequired) {
-                std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
-                error(expr.callee, msg);
-            } else {
-                // Only the leading FIXED parameters have a positional type to check:
-                // for a variadic signature every argument from the rest parameter
-                // onwards is collected into the rest array instead.
-                //
-                // This loop used to run to argTypes.size() while indexing
-                // paramTypes[i]. The arity guards above bound the upper end only for
-                // non-variadic calls -- passing more arguments than there are
-                // parameters is normal for a variadic -- so e.g. `task f(...xs)`
-                // called as f(1,2) read paramTypes[1] from a one-element vector.
-                // That out-of-bounds read produced a garbage TypeInfo whose
-                // std::string had a bogus length, crashing the compiler with
-                // std::bad_alloc or an access violation (test_spread.ez).
-                size_t checkCount = std::min(argTypes.size(), substitutedSig.paramTypes.size());
-                if (substitutedSig.isVariadic && !substitutedSig.paramTypes.empty()) {
-                    checkCount = std::min(checkCount, substitutedSig.paramTypes.size() - 1);
-                }
-                for (size_t i = 0; i < checkCount; i++) {
-                    if (argTypes[i] != substitutedSig.paramTypes[i] && argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any") {
-                        std::string hint = "";
-                        if (substitutedSig.paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {
-                            if (std::holds_alternative<LiteralExpr*>(expr.arguments[i]->variant)) {
-                                auto lit = std::get<LiteralExpr*>(expr.arguments[i]->variant);
-                                if (std::holds_alternative<std::string>(lit->value)) {
-                                    std::string strVal = std::get<std::string>(lit->value);
-                                    hint = "Did you mean " + strVal + " instead of \"" + strVal + "\"?";
-                                }
+            
+            if (hasKeywords) {
+                std::vector<bool> provided(substitutedSig.paramTypes.size(), false);
+                
+                for (size_t i = 0; i < expr.arguments.size(); ++i) {
+                    if (!expr.argNames[i].empty()) {
+                        // Keyword arg
+                        auto it = std::find(substitutedSig.paramNames.begin(), substitutedSig.paramNames.end(), expr.argNames[i]);
+                        if (it == substitutedSig.paramNames.end()) {
+                            error(expr.callee, "Function '" + name + "' has no parameter named '" + expr.argNames[i] + "'.");
+                            continue;
+                        }
+                        size_t idx = std::distance(substitutedSig.paramNames.begin(), it);
+                        if (provided[idx]) {
+                            error(expr.callee, "Duplicate argument for parameter '" + expr.argNames[i] + "'.");
+                        }
+                        provided[idx] = true;
+                        
+                        if (idx < substitutedSig.paramTypes.size()) {
+                            if (argTypes[i].baseType != "Any" && substitutedSig.paramTypes[idx].baseType != "Any" &&
+                                argTypes[i] != substitutedSig.paramTypes[idx]) {
+                                error(expr.arguments[i], "Type mismatch for argument '" + substitutedSig.paramNames[idx] + "'.",
+                                      "Expected " + substitutedSig.paramTypes[idx].toString() + " but got " + argTypes[i].toString());
                             }
-                            if (hint.empty()) hint = "Did you mean to pass a number instead of a string?";
                         }
-                        
-                        std::string signatureStr = "Function signature: " + name + "(";
-                        for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
-                            if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
-                            signatureStr += substitutedSig.paramTypes[j].toString();
-                            if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
+                    } else {
+                        // Positional arg
+                        if (i >= substitutedSig.paramTypes.size()) {
+                            error(expr.callee, "Too many arguments provided.");
+                            continue;
                         }
-                        signatureStr += ")";
+                        if (provided[i]) {
+                            error(expr.callee, "Positional argument follows keyword argument for the same parameter.");
+                        }
+                        provided[i] = true;
                         
-                        std::string paramNameStr = (i < substitutedSig.paramNames.size()) ? (" '" + substitutedSig.paramNames[i] + "'") : "";
-                        std::string msg = "Argument " + std::to_string(i+1) + paramNameStr + " expects " + substitutedSig.paramTypes[i].toString() + " but got " + argTypes[i].toString();
-                        
-                        error(expr.arguments[i], msg, signatureStr + "\n  Hint: " + hint);
+                        if (argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any" &&
+                            argTypes[i] != substitutedSig.paramTypes[i]) {
+                            error(expr.arguments[i], "Type mismatch for argument '" + substitutedSig.paramNames[i] + "'.",
+                                  "Expected " + substitutedSig.paramTypes[i].toString() + " but got " + argTypes[i].toString());
+                        }
+                    }
+                }
+                
+                // Verify all required parameters were provided
+                for (size_t i = 0; i < minRequired && i < substitutedSig.paramNames.size(); ++i) {
+                    if (!provided[i]) {
+                        error(expr.callee, "Missing required argument '" + substitutedSig.paramNames[i] + "'.");
+                    }
+                }
+                // Do NOT mutate expr.arguments or clear expr.argNames; compiler will emit CALL_KW!
+            } else {
+                if (!substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
+                    std::string signatureStr = "Function signature: " + name + "(";
+                    for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
+                        if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
+                        signatureStr += substitutedSig.paramTypes[j].toString();
+                        if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
+                    }
+                    signatureStr += ")";
+                    std::string msg;
+                    if (minRequired == substitutedSig.paramTypes.size()) {
+                        msg = "'" + name + "' expected " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                    } else {
+                        msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
+                    }
+                    error(expr.callee, msg, signatureStr);
+                } else if (substitutedSig.isVariadic && argTypes.size() < minRequired) {
+                    std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
+                    error(expr.callee, msg);
+                } else {
+                    // Only the leading FIXED parameters have a positional type to check:
+                    // for a variadic signature every argument from the rest parameter
+                    // onwards is collected into the rest array instead.
+                    size_t checkCount = std::min(argTypes.size(), substitutedSig.paramTypes.size());
+                    if (substitutedSig.isVariadic && !substitutedSig.paramTypes.empty()) {
+                        checkCount = std::min(checkCount, substitutedSig.paramTypes.size() - 1);
+                    }
+                    for (size_t i = 0; i < checkCount; i++) {
+                        if (argTypes[i] != substitutedSig.paramTypes[i] && argTypes[i].baseType != "Any" && substitutedSig.paramTypes[i].baseType != "Any") {
+                            std::string hint = "";
+                            if (substitutedSig.paramTypes[i].baseType == "number" && argTypes[i].baseType == "string") {
+                                if (std::holds_alternative<LiteralExpr*>(expr.arguments[i]->variant)) {
+                                    auto lit = std::get<LiteralExpr*>(expr.arguments[i]->variant);
+                                    if (std::holds_alternative<std::string>(lit->value)) {
+                                        std::string strVal = std::get<std::string>(lit->value);
+                                        hint = "Did you mean " + strVal + " instead of \"" + strVal + "\"?";
+                                    }
+                                }
+                                if (hint.empty()) hint = "Did you mean to pass a number instead of a string?";
+                            }
+                            
+                            std::string signatureStr = "Function signature: " + name + "(";
+                            for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
+                                if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
+                                signatureStr += substitutedSig.paramTypes[j].toString();
+                                if (j + 1 < substitutedSig.paramTypes.size()) signatureStr += ", ";
+                            }
+                            signatureStr += ")";
+                            
+                            std::string paramNameStr = (i < substitutedSig.paramNames.size()) ? (" '" + substitutedSig.paramNames[i] + "'") : "";
+                            std::string msg = "Argument " + std::to_string(i+1) + paramNameStr + " expects " + substitutedSig.paramTypes[i].toString() + " but got " + argTypes[i].toString();
+                            
+                            error(expr.arguments[i], msg, signatureStr + "\n  Hint: " + hint);
+                        }
                     }
                 }
             }

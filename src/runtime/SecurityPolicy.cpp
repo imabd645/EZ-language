@@ -144,9 +144,38 @@ bool SecurityPolicy::checkNet(RuntimeContext& interp, const std::string& targetH
     if (!safeMode || allowAll || allowNet) return true;
 
     if (!allowedNetHosts.empty() && !targetHostOrUrl.empty()) {
-        for (const auto& host : allowedNetHosts) {
-            if (host == "*" || targetHostOrUrl.find(host) != std::string::npos) {
-                return true;
+        // Extract host from URL
+        std::string actualHost = targetHostOrUrl;
+        
+        size_t schemePos = actualHost.find("://");
+        if (schemePos != std::string::npos) actualHost = actualHost.substr(schemePos + 3);
+        
+        size_t pathPos = actualHost.find_first_of("/?#");
+        if (pathPos != std::string::npos) actualHost = actualHost.substr(0, pathPos);
+        
+        size_t atPos = actualHost.find('@');
+        if (atPos != std::string::npos) actualHost = actualHost.substr(atPos + 1);
+        
+        size_t colonPos = actualHost.find(':');
+        if (colonPos != std::string::npos) actualHost = actualHost.substr(0, colonPos);
+        
+        std::transform(actualHost.begin(), actualHost.end(), actualHost.begin(), ::tolower);
+
+        for (const auto& allowed : allowedNetHosts) {
+            if (allowed == "*") return true;
+            
+            std::string lowerAllowed = allowed;
+            std::transform(lowerAllowed.begin(), lowerAllowed.end(), lowerAllowed.begin(), ::tolower);
+            
+            // Exact match
+            if (actualHost == lowerAllowed) return true;
+            
+            // Subdomain match (must end with ".allowed.com")
+            std::string suffix = "." + lowerAllowed;
+            if (actualHost.length() >= suffix.length()) {
+                if (actualHost.compare(actualHost.length() - suffix.length(), suffix.length(), suffix) == 0) {
+                    return true;
+                }
             }
         }
     }

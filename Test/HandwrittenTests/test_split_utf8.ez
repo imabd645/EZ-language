@@ -1,0 +1,49 @@
+# ============================================================================
+# Test: UTF-8 aware split(str, "")
+# ============================================================================
+
+out "=== Testing UTF-8 split ==="
+
+# 1. Latin characters with accents
+cafe_chars = split("café", "")
+when len(cafe_chars) == 4 and cafe_chars[3] == "é" {
+    out "PASS: café split into 4 characters with intact é"
+} other {
+    out "FAIL: café split failed: " + str(cafe_chars)
+}
+
+# 2. Japanese characters
+jp_chars = split("こんにちは", "")
+when len(jp_chars) == 5 and jp_chars[0] == "こ" and jp_chars[4] == "は" {
+    out "PASS: Japanese characters split correctly into 5 codepoints"
+} other {
+    out "FAIL: Japanese split failed: " + str(jp_chars)
+}
+
+# 3. Emoji codepoints (4-byte sequences)
+emoji_chars = split("🚀🔥🌟", "")
+when len(emoji_chars) == 3 and emoji_chars[0] == "🚀" and emoji_chars[1] == "🔥" and emoji_chars[2] == "🌟" {
+    out "PASS: Multi-byte emojis split correctly into 3 characters"
+} other {
+    out "FAIL: Emoji split failed: " + str(emoji_chars)
+}
+
+# 4. Join and roundtrip
+original = "Hello, 世界 🌍! café"
+parts = split(original, "")
+rebuilt = join(parts, "")
+when rebuilt == original {
+    out "PASS: Split and join roundtrip preserved string exactly"
+} other {
+    out "FAIL: Roundtrip mismatch: " + rebuilt
+}
+
+# 5. Multi-byte delimiter
+delimited = split("alpha・beta・gamma", "・")
+when len(delimited) == 3 and delimited[1] == "beta" {
+    out "PASS: Multi-byte delimiter split correctly"
+} other {
+    out "FAIL: Multi-byte delimiter split failed"
+}
+
+out "=== Test Complete ==="

@@ -144,7 +144,14 @@ void registerStringBuiltins(RuntimeContext& interp) {
             std::vector<Value> result;
             
             if (delim.empty()) {
-                for (char c : str) { result.push_back(Value(std::string(1, c))); }
+                size_t i = 0;
+                while (i < str.size()) {
+                    size_t start = i;
+                    size_t n = ez_utf8::seqLen((unsigned char)str[i]);
+                    if (n == 1 || !ez_utf8::validAt(str, i, n)) n = 1;
+                    result.push_back(Value(str.substr(start, n)));
+                    i = start + n;
+                }
             } else {
                 size_t start = 0;
                 size_t end = str.find(delim);

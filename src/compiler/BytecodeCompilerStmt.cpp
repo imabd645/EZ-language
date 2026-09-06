@@ -1135,8 +1135,14 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
     std::string execFlag = "__module_cache_" + std::to_string(std::hash<std::string>{}(absolutePath));
     size_t flagIdx = identifierConstant(execFlag);
 
-    // Namespaced AND Global imports both compile as a module closure to enable caching
-    std::unique_ptr<Compiler> moduleCompiler(new Compiler(alias + "_module", 0, current));
+    std::string savedCurrentFile = currentFile;
+    currentFile = absolutePath;
+
+    std::string moduleName = !stmt.alias.empty() ? stmt.alias : stmt.path;
+    // Namespaced AND Global imports both compile as a module closure to enable caching.
+    // Modules must compile with parent = nullptr to ensure complete lexical isolation,
+    // preventing module variables from being misidentified as upvalues of enclosing scopes.
+    std::unique_ptr<Compiler> moduleCompiler(new Compiler("<module " + moduleName + ">", 0, nullptr));
     Compiler* previous = current;
     current = moduleCompiler.get();
 
@@ -1222,6 +1228,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         
         // Finalize module function
         BytecodeFunctionPtr moduleFunc = current->function;
+        moduleFunc->filename = absolutePath;  // Propagate source file for stack traces
         moduleFunc->localCount = current->locals.size();
         moduleFunc->upvalueCount = current->upvalues.size();
         moduleFunc->upvalues = current->upvalues;
@@ -1229,6 +1236,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
 
         // Restore compiler to parent
         current = previous;
+        currentFile = savedCurrentFile;
 
         // Register the module function as a nested function of the parent compiler
         size_t nestedIdx = current->function->nestedFunctions.size();

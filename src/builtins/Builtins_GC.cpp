@@ -240,6 +240,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
     makeErrorClass("IndexError", exceptionClass);
     makeErrorClass("KeyError", exceptionClass);
     makeErrorClass("PermissionError", exceptionClass);
+    makeErrorClass("SecurityError", exceptionClass);
     // throwException() only builds a typed instance when a global class of that
     // name exists; otherwise it silently falls back to a plain string error that
     // no `catch (SomeError e)` clause can match. These three were named at

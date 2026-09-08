@@ -1,0 +1,81 @@
+// ============================================================================
+// Exception & Error Handling Stress Tests
+// ============================================================================
+
+out "=== Starting Exception Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+try {
+    // 1. Nested Try-Catch bubbling
+    state = 0
+    try {
+        try {
+            try {
+                // Trigger an error
+                throw "Deep Error"
+            } catch e {
+                state = 1
+                throw "Bubbled Error"
+            }
+        } catch e {
+            when e == "Bubbled Error" {
+                state = 2
+                throw "Final Error"
+            }
+        }
+    } catch e {
+        when e == "Final Error" {
+            state = 3
+        }
+    }
+    
+    when state != 3 {
+        fail("Exception bubbling failed at state " + str(state))
+    } other {
+        pass("Deep exception bubbling")
+    }
+} catch e {
+    fail("Deep exception bubbling test crashed!")
+}
+
+// 2. Throwing Custom Objects
+model CustomError {
+    init(code, msg) {
+        self.code = code
+        self.msg = msg
+    }
+}
+
+try {
+    caught = nil
+    try {
+        throw CustomError(404, "Not Found")
+    } catch e {
+        caught = e
+    }
+    
+    when caught == nil or caught.code != 404 or caught.msg != "Not Found" {
+        fail("Throwing custom object failed")
+    } other {
+        pass("Throwing custom objects")
+    }
+} catch e {
+    fail("Custom object throw test crashed!")
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== EXCEPTION STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== EXCEPTION STRESS TEST PASSED ==="
+}

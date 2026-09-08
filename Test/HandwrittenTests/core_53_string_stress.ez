@@ -1,0 +1,77 @@
+// ============================================================================
+// String Stress Tests
+// ============================================================================
+
+out "=== Starting String Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+try {
+    // 1. Heavy Concatenation (should trigger memory reallocation boundaries)
+    s = ""
+    repeat i = 0 to 9999 {
+        s = s + "a"
+    }
+    when len(s) != 10000 {
+        fail("String concatenation length mismatch. Got: " + str(len(s)))
+    } other {
+        pass("Heavy string concatenation")
+    }
+} catch e {
+    fail("Heavy string concatenation threw: " + e.message)
+}
+
+try {
+    // 2. Multiline String Interpolation and escaping
+    name = "World"
+    n = 42
+    s = `Hello
+{name}!
+This is a test: \{n} vs {n}`
+
+    lines = split(s, "\n")
+    when len(lines) != 3 or lines[0] != "Hello" or lines[1] != "World!" or lines[2] != "This is a test: {n} vs 42" {
+        fail("Interpolation mismatch. Got: " + str(lines))
+    } other {
+        pass("Multiline string interpolation")
+    }
+} catch e {
+    fail("Multiline interpolation threw: " + e.message)
+}
+
+try {
+    // 3. String Methods Edge Cases
+    s = "  trim me  "
+    when trim(s) != "trim me" { fail("trim failed") }
+    
+    when upper("hello") != "HELLO" { fail("upper failed") }
+    when lower("HELLO") != "hello" { fail("lower failed") }
+    
+    when substr("abcdef", 2, 3) != "cde" { fail("substr failed") }
+    
+    when indexOf("abcdef", "cd") != 2 { fail("indexOf failed") }
+    when indexOf("abcdef", "z") != -1 { fail("indexOf not found failed") }
+    
+    when startsWith("abcdef", "ab") != true { fail("startsWith failed") }
+    when endsWith("abcdef", "ef") != true { fail("endsWith failed") }
+    
+    pass("String methods edge cases")
+} catch e {
+    fail("String methods threw: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== STRING STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== STRING STRESS TEST PASSED ==="
+}

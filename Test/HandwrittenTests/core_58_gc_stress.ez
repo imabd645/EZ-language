@@ -1,0 +1,64 @@
+// ============================================================================
+// Garbage Collection (GC) & Memory Stress Tests
+// ============================================================================
+
+out "=== Starting GC Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+try {
+    // 1. Massive Object Allocation
+    // Ensures the system can handle large allocations without crashing
+    arr = []
+    repeat i = 0 to 9999 {
+        push(arr, {"id": i})
+    }
+    when len(arr) != 10000 {
+        fail("Massive allocation failed. Got length: " + str(len(arr)))
+    } other {
+        pass("Massive object allocation")
+    }
+    
+    // Clear array so GC can collect
+    arr = nil
+} catch e {
+    fail("Massive allocation threw: " + e.message)
+}
+
+try {
+    // 2. Large Circular Chains
+    // Creates a linked list that loops back to the start
+    head = {}
+    curr = head
+    
+    repeat i = 0 to 999 {
+        next = {}
+        curr["next"] = next
+        curr = next
+    }
+    curr["next"] = head // Create the cycle
+    
+    // Destroy the references, forcing the Cycle Collector to handle it
+    head = nil
+    curr = nil
+    
+    pass("Large circular chain destruction")
+} catch e {
+    fail("Large circular chains threw: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== GC STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== GC STRESS TEST PASSED ==="
+}

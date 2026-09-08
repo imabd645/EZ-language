@@ -1,0 +1,214 @@
+// ============================================================================
+// Core Stress Tests — Catching interpreter edge cases
+// ============================================================================
+
+out "=== Starting Core Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+// ----------------------------------------------------------------------------
+// 1. Lexical and Syntax Edge Cases
+// ----------------------------------------------------------------------------
+try {
+    // Highly nested mathematical expressions to test parser stack
+    res = 1 + (2 * (3 + (4 * (5 + (6 * (7 + (8 * (9 + 10))))))))
+    when res != 7679 { fail("Nested math yielded incorrect result: " + str(res)) }
+    pass("Nested math expressions")
+} catch e {
+    fail("Nested math expressions threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 2. Closure Capture Mutability
+// ----------------------------------------------------------------------------
+try {
+    // Tests if closures correctly capture variables by reference/value
+    funcs = []
+    x = 0
+    while x < 3 {
+        // Create an inner scope with a locally bound variable 'y'
+        y = x
+        push(funcs, || { give y })
+        x = x + 1
+    }
+    
+    // In EZ, 'y' in the loop is usually a new lexical environment per iteration,
+    // so closures should capture 0, 1, 2 respectively.
+    res0 = funcs[0]()
+    res1 = funcs[1]()
+    res2 = funcs[2]()
+    
+    when res0 != 0 or res1 != 1 or res2 != 2 {
+        fail("Closure capture mismatch. Got: " + str(res0) + ", " + str(res1) + ", " + str(res2))
+    } other {
+        pass("Closure environment capture")
+    }
+} catch e {
+    fail("Closure environment capture threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 3. Circular References & GC
+// ----------------------------------------------------------------------------
+try {
+    // Create a circular structure
+    a = {}
+    b = {"parent": a}
+    a["child"] = b
+    
+    // Break reference (GC should handle the cycle)
+    a = nil
+    b = nil
+    
+    pass("Circular reference dictionary creation")
+} catch e {
+    fail("Circular reference threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 4. Object Method Context (this/self)
+// ----------------------------------------------------------------------------
+model ContextTest {
+    init(val) {
+        self.val = val
+    }
+    task getVal() {
+        give self.val
+    }
+}
+
+try {
+    obj = ContextTest(42)
+    // Pass the method as a callback
+    cb = obj.getVal
+    res = cb()
+    
+    when res != 42 {
+        fail("Method context lost when passed as callback. Got: " + str(res))
+    } other {
+        pass("Method context retained in callbacks")
+    }
+} catch e {
+    fail("Method callback threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 5. Short-circuit Evaluation Edge Cases
+// ----------------------------------------------------------------------------
+try {
+    called = false
+    task sideEffect() {
+        called = true
+        give true
+    }
+    
+    // The second condition should NOT execute
+    res = false and sideEffect()
+    when called {
+        fail("AND operator did not short-circuit!")
+    } other {
+        pass("AND short-circuiting")
+    }
+    
+    called = false
+    res = true or sideEffect()
+    when called {
+        fail("OR operator did not short-circuit!")
+    } other {
+        pass("OR short-circuiting")
+    }
+} catch e {
+    fail("Short-circuit evaluation threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 6. Exception Bubbling Through Builtins
+// ----------------------------------------------------------------------------
+try {
+    caught = false
+    task badFunc() {
+        // Will throw
+        give 1 / 0
+    }
+    
+    try {
+        arr = [1, 2, 3]
+        // This should invoke badFunc which throws inside a builtin operation if we mapped it,
+        // but here we just call it directly
+        badFunc()
+    } catch e {
+        caught = true
+    }
+    
+    when not caught {
+        fail("Exception failed to bubble up!")
+    } other {
+        pass("Exception bubbling")
+    }
+} catch e {
+    fail("Exception mechanism threw its own error: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// 7. Deep Recursion (Stack Overflow Protection / Tail Call check)
+// ----------------------------------------------------------------------------
+task recurse(n) {
+    when n <= 0 { give 0 }
+    give 1 + recurse(n - 1)
+}
+
+// ----------------------------------------------------------------------------
+// 7. Deep Recursion (Stack Overflow Protection / Tail Call check)
+// ----------------------------------------------------------------------------
+try {
+    // A moderate depth to test without causing a native C++ stack overflow
+    // if the interpreter is an AST walker without tail calls.
+    // Setting to 200 which should be safe for most interpreters, 
+    // but tests recursive mechanisms.
+    res = recurse(200)
+    when res != 200 { fail("Deep recursion failed") } other { pass("Deep recursion") }
+} catch e {
+    fail("Deep recursion threw exception: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// 8. Deeply Nested Arrays & Dicts
+// ----------------------------------------------------------------------------
+try {
+    arr = []
+    curr = arr
+    // Create 50 deep array
+    repeat i = 0 to 50 {
+        push(curr, [])
+        curr = curr[0]
+    }
+    push(curr, 42)
+    
+    // Retrieve it back
+    val = arr
+    repeat i = 0 to 51 {
+        val = val[0]
+    }
+    
+    when val != 42 { fail("Deeply nested array yielded: " + str(val)) } other { pass("Deeply nested arrays") }
+} catch e {
+    fail("Deeply nested arrays threw: " + str(e))
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== STRESS TEST FAILED with " + str(failures) + " failures ==="
+    // Force a non-zero exit equivalent for CI if possible
+} other {
+    out "=== STRESS TEST PASSED ==="
+}

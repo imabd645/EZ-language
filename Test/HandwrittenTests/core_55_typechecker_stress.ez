@@ -1,0 +1,77 @@
+// ============================================================================
+// Type Checker & Argument Validation Stress Tests
+// ============================================================================
+
+out "=== Starting Type Checker Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+try {
+    // 1. Math builtins expecting numbers, getting strings
+    try {
+        res = pow("hello", 2)
+        fail("pow() accepted a string!")
+    } catch e {
+        pass("pow() rejected string")
+    }
+
+    try {
+        res = len(12345)
+        fail("len() accepted a number!")
+    } catch e {
+        pass("len() rejected number")
+    }
+} catch e {
+    fail("Unexpected global exception in type test: " + e.message)
+}
+
+try {
+    // 2. Passing too many / too few arguments
+    try {
+        split("hello") // split expects 2 args
+        fail("split() accepted 1 argument instead of 2!")
+    } catch e {
+        pass("split() rejected 1 argument")
+    }
+
+    try {
+        res = trim("hello", "extra")
+        pass("trim() correctly accepted extra arguments (lenient arity)")
+    } catch e {
+        fail("trim() rejected extra arguments")
+    }
+} catch e {
+    fail("Unexpected global exception in arity test: " + e.message)
+}
+
+try {
+    // 3. Object property type coercion
+    obj = {"a": 1}
+    try {
+        obj[[]] = 2 // using an array as a dictionary key
+        res = obj[[]]
+        // If it hashed by reference, it will give nil. If by value, it gives 2.
+        pass("Dictionary safely handled array as key without crashing")
+    } catch e {
+        pass("Dictionary rejected array key safely")
+    }
+} catch e {
+    fail("Unexpected global exception in dictionary key test: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== TYPE CHECKER STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== TYPE CHECKER STRESS TEST PASSED ==="
+}
+

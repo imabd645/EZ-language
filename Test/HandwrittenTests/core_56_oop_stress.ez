@@ -1,0 +1,85 @@
+// ============================================================================
+// OOP & Class System Stress Tests
+// ============================================================================
+
+out "=== Starting OOP Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+// 1. Deep Inheritance Chain
+model A { task who() { give "A" } }
+model B extends A { task who() { give "B" + super.who() } }
+model C extends B { task who() { give "C" + super.who() } }
+model D extends C { task who() { give "D" + super.who() } }
+model E extends D { task who() { give "E" + super.who() } }
+
+try {
+    inst = E()
+    when inst.who() != "EDCBA" {
+        fail("Deep inheritance chain failed. Got: " + str(inst.who()))
+    } other {
+        pass("Deep inheritance and super calls")
+    }
+} catch e {
+    fail("Deep inheritance threw: " + e.message)
+}
+
+// 2. Class vs Instance Property isolation
+model Counter {
+    static count = 0
+    init() {
+        Counter.count = Counter.count + 1
+        self.local = Counter.count
+    }
+}
+
+try {
+    c1 = Counter()
+    c2 = Counter()
+    c3 = Counter()
+    
+    when c1.local != 1 or c2.local != 2 or c3.local != 3 or Counter.count != 3 {
+        fail("Static vs instance properties are bleeding!")
+    } other {
+        pass("Static property isolation")
+    }
+} catch e {
+    fail("Static property test threw: " + e.message)
+}
+
+// 3. Dynamic Method Binding & Reassignment
+model Mutable {
+    task compute() { give 1 }
+}
+
+try {
+    m1 = Mutable()
+    m2 = Mutable()
+    
+    // Override method on instance m1 only
+    m1.compute = || { give 42 }
+    
+    when m1.compute() != 42 or m2.compute() != 1 {
+        fail("Dynamic method overriding on instance failed")
+    } other {
+        pass("Dynamic method overriding on instance")
+    }
+} catch e {
+    fail("Dynamic method overriding threw: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== OOP STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== OOP STRESS TEST PASSED ==="
+}

@@ -1,0 +1,74 @@
+// ============================================================================
+// Concurrency & Async Stress Tests
+// ============================================================================
+
+out "=== Starting Async Concurrency Stress Test ==="
+
+failures = 0
+task fail(msg) {
+    out "FAIL: " + msg
+    failures = failures + 1
+}
+task pass(msg) {
+    out "PASS: " + msg
+}
+
+try {
+    // 1. Spawning multiple tasks and awaiting them all
+    futs = []
+    repeat i = 0 to 9 {
+        fut = spawn(|| {
+            // small simulated work loop
+            sum = 0
+            repeat j = 0 to 1000 { sum = sum + 1 }
+            give sum
+        })
+        push(futs, fut)
+    }
+    
+    resArr = awaitAll(futs)
+    when len(resArr) != 10 {
+        fail("awaitAll returned wrong number of results: " + str(len(resArr)))
+    } other {
+        // Check contents
+        allGood = true
+        get r in resArr {
+            when r != 1001 { allGood = false }
+        }
+        when allGood { pass("awaitAll execution") } other { fail("awaitAll yielded incorrect results: " + str(resArr)) }
+    }
+} catch e {
+    fail("awaitAll threw: " + e.message)
+}
+
+try {
+    // 2. awaitAny test
+    task slowTask() {
+        stop(100)
+        give "slow"
+    }
+    task fastTask() {
+        stop(10)
+        give "fast"
+    }
+    f1 = spawn(slowTask)
+    f2 = spawn(fastTask)
+    
+    fastRes = awaitAny([f1, f2])
+    when fastRes != "fast" {
+        fail("awaitAny yielded: " + str(fastRes))
+    } other {
+        pass("awaitAny execution")
+    }
+} catch e {
+    fail("awaitAny threw: " + e.message)
+}
+
+// ----------------------------------------------------------------------------
+// Results
+// ----------------------------------------------------------------------------
+when failures > 0 {
+    out "=== ASYNC STRESS TEST FAILED with " + str(failures) + " failures ==="
+} other {
+    out "=== ASYNC STRESS TEST PASSED ==="
+}

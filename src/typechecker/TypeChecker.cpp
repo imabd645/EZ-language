@@ -13,11 +13,13 @@ extern const std::string* EZ_GetSourceLine(const std::string& filename, int line
 TypeChecker::TypeChecker() : currentEnv(nullptr), currentReturnType("Any"), hadError(false) {}
 
 const std::unordered_map<std::string, TypeInfo>& TypeChecker::declaredGlobals() const {
-    // check() always returns with currentEnv back at the outermost scope it
-    // created (beginScope()/endScope() are balanced around every nested
-    // block), so this is the top-level variable table.
-    static const std::unordered_map<std::string, TypeInfo> empty;
-    return currentEnv ? currentEnv->variables : empty;
+    // check() deletes currentEnv (and nulls it) before returning, so this
+    // reads the snapshot check() takes right before that delete — not
+    // currentEnv itself, which is never valid by the time a caller gets to
+    // call this. (Previously it read currentEnv here, so every call after a
+    // completed check() silently returned empty — the REPL's "carry a
+    // variable's type to the next line" fix never actually carried anything.)
+    return lastCheckedGlobals;
 }
 
 void TypeChecker::error(const ExprPtr& expr, const std::string& message, const std::string& hint) {
@@ -394,6 +396,10 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
         checkStmt(stmt);
     }
     
+    // Snapshot before delete: declaredGlobals() serves this copy, since
+    // currentEnv is about to be freed and nulled and is never valid by the
+    // time a caller can ask for it.
+    lastCheckedGlobals = currentEnv->variables;
     delete currentEnv;
     currentEnv = nullptr;
     return !hadError;

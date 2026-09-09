@@ -1,0 +1,41 @@
+// ============================================================================
+// Async & Concurrency Edge Case Tests
+// ============================================================================
+
+
+out "=== Starting Async & Concurrency Edge Cases Test ==="
+
+task compute(x) {
+    give x * 2
+}
+
+futs = []
+repeat i = 1 to 5 {
+    // We capture 'i' and spawn a task
+    fut = spawn(|| { give compute(i) })
+    push(futs, fut)
+}
+
+res = awaitAll(futs)
+out "awaitAll results: " + str(res)
+
+// Await any
+f1 = spawn(|| { wait(100); give "Slow" })
+f2 = spawn(|| { wait(10); give "Fast" })
+f3 = spawn(|| { wait(50); give "Medium" })
+
+fastest = awaitAny([f1, f2, f3])
+out "awaitAny fastest: " + str(fastest)
+
+// Channels edge cases
+ch = Channel()
+
+spawn(|| {
+    ch.send("Hello from thread")
+    ch.send("Goodbye from thread")
+})
+
+out "Channel recv 1: " + str(ch.receive())
+out "Channel recv 2: " + str(ch.receive())
+
+out "=== Async & Concurrency Edge Cases Passed ==="

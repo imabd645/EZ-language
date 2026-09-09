@@ -1,0 +1,37 @@
+// ============================================================================
+// Dictionary Keys Edge Case Tests
+// ============================================================================
+
+out "=== Starting Dictionary Keys Test ==="
+
+d = {}
+
+// String keys
+d["normal"] = 1
+
+// Numeric keys (In EZ, they might be cast to string or fail)
+d[42] = "number key"
+d[3.14] = "float key"
+
+// Array keys (usually cast to string like '[1, 2]' or fail)
+d[[1, 2]] = "array key"
+
+// Dict as key
+d[{ "a": 1 }] = "dict key"
+
+// Nil and boolean keys
+d[nil] = "nil key"
+d[true] = "true key"
+d[false] = "false key"
+
+out "Dict size: " + str(len(d))
+out "Dict 42: " + str(d[42])
+out "Dict nil: " + str(d[nil])
+out "Dict true: " + str(d[true])
+
+// Test removing keys
+dictRemove(d, 42)
+out "Dict size after remove: " + str(len(d))
+out "Dict 42 after remove: " + str(d[42]) // Should be nil
+
+out "=== Dictionary Keys Test Passed ==="

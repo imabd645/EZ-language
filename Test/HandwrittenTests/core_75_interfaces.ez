@@ -1,0 +1,52 @@
+// ============================================================================
+// Interface Implementation Edge Cases
+// ============================================================================
+
+out "=== Starting Interface Test ==="
+
+interface Animal {
+    task speak()
+    task move(distance)
+}
+
+model Dog implements Animal {
+    init(name) {
+        self.name = name
+    }
+
+    task speak() {
+        give "Woof"
+    }
+
+    task move(distance) {
+        give self.name + " ran " + str(distance) + " meters"
+    }
+}
+
+model Bird implements Animal {
+    init(name) {
+        self.name = name
+    }
+
+    task speak() {
+        give "Tweet"
+    }
+
+    task move(distance) {
+        give self.name + " flew " + str(distance) + " meters"
+    }
+}
+
+d = Dog("Rex")
+b = Bird("Tweety")
+
+out d.speak()
+out d.move(10)
+out b.speak()
+out b.move(50)
+
+// Test typeOf
+out "Dog is instance: " + str(typeOf(d) == "instance")
+out "Bird is instance: " + str(typeOf(b) == "instance")
+
+out "=== Interface Test Passed ==="

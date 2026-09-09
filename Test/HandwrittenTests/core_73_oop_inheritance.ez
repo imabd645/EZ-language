@@ -1,0 +1,61 @@
+// ============================================================================
+// OOP Inheritance & Shadowing Edge Cases
+// ============================================================================
+
+out "=== Starting OOP Inheritance Test ==="
+
+model Base {
+    init(name) {
+        self.name = name
+        self.type = "Base"
+    }
+
+    task greeting() {
+        give "Hello from " + self.name
+    }
+
+    task whoAmI() {
+        give "I am a " + self.type
+    }
+}
+
+model Child extends Base {
+    init(name, age) {
+        super.init(name)
+        self.age = age
+        // Shadowing property
+        self.type = "Child"
+    }
+
+    task greeting() {
+        // Calling super method
+        give super.greeting() + " and I am " + str(self.age) + " years old"
+    }
+}
+
+model GrandChild extends Child {
+    init(name, age, toy) {
+        super.init(name, age)
+        self.toy = toy
+        self.type = "GrandChild"
+    }
+
+    task greeting() {
+        give super.greeting() + " playing with " + self.toy
+    }
+}
+
+b = Base("Bob")
+c = Child("Charlie", 10)
+g = GrandChild("George", 5, "Blocks")
+
+out b.greeting()
+out b.whoAmI()
+
+out c.greeting()
+out c.whoAmI()
+
+out g.greeting()
+out g.whoAmI()
+
+out "=== OOP Inheritance Test Passed ==="

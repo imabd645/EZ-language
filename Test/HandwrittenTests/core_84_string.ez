@@ -1,0 +1,41 @@
+// ============================================================================
+// String Operations Edge Cases Test
+// ============================================================================
+
+out "=== Starting String Edge Test ==="
+
+s = "Hello, World!"
+
+// Length
+out "Length: " + str(len(s))
+
+// Slicing out of bounds
+try {
+    // EZ slicing might be substring(s, start, len) or slice(s, start, end)
+    // Wait, how do you slice strings in EZ?
+    // Let's rely on substring or fallback to regex
+    // We'll test indexing out of bounds first.
+    ch = s[50]
+    out "FAIL: Should have thrown index out of bounds, got: " + str(ch)
+} catch e {
+    out "PASS: Caught out of bounds indexing: " + str(e.message)
+}
+
+// Negative indexing?
+try {
+    ch = s[-1]
+    out "FAIL: Should have thrown negative indexing, got: " + str(ch)
+} catch e {
+    out "PASS: Caught negative indexing: " + str(e.message)
+}
+
+// Concatenation with numbers
+// EZ implicitly converts numbers to strings during concatenation!
+try {
+    text = "Number: " + 5
+    out "PASS: Successfully concatenated implicitly: " + text
+} catch e {
+    out "FAIL: Should have succeeded implicitly"
+}
+
+out "=== String Edge Test Passed ==="

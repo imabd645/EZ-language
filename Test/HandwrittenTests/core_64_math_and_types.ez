@@ -1,0 +1,47 @@
+// ============================================================================
+// Math & Types Edge Case Tests
+// ============================================================================
+
+out "=== Starting Math & Types Edge Cases Test ==="
+
+// Division by zero
+try {
+    res = 10 / 0
+    out "Div by zero didn't throw?! " + str(res)
+} catch e {
+    out "Caught div by zero: " + str(e)
+}
+
+// Modulo by zero
+try {
+    res = 10 % 0
+    out "Mod by zero didn't throw?! " + str(res)
+} catch e {
+    out "Caught mod by zero: " + str(e)
+}
+
+// Type coercion
+// In EZ, string + number -> string
+out "String + Number: " + ("Age: " + 25)
+
+// Truthiness
+task checkTruth(val, name) {
+    when (val) {
+        out name + " is truthy"
+    } other {
+        out name + " is falsy"
+    }
+}
+
+checkTruth(0, "0")
+checkTruth("", "empty string")
+checkTruth([], "empty array")
+checkTruth({}, "empty dict")
+checkTruth(nil, "nil")
+checkTruth(false, "false")
+checkTruth(true, "true")
+
+// Large numbers
+out "Large number: " + str(999999999999999)
+
+out "=== Math & Types Edge Cases Passed ==="

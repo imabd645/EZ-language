@@ -1,0 +1,42 @@
+// ============================================================================
+// File I/O Edge Cases Test
+// ============================================================================
+
+out "=== Starting File I/O Test ==="
+
+filename = "test_edge_scratch.txt"
+
+// Ensure clean state
+when File.exists(filename) {
+    File.remove(filename)
+}
+
+// 1. Write to file
+writeFile(filename, "Line 1\n")
+out "File exists: " + str(File.exists(filename))
+out "File size: " + str(File.size(filename)) + " bytes"
+
+// 2. Append to file
+appendFile(filename, "Line 2\n")
+appendLine(filename, "Line 3")
+
+// 3. Read back
+content = readFile(filename)
+out "Content Length: " + str(len(content))
+
+lines = readLines(filename)
+out "Line Count: " + str(len(lines))
+out "First Line: " + lines[0]
+out "Last Line: " + lines[2]
+
+// 4. File object API
+f = File(filename, "r")
+c = f.read(4)
+out "First 4 bytes from File(): " + c
+f.close()
+
+// 5. Cleanup
+File.remove(filename)
+out "File removed, exists? " + str(File.exists(filename))
+
+out "=== File I/O Test Passed ==="

@@ -1,0 +1,38 @@
+// ============================================================================
+// Closures & Lexical Scoping Edge Cases
+// ============================================================================
+
+out "=== Starting Closures & Scope Test ==="
+
+task createCounters() {
+    counters = []
+    repeat i = 1 to 5 {
+        // Capture 'i' in a lambda closure
+        push(counters, || { give i })
+    }
+    give counters
+}
+
+funcs = createCounters()
+// Because EZ captures the variable reference (late binding) and the loop variable
+// 'i' shares the same storage slot for all iterations, it ends at 6.
+// Thus, all closures will return 6.
+out "Counter 1: " + str(funcs[0]())
+out "Counter 5: " + str(funcs[4]())
+
+// Nested Closures
+task multiplier(factor) {
+    give |x| {
+        give |y| {
+            give x * y * factor
+        }
+    }
+}
+
+timesTwo = multiplier(2)
+timesTwoThree = timesTwo(3)
+res = timesTwoThree(4)
+
+out "Nested Closure Result (2 * 3 * 4): " + str(res)
+
+out "=== Closures & Scope Test Passed ==="

@@ -1,0 +1,26 @@
+// ============================================================================
+// Eval & Scoping Edge Cases Test
+// ============================================================================
+
+out "=== Starting Eval Test ==="
+
+global_var = 100
+
+// 1. Basic Eval
+res = eval("2 + 2")
+out "eval('2 + 2') = " + str(res)
+
+// 2. Eval accessing global state
+res2 = eval("global_var * 2")
+out "eval('global_var * 2') = " + str(res2)
+
+// 3. Eval mutating global state
+eval("global_var = 999")
+out "global_var after eval = " + str(global_var)
+
+// 4. Eval defining new variables
+eval("new_var = 50")
+res3 = eval("new_var")
+out "eval('new_var') = " + str(res3)
+
+out "=== Eval Test Passed ==="

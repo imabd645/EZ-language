@@ -1,0 +1,36 @@
+// ============================================================================
+// Channel & Concurrency Edge Cases Test
+// ============================================================================
+
+out "=== Starting Channels Test ==="
+
+ch = Channel()
+
+task producer(ch) {
+    out "Producer starting..."
+    wait(100)
+    ch.send("Message 1")
+    wait(100)
+    ch.send("Message 2")
+    wait(100)
+    ch.send("DONE")
+}
+
+task consumer(ch) {
+    out "Consumer waiting..."
+    while true {
+        msg = ch.receive()
+        out "Consumer got: " + str(msg)
+        when (msg == "DONE") {
+            escape
+        }
+    }
+}
+
+// Spawn both
+p = spawn(|| { give producer(ch) })
+c = spawn(|| { give consumer(ch) })
+
+awaitAll([p, c])
+
+out "=== Channels Test Passed ==="

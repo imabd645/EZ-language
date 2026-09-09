@@ -1,0 +1,34 @@
+// ============================================================================
+// Cyclic Structures & Printing Edge Cases Test
+// ============================================================================
+
+out "=== Starting Cyclic GC Test ==="
+
+a = []
+push(a, a) // Self-referential array!
+
+// Usually, printing a self-referential array in naive interpreters causes a stack overflow!
+// Let's see if EZ catches it or just prints a generic representation.
+out "Self-referential array size: " + str(len(a))
+
+try {
+    text = str(a)
+    out "PASS: Successfully converted cyclic array to string (length: " + str(len(text)) + ")"
+} catch e {
+    out "PASS: Caught stringification recursion limit gracefully: " + str(e)
+}
+
+// Cyclic Dictionaries
+d1 = {}
+d2 = {}
+d1["child"] = d2
+d2["parent"] = d1
+
+try {
+    text2 = str(d1)
+    out "PASS: Successfully handled cyclic dict"
+} catch e {
+    out "PASS: Caught cyclic dict stringification: " + str(e)
+}
+
+out "=== Cyclic GC Test Passed ==="

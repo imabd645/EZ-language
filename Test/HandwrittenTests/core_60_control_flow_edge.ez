@@ -1,0 +1,57 @@
+// ============================================================================
+// Control Flow Edge Case Tests
+// ============================================================================
+
+out "=== Starting Control Flow Edge Cases Test ==="
+
+task testFinallyReturn() {
+    try {
+        give "Returned from Try"
+    } catch e {
+        give "Returned from Catch"
+    } finally {
+        out "Finally block executed!"
+    }
+}
+
+out "Result of testFinallyReturn: " + testFinallyReturn()
+
+task nestedTryCatch() {
+    try {
+        try {
+            throw "Inner Exception"
+        } catch e {
+            out "Caught inner: " + str(e)
+            throw "Outer Exception"
+        } finally {
+            out "Inner Finally"
+        }
+    } catch e {
+        out "Caught outer: " + str(e)
+    } finally {
+        out "Outer Finally"
+    }
+}
+
+nestedTryCatch()
+
+// Dangling structures should be caught by parser, so we can't test them at runtime.
+// We'll test short-circuiting logic with deep nesting.
+task shortCircuit() {
+    a = true
+    b = false
+    c = true
+    
+    task doThrow() { throw "Should not be evaluated" }
+    
+    // Should not evaluate the right side
+    res = b and doThrow()
+    out "Short circuit AND: " + str(res)
+    
+    res2 = a or doThrow()
+    out "Short circuit OR: " + str(res2)
+}
+
+shortCircuit()
+
+out "=== Control Flow Edge Cases Passed ==="

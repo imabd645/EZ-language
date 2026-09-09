@@ -1,0 +1,21 @@
+// ============================================================================
+// Deep Exception Trace Test
+// ============================================================================
+
+out "=== Starting Deep Trace Test ==="
+
+task deepFail(n) {
+    when (n == 0) {
+        throw "Hit zero!"
+    }
+    give deepFail(n - 1)
+}
+
+try {
+    deepFail(10)
+    out "FAIL: Should have thrown"
+} catch e {
+    out "PASS: Caught deep exception: " + str(e)
+}
+
+out "=== Deep Trace Test Passed ==="

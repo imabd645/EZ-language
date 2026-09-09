@@ -1,0 +1,35 @@
+// ============================================================================
+// GC Cyclic References Edge Case Tests
+// ============================================================================
+
+out "=== Starting GC Cycles Test ==="
+
+model Node {
+    init(val) { self.val = val; self.next = nil }
+}
+
+task makeCycles() {
+    // Array cycle
+    a = [1, 2, 3]
+    push(a, a)
+    
+    // Dict cycle
+    d = { "val": 42 }
+    d["self"] = d
+    
+    // Model cycle
+    
+    n1 = Node(1)
+    n2 = Node(2)
+    n1.next = n2
+    n2.next = n1
+    
+    // Mixed cycle
+    mixed = {}
+    mixed["arr"] = [mixed]
+    
+    give "Cycles created successfully"
+}
+
+out makeCycles()
+out "=== GC Cycles Test Passed ==="

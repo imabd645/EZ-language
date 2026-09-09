@@ -1,0 +1,40 @@
+// ============================================================================
+// Variadics, Defaults, and Spread Operator Tests
+// ============================================================================
+
+out "=== Starting Variadics & Spread Test ==="
+
+// Default parameters
+task testDefaults(a, b = 10, c = 20) {
+    give a + b + c
+}
+
+out "Defaults (1): " + str(testDefaults(1))        // 1 + 10 + 20 = 31
+out "Defaults (1, 2): " + str(testDefaults(1, 2))  // 1 + 2 + 20 = 23
+out "Defaults (1, 2, 3): " + str(testDefaults(1, 2, 3)) // 1 + 2 + 3 = 6
+
+// Variadic arguments
+task testVariadic(first, ...rest) {
+    out "First arg: " + str(first)
+    out "Rest args length: " + str(len(rest))
+    give rest
+}
+
+res = testVariadic("hello", 1, 2, 3, 4)
+out "Variadic rest[0]: " + str(res[0])
+
+// Array spread operator
+arr1 = [1, 2]
+arr2 = [3, 4]
+merged = [...arr1, ...arr2, 5]
+out "Merged array length: " + str(len(merged))
+out "Merged array[2]: " + str(merged[2])
+
+// Spread in function calls
+task sumThree(a, b, c) {
+    give a + b + c
+}
+nums = [10, 20, 30]
+out "Spread in call: " + str(sumThree(...nums))
+
+out "=== Variadics & Spread Test Passed ==="

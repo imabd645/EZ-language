@@ -1,0 +1,37 @@
+// ============================================================================
+// JSON Edge Cases Test
+// ============================================================================
+
+out "=== Starting JSON Edge Test ==="
+
+// Deep nesting
+payload = {
+    "a": [
+        1, 2, {
+            "b": "escaped \" quotes \\ backslashes"
+        }
+    ],
+    "c": nil,
+    "d": true
+}
+
+// Convert to json
+json_str = to_json(payload)
+out "Serialized: " + json_str
+
+// Parse back
+parsed = parse_json(json_str)
+
+out "Parsed a[2].b: " + parsed["a"][2]["b"]
+out "Parsed c: " + str(parsed["c"])
+out "Parsed d: " + str(parsed["d"])
+
+// Invalid json test
+try {
+    bad = parse_json("")
+    out "FAIL: Should have thrown parse error, got: " + str(bad)
+} catch e {
+    out "PASS: Caught invalid json: " + str(e)
+}
+
+out "=== JSON Edge Test Passed ==="

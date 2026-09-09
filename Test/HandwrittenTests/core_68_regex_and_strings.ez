@@ -1,0 +1,33 @@
+// ============================================================================
+// Strings & Regex Edge Case Tests
+// ============================================================================
+
+out "=== Starting Regex & Strings Edge Cases Test ==="
+
+text_val = "a,,b,c,,"
+// Split with empty string edge cases
+parts = re_split(text_val, ",")
+out "re_split parts length: " + str(len(parts))
+
+// Zero-width matches
+// 'a*' can match the empty string between characters
+matches = re_find_all("abc", "z*")
+out "Zero-width matches count: " + str(len(matches))
+
+// String limits
+longStr = ""
+repeat i = 1 to 100 {
+    longStr = longStr + "a"
+}
+out "Long string length: " + str(len(longStr))
+
+try {
+    // String slice out of bounds should throw or clamp?
+    // In many languages it clamps, in EZ let's see.
+    res = slice("hello", 0, 100)
+    out "Slice clamped successfully: " + res
+} catch e {
+    out "Slice threw error: " + str(e)
+}
+
+out "=== Regex & Strings Edge Cases Passed ==="

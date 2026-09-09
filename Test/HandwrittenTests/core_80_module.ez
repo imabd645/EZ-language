@@ -1,0 +1,8 @@
+use "core_80_lib.ez" as lib
+
+out "=== Starting Module Test ==="
+
+out "Calling libraryFunc: " + lib.libraryFunc()
+out "Accessing global_lib_var: " + str(lib.global_lib_var)
+
+out "=== Module Test Passed ==="

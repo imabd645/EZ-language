@@ -1,0 +1,4 @@
+task libraryFunc() {
+    give "Hello from library"
+}
+global_lib_var = 42

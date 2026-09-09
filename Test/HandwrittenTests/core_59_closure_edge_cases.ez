@@ -1,0 +1,40 @@
+// ============================================================================
+// Closure & Scope Edge Case Tests
+// ============================================================================
+
+out "=== Starting Closure Edge Cases Test ==="
+
+task makeCounters() {
+    counters = []
+    repeat i = 1 to 3 {
+        task makeCounter(val) {
+            give || { give val }
+        }
+        push(counters, makeCounter(i))
+    }
+    give counters
+}
+
+cList = makeCounters()
+out "Counter 1: " + str(cList[0]())
+out "Counter 2: " + str(cList[1]())
+out "Counter 3: " + str(cList[2]())
+
+// Deeply nested upvalues
+task level1(a) {
+    task level2(b) {
+        task level3(c) {
+            task level4(d) {
+                give a + b + c + d
+            }
+            give level4
+        }
+        give level3
+    }
+    give level2
+}
+
+deepClosure = level1(10)(20)(30)(40)
+out "Deep Closure result (should be 100): " + str(deepClosure)
+
+out "=== Closure Edge Cases Passed ==="

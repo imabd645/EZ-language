@@ -1,0 +1,43 @@
+// ============================================================================
+// Syntax & Formatting Edge Case Tests
+// ============================================================================
+
+out "=== Starting Syntax Edge Cases Test ==="
+
+// Deep Arrays and Dictionaries
+deepArr = [[[[["deep"]]]]]
+out "Deep array value: " + str(deepArr[0][0][0][0][0])
+
+deepDict = { "a": { "b": { "c": "nested" } } }
+out "Deep dict value: " + str(deepDict["a"]["b"]["c"])
+
+// Array and Dict trailing commas
+arrWithComma = [1, 2, 3,]
+dictWithComma = { "x": 10, "y": 20, }
+out "Trailing comma array length: " + str(arrWithComma.length())
+
+// String interpolation with nested braces (EZ uses { })
+age = 25
+msg = `My age is { age } and next year it is { age + 1 }`
+out msg
+
+// Extreme function chaining
+model Chainer {
+    init(val) { self.val = val }
+    task add(n) { self.val = self.val + n; give self }
+    task sub(n) { self.val = self.val - n; give self }
+    task get() { give self.val }
+}
+
+c = Chainer(10).add(5).sub(3).add(8).get()
+out "Chained result (should be 20): " + str(c)
+
+// Multiline strings / raw strings
+rawStr = r"
+This is a
+multiline
+string!
+"
+out "Raw string length: " + str(rawStr.length())
+
+out "=== Syntax Edge Cases Passed ==="

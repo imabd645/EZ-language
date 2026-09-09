@@ -1,0 +1,55 @@
+// ============================================================================
+// OOP Edge Case Tests
+// ============================================================================
+
+out "=== Starting OOP Edge Cases Test ==="
+
+model Base {
+    init(name) {
+        self.name = name
+    }
+    task identify() {
+        give "I am Base: " + self.name
+    }
+}
+
+model Derived extends Base {
+    init(name, age) {
+        super(name)
+        self.age = age
+    }
+    task identify() {
+        // Calling super inside string interpolation
+        give "I am Derived: " + str(self.age) + " years old, and my super says: " + super.identify()
+    }
+}
+
+d = Derived("Alice", 30)
+out d.identify()
+
+// Dynamic properties
+model Dynamic {
+    init() {}
+}
+
+dyn = Dynamic()
+dyn.test = "hello"
+dyn.func = || { give "world" }
+out "Dynamic func call: " + dyn.func()
+
+// Overriding fields with methods and vice versa
+model Shadow {
+    init() {
+        self.x = 10
+    }
+    task x() {
+        give 20
+    }
+}
+
+s = Shadow()
+// In EZ, methods and properties share the same namespace on instances.
+// The constructor assigns to self.x, shadowing the method.
+out "Shadowed x type: " + typeOf(s.x)
+
+out "=== OOP Edge Cases Passed ==="

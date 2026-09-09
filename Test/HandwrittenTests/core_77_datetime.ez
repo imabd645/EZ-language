@@ -1,0 +1,31 @@
+// ============================================================================
+// Date/Time Edge Cases Test
+// ============================================================================
+
+out "=== Starting Date/Time Test ==="
+
+// Test DateTime object creation
+now = DateTime()
+out "Current year: " + str(now.year)
+out "Current month: " + str(now.month)
+
+// Test timestamp conversions
+ts = now.timestamp()
+out "Unix Timestamp: " + str(ts)
+
+// Test formatted output
+out "Formatted: " + now.format("%Y-%m-%d %H:%M:%S")
+
+// Test sleep/timing
+start = DateTime().timestamp()
+out "Sleeping for 1 second..."
+wait(1000)
+end = DateTime().timestamp()
+
+diff = end - start
+out "Time elapsed: " + str(diff) + " seconds"
+
+// Math boundaries checking
+out "Is difference >= 1? " + str(diff >= 1)
+
+out "=== Date/Time Test Passed ==="

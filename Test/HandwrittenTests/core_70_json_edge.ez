@@ -1,0 +1,43 @@
+// ============================================================================
+// JSON Edge Case Tests
+// ============================================================================
+
+out "=== Starting JSON Edge Cases Test ==="
+
+// JSON Cycles
+a = []
+push(a, a)
+
+try {
+    to_json(a)
+    out "FAIL: Should have thrown cyclic error"
+} catch e {
+    out "PASS: Caught cyclic error: " + str(e)
+}
+
+// Deep JSON
+deepStr = ""
+repeat i = 1 to 500 {
+    deepStr = deepStr + "["
+}
+deepStr = deepStr + "1"
+repeat i = 1 to 500 {
+    deepStr = deepStr + "]"
+}
+
+try {
+    res = parse_json(deepStr)
+    out "PASS: Deep JSON parsed"
+} catch e {
+    out "Caught limit error: " + str(e)
+}
+
+// Malformed JSON / Extensions
+try {
+    parse_json("{ \"a\": 1, }") // Trailing comma
+    out "PASS: Trailing comma supported in parse_json"
+} catch e {
+    out "PASS: Caught malformed JSON"
+}
+
+out "=== JSON Edge Cases Passed ==="

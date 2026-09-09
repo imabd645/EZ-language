@@ -1,0 +1,38 @@
+// ============================================================================
+// Math Edge Cases Test
+// ============================================================================
+
+out "=== Starting Math Edge Test ==="
+
+// Test division by zero
+try {
+    zero = 0
+    res = 1 / zero
+    out "FAIL: Should have thrown zero division, got: " + str(res)
+} catch e {
+    out "PASS: Caught division by zero: " + str(e.message)
+}
+
+// Test sqrt of negative number
+try {
+    res = sqrt(-1)
+    out "FAIL: Should have thrown negative sqrt, got: " + str(res)
+} catch e {
+    out "PASS: Caught negative sqrt: " + str(e)
+}
+
+// Test NaN behavior
+// In some languages 0/0 is NaN. In EZ it might throw.
+try {
+    zero = 0
+    res = zero / zero
+    out "FAIL: Should have thrown, got: " + str(res)
+} catch e {
+    out "PASS: Caught 0/0 division: " + str(e.message)
+}
+
+// Test powers
+out "2 ^ 8 = " + str(pow(2, 8))
+out "10 ^ 0 = " + str(pow(10, 0))
+
+out "=== Math Edge Test Passed ==="

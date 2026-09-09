@@ -1,0 +1,21 @@
+// ============================================================================
+// GC Memory Stress Test
+// ============================================================================
+
+out "=== Starting GC Memory Stress Test ==="
+
+task allocateJunk() {
+    // Allocate thousands of objects and immediately let them fall out of scope
+    // This will rapidly advance the heap and trigger the garbage collector repeatedly
+    repeat i = 1 to 50000 {
+        // Strings, Arrays, Dictionaries, and Closures
+        s = "String " + str(i)
+        arr = [i, s, { "key": i }]
+        c = || { give arr }
+    }
+}
+
+allocateJunk()
+out "PASS: Survived massive allocations and GC sweeps without crashing"
+
+out "=== GC Memory Stress Test Passed ==="

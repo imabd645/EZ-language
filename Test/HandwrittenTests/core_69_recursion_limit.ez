@@ -1,0 +1,21 @@
+// ============================================================================
+// Recursion & Call Stack Limits Test
+// ============================================================================
+
+out "=== Starting Recursion Limits Test ==="
+
+task recurse(n) {
+    when (n == 0) { give 0 }
+    give recurse(n - 1)+1
+}
+
+try {
+    // 50,000 deep recursion overflows the VM's 256k operand stack limit!
+    res = recurse(50000)
+    out "FAIL: Should have thrown stack overflow"
+} catch e{
+    out "PASS: Caught stack overflow"
+}
+
+out "=== Recursion Limits Passed ==="
+ 

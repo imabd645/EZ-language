@@ -1,0 +1,46 @@
+// ============================================================================
+// Nested Exceptions & Finally Edge Cases
+// ============================================================================
+
+out "=== Starting Nested Exceptions Test ==="
+
+task nestedThrow() {
+    try {
+        try {
+            throw "Inner Exception"
+        } catch e {
+            out "Caught inner: " + str(e)
+            // Throwing from inside a catch block
+            throw "Middle Exception"
+        } finally {
+            out "Inner finally executed"
+        }
+    } catch e {
+        out "Caught middle: " + str(e)
+    } finally {
+        out "Outer finally executed"
+    }
+}
+
+nestedThrow()
+
+// Test that finally swallows exception if it returns/throws?
+// In many languages, if finally throws, it overrides the original exception.
+task finallyThrow() {
+    try {
+        throw "Original"
+    } catch e {
+        throw "Catch Throw"
+    } finally {
+        // Will this execute even if catch throws?
+        out "Finally block executing despite catch throw"
+    }
+}
+
+try {
+    finallyThrow()
+} catch e {
+    out "Propagated to top: " + str(e)
+}
+
+out "=== Nested Exceptions Test Passed ==="

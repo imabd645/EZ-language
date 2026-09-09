@@ -1,0 +1,19 @@
+// ============================================================================
+// Variadic & Defaults Complex Interactions Test
+// ============================================================================
+
+out "=== Starting Variadic Defaults Test ==="
+
+task complex(a = 10, ...rest) {
+    sum = a
+    repeat i = 0 to len(rest)-1 {
+        sum += rest[i]
+    }
+    give sum
+}
+
+out "complex(): " + str(complex())
+out "complex(5): " + str(complex(5))
+out "complex(5, 1, 2, 3): " + str(complex(5, 1, 2, 3))
+
+out "=== Variadic Defaults Test Passed ==="

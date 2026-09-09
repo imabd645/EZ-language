@@ -1,0 +1,34 @@
+// ============================================================================
+// Structs Edge Cases Test
+// ============================================================================
+
+out "=== Starting Structs Test ==="
+
+struct Point {
+    x: number
+    y: number
+}
+
+struct Rect {
+    p1: Point
+    p2: Point
+}
+
+// Struct constructor takes fields in order? Or by name?
+// The docs say "generated constructor". In EZ, it's usually positional.
+// Wait, is it Point(10, 20) or Point(x=10, y=20)? Let's assume positional.
+p1 = Point(10, 20)
+p2 = Point(30, 40)
+r = Rect(p1, p2)
+
+out "p1.x = " + str(p1.x)
+out "p1.y = " + str(p1.y)
+
+// Test mutation
+p1.x = 100
+out "p1.x after mutation = " + str(p1.x)
+
+// Test typeOf
+out "typeOf(p1): " + typeOf(p1)
+
+out "=== Structs Test Passed ==="

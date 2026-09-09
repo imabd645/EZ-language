@@ -251,7 +251,27 @@ inline std::string Value::toString() const {
         case ValueType::NATIVE_FUNCTION: return "<native fn>";
         case ValueType::CLASS: return "<model>";
         case ValueType::INSTANCE: return "<instance>";
-        case ValueType::DICTIONARY: return "<dictionary>";
+        case ValueType::DICTIONARY: {
+            auto dictPtr = asDictionaryPtr();
+            EZToStringFrame frame(dictPtr.get());
+            if (frame.blocked()) return "{...}";
+            std::string result = "{";
+            bool first = true;
+            dictPtr->readMap([&](const std::unordered_map<std::string, Value>& map) {
+                for (const auto& [key, value] : map) {
+                    if (!first) result += ", ";
+                    first = false;
+                    result += "\"" + key + "\": ";
+                    if (value.isString()) {
+                        result += "\"" + value.toString() + "\"";
+                    } else {
+                        result += value.toString();
+                    }
+                }
+            });
+            result += "}";
+            return result;
+        }
         case ValueType::FUTURE: return "<future>";
         case ValueType::BOUND_METHOD: return "<bound method>";
         case ValueType::CLOSURE_VAL: return "<function>";

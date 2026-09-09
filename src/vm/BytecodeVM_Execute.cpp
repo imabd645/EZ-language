@@ -2985,7 +2985,19 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else {
                             const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                             SYNC_IP();
-                            runtimeError("Cannot call method '" + propName + "' on " + receiver.typeName());
+                            // EZ has no dot-methods on primitives (arrays, strings, numbers, ...) --
+                            // operations like this are global functions instead, e.g. pop(arr) rather
+                            // than arr.pop(). If a global with this exact name exists, say so directly
+                            // instead of leaving the person to guess whether 'pop' exists at all.
+                            if (globalEnv->contains(propName)) {
+                                runtimeError("'" + receiver.typeName() + "' has no method '" + propName +
+                                             "' -- EZ doesn't have methods on " + receiver.typeName() +
+                                             "s. Did you mean the function " + propName + "(...) instead, e.g. " +
+                                             propName + "(x" + (argCount > 0 ? ", ...)" : ")") + "?");
+                            } else {
+                                runtimeError("Cannot call method '" + propName + "' on " + receiver.typeName() +
+                                             " -- EZ doesn't have methods on " + receiver.typeName() + "s, only global functions");
+                            }
                             RAISE_FAULT();
                         }
                     }
@@ -3826,4 +3838,3 @@ void BytecodeVM::doNot() { push(Value(!pop().isTruthy())); }
 // ============================================================================
 // Error Handling
 // ============================================================================
-

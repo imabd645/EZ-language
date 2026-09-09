@@ -227,7 +227,11 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
     }
 
     std::vector<TypeInfo> argTypes;
-    for (const auto& arg : expr.arguments) argTypes.push_back(checkExpr(arg));
+    bool hasSpread = false;
+    for (const auto& arg : expr.arguments) {
+        if (std::holds_alternative<SpreadExpr*>(arg->variant)) hasSpread = true;
+        argTypes.push_back(checkExpr(arg));
+    }
     
     std::string name = "<unknown>";
     FunctionSignature* sig = nullptr;
@@ -345,7 +349,7 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                 }
                 // Do NOT mutate expr.arguments or clear expr.argNames; compiler will emit CALL_KW!
             } else {
-                if (!substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
+                if (!hasSpread && !substitutedSig.isVariadic && (argTypes.size() < minRequired || argTypes.size() > substitutedSig.paramTypes.size())) {
                     std::string signatureStr = "Function signature: " + name + "(";
                     for (size_t j = 0; j < substitutedSig.paramTypes.size(); ++j) {
                         if (j < substitutedSig.paramNames.size()) signatureStr += substitutedSig.paramNames[j] + ":";
@@ -360,10 +364,10 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
                         msg = "'" + name + "' expected between " + std::to_string(minRequired) + " and " + std::to_string(substitutedSig.paramTypes.size()) + " args but got " + std::to_string(argTypes.size());
                     }
                     error(expr.callee, msg, signatureStr);
-                } else if (substitutedSig.isVariadic && argTypes.size() < minRequired) {
+                } else if (!hasSpread && substitutedSig.isVariadic && argTypes.size() < minRequired) {
                     std::string msg = "'" + name + "' expected at least " + std::to_string(minRequired) + " args but got " + std::to_string(argTypes.size());
                     error(expr.callee, msg);
-                } else {
+                } else if (!hasSpread) {
                     // Only the leading FIXED parameters have a positional type to check:
                     // for a variadic signature every argument from the rest parameter
                     // onwards is collected into the rest array instead.

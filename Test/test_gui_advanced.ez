@@ -1,0 +1,57 @@
+use "E:/interpreter/lib/gui/main.ez" as gui
+
+win = gui.Window("Advanced GUI Features", 600, 700)
+v = win.vbox(10)
+
+v.label("Dialog Tests", 200, 20).font("Arial", 14)
+
+v.button("Open File", 120, 30, || {
+    file = gui.openFileDialog("Select a text file", "Text Files\0*.txt\0All Files\0*.*\0")
+    when file != "" {
+        gui.alert("Selected", file)
+    }
+})
+
+v.button("Choose Color", 120, 30, || {
+    color = gui.chooseColor()
+    when color != "" {
+        gui.alert("Selected Color", color)
+    }
+})
+
+v.label("Canvas Drawing", 200, 20).font("Arial", 14)
+
+c = v.canvas(400, 200)
+
+v.button("Draw Shapes", 120, 30, || {
+    c.beginDraw()
+    c.clear(255, 255, 255)
+    c.drawRect(10, 10, 100, 100, "blue")
+    c.drawCircle(200, 60, 50, "red")
+    c.drawText("Hello Canvas!", 50, 150, 24, "green")
+    c.endDraw()
+})
+
+v.label("Mouse Events on Canvas", 200, 20).font("Arial", 14)
+
+c.onMouseMove(|x, y| {
+    c.clear(200, 255, 200)
+    c.beginDraw()
+    c.drawText("Mouse Moving!", 50, 50, 24, "black")
+    c.endDraw()
+})
+c.onMouseLeave(|| {
+    c.clear(255, 255, 255)
+    c.beginDraw()
+    c.drawText("Hover me...", 50, 50, 24, "black")
+    c.endDraw()
+})
+c.onMouseDown(|x, y| {
+    c.clear(255, 100, 100)
+})
+c.onMouseUp(|x, y| {
+    c.clear(200, 255, 200)
+})
+
+win.show()
+win.run()

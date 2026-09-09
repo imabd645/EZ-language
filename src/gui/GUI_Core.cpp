@@ -233,9 +233,21 @@ LRESULT CALLBACK EZWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             break;
         }
         case WM_MOUSEMOVE: {
-            TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_HOVER | TME_LEAVE, hwnd, 100 };
+            TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
             TrackMouseEvent(&tme);
-            fireEventCallback(hwnd, "hover", { Value((double)LOWORD(lParam)), Value((double)HIWORD(lParam)) });
+            fireEventCallback(hwnd, "mousemove", { Value((double)LOWORD(lParam)), Value((double)HIWORD(lParam)) });
+            break;
+        }
+        case WM_MOUSELEAVE: {
+            fireEventCallback(hwnd, "mouseleave", {});
+            break;
+        }
+        case WM_LBUTTONDOWN: {
+            fireEventCallback(hwnd, "mousedown", { Value((double)LOWORD(lParam)), Value((double)HIWORD(lParam)) });
+            break;
+        }
+        case WM_LBUTTONUP: {
+            fireEventCallback(hwnd, "mouseup", { Value((double)LOWORD(lParam)), Value((double)HIWORD(lParam)) });
             break;
         }
         case WM_KEYDOWN: {

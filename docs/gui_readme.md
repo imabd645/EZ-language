@@ -1,4 +1,4 @@
-# EZ Elegant GUI Documentation (v3.0)
+# EZ Elegant GUI Documentation (v3.1)
 
 The EZ GUI library is now fully **Object-Oriented**. It supports natural color names and a fluent API.
 
@@ -76,3 +76,50 @@ v.button("Save", 100, 40, || { ... })
 
 ## 🧪 Run the Demo
 Try `examples/gui_elegant.ez` for a full demonstration of this new elegant API!
+
+## 🖼️ Canvas & Graphics (New in v3.1)
+Draw custom 2D graphics natively using the canvas widget.
+
+``ez
+c = win.canvas(400, 400)
+
+c.beginDraw()
+c.clear(255, 255, 255) # RGB background
+c.drawRect(10, 10, 100, 100, "blue")
+c.drawCircle(200, 200, 50, "red")
+c.drawText("Hello Canvas", 50, 300, 24, "green")
+c.endDraw()
+``
+
+## 🖱️ Advanced Mouse Events (New in v3.1)
+All widgets now support tracking mouse movements and clicks with exact X/Y coordinates.
+
+``ez
+c.onMouseMove(|x, y| {
+    gui.alert("Moved", X:{x} Y:{y})
+})
+
+c.onMouseLeave(|| {
+    # No coordinates for leave event
+})
+
+c.onMouseDown(|x, y| { })
+c.onMouseUp(|x, y| { })
+``
+
+## 📁 System Dialogs & Clipboard (New in v3.1)
+Access native OS dialogs directly from the gui global namespace.
+
+``ez
+# File Dialogs
+path = gui.openFileDialog("Select File", "Images\0*.png\0All\0*.*\0")
+savePath = gui.saveFileDialog("Save As", "Text\0*.txt\0")
+
+# Color Picker
+hexColor = gui.chooseColor() # Returns "#RRGGBB"
+
+# Clipboard
+gui.setClipboard("Copied text!")
+clipboardText = gui.getClipboard()
+``
+

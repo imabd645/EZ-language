@@ -55,6 +55,12 @@ private:
     bool isAlphaNumeric(char c) const;
     
     void error(const std::string& message);
+    // Reports at an explicit position instead of the lexer's current
+    // (post-scan) position. Used for "unterminated X" errors, where the
+    // scanner has already run past the end of the string/comment/token --
+    // reporting there instead of at X's start would point at EOF (or past
+    // it) with no useful source line to show.
+    void error(const std::string& message, int atLine, int atColumn);
 };
 
 #endif // LEXER_H

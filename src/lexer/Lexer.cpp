@@ -339,6 +339,8 @@ void Lexer::addToken(TokenType type, bool value) {
 void Lexer::scanString() {
     char quote = source[start];
     std::string value;
+    int startLine = line;
+    int startColumn = column;
     
     bool isMultiline = false;
     if (quote == '"' && peek() == '"' && peekNext() == '"') {
@@ -367,7 +369,11 @@ void Lexer::scanString() {
         if (peek() == '\\' && !isAtEnd()) {
             advance();
             if (isAtEnd()) {
-                error("Unterminated string");
+                // Reached end of file mid-escape. For a multiline string this
+                // could be many lines past where the string opened, and the
+                // current position may not even have a source line to show --
+                // point back at the opening quote instead.
+                error("Unterminated string -- no closing quote found", startLine, startColumn);
                 return;
             }
             char escaped = advance();
@@ -402,7 +408,10 @@ void Lexer::scanString() {
     }
     
     if (isAtEnd()) {
-        error("Unterminated string");
+        // Same reasoning as above: for a multiline string in particular, the
+        // opening """ may be far above wherever the file actually ends, so
+        // report there instead of at (or past) EOF.
+        error("Unterminated string -- no closing quote found before end of file", startLine, startColumn);
         return;
     }
     
@@ -503,6 +512,8 @@ void Lexer::scanIdentifier() {
 }
 
 void Lexer::scanRawString() {
+    int startLine = line;
+    int startColumn = column;
     char quote = advance(); // Consume '"' or '\''
     std::string value;
     
@@ -515,7 +526,9 @@ void Lexer::scanRawString() {
     }
     
     if (isAtEnd()) {
-        error("Unterminated raw string");
+        // Raw strings can span many lines; report at the opening quote
+        // rather than wherever the file ran out, which may be well past it.
+        error("Unterminated raw string -- no closing quote found before end of file", startLine, startColumn);
         return;
     }
     
@@ -530,6 +543,8 @@ void Lexer::skipLineComment() {
 }
 
 void Lexer::skipBlockComment() {
+    int startLine = line;
+    int startColumn = column - 2; // back up over the already-consumed '/*'
     int nesting = 1;
     while (!isAtEnd() && nesting > 0) {
         if (peek() == '/' && peekNext() == '*') {
@@ -546,7 +561,10 @@ void Lexer::skipBlockComment() {
     }
     
     if (nesting > 0) {
-        error("Unterminated block comment");
+        // A block comment can span the whole rest of the file; point at
+        // where it opened rather than at EOF, which is often past any
+        // line that actually exists in the source.
+        error("Unterminated block comment -- no matching '*/' found before end of file", startLine, startColumn);
     }
 }
 
@@ -567,15 +585,19 @@ bool Lexer::isAlphaNumeric(char c) const {
 #include "vm/BytecodeVM.h"
 
 void Lexer::error(const std::string& message) {
+    error(message, line, column);
+}
+
+void Lexer::error(const std::string& message, int atLine, int atColumn) {
     hadError = true;
     std::cerr << "\nError: " << message << "\n"
               << "  " << (filename.empty() ? "<unknown>" : filename)
-              << ":" << line << ":" << column << "\n\n";
+              << ":" << atLine << ":" << atColumn << "\n\n";
               
-    const std::string* sourceLine = EZ_GetSourceLine(filename, line);
+    const std::string* sourceLine = EZ_GetSourceLine(filename, atLine);
     if (sourceLine) {
         std::cerr << "    " << *sourceLine << "\n";
-        std::string caret(column > 0 ? column - 1 : 0, ' ');
+        std::string caret(atColumn > 0 ? atColumn - 1 : 0, ' ');
         std::cerr << "    " << caret << "^\n";
     }
 }
@@ -615,7 +637,7 @@ void Lexer::scanInterpolatedString() {
                     default: currentText += escaped; break;
                 }
             } else {
-                error("Unterminated template string");
+                error("Unterminated template string -- no closing '`' found before end of file", startLine, startCol);
                 return;
             }
         } else if (peek() == '{') {
@@ -652,7 +674,7 @@ void Lexer::scanInterpolatedString() {
             }
             
             if (isAtEnd()) {
-                error("Unterminated interpolation in template string");
+                error("Unterminated interpolation in template string -- no closing '}' found before end of file", startLine, startCol);
                 return;
             }
             advance(); // consume '}'
@@ -666,7 +688,7 @@ void Lexer::scanInterpolatedString() {
     }
     
     if (isAtEnd()) {
-        error("Unterminated template string");
+        error("Unterminated template string -- no closing '`' found before end of file", startLine, startCol);
         return;
     }
     advance(); // consume closing backtick

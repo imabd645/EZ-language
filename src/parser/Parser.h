@@ -45,6 +45,16 @@ private:
     // Error handling
     void error(const Token& token, const std::string& message);
     void synchronize();
+
+    // If `t` is a keyword that can only appear as part of a larger construct
+    // (e.g. 'finally' only after 'try', 'other' only inside 'when'), returns
+    // a message explaining where it actually belongs. Returns nullptr for
+    // any token that isn't one of these "orphan-able" keywords.
+    static const char* describeMisplacedKeyword(TokenType t);
+    // True for any reserved keyword token (not IDENTIFIER, not an operator/
+    // punctuation) -- used to give a better error when a name is expected
+    // but a keyword was typed instead (e.g. `model try { ... }`).
+    static bool isKeywordToken(TokenType t);
     
     // Type parsing
     TypeASTPtr parseType();

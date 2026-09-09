@@ -10,6 +10,51 @@ static bool isPropertyNameToken(TokenType t) {
             static_cast<int>(t) <= static_cast<int>(TokenType::ENSURES));
 }
 
+// A handful of keywords are only meaningful as part of a larger construct
+// (e.g. 'finally' only makes sense after a 'try' block) and can never start
+// an expression on their own. When the parser bottoms out in primary() and
+// sees one of these, "Expected expression" is technically correct but
+// useless -- it doesn't tell the user that the token they typed is a real
+// keyword that's just misplaced. This gives a targeted message instead.
+const char* Parser::describeMisplacedKeyword(TokenType t) {
+    switch (t) {
+        case TokenType::FINALLY:
+            return "'finally' can only appear after a 'try' block (and any 'catch' blocks), not on its own";
+        case TokenType::CATCH:
+            return "'catch' can only appear directly after a 'try' block, not on its own";
+        case TokenType::OTHER:
+            return "'other' can only appear as a branch inside a 'when' statement";
+        case TokenType::TO:
+            return "'to' is only valid inside a 'repeat <var> = <start> to <end>' loop";
+        case TokenType::STEP:
+            return "'step' is only valid inside a 'repeat ... to ... step ...' loop";
+        case TokenType::IMPLEMENTS:
+            return "'implements' can only appear right after a model's name (and optional 'extends') in a 'model' declaration";
+        case TokenType::EXTENDS:
+            return "'extends' can only appear right after a model's name in a 'model' declaration";
+        case TokenType::REQUIRES:
+            return "'requires' can only appear as a task precondition, directly after the task signature";
+        case TokenType::ENSURES:
+            return "'ensures' can only appear as a task postcondition, directly after the task signature";
+        case TokenType::HIDDEN:
+            return "'hidden' is a field-visibility modifier and can only appear inside a 'model' body";
+        case TokenType::SHOWN:
+            return "'shown' is a field-visibility modifier and can only appear inside a 'model' body";
+        case TokenType::INIT:
+            return "'init' can only be used to define a model's constructor, inside a 'model' body";
+        default:
+            return nullptr;
+    }
+}
+
+// Reserved-word range check, mirroring isPropertyNameToken below but without
+// the IDENTIFIER/TRUE/FALSE/NIL carve-outs -- this is specifically "is this
+// token a keyword that can't double as a name".
+bool Parser::isKeywordToken(TokenType t) {
+    return static_cast<int>(t) >= static_cast<int>(TokenType::OUT) &&
+           static_cast<int>(t) <= static_cast<int>(TokenType::ENSURES);
+}
+
 ExprPtr Parser::expression() {
     return assignment();
 }
@@ -489,6 +534,10 @@ ExprPtr Parser::primary() {
         return expr;
     }
     
+    if (const char* hint = describeMisplacedKeyword(peek().type)) {
+        throw ParseError(std::string("Expected expression -- ") + hint, line);
+    }
+
     throw ParseError("Expected expression", line);
 }
 

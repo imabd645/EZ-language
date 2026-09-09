@@ -53,6 +53,17 @@ bool Parser::match(std::initializer_list<TokenType> types) {
 
 Token Parser::consume(TokenType type, const std::string& message) {
     if (check(type)) return advance();
+
+    // "Expected model name" when the actual token is `try` doesn't tell you
+    // *why* it failed -- that 'try' is a reserved keyword and can never be
+    // used as a name, not that you left the name out. This is the single
+    // most common cause of "Expected X name" errors, so call it out
+    // specifically instead of just restating what was expected.
+    if (type == TokenType::IDENTIFIER && isKeywordToken(peek().type)) {
+        throw ParseError(message + " -- '" + peek().lexeme +
+                          "' is a reserved keyword and can't be used as a name", peek().line);
+    }
+
     throw ParseError(message, peek().line);
 }
 

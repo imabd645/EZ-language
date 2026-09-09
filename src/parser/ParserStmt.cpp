@@ -1243,7 +1243,13 @@ StmtPtr Parser::modelStatement() {
                 member.validators = std::move(propValidators);
                 members.push_back(member);
             } else {
-                throw ParseError("Unexpected token in model body", peek().line);
+                if (const char* hint = describeMisplacedKeyword(peek().type)) {
+                    throw ParseError(std::string("Unexpected token in model body -- ") + hint, peek().line);
+                }
+                throw ParseError(
+                    "Unexpected token in model body -- expected a property name, 'task', 'init', "
+                    "'static', or a visibility modifier ('hidden'/'shown'), but got '" + peek().lexeme + "'",
+                    peek().line);
             }
         }
         }

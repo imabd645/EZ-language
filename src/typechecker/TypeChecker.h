@@ -60,7 +60,21 @@ struct FunctionSignature {
 class TypeChecker {
 public:
     TypeChecker();
-    bool check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins = {});
+    // `builtins` are declared as type "Task" (they're all callables) — this
+    // is only correct for actual builtin functions. `knownGlobals` declares
+    // each entry with its real, caller-supplied type instead; use it for
+    // symbols whose type isn't "Task", e.g. a REPL replaying the type it
+    // already inferred for a variable declared on an earlier line.
+    bool check(const std::vector<StmtPtr>& statements,
+               const std::vector<std::string>& builtins = {},
+               const std::unordered_map<std::string, TypeInfo>& knownGlobals = {});
+
+    // Top-level variable types as declared/inferred by the most recent
+    // check(), keyed by name. Lets a caller that runs check() repeatedly on
+    // the same growing program (the REPL) carry forward what each variable
+    // actually is via knownGlobals above, instead of re-declaring it as
+    // "Task" through `builtins`.
+    const std::unordered_map<std::string, TypeInfo>& declaredGlobals() const;
     
 private:
     struct Environment {

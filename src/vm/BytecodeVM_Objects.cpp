@@ -67,23 +67,9 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
         return Value();
     }
 
-    // Merge any new slots the eval'd code introduced
-    if (!result.globalSlotNames.empty()) {
-        std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
-        size_t newCount = result.globalSlotNames.size();
-        if (newCount > globalEnv->globalSlots.size()) {
-            globalEnv->globalSlots.resize(newCount, Value());
-            globalEnv->globalSlotNames.resize(newCount);
-        }
-        for (size_t i = 0; i < newCount; ++i) {
-            if (globalEnv->globalSlotNames[i].empty() && !result.globalSlotNames[i].empty()) {
-                globalEnv->globalSlotNames[i] = result.globalSlotNames[i];
-                // Seed from globalEnv if already defined
-                if (globalEnv->contains(globalEnv->globalSlotNames[i]))
-                    globalEnv->globalSlots[i] = globalEnv->get(globalEnv->globalSlotNames[i]);
-            }
-        }
-    }
+    // Merge any new slots the eval'd code introduced (grow-only: never
+    // clobbers a slot the caller already reassigned).
+    growGlobalSlots(result.globalSlotNames);
 
     return execute(result.mainFunction);
 }

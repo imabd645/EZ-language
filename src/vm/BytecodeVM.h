@@ -106,6 +106,19 @@ public:
     // built-ins already stored in globalEnv.
     void initGlobalSlots(const std::vector<std::string>& slotNames);
 
+    // Grows globalEnv->globalSlots/globalSlotNames to fit newNames, seeding
+    // ONLY newly-added slots from a same-named globalEnv entry (e.g. a
+    // builtin). Slots that already have a name are left completely alone.
+    //
+    // initGlobalSlots() re-seeds every slot whose name matches globalEnv on
+    // every call, which is correct for a one-shot script (it's called once)
+    // but wrong for anything that compiles+runs the same VM repeatedly (the
+    // REPL, eval()): a slot the user already reassigned -- e.g. shadowing
+    // the `readFile` builtin with their own Task -- gets silently clobbered
+    // back to the original builtin the next time this runs, because
+    // `readFile` is still `globalEnv->contains("readFile") == true`.
+    void growGlobalSlots(const std::vector<std::string>& newNames);
+
     // Stack depth query
     size_t getStackSize() const {
         return static_cast<size_t>(stackTop - stack.data());

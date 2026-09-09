@@ -12,6 +12,14 @@ extern const std::string* EZ_GetSourceLine(const std::string& filename, int line
 
 TypeChecker::TypeChecker() : currentEnv(nullptr), currentReturnType("Any"), hadError(false) {}
 
+const std::unordered_map<std::string, TypeInfo>& TypeChecker::declaredGlobals() const {
+    // check() always returns with currentEnv back at the outermost scope it
+    // created (beginScope()/endScope() are balanced around every nested
+    // block), so this is the top-level variable table.
+    static const std::unordered_map<std::string, TypeInfo> empty;
+    return currentEnv ? currentEnv->variables : empty;
+}
+
 void TypeChecker::error(const ExprPtr& expr, const std::string& message, const std::string& hint) {
     if (expr) error(expr->line, expr->column, expr->length, expr->filename, message, hint);
     else error(0, 0, 0, "", message, hint);
@@ -147,7 +155,9 @@ FunctionSignature* TypeChecker::resolveFunction(const std::string& name) {
     return nullptr;
 }
 
-bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vector<std::string>& builtins) {
+bool TypeChecker::check(const std::vector<StmtPtr>& statements,
+                         const std::vector<std::string>& builtins,
+                         const std::unordered_map<std::string, TypeInfo>& knownGlobals) {
     hadError = false;
     hasImports = false;
     declaredModels.clear();
@@ -155,6 +165,9 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements, const std::vecto
     
     for (const auto& builtin : builtins) {
         declareVariable(builtin, TypeInfo("Task"));
+    }
+    for (const auto& [name, type] : knownGlobals) {
+        declareVariable(name, type);
     }
     
     // First pass: declare all functions

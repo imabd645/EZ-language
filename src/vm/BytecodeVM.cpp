@@ -109,6 +109,28 @@ void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
     }
 }
 
+void BytecodeVM::growGlobalSlots(const std::vector<std::string>& newNames) {
+    if (newNames.empty()) return;
+    std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+    size_t newCount = newNames.size();
+    if (newCount > globalEnv->globalSlots.size()) {
+        globalEnv->globalSlots.resize(newCount, Value());
+        globalEnv->globalSlotNames.resize(newCount);
+    }
+    for (size_t i = 0; i < newCount; ++i) {
+        if (globalEnv->globalSlotNames[i].empty() && !newNames[i].empty()) {
+            globalEnv->globalSlotNames[i] = newNames[i];
+            // Seed a freshly-appearing slot from globalEnv, e.g. so a slot
+            // for the builtin `readFile` starts out holding the real
+            // builtin. Only fires for slots that were previously unnamed —
+            // an already-named slot (one the user may have reassigned) is
+            // never touched here.
+            if (globalEnv->contains(globalEnv->globalSlotNames[i]))
+                globalEnv->globalSlots[i] = globalEnv->get(globalEnv->globalSlotNames[i]);
+        }
+    }
+}
+
 Value BytecodeVM::execute(BytecodeFunctionPtr function) {
     return execute(function, {});
 }
@@ -229,6 +251,16 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     if (isExceptionPending || !pendingException.isNil()) {
         std::string detail = pendingException.isNil() ? std::string("uncaught error")
                                                       : pendingException.toString();
+        // restoreState() puts frames/tryStack/stackTop/running/isExceptionPending
+        // back, but it does not touch pendingException itself. Left set, the
+        // *next* call to execute() on this VM sees a non-nil pendingException
+        // before it has run a single instruction and immediately reports this
+        // same stale exception as "uncaught" again — every following statement
+        // fails the same way regardless of what it actually does. This only
+        // shows up where execute() is called repeatedly on one VM after an
+        // uncaught error (the REPL); a one-shot script run never notices since
+        // the process exits after the first throw.
+        pendingException = Value();
         restoreState();
         throw RuntimeError("uncaught: " + detail);
     }

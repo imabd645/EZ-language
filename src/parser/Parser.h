@@ -55,6 +55,12 @@ private:
     // punctuation) -- used to give a better error when a name is expected
     // but a keyword was typed instead (e.g. `model try { ... }`).
     static bool isKeywordToken(TokenType t);
+    // If `name` is a near-miss (small edit distance) for one of EZ's
+    // statement-leading keywords (when/while/task/model/...), returns that
+    // keyword; otherwise returns "". Used to catch a misspelled keyword that
+    // would otherwise silently parse as a meaningless bare-identifier
+    // statement, e.g. `conditiion { ... }` instead of `when ... { ... }`.
+    static std::string suggestStatementKeyword(const std::string& name);
     
     // Type parsing
     TypeASTPtr parseType();

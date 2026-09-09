@@ -1,6 +1,30 @@
 #include "Parser.h"
 #include <iostream>
 #include <unordered_set>
+#include "utils/StringHelpers.h"
+
+// Keywords that meaningfully start a statement/block construct. Used only for
+// typo suggestions (see suggestStatementKeyword) -- operators, literals, and
+// keywords that never lead a statement (self, super, and, or, ...) are
+// deliberately left out so we don't suggest something nonsensical.
+static const char* kStatementKeywords[] = {
+    "when", "other", "while", "repeat", "task", "model", "struct", "enum",
+    "try", "catch", "finally", "throw", "match", "static", "interface",
+    "get", "test", "use", "export", "give", "escape", "skip", "out"
+};
+
+std::string Parser::suggestStatementKeyword(const std::string& name) {
+    std::string best;
+    size_t bestDistance = 2; // exclusive upper bound; only accept close misses
+    for (const char* kw : kStatementKeywords) {
+        size_t d = EZ::Utils::nameDistance(name, kw, 2);
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = kw;
+        }
+    }
+    return best;
+}
 std::vector<StmtPtr> Parser::parse() {
     std::vector<StmtPtr> statements;
     
@@ -460,10 +484,12 @@ StmtPtr Parser::taskStatement(bool isAsync) {
                 break;
             }
             
-            Token paramToken = advance();
-            if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
-                throw ParseError("Expected parameter name", paramToken.line);
-            }
+            // consume(), not a raw advance(): a bare advance() here would silently
+            // accept ANY token as the parameter's name -- including a keyword like
+            // 'try', which then can't be referenced in the body (it's re-lexed as
+            // the TRY keyword there), producing a baffling "Expected expression"
+            // error pointing at the *use* site instead of this declaration.
+            Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
             params.push_back(paramToken.lexeme);
             
             TypeASTPtr pType = nullptr;
@@ -703,7 +729,30 @@ StmtPtr Parser::expressionStatement() {
     int line = peek().line;
     int column = peek().column;
     int length = peek().lexeme.length();
+    Token startTok = peek();
     ExprPtr expr = expression();
+
+    // A bare identifier immediately followed -- same line, no operator, no
+    // separator -- by another identifier or an opening brace is never valid
+    // EZ (the one case that looks similar, `name: type`, requires a colon
+    // and is intercepted earlier in declaration()). In practice this is
+    // almost always a misspelled keyword: someone meant `when cond { ... }`
+    // and typo'd `when`, or similar. Left alone, the parser would silently
+    // split this into one or two meaningless expression statements, and the
+    // *type checker* would eventually complain about an undefined variable
+    // -- a confusing error far from the actual mistake. Catch it here instead.
+    if (std::holds_alternative<IdentifierExpr*>(expr->variant) &&
+        (check(TokenType::IDENTIFIER) || check(TokenType::LBRACE))) {
+        const std::string& name = std::get<IdentifierExpr*>(expr->variant)->name;
+        std::string suggestion = suggestStatementKeyword(name);
+        std::string msg = "Unexpected token after '" + name + "'";
+        if (!suggestion.empty()) {
+            msg += " -- did you mean the keyword '" + suggestion + "'?";
+        } else {
+            msg += " -- two names can't appear back-to-back like this; did you forget an operator, or misspell a keyword?";
+        }
+        throw ParseError(msg, startTok.line);
+    }
     
     // Check if this is a variable declaration (assignment to new variable)
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
@@ -906,7 +955,7 @@ StmtPtr Parser::useStatement() {
     int column = previous().column;
     int length = previous().lexeme.length();
     if (!match(TokenType::STRING)) {
-        throw ParseError("Expected string path after 'use'", peek().line);
+        throw ParseError("Expected a string module path after 'use' (e.g. use \"module_name\"), got '" + peek().lexeme + "'", peek().line);
     }
     Token pathToken = previous();
     std::string path = std::get<std::string>(pathToken.literal);
@@ -932,8 +981,19 @@ StmtPtr Parser::exportStatement() {
     skipNewlines();
     
     // Parse the inner declaration
+    bool hadErrorBefore = hadError;
     StmtPtr inner = declaration();
     if (!inner) {
+        // declaration() already reports and resynchronizes internally when the
+        // thing after 'export' fails to parse (see its catch block below) --
+        // so if that's what happened here, don't also throw this generic
+        // message on top. Doing so used to produce two error blocks for one
+        // mistake: the real, specific one from inside the inner declaration,
+        // plus this vague one pointing wherever synchronize() happened to
+        // stop, which is rarely where the actual problem is.
+        if (hadError && !hadErrorBefore) {
+            return nullptr;
+        }
         throw ParseError("Expected declaration after 'export'", tok.line);
     }
     return makeExportStmt(arena, tok.line, tok.column, (int)tok.lexeme.length(), tok.filename, std::move(inner));
@@ -1099,10 +1159,11 @@ StmtPtr Parser::modelStatement() {
                         break;
                     }
 
-                    Token paramToken = advance();
-                    if (paramToken.type == TokenType::RPAREN || paramToken.type == TokenType::COMMA) {
-                        throw ParseError("Expected parameter name", paramToken.line);
-                    }
+                    // See the identical comment in taskStatement()'s param parsing:
+                    // this must be consume(), not advance(), or a keyword typed as a
+                    // parameter name is accepted silently here and only blows up when
+                    // the body tries to reference it.
+                    Token paramToken = consume(TokenType::IDENTIFIER, "Expected parameter name");
                     params.push_back(paramToken.lexeme);
                     
                     if (match(TokenType::COLON)) {

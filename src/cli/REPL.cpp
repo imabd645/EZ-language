@@ -150,9 +150,28 @@ void runRepl(bool traceExecution) {
                         std::cerr << "Error: " << e.what() << std::endl;
                     }
                 }
-                multiline.clear();
+                // else: TypeChecker::check() already printed its own
+                // "Type Error at line X, column Y" message directly.
+            } else {
+                // Parser::parse() already printed its own "Error: ..." message
+                // (Parser.cpp), same as the lexer below. Nothing more to print
+                // here — just make sure we don't keep the broken input around.
             }
+        } else {
+            // Lexer::tokenize() already printed its own "Error: ..." message
+            // (Lexer.cpp) at the point it hit the bad token. Nothing more to
+            // print here — just make sure we don't keep the broken input
+            // around.
         }
+        // Always reset here, success or failure: multiline previously only
+        // got cleared on the successful-parse path (nested inside
+        // `if (!parser.hasError())`), so a lex or parse error left the bad
+        // text sitting in `multiline` forever. Every later line then got
+        // appended to that same broken buffer and re-hit the SAME error
+        // (e.g. an unterminated string never got closed, so it kept
+        // reporting "Unterminated string" at the original line/column no
+        // matter what valid code was typed afterward).
+        multiline.clear();
         openBraces = 0;
     }
     

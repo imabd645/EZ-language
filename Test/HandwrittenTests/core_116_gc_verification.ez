@@ -1,0 +1,49 @@
+// ============================================================================
+// GC Verification Test (Daemon Safepoint Proving)
+// ============================================================================
+out "=== Starting GC Verification Test ==="
+
+// 1. Initial state
+startTracked = gc_tracked()
+startCollected = gc_cycles_collected()
+out "Initial tracked objects: " + str(startTracked)
+
+// 2. Spawn CPU-bound daemon
+task tightLoop() {
+    while true { x = 1 + 1 }
+}
+spawn(tightLoop, {"daemon": true})
+
+// Give daemon a tiny moment to start spinning
+wait(100)
+
+// 3. Generate massive cyclic garbage (which normal ref-counting can't free)
+repeat i = 1 to 20000 {
+    a = []
+    push(a, a)
+}
+
+// 4. Verify garbage accumulated
+midTracked = gc_tracked()
+out "Tracked objects after allocation: " + str(midTracked)
+
+// 5. Force GC Collection
+// IF the daemon thread doesn't safely yield at a safepoint, this call will HANG FOREVER.
+out "Triggering explicit gc_collect()..."
+gc_collect()
+
+// 6. Verify garbage was actually collected!
+endTracked = gc_tracked()
+endCollected = gc_cycles_collected()
+
+out "Tracked objects after GC: " + str(endTracked)
+out "Cycles collected this run: " + str(endCollected - startCollected)
+
+when (endTracked < midTracked) {
+    out "PASS: GC successfully paused the tight-loop daemon and collected garbage!"
+}
+when (endTracked >= midTracked) {
+    out "FAIL: GC ran but didn't collect anything!"
+}
+
+out "=== GC Verification Test Finished ==="

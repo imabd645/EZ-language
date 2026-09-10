@@ -1,0 +1,24 @@
+// ============================================================================
+// Concurrency Race Condition Test
+// ============================================================================
+out "=== Starting Concurrency Race Test ==="
+
+shared_array = []
+
+task worker() {
+    repeat i = 1 to 1000 {
+        push(shared_array, i)
+    }
+}
+
+// Spawn 10 concurrent tasks all mutating the same array
+futures = []
+repeat i = 1 to 10 {
+    push(futures, spawn(worker))
+}
+
+// Wait for all to finish
+awaitAll(futures)
+
+out "Array length: " + str(len(shared_array))
+out "=== Concurrency Race Test Finished ==="

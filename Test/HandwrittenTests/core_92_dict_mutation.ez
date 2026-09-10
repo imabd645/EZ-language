@@ -1,0 +1,19 @@
+// ============================================================================
+// Collection Mutation During Iteration Test
+// ============================================================================
+out "=== Starting Dict Iteration Mutation Test ==="
+
+d = { "a": 1, "b": 2, "c": 3 }
+
+// Will the VM crash if we modify a dictionary while repeating over its keys?
+try {
+    klist = keys(d)
+    repeat i = 0 to len(klist)-1 {
+        k = klist[i]
+        d["new_" + k] = 99 // Mutating while reading!
+    }
+    out "PASS: Survived mutation during iteration"
+} catch e {
+    out "PASS: Caught mutation error: " + str(e)
+}
+out "=== Dict Iteration Mutation Test Finished ==="

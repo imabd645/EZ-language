@@ -1,0 +1,3 @@
+out "=== Sort Mixed ==="
+try { sort([1, "a", {}]) } catch e { out "Caught: " + str(e) }
+out "PASS"

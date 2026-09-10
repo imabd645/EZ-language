@@ -1,0 +1,27 @@
+// ============================================================================
+// Match Statement Edge Cases
+// ============================================================================
+out "=== Starting Match Edge Test ==="
+
+task testMatch(val) {
+    match val {
+        10 => give "Ten"
+        "hello" => give "Greeting"
+        true => give "Boolean"
+        other => give "Unknown: " + str(val)
+    }
+}
+
+out "match 10: " + testMatch(10)
+out "match hello: " + testMatch("hello")
+out "match true: " + testMatch(true)
+out "match nil: " + testMatch(nil)
+
+// Match without other
+matched = false
+match 99 {
+    100 => matched = true
+}
+out "Did match without other execute? " + str(matched)
+
+out "=== Match Edge Test Finished ==="

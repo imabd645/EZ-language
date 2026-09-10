@@ -1,0 +1,34 @@
+// ============================================================================
+// GC Closure Cycle Test
+// ============================================================================
+out "=== Starting GC Closure Cycle Test ==="
+
+gc_collect()
+start_cycles = gc_cycles_collected()
+
+task makeClosureCycle() {
+    state = {}
+    task myClosure() {
+        // Closure captures 'state'
+        give state
+    }
+    // 'state' references the closure
+    state["func"] = myClosure
+}
+
+repeat i = 1 to 100 {
+    makeClosureCycle()
+}
+
+gc_collect()
+collected = gc_cycles_collected() - start_cycles
+out "Cycles collected from closures: " + str(collected)
+
+when (collected >= 100) {
+    out "PASS: GC successfully dismantled closure-dictionary cycles!"
+}
+when (collected < 100) {
+    out "FAIL: Closures leaked memory!"
+}
+
+out "=== GC Closure Cycle Test Finished ==="

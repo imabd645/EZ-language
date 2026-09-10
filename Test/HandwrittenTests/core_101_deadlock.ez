@@ -1,0 +1,27 @@
+out "=== Starting Circular Future Test ==="
+
+ch = Channel()
+
+task waiter() {
+    out "Waiter started, waiting on channel forever..."
+    ch.receive()
+    out "FAIL: Should never reach here"
+}
+
+// Spawn as daemon by passing {"daemon": true}
+fut = spawn(waiter, {"daemon": true})
+
+task timeoutTask() {
+    wait(1000)
+    give "timeout"
+}
+timeoutFut = spawn(timeoutTask)
+
+try {
+    res = awaitAny([fut, timeoutFut])
+    out "PASS: Event loop survived the deadlock! Result: " + str(res)
+} catch e {
+    out "Caught: " + str(e)
+}
+
+out "=== Circular Future Test Finished ==="

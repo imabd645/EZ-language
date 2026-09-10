@@ -1,0 +1,30 @@
+out "=== Starting File System Test ==="
+
+filename = "test_temp_file.txt"
+
+try {
+    writeFile(filename, "Line 1\n")
+    appendFile(filename, "Line 2\n")
+    appendLine(filename, "Line 3")
+    
+    contents = readFile(filename)
+    out "File Contents:\n" + contents
+    
+    lines = readLines(filename)
+    out "Total Lines: " + str(len(lines))
+    out "Line 2: " + lines[1]
+    
+    // Cleanup - wait, does EZ have an os_delete or removeFile?
+    out "PASS: File IO successfully wrote and read lines."
+} catch e {
+    out "FAIL: " + str(e)
+}
+
+try {
+    readFile("does_not_exist_99999.txt")
+    out "FAIL: Read nonexistent file without throwing!"
+} catch e {
+    out "PASS: Caught nonexistent file error: " + str(e)
+}
+
+out "=== File System Test Finished ==="

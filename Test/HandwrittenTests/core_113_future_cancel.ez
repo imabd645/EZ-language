@@ -1,0 +1,3 @@
+out "=== Fut Cancel ==="
+f = waitAsync(100); cancel(f); try { await f } catch e { out "Caught: " + str(e.message) }
+out "PASS"

@@ -1,0 +1,23 @@
+// ============================================================================
+// Closed Channel Send Test
+// ============================================================================
+out "=== Starting Closed Channel Test ==="
+
+ch = Channel()
+ch.close()
+
+try {
+    ch.send("hello")
+    out "FAIL: Allowed send to closed channel!"
+} catch e {
+    out "PASS: Caught closed channel send safely! Error: " + str(e)
+}
+
+try {
+    val = ch.receive()
+    out "PASS: Survived reading from closed channel! Got: " + str(val)
+} catch e {
+    out "FAIL: Reading closed channel threw an error instead of returning nil! Error: " + str(e)
+}
+
+out "=== Closed Channel Test Finished ==="

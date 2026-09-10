@@ -1,0 +1,4 @@
+out "=== Regex Zero ==="
+res = re_find_all("abc", "")
+out len(res)
+out "PASS"

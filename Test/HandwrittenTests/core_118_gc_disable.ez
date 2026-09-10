@@ -1,0 +1,41 @@
+// ============================================================================
+// GC Disable & Enable Test
+// ============================================================================
+out "=== Starting GC Disable Test ==="
+
+gc_collect()
+start_tracked = gc_tracked()
+
+gc_disable()
+out "GC Disabled."
+
+repeat i = 1 to 500 {
+    a = []
+    push(a, a)
+}
+
+mid_tracked = gc_tracked()
+diff_disabled = mid_tracked - start_tracked
+out "Tracked objects grew by: " + str(diff_disabled)
+
+gc_enable()
+out "GC Enabled."
+gc_collect()
+// Due to a C++ lifecycle quirk (the live vector holds a shared_ptr during collection), 
+// objects broken by phase 4 aren't technically destroyed until the collect() function returns!
+// Calling it a second time allows phase 1 to purge the now-expired weak_ptrs from the tracker.
+gc_collect()
+
+end_tracked = gc_tracked()
+diff_enabled = end_tracked - start_tracked
+
+out "Tracked objects difference after enable/collect: " + str(diff_enabled)
+
+when (diff_disabled >= 500) {
+    out "PASS: GC disable successfully halted automatic collection."
+}
+when (diff_enabled < 10) {
+    out "PASS: GC enable successfully restored collection."
+}
+
+out "=== GC Disable Test Finished ==="

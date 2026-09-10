@@ -1,0 +1,22 @@
+// ============================================================================
+// Exception inside Catch Block Test
+// ============================================================================
+out "=== Starting Nested Catch Test ==="
+
+task thrower() {
+    try {
+        throw "First Error"
+    } catch e {
+        out "Caught: " + str(e) + ", now throwing another!"
+        throw "Second Error"
+    }
+}
+
+try {
+    thrower()
+    out "FAIL: Outer should have caught Second Error"
+} catch e2 {
+    out "PASS: Outer successfully caught: " + str(e2)
+}
+
+out "=== Nested Catch Test Finished ==="

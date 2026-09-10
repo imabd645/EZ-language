@@ -1,0 +1,37 @@
+out "=== Starting Structural Typing Test ==="
+
+interface Animal {
+    task speak()
+}
+
+model Dog implements Animal {
+    task speak() { give "woof" }
+}
+
+model Cat implements Animal {
+    task speak() { give "meow" }
+}
+
+model Brick {
+    // Has no speak method
+}
+
+task doSpeak(a: Animal) {
+    give a.speak()
+}
+
+d = Dog()
+c = Cat()
+b = Brick()
+
+out "Dog says: " + doSpeak(d)
+out "Cat says: " + doSpeak(c)
+
+try {
+    doSpeak(b)
+    out "FAIL: Brick spoke?"
+} catch e {
+    out "PASS: Caught Brick safely: " + str(e)
+}
+
+out "=== Structural Typing Test Finished ==="

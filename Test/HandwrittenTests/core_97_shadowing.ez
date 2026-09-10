@@ -1,0 +1,23 @@
+// ============================================================================
+// Lexical Scope Shadowing Test
+// ============================================================================
+out "=== Starting Shadowing Test ==="
+
+x = 100
+
+task outer() {
+    x = 200 // Should shadow or overwrite? Wait, in EZ, does it overwrite or shadow?
+    // Let's test if it overwrites the global or creates a local.
+    // If there is no let, it might overwrite!
+}
+outer()
+out "x after outer(): " + str(x)
+
+// Let's test if block scopes shadow
+repeat x = 1 to 3 {
+    // x is a loop variable here
+    out "loop x: " + str(x)
+}
+out "x after loop: " + str(x)
+
+out "=== Shadowing Test Finished ==="

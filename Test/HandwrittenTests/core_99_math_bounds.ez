@@ -1,0 +1,22 @@
+// ============================================================================
+// Extreme Math Bounds Edge Case
+// ============================================================================
+out "=== Starting Extreme Math Test ==="
+
+// Power to massive numbers
+try {
+    big = pow(10, 1000)
+    out "10^1000 = " + str(big)
+} catch e {
+    out "PASS: Caught massive power error: " + str(e)
+}
+
+// 0 to the power of negative
+try {
+    zero_neg = pow(0, -1)
+    out "0^-1 = " + str(zero_neg)
+} catch e {
+    out "PASS: Caught 0^-1 error: " + str(e)
+}
+
+out "=== Extreme Math Test Finished ==="

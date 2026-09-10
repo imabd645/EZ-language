@@ -1,0 +1,25 @@
+// ============================================================================
+// Cyclic Stringification Test (C++ Stack Overflow Check)
+// ============================================================================
+out "=== Starting Cyclic Print Test ==="
+
+a = []
+push(a, a)
+
+try {
+    s = str(a)
+    out "PASS: Survived printing cyclic array: " + s
+} catch e {
+    out "Caught error: " + str(e)
+}
+
+d = {}
+d["self"] = d
+try {
+    s = str(d)
+    out "PASS: Survived printing cyclic dict: " + s
+} catch e {
+    out "Caught error: " + str(e)
+}
+
+out "=== Cyclic Print Test Finished ==="

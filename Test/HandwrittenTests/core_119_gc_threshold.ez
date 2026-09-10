@@ -1,0 +1,34 @@
+// ============================================================================
+// GC Threshold Trigger Test
+// ============================================================================
+out "=== Starting GC Threshold Test ==="
+
+gc_collect()
+start_cycles = gc_cycles_collected()
+
+// Set incredibly low thresholds so it triggers constantly
+gc_set_thresholds(10, 20)
+
+// Create exactly 100 cycles without calling gc_collect() manually
+repeat i = 1 to 100 {
+    a = []
+    push(a, a)
+}
+
+// Wait to give the background GC thread a moment to sweep
+wait(100)
+
+auto_cycles = gc_cycles_collected() - start_cycles
+out "Cycles automatically collected: " + str(auto_cycles)
+
+when (auto_cycles > 0) {
+    out "PASS: Lowering thresholds successfully triggered automatic GC! "
+}
+when (auto_cycles == 0) {
+    out "FAIL: Automatic GC did not trigger with lowered thresholds!"
+}
+
+// Restore sane thresholds
+gc_set_thresholds(1000, 5000)
+
+out "=== GC Threshold Test Finished ==="

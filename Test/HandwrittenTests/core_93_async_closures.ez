@@ -1,0 +1,34 @@
+// ============================================================================
+// Async Closure Shared State Test
+// ============================================================================
+out "=== Starting Async Closure Test ==="
+
+task makeCounters() {
+    count = 0
+    
+    task inc() {
+        count = count + 1
+        give count
+    }
+    
+    give inc
+}
+
+incFunc = makeCounters()
+
+futs = []
+repeat i = 1 to 5 {
+    // Spawn 5 tasks that all call incFunc
+    push(futs, spawn(|| { give incFunc() }))
+}
+
+results = awaitAll(futs)
+
+out "Results length: " + str(len(results))
+out "Expected final count: 5"
+// Notice: We don't verify exact elements because order is non-deterministic
+// But the final value of the shared closure variable should be correct if it's protected or event loop is single-threaded!
+
+out "Final call: " + str(incFunc())
+
+out "=== Async Closure Test Finished ==="

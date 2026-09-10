@@ -1,0 +1,13 @@
+out "=== Starting GC Disable Debug Test ==="
+gc_collect()
+out "Start Tracked: " + str(gc_tracked())
+gc_disable()
+repeat i = 1 to 500 { a = []; push(a, a) }
+out "Mid Tracked: " + str(gc_tracked())
+gc_enable()
+// We call gc_collect multiple times just in case phase1 needs another pass?
+gc_collect()
+out "End Tracked (1): " + str(gc_tracked())
+gc_collect()
+out "End Tracked (2): " + str(gc_tracked())
+out "Collected cycles: " + str(gc_cycles_collected())

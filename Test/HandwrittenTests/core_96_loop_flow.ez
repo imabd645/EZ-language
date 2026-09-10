@@ -1,0 +1,26 @@
+// ============================================================================
+// Loop Flow & Nested Scopes Test
+// ============================================================================
+out "=== Starting Loop Flow Test ==="
+
+result = []
+repeat i = 1 to 5 {
+    when (i == 2) { skip }
+    when (i == 4) { escape }
+    
+    // Nested loop to test escape/skip bounds
+    repeat j = 1 to 3 {
+        when (j == 2) { escape }
+        push(result, str(i) + "-" + str(j))
+    }
+}
+
+// i=1 (runs, inner runs j=1, escapes j=2) -> "1-1"
+// i=2 (skipped)
+// i=3 (runs, inner runs j=1, escapes j=2) -> "3-1"
+// i=4 (escapes outer loop completely)
+
+out "Result length: " + str(len(result))
+out "Results: " + str(result)
+
+out "=== Loop Flow Test Finished ==="

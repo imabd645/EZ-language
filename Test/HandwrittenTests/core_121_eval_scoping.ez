@@ -1,0 +1,19 @@
+out "=== Starting Eval Scoping Test ==="
+
+x = 10
+out "x before eval: " + str(x)
+
+eval("x = 20")
+out "x after eval: " + str(x)
+
+task modifyLocal() {
+    local_y = 50
+    // eval should theoretically only affect globals, not local scope
+    eval("local_y = 100")
+    give local_y
+}
+
+yLocal = modifyLocal()
+out "Local y after eval: " + str(yLocal)
+
+out "=== Eval Scoping Test Finished ==="

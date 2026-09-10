@@ -1,0 +1,20 @@
+// ============================================================================
+// Multi-Return & Destructuring Test
+// ============================================================================
+out "=== Starting Destructuring Test ==="
+
+task getTuple() {
+    give 1, 2, 3
+}
+
+(a, b, c) = getTuple()
+out "a: " + str(a)
+out "b: " + str(b)
+out "c: " + str(c)
+
+// What if we destructure with too few variables?
+(x, y) = getTuple()
+out "x: " + str(x)
+out "y: " + str(y)
+
+out "=== Destructuring Test Finished ==="

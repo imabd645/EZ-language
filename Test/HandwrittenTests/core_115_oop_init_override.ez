@@ -1,0 +1,17 @@
+out "=== OOP Init Override ==="
+model ParentClass {
+    init() {
+        out "Parent Init Called"
+    }
+}
+model ChildClass extends ParentClass {
+    init(x) {
+        out "Child Init Called with " + str(x)
+        super()
+    }
+}
+try {
+    c = ChildClass(5)
+} catch e {
+    out "Error: " + str(e)
+}

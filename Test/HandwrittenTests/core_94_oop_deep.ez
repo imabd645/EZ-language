@@ -1,0 +1,31 @@
+// ============================================================================
+// OOP Deep Inheritance Test
+// ============================================================================
+out "=== Starting Deep Inheritance Test ==="
+
+model A {
+    init() { self.val = "A" }
+    task speak() { give "I am A" }
+}
+
+model B extends A {
+    init() { super() }
+    task speak() { give "I am B, child of " + super.speak() }
+}
+
+model C extends B {
+    init() { super() }
+    task speak() { give "I am C, child of B, child of " + super.speak() }
+}
+
+// 1. Instantiation
+c = C()
+out c.speak()
+
+// 2. TypeOf checks
+out "typeof C: " + typeOf(c)
+
+// 3. Property access through inheritance chain
+out "val: " + c.val
+
+out "=== Deep Inheritance Test Finished ==="

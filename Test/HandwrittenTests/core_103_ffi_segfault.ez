@@ -1,0 +1,22 @@
+// ============================================================================
+// FFI Segfault Protection Test
+// ============================================================================
+out "=== Starting FFI Segfault Test ==="
+
+try {
+    // Try to read from a completely garbage memory address (0xDEADBEEF in decimal is 3735928559)
+    val = os_read_uint64(3735928559, 0)
+    out "FAIL: Survived reading garbage memory without throwing! Got: " + str(val)
+} catch e {
+    out "PASS: Caught segfault safely! Error: " + str(e)
+}
+
+try {
+    // Try to write to a completely garbage memory address (NULL pointer)
+    os_write_uint64(0, 0, 999)
+    out "FAIL: Survived writing to NULL pointer without throwing!"
+} catch e {
+    out "PASS: Caught NULL pointer write safely! Error: " + str(e)
+}
+
+out "=== FFI Segfault Test Finished ==="

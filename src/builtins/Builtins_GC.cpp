@@ -153,7 +153,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
             Value dictVal = Value::makeDictionary();
             auto dict = dictVal.asDictionaryPtr();
             dict->modifyMap([&](auto& m) {
-                m["version"] = Value("5.1.0");
+                m["version"] = Value("5.2.0");
                 m["engine"] = Value("EZ Bytecode VM");
 #if defined(_WIN32) || defined(_WIN64)
                 m["platform"] = Value("windows");

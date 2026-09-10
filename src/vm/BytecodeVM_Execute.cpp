@@ -1624,19 +1624,33 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 if (method.isCallable()) {
                                     SYNC_IP();
                                     this->stackTop = stackTop;
-                                    // Field-held function: call it as-is, no implicit
-                                    // self. See the matching note in TO_STRING.
-                                    Value bound = inst->hasProperty("toString")
-                                        ? method
-                                        : Value(std::make_shared<EZBoundMethod>(arg, method));
-                                    *(stackTop - 2) = bound;
-                                    stackTop--; // remove arg to leave 0 args
-                                    if (dispatchCall(bound, 0)) {
-                                        LOAD_FRAME();
-                                    } else {
-                                        REFRESH_FRAME();
-                                    }
+                                    // Must go through callFunction(), not the
+                                    // dispatchCall()+handled=true+"let it fall
+                                    // through to DISPATCH()" pattern this used to
+                                    // use. That pattern happens to produce the
+                                    // right-looking output when the str() call is
+                                    // the very last thing evaluated before a
+                                    // PRINT_STR/RETURN/etc., because RETURN's normal
+                                    // frame-pop then resumes at the right place by
+                                    // coincidence -- but str(x) embedded deeper in a
+                                    // larger expression, e.g. "A:" + str(cat) + ":B",
+                                    // left a stray "<bound method>" fragment glued
+                                    // into the result, because the surrounding ADD
+                                    // chain's own bytecode reads stack state at a
+                                    // point that doesn't line up with when the
+                                    // callee's RETURN actually lands. callFunction()
+                                    // runs the call to full completion synchronously
+                                    // before this opcode's handler ever returns, so
+                                    // there's no "resume later" continuation to get
+                                    // out of sync with whatever bytecode follows.
+                                    Value result = inst->hasProperty("toString")
+                                        ? callFunction(method, {})
+                                        : callFunction(method, {arg});
+                                    LOAD_FRAME();
                                     stackTop = this->stackTop;
+                                    stackTop -= 2; // drop [str_fn, arg]
+                                    *stackTop++ = Value(result.toString());
+                                    this->stackTop = stackTop;
                                     handled = true;
                                 }
                             }
@@ -2235,23 +2249,29 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             if (method.isCallable()) {
                                 SYNC_IP();
                                 this->stackTop = stackTop;
-                                // A function held in a FIELD is a plain value, not a
-                                // method, so calling it must not pass the instance as
-                                // a hidden first argument -- same rule GET_PROPERTY
-                                // applies. Binding unconditionally here meant
-                                // `obj.toString = || { ... }` died with "expected at
-                                // most 0 args but got 1" the moment the object was
-                                // printed.
-                                Value bound = inst->hasProperty("toString")
-                                    ? method
-                                    : Value(std::make_shared<EZBoundMethod>(v, method));
-                                *(stackTop - 1) = bound;
-                                if (dispatchCall(bound, 0)) {
-                                    LOAD_FRAME();
-                                } else {
-                                    REFRESH_FRAME();
-                                }
+                                // See the long comment on PRINT_STR: this must go
+                                // through callFunction(), not dispatchCall() +
+                                // LOAD_FRAME() as if the call were synchronous --
+                                // dispatchCall() on a bytecode function just
+                                // switches frames and returns, it doesn't run the
+                                // call to completion. The dispatchCall() version of
+                                // this exact code produced "<bound method>" glued
+                                // in front of the real result: *(stackTop-1) got
+                                // overwritten with the BoundMethod value, DISPATCH()
+                                // then executed the callee's bytecode disconnected
+                                // from this site, and whatever the callee's `give`
+                                // returned landed back on the stack as an ADDITIONAL
+                                // value (from wherever the *real* call site for this
+                                // frame resumes) rather than replacing the BoundMethod
+                                // that was sitting at stackTop-1 -- hence both the
+                                // literal "<bound method>" text and the real result
+                                // showing up concatenated together.
+                                Value result = inst->hasProperty("toString")
+                                    ? callFunction(method, {})
+                                    : callFunction(method, {v});
+                                LOAD_FRAME();
                                 stackTop = this->stackTop;
+                                *(stackTop - 1) = Value(result.toString());
                                 handled = true;
                             }
                         }
@@ -2774,6 +2794,41 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         dst = Value(dst.asFloat() + (double)src.asInteger());
                     } else if (dst.isString() && src.isString()) {
                         dst = Value(dst.asString() + src.asString());
+                    } else if (dst.isInstance()) {
+                        // The compiler fuses the extremely common `x = x + y`
+                        // accumulator pattern into this single opcode whenever
+                        // both operands are locals -- but unlike the plain ADD
+                        // opcode below, this fast path was never taught about
+                        // operator-overload models (`task +(other) { ... }`), so
+                        // `total = total + item` silently broke (fell through
+                        // to the generic "'+' operands must be numbers, strings,
+                        // or arrays" error) for exactly the accumulator style of
+                        // code operator overloading exists to support, even
+                        // though `out (total + item)` -- same operator, same
+                        // operands, just not auto-fused into this opcode --
+                        // worked fine. See callFunction() note on PRINT_STR:
+                        // this must run the call to completion synchronously
+                        // (dst has to hold the real result before DISPATCH()
+                        // moves on), not splice dispatchCall() in and assume
+                        // it already ran.
+                        Value method = dst.asInstance()->getProperty("+");
+                        if (method.isCallable()) {
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            Value bound = Value(std::make_shared<EZBoundMethod>(dst, method));
+                            Value result = callFunction(bound, {src});
+                            LOAD_FRAME();
+                            stackTop = this->stackTop;
+                            frame->slots[dstSlot] = result;
+                        } else {
+                            *stackTop++ = dst;
+                            *stackTop++ = src;
+                            SYNC_IP();
+                            doAdd();
+                            if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                            LOAD_FRAME();
+                            frame->slots[dstSlot] = *(--stackTop);
+                        }
                     } else {
                         *stackTop++ = dst;
                         *stackTop++ = src;
@@ -2799,6 +2854,28 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         dst = Value((double)dst.asInteger() - src.asFloat());
                     } else if (dst.isFloat() && src.isInteger()) {
                         dst = Value(dst.asFloat() - (double)src.asInteger());
+                    } else if (dst.isInstance()) {
+                        // See the matching note on ADD_LOCAL_LOCAL: this fast
+                        // path for `x = x - y` was never taught about `task
+                        // -(other)` overloads either.
+                        Value method = dst.asInstance()->getProperty("-");
+                        if (method.isCallable()) {
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            Value bound = Value(std::make_shared<EZBoundMethod>(dst, method));
+                            Value result = callFunction(bound, {src});
+                            LOAD_FRAME();
+                            stackTop = this->stackTop;
+                            frame->slots[dstSlot] = result;
+                        } else {
+                            *stackTop++ = dst;
+                            *stackTop++ = src;
+                            SYNC_IP();
+                            doSubtract();
+                            if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                            LOAD_FRAME();
+                            frame->slots[dstSlot] = *(--stackTop);
+                        }
                     } else {
                         *stackTop++ = dst;
                         *stackTop++ = src;
@@ -2847,6 +2924,36 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             dst = Value(dst.asFloat() + (double)src.asInteger());
                         } else if (dst.isString() && src.isString()) {
                             dst = Value(dst.asString() + src.asString());
+                        } else if (dst.isInstance()) {
+                            // Same gap as ADD_LOCAL_LOCAL, for the equally common
+                            // case where the accumulator is a script-level (i.e.
+                            // global-slot) variable rather than a function-local
+                            // one -- `total = total + item` at top level, exactly
+                            // as in the docs' own Vector example, silently broke
+                            // for models with `task +(other)` overloads. Re-fetch
+                            // the slot by index after the call rather than reusing
+                            // `dst`: callFunction() can grow globalSlots (e.g. the
+                            // callee defines something new at global scope),
+                            // reallocating the vector and invalidating the
+                            // reference taken before the call.
+                            Value method = dst.asInstance()->getProperty("+");
+                            if (method.isCallable()) {
+                                SYNC_IP();
+                                this->stackTop = stackTop;
+                                Value bound = Value(std::make_shared<EZBoundMethod>(dst, method));
+                                Value result = callFunction(bound, {src});
+                                LOAD_FRAME();
+                                stackTop = this->stackTop;
+                                globalEnv->globalSlots[globalSlot] = result;
+                            } else {
+                                *stackTop++ = dst;
+                                *stackTop++ = src;
+                                SYNC_IP();
+                                doAdd();
+                                if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
+                                LOAD_FRAME();
+                                globalEnv->globalSlots[globalSlot] = *(--stackTop);
+                            }
                         } else {
                             *stackTop++ = dst;
                             *stackTop++ = src;
@@ -2861,18 +2968,62 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 }
 
                 CASE_CODE(PRINT_STR) {
-                    Value v = *(--stackTop);
+                    Value v = *(stackTop - 1);
                     if (__builtin_expect(v.isString(), 1)) {
+                        --stackTop;
                         std::cout << v.asString() << "\n";
                     } else if (v.isInteger()) {
+                        --stackTop;
                         std::cout << v.asInteger() << "\n";
                     } else if (v.isFloat()) {
+                        --stackTop;
                         std::cout << v.asFloat() << "\n";
                     } else if (v.isBool()) {
+                        --stackTop;
                         std::cout << (v.asBool() ? "true\n" : "false\n");
                     } else if (v.isNil()) {
+                        --stackTop;
                         std::cout << "nil\n";
+                    } else if (v.isInstance()) {
+                        // PRINT_STR is the fused "toString + print" fast path the
+                        // compiler actually emits for `out expr` (see PRINT below,
+                        // which has this same check but is effectively unreachable
+                        // dead code since the compiler never emits plain PRINT) --
+                        // without this, `out obj` silently skipped any user-defined
+                        // toString() and printed the bare "<instance>" placeholder.
+                        //
+                        // This must go through callFunction(), NOT a hand-rolled
+                        // dispatchCall()+LOAD_FRAME() splice: dispatchCall() on a
+                        // bytecode function doesn't run it to completion, it just
+                        // switches `frame` to the callee and returns, expecting the
+                        // *outer* interpreter loop to execute the callee's bytecode
+                        // and eventually come back via its own RETURN. Reading the
+                        // "result" immediately afterward (as PRINT and TO_STRING
+                        // both do) reads whatever garbage is on the stack at that
+                        // instant, then DISPATCH()es into the callee's bytecode
+                        // completely disconnected from this print -- which is how
+                        // `self` ended up bound to a stray string. callFunction()
+                        // (already used the same way for constructor calls) runs a
+                        // real nested loop to completion and hands back the actual
+                        // result synchronously, which is what a call spliced into
+                        // the middle of another opcode's handling actually needs.
+                        --stackTop;
+                        auto inst = v.asInstance();
+                        Value method = inst->getProperty("toString");
+                        if (method.isCallable()) {
+                            SYNC_IP();
+                            this->stackTop = stackTop;
+                            Value result = inst->hasProperty("toString")
+                                ? callFunction(method, {})
+                                : callFunction(method, {v});
+                            LOAD_FRAME();
+                            stackTop = this->stackTop;
+                            std::cout << result.toString() << "\n";
+                        } else {
+                            std::cout << v.toString() << "\n";
+                        }
                     } else {
+                        --stackTop;
                         std::cout << v.toString() << "\n";
                     }
                     DISPATCH();

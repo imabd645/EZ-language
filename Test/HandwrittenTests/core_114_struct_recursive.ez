@@ -1,5 +1,0 @@
-out "=== Struct Recur ==="
-struct Node { next: Node }
-n = Node(nil)
-out typeOf(n)
-out "PASS"

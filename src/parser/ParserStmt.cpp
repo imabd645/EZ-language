@@ -754,6 +754,13 @@ StmtPtr Parser::expressionStatement() {
         throw ParseError(msg, startTok.line);
     }
     
+    // Catch-all: check if the next token is on the same line without a separator.
+    // EZ uses NEWLINE (which includes explicit ';') to separate statements.
+    // RBRACE is also a valid boundary (end of a block).
+    if (!check(TokenType::NEWLINE) && !check(TokenType::END_OF_FILE) && !check(TokenType::RBRACE)) {
+        throw ParseError("Expected newline or ';' after expression", peek().line);
+    }
+    
     // Check if this is a variable declaration (assignment to new variable)
     // Only create VarDeclStmt if we're in a declaration context (e.g., after 'let')
     // Otherwise, treat as regular assignment statement

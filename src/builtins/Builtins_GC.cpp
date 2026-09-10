@@ -292,8 +292,30 @@ void registerGCBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("spawn", Value::makeNativeFunction("spawn", -1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (args.empty() || !args[0].isCallable()) { interp.runtimeError("spawn() expects function", 0, ""); return Value(); }
+            
             Value func = args[0];
-            std::vector<Value> fnArgs(args.begin() + 1, args.end());
+            bool isDaemon = false;
+            size_t endIdx = args.size();
+            
+            // Backward-compatible daemon check: see if the last argument is `true` or `{"daemon": true}`
+            if (args.size() > 1) {
+                const Value& lastArg = args.back();
+                if (lastArg.isDictionary()) {
+                    auto dict = lastArg.asDictionaryPtr();
+                    if (dict->has("daemon")) {
+                        Value dVal = dict->get("daemon");
+                        if (dVal.isBool() && dVal.asBool()) {
+                            isDaemon = true;
+                            endIdx--; // Consume the options dict
+                        }
+                    }
+                } else if (lastArg.isBool() && lastArg.asBool()) {
+                    isDaemon = true;
+                    endIdx--; // Consume the boolean
+                }
+            }
+            
+            std::vector<Value> fnArgs(args.begin() + 1, args.begin() + endIdx);
             auto globalEnv = interp.getGlobalEnv();
 
 
@@ -351,8 +373,10 @@ void registerGCBuiltins(RuntimeContext& interp) {
 
             auto ezFut = std::make_shared<EZFuture>();
 
-            EventLoop::instance().retain();
-            std::thread([ezFut, globalEnv, closedFunc, closedArgs]() {
+            if (!isDaemon) {
+                EventLoop::instance().retain();
+            }
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs, isDaemon]() {
                 // Register as a concurrent mutator for the whole lifetime of this
                 // worker so the cycle collector defers collection while we run
                 // (it can't safely collect the shared object graph we mutate).
@@ -432,7 +456,9 @@ void registerGCBuiltins(RuntimeContext& interp) {
                     ezFut->set(result);
                 }
 
-                EventLoop::instance().release();
+                if (!isDaemon) {
+                    EventLoop::instance().release();
+                }
             }).detach();
 
             return Value::makeFuture(ezFut);

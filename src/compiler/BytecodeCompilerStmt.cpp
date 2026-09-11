@@ -595,6 +595,42 @@ void BytecodeCompiler::emitClosure(const TaskStmt& stmt, bool isMethod) {
 }
 
 void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
+    // 0. If this task will end up stored in a FRESH local slot (the
+    //    "namespaced module / nested function" case below), reserve that
+    //    slot NOW, before compiling the closure body via emitClosure().
+    //
+    //    Why: resolveUpvalue() resolves a self-referencing call inside the
+    //    body by walking current->enclosing->locals as it exists AT THE
+    //    TIME OF THAT CALL. addLocal(stmt.name) used to run only after
+    //    emitClosure() returned, so a local task's own name didn't exist in
+    //    the enclosing scope's locals yet while its body was being
+    //    compiled. Its self-call therefore couldn't resolve as a local/
+    //    upvalue and silently fell back to the same "unresolved identifier
+    //    defaults to a global slot" path unrelated identifiers use -- but
+    //    there is no such global, so the slot read back nil at runtime.
+    //    Every locally-scoped named recursive task (nested in another task,
+    //    or in a plain {} / try block -- anything with scopeDepth > 0)
+    //    failed on its very first self-call with e.g. "'fib' is nil, so it
+    //    cannot be called", regardless of recursion depth. Global tasks
+    //    were unaffected: global slots are keyed by persistent name, so it
+    //    didn't matter which of the two globalSlotFor("name") call sites
+    //    (the self-reference inside the body, or this function's own
+    //    storage decision below) ran first -- both resolve to the same slot.
+    //
+    //    addLocal()/markInitialized() only update compiler bookkeeping and
+    //    emit no bytecode, so reserving the slot here is safe; the actual
+    //    STORE_LOCAL that writes the closure value into it still happens
+    //    below, after the closure is on the stack.
+    int existingLocal = resolveLocal(stmt.name);
+    size_t reservedSlot = 0;
+    bool reservedNewLocal = false;
+    if (existingLocal == -1 && current->scopeDepth > 0) {
+        reservedSlot = addLocal(stmt.name);
+        current->locals.back().isStackResident = false;
+        markInitialized();
+        reservedNewLocal = true;
+    }
+
     // 1. Load the decorators, OUTERMOST first, so the innermost ends up nearest
     //    the closure on the stack and is therefore applied first.
     //
@@ -621,15 +657,10 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
     }
 
     // Store into variable (local or global)
-    int local = resolveLocal(stmt.name);
-    if (local != -1) {
-        emitStoreLocal(local);
-    } else if (current->scopeDepth > 0) {
-        // In namespaced modules (depth 1) or nested functions, tasks are locals
-        size_t slot = addLocal(stmt.name);
-        current->locals.back().isStackResident = false;
-        markInitialized();
-        emitStoreLocal(slot);
+    if (existingLocal != -1) {
+        emitStoreLocal(existingLocal);
+    } else if (reservedNewLocal) {
+        emitStoreLocal(reservedSlot);
     } else {
         // Global task — allocate a slot
         uint16_t slot = globalSlotFor(stmt.name);

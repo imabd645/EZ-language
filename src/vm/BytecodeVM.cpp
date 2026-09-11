@@ -643,6 +643,17 @@ Value BytecodeVM::callFunction(const Value& callee,
                                 const std::vector<Value>& args,
                                 int line,
                                 const std::string& filename) {
+    if (cxxFrameDepth >= 200) {
+        runtimeError("RecursionError: maximum C++ call depth exceeded", line, filename);
+        return Value();
+    }
+
+    struct CxxDepthGuard {
+        size_t& depth;
+        CxxDepthGuard(size_t& d) : depth(d) { depth++; }
+        ~CxxDepthGuard() { depth--; }
+    } guard(cxxFrameDepth);
+
     // A fault raised while the dispatch is live is reported by recording rather
     // than by unwinding, so a native that calls back into EZ in a loop -- map,
     // filter, reduce, each, a sort comparator -- no longer has its loop cut

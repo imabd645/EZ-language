@@ -175,6 +175,7 @@ private:
     // Stack safety margin. When call stack depth exceeds maxFrames, throw
     // RecursionError.
     size_t maxFrames = 4096;
+    size_t cxxFrameDepth = 0;
     uint64_t instructionCount = 0;
     uint64_t maxInstructions = 0;
     // Working-stack reserve required to be free when a new call frame is

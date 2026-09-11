@@ -3270,6 +3270,12 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
 
         try {
             Value result = callee.asNativeFunction()->function(*this, args);
+            // If the native function set an EZ exception but returned normally 
+            // (e.g. via interp.runtimeError() -> return Value()), we MUST abort the dispatch!
+            if (isExceptionPending || !pendingException.isNil()) {
+                return false;
+            }
+            
             // NOW we pop everything and push the result
             stackTop = stack.data() + oldTopOffset - (argCount + 1);
             Value* oldTopPtr = stack.data() + oldTopOffset;

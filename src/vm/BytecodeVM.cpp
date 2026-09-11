@@ -160,6 +160,17 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     bool savedRunning = running;
     bool savedException = isExceptionPending;
 
+    struct OptionalCxxDepthGuard {
+        size_t* depth;
+        OptionalCxxDepthGuard(size_t* d) : depth(d) { if (depth) (*depth)++; }
+        ~OptionalCxxDepthGuard() { if (depth) (*depth)--; }
+    } guard(savedRunning ? &cxxFrameDepth : nullptr);
+
+    if (cxxFrameDepth >= 200) {
+        // Just throw runtime error; caller will catch if necessary, or process dies
+        throw RuntimeError("RecursionError: maximum C++ call depth exceeded");
+    }
+
     // Reset execution state for THIS recursive run
     frames.clear();
     frameUpvalues.clear();
@@ -648,12 +659,6 @@ Value BytecodeVM::callFunction(const Value& callee,
         return Value();
     }
 
-    struct CxxDepthGuard {
-        size_t& depth;
-        CxxDepthGuard(size_t& d) : depth(d) { depth++; }
-        ~CxxDepthGuard() { depth--; }
-    } guard(cxxFrameDepth);
-
     // A fault raised while the dispatch is live is reported by recording rather
     // than by unwinding, so a native that calls back into EZ in a loop -- map,
     // filter, reduce, each, a sort comparator -- no longer has its loop cut
@@ -698,6 +703,12 @@ Value BytecodeVM::callFunction(const Value& callee,
     size_t framesBefore = frames.size();
     bool savedRunning = running;
     running = true;
+
+    struct OptionalCxxDepthGuard {
+        size_t* depth;
+        OptionalCxxDepthGuard(size_t* d) : depth(d) { if (depth) (*depth)++; }
+        ~OptionalCxxDepthGuard() { if (depth) (*depth)--; }
+    } guard(savedRunning ? &cxxFrameDepth : nullptr);
 
     push(callee);
     for (const auto& arg : args) {

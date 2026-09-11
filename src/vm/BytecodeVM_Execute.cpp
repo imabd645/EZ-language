@@ -2392,6 +2392,11 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     *(stackTop - 1) = fut->get();
                                 }
                             } else {
+                                if (cxxFrameDepth > 0) {
+                                    SYNC_IP();
+                                    throwException("RuntimeError", "Cannot await inside a native callback (e.g. map, filter)");
+                                    RAISE_FAULT();
+                                }
                                 SYNC_IP();
                                 this->isYielded = true;
                                 this->stackTop = stackTop;

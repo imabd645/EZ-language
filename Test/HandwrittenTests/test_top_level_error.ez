@@ -1,0 +1,7 @@
+task worker() {
+    wait(100)
+    give 42
+}
+fut = spawn(worker)
+await fut
+

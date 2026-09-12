@@ -1,0 +1,8 @@
+task mainTask() {
+    s = "a"
+    repeat i = 0 to 5000 {
+        s = s + "a"
+    }
+    out "Survived 5000"
+}
+mainTask()

@@ -1,0 +1,13 @@
+// ============================================================================
+// Primitive Destructuring Test
+// ============================================================================
+out "=== Starting Destructure Primitive Test ==="
+
+try {
+    (a, b, c) = 99
+    out "FAIL: Destructured a number?"
+} catch e {
+    out "PASS: Caught primitive destructure safely: " + str(e)
+}
+
+out "=== Destructure Primitive Test Finished ==="

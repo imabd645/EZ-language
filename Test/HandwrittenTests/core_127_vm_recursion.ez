@@ -1,0 +1,23 @@
+// ============================================================================
+// C++ Stack Overflow vs VM Stack Overflow (Model toString)
+// ============================================================================
+out "=== Starting Recursion Test ==="
+
+model RecursiveModel {
+    init() {}
+    task toString() {
+        // This will infinitely recurse through the VM's call stack!
+        // Should eventually throw a VM Stack Overflow error instead of a C++ Segfault.
+        give str(self)
+    }
+}
+
+try {
+    r = RecursiveModel()
+    out str(r)
+    out "FAIL: Should have thrown stack overflow!"
+} catch e {
+    out "PASS: Caught recursion gracefully: " + str(e)
+}
+
+out "=== Recursion Test Finished ==="

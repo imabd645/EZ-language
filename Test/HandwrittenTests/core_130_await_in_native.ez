@@ -1,0 +1,33 @@
+task worker2() {
+    wait(100)
+    give 42
+}
+
+task asyncWorker() {
+    fut = spawn(worker2)
+    give await fut
+}
+
+task mapFunc(x) {
+    out "Mapping " + str(x)
+    val = await asyncWorker()
+    out "Mapped " + str(val)
+    give val
+}
+
+task mainTask() {
+    out "Starting map..."
+    arr = [1, 2, 3]
+    result = map(arr, mapFunc)
+    out "Map result: " + str(result)
+}
+try {
+    fut = spawn(mainTask)
+await fut
+out "Done"
+}
+catch e 
+{
+    out "Test passed"
+}
+

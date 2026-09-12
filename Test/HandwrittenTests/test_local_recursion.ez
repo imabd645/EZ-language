@@ -1,0 +1,8 @@
+task outer() {
+    task fib(n) {
+        when n <= 1 { give n }
+        give fib(n-1) + fib(n-2)   // fails on the very first self-call
+    }
+    give fib(10)
+}
+out outer()

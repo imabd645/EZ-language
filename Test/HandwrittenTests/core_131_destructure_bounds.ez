@@ -1,0 +1,6 @@
+try {
+    (a, b) = [1]
+    out "a: " + str(a) + " b: " + str(b)
+} catch e {
+    out "Error: " + e.message
+}

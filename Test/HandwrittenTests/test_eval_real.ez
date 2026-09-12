@@ -1,0 +1,17 @@
+task worker2() {
+    wait(100)
+    give 42
+}
+fut = spawn(worker2)
+task mainTask() {
+    out "Starting..."
+    res = eval("await fut")
+    out "Res: " + str(res)
+}
+try {
+   mainFut = spawn(mainTask)
+await mainFut 
+} catch e {
+    out "PASS"
+}
+

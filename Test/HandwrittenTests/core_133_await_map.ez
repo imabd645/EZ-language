@@ -1,0 +1,23 @@
+task worker2() {
+    wait(10)
+    give 42
+}
+
+task asyncWorker() {
+    fut = spawn(worker2)
+    give await fut
+}
+
+task mapFunc(x) {
+    fut = spawn(worker2)
+    val = await fut
+    give val
+}
+
+try {
+    arr = [1, 2, 3]
+    result = map(arr, mapFunc)
+    out "Map result: " + str(result)
+} catch e {
+    out "Caught error: " + e
+}

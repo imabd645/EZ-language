@@ -1,0 +1,27 @@
+// ============================================================================
+// Spread Operator Type Panic Test
+// ============================================================================
+out "=== Starting Spread Operator Test ==="
+
+task printArgs(a, b, c) {
+    out "Args: " + str(a) + " " + str(b) + " " + str(c)
+}
+
+try {
+    not_an_array = 99
+    // This should throw a TypeError, NOT crash the C++ vector allocator!
+    printArgs(...not_an_array)
+    out "FAIL: Spread primitive worked?"
+} catch e {
+    out "PASS: Caught spread primitive safely: " + str(e)
+}
+
+try {
+    dict_val = { "a": 1 }
+    printArgs(...dict_val)
+    out "FAIL: Spread dict worked?"
+} catch e {
+    out "PASS: Caught spread dict safely: " + str(e)
+}
+
+out "=== Spread Operator Test Finished ==="

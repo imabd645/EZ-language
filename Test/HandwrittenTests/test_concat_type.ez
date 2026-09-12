@@ -1,0 +1,6 @@
+task mainTask() {
+    s = "a"
+    s = s + "a"
+    out typeOf(s)
+}
+mainTask()

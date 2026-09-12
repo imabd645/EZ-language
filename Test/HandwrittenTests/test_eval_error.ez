@@ -1,0 +1,6 @@
+task mainTask() {
+    out "Before eval"
+    res = eval("out 'Inside eval'; undefined_variable")
+    out "After eval"
+}
+mainTask()

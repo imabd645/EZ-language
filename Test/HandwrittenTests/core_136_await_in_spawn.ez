@@ -1,0 +1,11 @@
+task worker() {
+    wait(100)
+    give 42
+}
+task mainTask() {
+    fut = spawn(worker)
+    res = await fut
+    out "Res: " + str(res)
+}
+mainFut = spawn(mainTask)
+await mainFut

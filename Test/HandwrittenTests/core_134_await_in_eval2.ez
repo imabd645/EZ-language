@@ -1,0 +1,28 @@
+task worker2() {
+    wait(100)
+    give 42
+}
+
+task doSomething() {
+    out "Doing something..."
+    wait(300)
+    out "Done doing something"
+}
+
+// Global fut so eval can find it!
+fut = nil 
+
+task mainTask() {
+    out "Starting..."
+    fut = spawn(worker2)
+    res = eval("await fut")
+      doSomething()
+}
+
+try {
+    mainFut = spawn(mainTask)
+await mainFut
+} catch e {
+    out "PASS"
+}
+

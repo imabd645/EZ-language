@@ -1,0 +1,26 @@
+// ============================================================================
+// Throwing Primitives Test
+// ============================================================================
+out "=== Starting Throw Primitive Test ==="
+
+try {
+    throw 42
+   
+} catch e {
+    out "Caught number: " + str(e)
+}
+
+try {
+    throw "A string exception"
+} catch e {
+    out "Caught string: " + str(e)
+}
+
+try {
+    throw nil
+} catch e {
+    out "Caught nil: " + str(e)
+}
+
+out "PASS: Successfully caught primitive throws!"
+out "=== Throw Primitive Test Finished ==="

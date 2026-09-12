@@ -1,0 +1,1 @@
+model Node { init(){} } task mainTask() { n = Node(); repeat i = 0 to 50000 { new_n = Node(); new_n.prev = n; n = new_n; } out "Instance loop done" } mainTask()

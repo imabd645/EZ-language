@@ -1,0 +1,6 @@
+task mainTask() {
+    out "Before loop"
+    repeat i = 0 to 50000 {
+    }
+}
+mainTask()

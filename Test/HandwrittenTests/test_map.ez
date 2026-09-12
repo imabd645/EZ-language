@@ -1,0 +1,4 @@
+task mainTask() {
+    out map
+}
+mainTask()

@@ -1,0 +1,1 @@
+task mainTask() { d = {}; repeat i = 0 to 10000 { new_d = {}; new_d["prev"] = d; d = new_d; } out "Dict loop done" } mainTask()

@@ -1,0 +1,19 @@
+task mapFunc(x) {
+    when x == 2 {
+        throw "Error on 2"
+    }
+    give x * 10
+}
+
+task mainTask() {
+    arr = [1, 2, 3]
+    res = map(arr, mapFunc)
+    out "Res: " + str(res)
+}
+
+try {
+    mainTask()
+} catch e {
+    out "Pass"
+}
+

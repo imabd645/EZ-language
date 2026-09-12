@@ -1,0 +1,10 @@
+task mainTask() {
+    s = "a"
+    repeat i = 0 to 50000 {
+        s = s + "a"
+        when i % 5000 == 0 {
+            out i
+        }
+    }
+}
+mainTask()

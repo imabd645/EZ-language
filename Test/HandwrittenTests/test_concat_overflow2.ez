@@ -1,0 +1,8 @@
+task mainTask() {
+    s = "a"
+    repeat i = 0 to 50000 {
+        s = s + "a"
+    }
+    out "Loop done"
+}
+mainTask()

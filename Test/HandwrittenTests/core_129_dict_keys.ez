@@ -1,0 +1,21 @@
+// ============================================================================
+// Dictionary Unhashable Key Test
+// ============================================================================
+out "=== Starting Unhashable Key Test ==="
+
+d = {}
+a = [1, 2, 3]
+
+try {
+    // Arrays usually can't be hashed by value in strict languages.
+    // Let's see if EZ uses reference hashing or throws.
+    d[a] = "Array Key"
+    out "PASS: Allowed array as dictionary key (Reference hashing enabled)"
+    
+    // Check if we can retrieve it
+    out "Value: " + d[a]
+} catch e {
+    out "PASS: Threw error on array key: " + str(e)
+}
+
+out "=== Unhashable Key Test Finished ==="

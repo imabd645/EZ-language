@@ -1,0 +1,11 @@
+task worker() {
+    wait(100)
+    throw "Async error"
+}
+try {
+    fut = spawn(worker)
+await fut
+} catch e {
+  out "passed"   
+}
+

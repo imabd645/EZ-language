@@ -1,0 +1,11 @@
+task asyncWorker() {
+    wait(100)
+    give 42
+}
+
+try {
+    res = eval("await asyncWorker()")
+    out "Eval res: " + str(res)
+} catch e {
+    out "Error: " + e.message
+}

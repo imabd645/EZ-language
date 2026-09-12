@@ -2,6 +2,7 @@
 #define EZTUPLE_H
 
 #include "runtime/Value.h"
+#include "RecursiveTeardown.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,20 @@ private:
 
 public:
     EZTuple(const std::vector<Value>& e = {}) : elements(e) {}
+
+    // See RecursiveTeardown.h / EZArray's matching destructor.
+    ~EZTuple() {
+        std::vector<Value*> children;
+        children.reserve(elements.size());
+        for (Value& e : elements) children.push_back(&e);
+        ezIterativelyReleaseChildren(std::move(children));
+    }
+
+    // Used by RecursiveTeardownImpl.h's teardown helper, which is a free
+    // function and so can't reach the private `elements` member directly.
+    void appendChildPointers(std::vector<Value*>& out) {
+        for (Value& e : elements) out.push_back(&e);
+    }
 
     void traverse(const ValueVisitor& visit) const {
         std::shared_lock<std::shared_mutex> lk(tuple_mutex);

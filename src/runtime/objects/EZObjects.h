@@ -1,6 +1,7 @@
 #ifndef EZ_OBJECTS_H
 #define EZ_OBJECTS_H
 
+#include "RecursiveTeardown.h"
 #include "EZShape.h"
 #include "EZConcatString.h"
 #include "EZArray.h"
@@ -18,5 +19,6 @@
 #include "EZMutex.h"
 #include "EZAtomic.h"
 #include "ValueImpl.h"
+#include "RecursiveTeardownImpl.h"
 
 #endif // EZ_OBJECTS_H

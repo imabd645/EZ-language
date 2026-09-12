@@ -2,6 +2,7 @@
 #define EZINSTANCE_H
 
 #include "runtime/Value.h"
+#include "RecursiveTeardown.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -25,6 +26,15 @@ public:
     ~EZInstance() {
         delete auditLog;
         delete cacheStore;
+        // See RecursiveTeardown.h -- a long singly-owned chain of instances
+        // (the extremely common `self.next = Node(...)` linked-list pattern)
+        // has the exact same recursive-destructor stack-overflow risk as
+        // nested arrays/dicts: destroying propertyValues normally would
+        // recurse one C++ stack frame per node in the chain.
+        std::vector<Value*> children;
+        children.reserve(propertyValues.size());
+        for (Value& v : propertyValues) children.push_back(&v);
+        ezIterativelyReleaseChildren(std::move(children));
     }
 
     void traverse(const ValueVisitor& visit) const {

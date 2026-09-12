@@ -2,6 +2,7 @@
 #define EZARRAY_H
 
 #include "runtime/Value.h"
+#include "RecursiveTeardown.h"
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,24 @@ private:
 
 public:
     EZArray(const std::vector<Value>& e = {}) : elements(e) {}
+
+    // See RecursiveTeardown.h: without this, a long singly-owned chain of
+    // nested arrays (e.g. `arr = [arr]` in a loop -- a "linked list" built
+    // out of 1-element arrays) recurses one C++ stack frame per level when
+    // the outermost array is finally destroyed, and can crash the whole
+    // interpreter with a bare segfault for an entirely ordinary-looking size.
+    ~EZArray() {
+        std::vector<Value*> children;
+        children.reserve(elements.size());
+        for (Value& e : elements) children.push_back(&e);
+        ezIterativelyReleaseChildren(std::move(children));
+    }
+
+    // Used by RecursiveTeardownImpl.h's teardown helper, which is a free
+    // function and so can't reach the private `elements` member directly.
+    void appendChildPointers(std::vector<Value*>& out) {
+        for (Value& e : elements) out.push_back(&e);
+    }
 
     void traverse(const ValueVisitor& visit) const {
         std::shared_lock<std::shared_mutex> lk(array_mutex);

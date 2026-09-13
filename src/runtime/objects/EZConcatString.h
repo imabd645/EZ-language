@@ -21,26 +21,54 @@ struct EZConcatString {
         visit(right);
     }
 
+    // `s = s + "a"` in a tight loop builds a left-leaning concat tree one
+    // level deeper per iteration (see doAdd(): every string `+` allocates a
+    // new EZConcatString wrapping the previous value as `left`, unconditionally,
+    // with no eager flattening or depth limit). That chain isn't torn down
+    // incrementally -- each iteration's node is kept alive as `left` of the
+    // next one -- so the whole thing comes down in one shot whenever the
+    // final `s` is destroyed (function return, reassignment, GC sweep).
+    // Without this destructor, that's the *default* one: ~Value() on `left`
+    // drops a shared_ptr<EZConcatString> refcount to zero, which invokes
+    // ~EZConcatString() again, recursing one C++ stack frame per level of
+    // the chain. A large enough loop overflows the OS stack with no EZ-level
+    // traceback -- just a hard crash. (A release build's optimizer can
+    // sometimes turn the single-branch recursion below into a loop and mask
+    // this, which is exactly why it isn't safe to leave unfixed: whether it
+    // crashes becomes a function of compiler flags, not program correctness.)
+    //
+    // Fix: detach children before they'd be recursively destroyed, and walk
+    // the chain with an explicit worklist instead of the call stack.
     ~EZConcatString() {
-        std::vector<Value> todo;
-        if (!left.isNil()) todo.push_back(std::move(left));
-        if (!right.isNil()) todo.push_back(std::move(right));
-
-        while (!todo.empty()) {
-            Value v = std::move(todo.back());
-            todo.pop_back();
-
+        std::vector<Value> pending;
+        // `use_count() == 2` (not 1): asConcatStringPtr() returns the
+        // shared_ptr by value, so `cs` here is itself a second owner for as
+        // long as this lambda invocation is on the stack. Checking against 1
+        // would never be true -- it'd count `cs`'s own temporary copy against
+        // itself -- and silently turn this whole fix into a no-op that still
+        // recurses via the plain `v = Value()` below.
+        auto detach = [&](Value& v) {
             if (v.type() == ValueType::CONCAT_STRING) {
-                auto ptr = v.asConcatStringPtr();
-                // ptr and v both hold a reference, so if it's uniquely owned by us, use_count will be 2
-                if (ptr.use_count() == 2) {
-                    if (!ptr->left.isNil()) todo.push_back(std::move(ptr->left));
-                    if (!ptr->right.isNil()) todo.push_back(std::move(ptr->right));
-                    // Clear the children to prevent recursion when ptr is destroyed
-                    ptr->left = Value();
-                    ptr->right = Value();
+                auto cs = v.asConcatStringPtr();
+                if (cs.use_count() == 2) {
+                    pending.push_back(std::move(v));
                 }
             }
+            v = Value();
+        };
+        detach(left);
+        detach(right);
+        while (!pending.empty()) {
+            Value v = std::move(pending.back());
+            pending.pop_back();
+            auto cs = v.asConcatStringPtr();
+            // `cs` and `v` are the only two owners at this point (that's what
+            // got it onto the worklist). Detach ITS children the same way
+            // before `v` (and this local `cs`) go out of scope and destroy
+            // the pointee -- by then its left/right are already nulled out,
+            // so that destruction is O(1) instead of recursing further.
+            detach(cs->left);
+            detach(cs->right);
         }
     }
 };

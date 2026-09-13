@@ -27,6 +27,20 @@ private:
     size_t current = 0;
     bool hadError = false;
 
+    int currentDepth = 0;
+    static constexpr int MAX_DEPTH = 100;
+
+    struct DepthGuard {
+        Parser& parser;
+        DepthGuard(Parser& p, const Token& token) : parser(p) {
+            if (++parser.currentDepth > MAX_DEPTH) {
+                parser.error(token, "Maximum nesting depth exceeded");
+                throw ParseError("Maximum nesting depth exceeded", token.line);
+            }
+        }
+        ~DepthGuard() { --parser.currentDepth; }
+    };
+
     // Token navigation
     bool isAtEnd() const;
     const Token& peek() const;

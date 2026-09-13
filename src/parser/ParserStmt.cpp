@@ -96,6 +96,7 @@ StmtPtr Parser::declaration() {
 }
 
 StmtPtr Parser::statement() {
+    DepthGuard guard(*this, peek());
     if (match(TokenType::INTERFACE)) return interfaceStatement();
     if (match(TokenType::OUT)) return outStatement();
     if (match(TokenType::WHEN)) return whenStatement();

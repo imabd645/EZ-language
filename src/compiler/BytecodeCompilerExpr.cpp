@@ -8,6 +8,7 @@ void BytecodeCompiler::compileExpr(const ExprPtr& expr) {
         emitOp(OpCode::LOAD_NIL);
         return;
     }
+    DepthGuard guard(*this, expr->line);
 
     currentLine = expr->line;
     currentFile = expr->filename;

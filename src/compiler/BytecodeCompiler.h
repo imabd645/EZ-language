@@ -66,6 +66,20 @@ public:
     void setGlobalSlot(const std::string& name, uint16_t slot);
 
 private:
+    int currentDepth = 0;
+    static constexpr int MAX_DEPTH = 100;
+
+    struct DepthGuard {
+        BytecodeCompiler& compiler;
+        DepthGuard(BytecodeCompiler& c, int line) : compiler(c) {
+            if (++compiler.currentDepth > MAX_DEPTH) {
+                compiler.currentLine = line;
+                compiler.error("Maximum nesting depth exceeded during compilation");
+            }
+        }
+        ~DepthGuard() { --compiler.currentDepth; }
+    };
+
     // Current function being compiled
     struct Compiler {
         BytecodeFunctionPtr function;

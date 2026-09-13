@@ -4,6 +4,7 @@
 #include <iostream>
 TypeInfo TypeChecker::checkExpr(const ExprPtr& expr) {
     if (!expr) return TypeInfo("Any");
+    DepthGuard guard(*this, expr->line);
     
     ExprPtr prevExprContext = currentExprContext;
     currentExprContext = expr;

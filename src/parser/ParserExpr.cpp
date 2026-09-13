@@ -56,6 +56,7 @@ bool Parser::isKeywordToken(TokenType t) {
 }
 
 ExprPtr Parser::expression() {
+    DepthGuard guard(*this, peek());
     return assignment();
 }
 

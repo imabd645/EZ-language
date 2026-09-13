@@ -49,6 +49,7 @@ bool TypeChecker::isTerminal(const StmtPtr& stmt) const {
 
 void TypeChecker::checkStmt(const StmtPtr& stmt) {
     if (!stmt) return;
+    DepthGuard guard(*this, stmt->line);
     std::visit([this, &stmt](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, VarDeclStmt*>) checkVarDecl(*arg);

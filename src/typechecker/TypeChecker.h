@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
+#include <stdexcept>
 #include "ast/AST.h"
 
 struct TypeInfo {
@@ -108,6 +109,20 @@ private:
     bool isModelType(const TypeInfo& t) const {
         return declaredModels.count(t.baseType) > 0;
     }
+
+    int currentDepth = 0;
+    static constexpr int MAX_DEPTH = 100;
+
+    struct DepthGuard {
+        TypeChecker& checker;
+        DepthGuard(TypeChecker& c, int line) : checker(c) {
+            if (++checker.currentDepth > MAX_DEPTH) {
+                checker.error(line, "Maximum nesting depth exceeded during type checking");
+                throw std::runtime_error("Depth");
+            }
+        }
+        ~DepthGuard() { --checker.currentDepth; }
+    };
 
     void beginScope();
     void endScope();

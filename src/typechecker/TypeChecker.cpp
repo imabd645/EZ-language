@@ -172,7 +172,8 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
         declareVariable(name, type);
     }
     
-    // First pass: declare all functions
+    try {
+        // First pass: declare all functions
     for (const auto& stmt : statements) {
         if (std::holds_alternative<TaskStmt*>(stmt->variant)) {
             auto task = std::get<TaskStmt*>(stmt->variant);
@@ -394,6 +395,9 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
     // Second pass: check body
     for (const auto& stmt : statements) {
         checkStmt(stmt);
+    }
+    } catch (const std::runtime_error&) {
+        // Error already logged by DepthGuard
     }
     
     // Snapshot before delete: declaredGlobals() serves this copy, since

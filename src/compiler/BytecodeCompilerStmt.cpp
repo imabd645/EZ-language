@@ -17,6 +17,7 @@ namespace fs = std::filesystem;
 #include <iostream>
 void BytecodeCompiler::compileStmt(const StmtPtr& stmt) {
     if (!stmt) return;
+    DepthGuard guard(*this, stmt->line);
 
     currentLine = stmt->line;
     currentFile = stmt->filename;

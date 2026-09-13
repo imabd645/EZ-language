@@ -167,8 +167,11 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
     } guard(savedRunning ? &cxxFrameDepth : nullptr);
 
     if (cxxFrameDepth >= 200) {
-        // Just throw runtime error; caller will catch if necessary, or process dies
-        throw RuntimeError("RecursionError: maximum C++ call depth exceeded");
+        // Call runtimeError so the stack trace is printed.
+        // It will throw RuntimeError internally if outside dispatch.
+        runtimeError("RecursionError: maximum C++ call depth exceeded");
+        // If runtimeError returns (e.g. inside dispatch), we must abort execution
+        return Value();
     }
 
     // Reset execution state for THIS recursive run

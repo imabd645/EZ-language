@@ -616,54 +616,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             auto klass = obj.asClass();
                             CHECK_VISIBILITY(klass, propName);
                             if (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty()) {
-                                auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
-                                    auto inst = std::make_shared<EZInstance>(klass);
-                                    CycleCollector::instance().track(inst, ValueType::INSTANCE);
-                                    sqlite3* db = nullptr;
-                                    {
-                                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
-                                        auto it = globalEnv->persistDBConnections.find(klass->persistPath);
-                                        if (it != globalEnv->persistDBConnections.end()) {
-                                            db = static_cast<sqlite3*>(it->second);
-                                        } else {
-                                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                                globalEnv->persistDBConnections[klass->persistPath] = db;
-                                            } else {
-                                                db = nullptr;
-                                            }
-                                        }
-                                    }
-                                    if (db) {
-                                        sqlite3_stmt* stmt;
-                                        if (sqlite3_prepare_v2(db, "SELECT prop, val FROM EZ_Persist;", -1, &stmt, nullptr) == SQLITE_OK) {
-                                            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                                                const char* p = (const char*)sqlite3_column_text(stmt, 0);
-                                                const char* v = (const char*)sqlite3_column_text(stmt, 1);
-                                                std::string valStr(v);
-                                                Value parsedVal;
-                                                if (valStr == "true") parsedVal = Value(true);
-                                                else if (valStr == "false") parsedVal = Value(false);
-                                                else if (valStr == "nil") parsedVal = Value();
-                                                else {
-                                                    char* end;
-                                                    double d = std::strtod(valStr.c_str(), &end);
-                                                    // If the entire string was parsed as a number and it's not empty
-                                                    if (!valStr.empty() && end == valStr.c_str() + valStr.length()) {
-                                                        parsedVal = Value(d);
-                                                    } else {
-                                                        parsedVal = Value(valStr);
-                                                    }
-                                                }
-                                                inst->setProperty(p, parsedVal);
-                                            }
-                                            sqlite3_finalize(stmt);
-                                        }
-                                    }
-                                    return Value(inst);
-                                };
-                                *stackTop++ = Value(std::make_shared<NativeFunction>("load", 0, loadFn));
+                                *stackTop++ = makeLoadFunction(klass);
                             } else {
                                 if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
                                 else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
@@ -997,7 +950,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             long long waitMs = windowMs - (now - win.front());
                             lk.unlock();
                             SYNC_IP();
-                            runtimeError("RateLimitError: rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
+                            // Was runtimeError(...) -- sets pendingException to a bare
+                            // string, so `catch e { e.message }` fails with "cannot read
+                            // property 'message' of a string value". Every other builtin
+                            // error (RecursionError, TypeError, KeyError, ...) is a proper
+                            // exception instance via throwException(); match that here.
+                            throwException("RateLimitError",
+                                "rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
                             RAISE_FAULT();
                         }
                         win.push_back(now);
@@ -1023,10 +982,37 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value self = frame->slots[0]; // self is first slot
+                        // The cache key must include the call's arguments, not
+                        // just the method name -- otherwise ANY cached method
+                        // that takes parameters returns whatever the FIRST call
+                        // computed for every later call regardless of its
+                        // arguments (square(5) then square(6) both returned
+                        // square(5)'s result). Every existing @cached test only
+                        // ever used zero-argument methods, which is why this
+                        // went unnoticed.
+                        //
+                        // paramNames[i] corresponds directly to frame->slots[i]
+                        // -- but for a method, "self" is prepended to params at
+                        // compile time (see the model-compiling code that builds
+                        // methodTask), so paramNames[0] == "self" and the real,
+                        // user-facing parameters start at paramNames[1]/slots[1].
+                        // Starting the loop at 0 double-counted self (already
+                        // read above) and walked into whatever the method body
+                        // happened to leave in that slot as a temp -- different
+                        // at GET time (start of call, nil) vs STORE time (end of
+                        // call, leftover expression garbage), so the "cache key"
+                        // was different every time and nothing ever hit.
+                        std::string cacheKey = methodName;
+                        size_t totalParams = frame->function->paramNames.size();
+                        size_t firstRealParam = frame->function->isMethod ? 1 : 0;
+                        for (size_t i = firstRealParam; i < totalParams; ++i) {
+                            cacheKey += '\x1f'; // unit separator -- won't appear in normal arg text
+                            cacheKey += frame->slots[i].toString();
+                        }
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
                             if (inst->getCacheStore()) {
-                                auto it = inst->getCacheStore()->find(methodName);
+                                auto it = inst->getCacheStore()->find(cacheKey);
                                 if (it != inst->getCacheStore()->end() && !it->second.dirty) {
                                     *stackTop++ = it->second.result;
                                 } else {
@@ -1048,10 +1034,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value result = *(stackTop - 1); // peek, don't pop
                         Value self = frame->slots[0];
+                        // Must match the key GET_CACHED_RESULT computes above.
+                        std::string cacheKey = methodName;
+                        size_t totalParams = frame->function->paramNames.size();
+                        size_t firstRealParam = frame->function->isMethod ? 1 : 0;
+                        for (size_t i = firstRealParam; i < totalParams; ++i) {
+                            cacheKey += '\x1f';
+                            cacheKey += frame->slots[i].toString();
+                        }
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
                             inst->modifyCacheStore([&](auto& cache) {
-                                auto& cr = cache[methodName];
+                                auto& cr = cache[cacheKey];
                                 cr.result = result;
                                 cr.dirty  = false;
                             });
@@ -3105,7 +3099,16 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             auto klass = receiver.asClass();
                             const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                             CHECK_VISIBILITY(klass, propName);
-                            Value member = klass->getStaticMember(propName);
+                            // Same special case as the generic GET_PROPERTY handler
+                            // (see makeLoadFunction) -- without it, `Cls.load()`
+                            // written as one call expression hit this fused
+                            // property-get+call path and never saw `.load`'s
+                            // synthetic meaning for an @persist-decorated class,
+                            // throwing "has no static method 'load'" even though
+                            // `f = Cls.load; f()` worked fine.
+                            Value member = (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty())
+                                ? makeLoadFunction(klass)
+                                : klass->getStaticMember(propName);
                             if (!member.isCallable()) {
                                 SYNC_IP();
                                 throwException("AttributeError", "Class '" + klass->name + "' has no static method '" + propName + "'");

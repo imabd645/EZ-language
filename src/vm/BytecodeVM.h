@@ -338,6 +338,15 @@ private:
     //
     // Returns a nil Value when the class defines no hook.
     Value findGetattrHook(const Value& obj, const std::string& name);
+    // Builds the synthetic `.load` static method for an @persist-decorated
+    // class -- a native function that reads the class's SQLite-backed
+    // properties back into a fresh instance. Shared by the generic
+    // GET_PROPERTY handler and the fused property-get+call (INVOKE) path,
+    // which previously duplicated none of this and so didn't know `.load`
+    // was special: `Cls.load()` written as a single call expression hit
+    // "has no static method 'load'", while `f = Cls.load; f()` worked, since
+    // only the generic path had this special case.
+    Value makeLoadFunction(std::shared_ptr<EZClass> klass);
     Value findSetattrHook(const Value& obj, const std::string& name);
 
     // ── Utility ──────────────────────────────────────────────────────────────

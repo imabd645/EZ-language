@@ -267,6 +267,12 @@ void registerGCBuiltins(RuntimeContext& interp) {
     makeErrorClass("NotImplementedError", exceptionClass);
     makeErrorClass("TimeoutError", exceptionClass);
     makeErrorClass("AssertionError", exceptionClass);
+    // Same gap as IOError/SyntaxError/RegexError above: RATELIMIT_CHECK throws
+    // "RateLimitError" but nothing had ever defined that class, so a rate
+    // limit trip arrived in `catch (e)` as a bare string -- e.message failed
+    // with "cannot read property 'message' of a string value" instead of
+    // exposing the retry-after message a caller would actually want to read.
+    makeErrorClass("RateLimitError", exceptionClass);
     // Raised by the compiler, not the VM -- a `use` is resolved before the
     // program runs, so this cannot be caught. It is defined anyway so the name
     // resolves and `throw ModuleNotFoundError(...)` from EZ code works.

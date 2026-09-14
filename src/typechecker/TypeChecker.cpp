@@ -146,6 +146,26 @@ void TypeChecker::declareFunction(const std::string& name, const FunctionSignatu
     }
 }
 
+void TypeChecker::predeclareLocalTasks(const std::vector<StmtPtr>& statements) {
+    for (const auto& s : statements) {
+        if (!s) continue;
+        if (std::holds_alternative<TaskStmt*>(s->variant)) {
+            auto task = std::get<TaskStmt*>(s->variant);
+            FunctionSignature sig;
+            for (const auto& p : task->params) sig.paramNames.push_back(p);
+            for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
+            sig.returnType = TypeInfo::fromAST(task->returnType);
+            sig.isVariadic = task->isVariadic;
+            size_t minArgs = 0;
+            for (const auto& dv : task->defaultValues) {
+                if (!dv) minArgs++;
+            }
+            sig.minArgs = minArgs;
+            declareFunction(task->name, sig);
+        }
+    }
+}
+
 FunctionSignature* TypeChecker::resolveFunction(const std::string& name) {
     Environment* env = currentEnv;
     while (env) {

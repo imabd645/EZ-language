@@ -129,6 +129,16 @@ private:
     void declareVariable(const std::string& name, const TypeInfo& type);
     TypeInfo resolveVariable(const std::string& name);
     void declareFunction(const std::string& name, const FunctionSignature& sig);
+    // Declares every direct-child task in `statements` (by signature, via
+    // declareFunction) before any of their bodies are checked, so sibling
+    // tasks can reference each other regardless of declaration order --
+    // mirrors the top-level first pass in check() (see there), but for a
+    // nested statement list (a block, or a task's own body) instead of the
+    // whole program. Must be paired with the equivalent compiler-side fix
+    // (BytecodeCompiler::predeclareLocalTasks) or code that typechecks
+    // cleanly here would still crash at runtime with a nil self/mutual
+    // call the compiler's own local-scope resolution can't see yet.
+    void predeclareLocalTasks(const std::vector<StmtPtr>& statements);
     FunctionSignature* resolveFunction(const std::string& name);
     
     TypeInfo substituteType(const TypeInfo& type, const std::unordered_map<std::string, TypeInfo>& bindings);

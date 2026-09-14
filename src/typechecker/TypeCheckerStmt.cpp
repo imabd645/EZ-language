@@ -126,6 +126,10 @@ void TypeChecker::checkTask(const TaskStmt& stmt) {
     TypeInfo prevReturn = currentReturnType;
     currentReturnType = sig.returnType;
     
+    // See predeclareLocalTasks(): lets sibling tasks nested directly in this
+    // task's own body call each other regardless of order, the same way
+    // checkBlock() already does for an explicit {} block.
+    predeclareLocalTasks(stmt.body);
     bool isUnreachable = false;
     for (const auto& s : stmt.body) {
         if (isUnreachable) {
@@ -163,6 +167,10 @@ void TypeChecker::checkGive(const GiveStmt& stmt) {
 
 void TypeChecker::checkBlock(const BlockStmt& stmt) {
     beginScope();
+    // See predeclareLocalTasks(): lets sibling tasks declared in this block
+    // call each other regardless of order (mutual recursion), not just
+    // themselves.
+    predeclareLocalTasks(stmt.statements);
     bool isUnreachable = false;
     for (const auto& s : stmt.statements) {
         if (isUnreachable) {

@@ -181,8 +181,33 @@ void BytecodeCompiler::compileVarDecl(const VarDeclStmt& stmt) {
     }
 }
 
+void BytecodeCompiler::predeclareLocalTasks(const std::vector<StmtPtr>& statements) {
+    // Only meaningful where task declarations become locals in the first
+    // place (see compileTask()) -- at global scope this is a no-op since
+    // globalSlotFor() already resolves by persistent name regardless of
+    // compile order.
+    if (current->scopeDepth == 0) return;
+    for (const auto& s : statements) {
+        if (!s) continue;
+        if (std::holds_alternative<TaskStmt*>(s->variant)) {
+            const std::string& name = std::get<TaskStmt*>(s->variant)->name;
+            if (!name.empty() && resolveLocal(name) == -1) {
+                addLocal(name);
+                current->locals.back().isStackResident = false;
+                markInitialized();
+            }
+        }
+    }
+}
+
 void BytecodeCompiler::compileBlock(const BlockStmt& stmt) {
     beginScope();
+    // See predeclareLocalTasks(): without this, two sibling local tasks
+    // declared in the same block that call each other (mutual recursion)
+    // compile without error but crash at runtime the moment either calls
+    // the other -- whichever one's slot didn't exist yet when the caller's
+    // body was compiled reads back nil.
+    predeclareLocalTasks(stmt.statements);
     for (const auto& s : stmt.statements) {
         compileStmt(s);
     }

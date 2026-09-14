@@ -274,6 +274,10 @@ BytecodeFunctionPtr BytecodeCompiler::compileFunction(const TaskStmt& task,
     currentEnsuresClauses = task.ensuresClauses.empty() ? nullptr : &task.ensuresClauses;
 
     beginScope();
+    // See predeclareLocalTasks(): lets sibling tasks nested directly in this
+    // task's body call each other regardless of declaration order, the same
+    // way compileBlock() and the module-body pass already do.
+    predeclareLocalTasks(task.body);
     for (const auto& stmt : task.body) {
         compileStmt(stmt);
     }

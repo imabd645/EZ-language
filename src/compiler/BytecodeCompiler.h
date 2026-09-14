@@ -203,6 +203,14 @@ private:
     void compileOutStmt(const OutStmt& stmt);
     void compileVarDecl(const VarDeclStmt& stmt);
     void compileBlock(const BlockStmt& stmt);
+    // Reserves a local slot for every direct-child task declaration in
+    // `statements` before any of their bodies are compiled, so sibling
+    // tasks can call each other regardless of declaration order (mutual
+    // recursion) and each can call itself (self-recursion). Shared by
+    // compileBlock(), compileFunction()'s task-body loop, and the existing
+    // module-body pass (see compileUse's TaskStmt pre-pass) that this
+    // mirrors. Safe to call on a list with no tasks in it (no-op).
+    void predeclareLocalTasks(const std::vector<StmtPtr>& statements);
     void compileWhen(const WhenStmt& stmt);
     void compileWhile(const WhileStmt& stmt);
     void compileRepeat(const RepeatStmt& stmt);

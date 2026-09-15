@@ -56,6 +56,7 @@ struct FunctionSignature {
     TypeInfo returnType;
     bool isVariadic = false;
     size_t minArgs = 0;
+    bool isAsync = false;
 };
 
 class TypeChecker {
@@ -91,6 +92,7 @@ private:
     // deletes currentEnv. declaredGlobals() serves this, since currentEnv
     // itself is never alive by the time a caller can ask for it.
     std::unordered_map<std::string, TypeInfo> lastCheckedGlobals;
+    FunctionSignature* lastCheckedCallSig = nullptr;
     TypeInfo currentReturnType = TypeInfo("Any");
     std::string currentModel; // Tracks enclosing model for 'self'
     ExprPtr currentExprContext; // Tracks current expression for error reporting

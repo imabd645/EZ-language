@@ -156,6 +156,7 @@ void TypeChecker::predeclareLocalTasks(const std::vector<StmtPtr>& statements) {
             for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo::fromAST(task->returnType);
             sig.isVariadic = task->isVariadic;
+            sig.isAsync = task->isAsync;
             size_t minArgs = 0;
             for (const auto& dv : task->defaultValues) {
                 if (!dv) minArgs++;
@@ -202,6 +203,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
             for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
             sig.returnType = TypeInfo::fromAST(task->returnType);
             sig.isVariadic = task->isVariadic;
+            sig.isAsync = task->isAsync;
             size_t minArgs = 0;
             for (const auto& dv : task->defaultValues) {
                 if (!dv) minArgs++;
@@ -334,6 +336,7 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
                     for (const auto& t : task->paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
                     sig.returnType = TypeInfo::fromAST(task->returnType);
                     sig.isVariadic = task->isVariadic;
+                    sig.isAsync = task->isAsync;
                     declareFunction(task->name, sig);
                 } else if (std::holds_alternative<ModelStmt*>(innerStmt->variant)) {
                     auto model = std::get<ModelStmt*>(innerStmt->variant);

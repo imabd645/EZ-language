@@ -60,7 +60,28 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
         else if constexpr (std::is_same_v<T, WhileStmt*>) checkWhile(*arg);
         else if constexpr (std::is_same_v<T, RepeatStmt*>) checkRepeat(*arg);
         else if constexpr (std::is_same_v<T, GetStmt*>) checkGet(*arg);
-        else if constexpr (std::is_same_v<T, ExpressionStmt*>) checkExpr(arg->expr);
+        else if constexpr (std::is_same_v<T, ExpressionStmt*>) {
+            checkExpr(arg->expr);
+            // Warn when a bare expression-statement is a call to an async function
+            // and the result (the future) is neither assigned, awaited, nor returned.
+            if (arg->expr && std::holds_alternative<CallExpr*>(arg->expr->variant)) {
+                auto* call = std::get<CallExpr*>(arg->expr->variant);
+                // Resolve callee name — only simple identifier calls are tracked
+                std::string calleeName;
+                if (call->callee && std::holds_alternative<IdentifierExpr*>(call->callee->variant)) {
+                    calleeName = std::get<IdentifierExpr*>(call->callee->variant)->name;
+                } else if (call->callee && std::holds_alternative<PropertyAccessExpr*>(call->callee->variant)) {
+                    // e.g. obj.method() — skip for now, hard to resolve without knowing runtime type
+                }
+                if (!calleeName.empty()) {
+                    FunctionSignature* sig = resolveFunction(calleeName);
+                    if (sig && sig->isAsync) {
+                        warn(arg->expr, "Unawaited async task '" + calleeName + "'.",
+                             "The returned future will be discarded. Assign to '_' to silence, or 'await' to get the result.");
+                    }
+                }
+            }
+        }
         else if constexpr (std::is_same_v<T, OutStmt*>) checkExpr(arg->expr);
         else if constexpr (std::is_same_v<T, ModelStmt*>) checkModel(*arg);
         else if constexpr (std::is_same_v<T, StructStmt*>) checkStruct(*arg);

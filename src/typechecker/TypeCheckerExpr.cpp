@@ -255,6 +255,7 @@ TypeInfo TypeChecker::checkCall(const CallExpr& expr) {
         }
     }
     
+    lastCheckedCallSig = sig;
     if (sig) {
         FunctionSignature substitutedSig = *sig;
         

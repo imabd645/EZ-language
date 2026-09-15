@@ -130,6 +130,7 @@ void TypeChecker::checkTask(const TaskStmt& stmt) {
     for (const auto& t : stmt.paramTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
     sig.returnType = TypeInfo::fromAST(stmt.returnType);
     sig.isVariadic = stmt.isVariadic;
+    sig.isAsync = stmt.isAsync;
     size_t minArgs = 0;
     for (const auto& dv : stmt.defaultValues) {
         if (!dv) minArgs++;

@@ -35,7 +35,7 @@ try {
     safeSqrt(-9)
 } catch e {
     caughtPrecondition = true
-    preconditionMsg = str(e)
+    preconditionMsg = str(e.message)
 }
 check("precondition violation caught", caughtPrecondition, true)
 check("precondition message contains detail", contains(preconditionMsg, "val must be non-negative"), true)
@@ -53,7 +53,7 @@ try {
     brokenDivide(10, 2) # returns 5 >= 0, violating postcondition
 } catch e {
     caughtPostcondition = true
-    postconditionMsg = str(e)
+    postconditionMsg = str(e.message)
 }
 check("postcondition violation caught", caughtPostcondition, true)
 check("postcondition message contains detail", contains(postconditionMsg, "result must be strictly negative"), true)

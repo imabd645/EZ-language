@@ -846,8 +846,23 @@ void BytecodeCompiler::compileContractChecks(const std::vector<std::pair<ExprPtr
             errorMsg += ": " + message;
         }
         
-        // Emit throw with error message string
+        // Was: emitConstant(Value(errorMsg)); emitOp(OpCode::THROW); -- threw
+        // the bare message string instead of a proper exception instance, so
+        // `catch (e) { e.message }` on a failed contract failed with "cannot
+        // read property 'message' of a string value" (same bug class already
+        // fixed for @ratelimit's RateLimitError). Construct an AssertionError
+        // instance the same way user code would write `throw
+        // AssertionError("...")`: load the class (builtin globals resolve via
+        // the same slot mechanism as any other identifier -- see
+        // compileIdentifier's fallback), call it with the message to run its
+        // inherited Exception.init (sets .message), then throw that instance.
+        uint16_t classSlot = globalSlotFor("AssertionError");
+        emitOp(OpCode::LOAD_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((classSlot >> 8) & 0xFF),
+                  static_cast<uint8_t>(classSlot & 0xFF));
         emitConstant(Value(errorMsg));
+        emitOp(OpCode::CALL);
+        emitByte(1);
         emitOp(OpCode::THROW);
         
         patchJump(skipThrow);
@@ -1541,6 +1556,12 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             defaults.insert(defaults.end(), member.defaultValues.begin(), member.defaultValues.end());
             TaskStmt methodTask(member.name, params, std::vector<TypeASTPtr>(params.size(), arena.allocate<TypeAST>("Any")), defaults, nullptr, member.body, member.isVariadic, member.isAsync);
             methodTask.isCached = member.isCached;
+            // Was missing entirely: methodTask's requires/ensures stayed
+            // default-empty even when the parser now captures them on
+            // member.*Clauses (see ModelMember), so a method with a
+            // contract silently compiled with no checks at all.
+            methodTask.requiresClauses = member.requiresClauses;
+            methodTask.ensuresClauses  = member.ensuresClauses;
             emitClosure(methodTask, true); // Pushes closure
         } else {
             if (member.initializer) {

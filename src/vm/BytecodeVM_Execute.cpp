@@ -997,7 +997,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             long long waitMs = windowMs - (now - win.front());
                             lk.unlock();
                             SYNC_IP();
-                            runtimeError("RateLimitError: rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
+                            // Was runtimeError(...) -- sets pendingException to a bare
+                            // string, so `catch e { e.message }` fails with "cannot read
+                            // property 'message' of a string value" even though
+                            // RateLimitError is now a registered builtin class. Every
+                            // other builtin error (RecursionError, TypeError, KeyError,
+                            // ...) is a proper exception instance via throwException();
+                            // match that here.
+                            throwException("RateLimitError",
+                                "rate limit exceeded for '" + taskName + "'. Retry in " + std::to_string(waitMs) + "ms");
                             RAISE_FAULT();
                         }
                         win.push_back(now);
@@ -1023,10 +1031,37 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value self = frame->slots[0]; // self is first slot
+                        // The cache key must include the call's arguments, not
+                        // just the method name -- otherwise ANY cached method
+                        // that takes parameters returns whatever the FIRST call
+                        // computed for every later call regardless of its
+                        // arguments (square(5) then square(6) both returned
+                        // square(5)'s result). Every existing @cached test only
+                        // ever used zero-argument methods, which is why this
+                        // went unnoticed.
+                        //
+                        // paramNames[i] corresponds directly to frame->slots[i]
+                        // -- but for a method, "self" is prepended to params at
+                        // compile time (see the model-compiling code that builds
+                        // methodTask), so paramNames[0] == "self" and the real,
+                        // user-facing parameters start at paramNames[1]/slots[1].
+                        // Starting the loop at 0 double-counted self (already
+                        // read above) and walked into whatever the method body
+                        // happened to leave in that slot as a temp -- different
+                        // at GET time (start of call, nil) vs STORE time (end of
+                        // call, leftover expression garbage), so the "cache key"
+                        // was different every time and nothing ever hit.
+                        std::string cacheKey = methodName;
+                        size_t totalParams = frame->function->paramNames.size();
+                        size_t firstRealParam = frame->function->isMethod ? 1 : 0;
+                        for (size_t i = firstRealParam; i < totalParams; ++i) {
+                            cacheKey += '\x1f'; // unit separator -- won't appear in normal arg text
+                            cacheKey += frame->slots[i].toString();
+                        }
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
                             if (inst->getCacheStore()) {
-                                auto it = inst->getCacheStore()->find(methodName);
+                                auto it = inst->getCacheStore()->find(cacheKey);
                                 if (it != inst->getCacheStore()->end() && !it->second.dirty) {
                                     *stackTop++ = it->second.result;
                                 } else {
@@ -1048,10 +1083,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         const std::string& methodName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                         Value result = *(stackTop - 1); // peek, don't pop
                         Value self = frame->slots[0];
+                        // Must match the key GET_CACHED_RESULT computes above.
+                        std::string cacheKey = methodName;
+                        size_t totalParams = frame->function->paramNames.size();
+                        size_t firstRealParam = frame->function->isMethod ? 1 : 0;
+                        for (size_t i = firstRealParam; i < totalParams; ++i) {
+                            cacheKey += '\x1f';
+                            cacheKey += frame->slots[i].toString();
+                        }
                         if (self.isInstance()) {
                             auto inst = self.asInstance();
                             inst->modifyCacheStore([&](auto& cache) {
-                                auto& cr = cache[methodName];
+                                auto& cr = cache[cacheKey];
                                 cr.result = result;
                                 cr.dirty  = false;
                             });
@@ -3105,7 +3148,17 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             auto klass = receiver.asClass();
                             const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                             CHECK_VISIBILITY(klass, propName);
-                            Value member = klass->getStaticMember(propName);
+                            // Same special case the generic GET_PROPERTY handler
+                            // already has via makeLoadFunction() -- without it,
+                            // `Cls.load()` written as one call expression hits
+                            // this fused property-get+call path instead and
+                            // never sees `.load`'s synthetic meaning for an
+                            // @persist-decorated class, throwing "has no static
+                            // method 'load'" even though `f = Cls.load; f()`
+                            // (going through the generic path) works fine.
+                            Value member = (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty())
+                                ? makeLoadFunction(klass)
+                                : klass->getStaticMember(propName);
                             if (!member.isCallable()) {
                                 SYNC_IP();
                                 throwException("AttributeError", "Class '" + klass->name + "' has no static method '" + propName + "'");

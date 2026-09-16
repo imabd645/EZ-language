@@ -1199,6 +1199,52 @@ StmtPtr Parser::modelStatement() {
             }
             skipNewlines();
             
+            // Parse Design-by-Contract clauses (requires / ensures). Mirrors
+            // the identical block in the top-level task parser above --
+            // methods never got this at all before, so a contract clause
+            // after a method signature fell through to being parsed as an
+            // expression and failed with a "misplaced keyword" error even
+            // though it was in the one place that error claimed was valid.
+            std::vector<std::pair<ExprPtr, std::string>> methodRequiresClauses;
+            std::vector<std::pair<ExprPtr, std::string>> methodEnsuresClauses;
+            
+            while (check(TokenType::REQUIRES) || check(TokenType::ENSURES)) {
+                bool isRequires = match(TokenType::REQUIRES);
+                if (!isRequires) match(TokenType::ENSURES);
+                
+                while (true) {
+                    skipNewlines();
+                    ExprPtr condition = expression();
+                    std::string message;
+                    if (match(TokenType::COMMA)) {
+                        if (check(TokenType::STRING)) {
+                            advance();
+                            message = std::get<std::string>(previous().literal);
+                        } else {
+                            if (isRequires) methodRequiresClauses.push_back({condition, message});
+                            else methodEnsuresClauses.push_back({condition, message});
+                            skipNewlines();
+                            if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES) && !check(TokenType::LBRACE)) {
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    if (isRequires) methodRequiresClauses.push_back({condition, message});
+                    else methodEnsuresClauses.push_back({condition, message});
+                    
+                    if (match(TokenType::COMMA)) {
+                        skipNewlines();
+                        if (!check(TokenType::REQUIRES) && !check(TokenType::ENSURES) && !check(TokenType::LBRACE)) {
+                            continue;
+                        }
+                    }
+                    break;
+                }
+                
+                skipNewlines();
+            }
+            
             std::vector<StmtPtr> body;
             if (match(TokenType::LBRACE)) {
                 skipNewlines();
@@ -1224,6 +1270,8 @@ StmtPtr Parser::modelStatement() {
             member.typeHint = returnType;
             member.defaultValues = defaultValues;
             member.body = body;
+            member.requiresClauses = std::move(methodRequiresClauses);
+            member.ensuresClauses  = std::move(methodEnsuresClauses);
             members.push_back(member);
         } else {
             // Property declaration

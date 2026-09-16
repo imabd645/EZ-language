@@ -165,6 +165,15 @@ struct ModelMember {
     std::vector<ExprPtr> defaultValues; // For methods
     std::vector<StmtPtr> body;  // For methods
     std::vector<ValidateRule> validators; // @validate rules (for properties)
+    // Design-by-Contract clauses for methods -- see TaskStmt's fields of the
+    // same name. The model-member parser previously never checked for
+    // REQUIRES/ENSURES tokens after a method signature at all (only the
+    // top-level task parser did), so `task foo(x) requires x > 0 { ... }`
+    // inside a model failed to parse even though the error message
+    // (describeMisplacedKeyword) implied it should work "directly after the
+    // task signature" -- it just never actually worked for methods.
+    std::vector<std::pair<ExprPtr, std::string>> requiresClauses;
+    std::vector<std::pair<ExprPtr, std::string>> ensuresClauses;
 };
 
 // Static variable declaration (persistent across task calls)

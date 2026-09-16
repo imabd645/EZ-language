@@ -1507,9 +1507,9 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     int memberCount = 0;
     std::vector<std::pair<std::string, std::string>> propertyTypes;
     
-    // 2. Synthesize "init" method if there's a constructor
-    // Note: Always create 'init' if there are params, even if body is empty
-    if (!stmt.initParams.empty() || !stmt.initBody.empty()) {
+    // 2. Synthesize "init" method for the constructor
+    // Note: Always create 'init' so subclasses can safely call super.init()
+    if (true) {
         // Push name
         size_t initNameIdx = identifierConstant("init");
         emitOp(OpCode::LOAD_CONST);

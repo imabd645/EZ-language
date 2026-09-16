@@ -478,6 +478,17 @@ void registerGCBuiltins(RuntimeContext& interp) {
             GCSafeRegion safe;
             fut->wait();
         }
+        // The `await(x)` call syntax normally compiles to the dedicated
+        // OP_AWAIT opcode (see compileAwait), which already checks isError()
+        // and uses throwException() -- this native function only actually
+        // runs for the "sync" alias or an indirect call through a stored
+        // function value (f = await; f(x)). Without the same check, get()
+        // throws a plain std::runtime_error that the generic native-call
+        // handler flattens into a bare string, losing the exception class.
+        if (fut->isError()) {
+            interp.throwException("Exception", fut->getError());
+            return Value();
+        }
         return fut->get();
     };
     interp.defineGlobal("await", Value::makeNativeFunction("await", 1, awaitFn));
@@ -512,6 +523,19 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
                 auto fut = v.asFuture();
                 { GCSafeRegion safe; fut->wait(); }
+                // Was: results.push_back(fut->get()); -- get() throws a plain
+                // std::runtime_error on a failed future, which the generic
+                // native-call exception handler rebuilds as a bare string
+                // prefixed "Native function error: " (the class is lost, so
+                // `catch (e) { e.message }` fails). OP_AWAIT's own handler
+                // (single `await(fut)`) avoids this by checking isError() and
+                // using throwException() to construct a proper exception
+                // instance first; match that here instead of calling get() on
+                // an errored future.
+                if (fut->isError()) {
+                    interp.throwException("Exception", fut->getError());
+                    return Value();
+                }
                 results.push_back(fut->get());
             }
             return Value::makeArray(results);
@@ -556,7 +580,18 @@ void registerGCBuiltins(RuntimeContext& interp) {
                 cv->wait(lk, [&fired] { return *fired; });
             }
             for (auto& v : futures) {
-                if (v.asFuture()->isReady()) return v.asFuture()->get();
+                // Same fix as awaitAll: check isError() and use throwException()
+                // before calling get(), which throws a plain std::runtime_error
+                // that the generic native-call handler flattens into a bare
+                // string (losing the exception class, breaking `e.message`).
+                if (v.asFuture()->isReady()) {
+                    auto fut = v.asFuture();
+                    if (fut->isError()) {
+                        interp.throwException("Exception", fut->getError());
+                        return Value();
+                    }
+                    return fut->get();
+                }
             }
 
             interp.runtimeError("awaitAny() failed to wait", 0, "");

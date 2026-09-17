@@ -812,10 +812,12 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         auto pending = current->ActiveTrys;
         for (size_t i = pending.size(); i-- > 0; ) {
             current->ActiveTrys.resize(i);
-            emitStoreLocal(pending[i].retvalSlot);
-            emitOp(OpCode::POP);
-            if (pending[i].body) compileStmt(pending[i].body);
-            emitLoadLocal(pending[i].retvalSlot);
+            if (pending[i].body) {
+                emitStoreLocal(pending[i].retvalSlot);
+                emitOp(OpCode::POP);
+                compileStmt(pending[i].body);
+                emitLoadLocal(pending[i].retvalSlot);
+            }
         }
         current->ActiveTrys = pending;
 
@@ -1816,7 +1818,6 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     // Compile the try block
     compileStmt(stmt.tryBlock);
     emitOp(OpCode::TRY_END);
-    current->ActiveTrys.pop_back();
 
     // Jump over catch handlers to finally (or end)
     size_t afterCatch = emitJump(OpCode::JUMP);
@@ -1900,12 +1901,11 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     }
     patchJump(afterCatch);
 
+    // Pop the active try block from the list!
+    current->ActiveTrys.pop_back();
+
     // Emit finally block if present
     if (hasFinally) {
-        // Out of scope from here on: this is the normal fall-through copy of the
-        // finally, and a `give` inside it must not replay the block it is in.
-        current->ActiveTrys.pop_back();
-
         compileStmt(stmt.finallyBlock);
         
         // Load pending exception

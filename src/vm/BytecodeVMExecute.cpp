@@ -3548,6 +3548,7 @@ bool BytecodeVM::dispatchCall(const Value& callee, uint8_t argCount, bool bypass
                     
                     if (taskVM->dispatchCall(closedFunc, closedArgs.size(), true)) {
                         taskVM->isYielded = false;
+                        taskVM->running = true;
                         taskVM->run(0); // run until completion or yield
                         
                         if (!taskVM->isYielded) {

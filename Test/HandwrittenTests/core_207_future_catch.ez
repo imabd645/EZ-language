@@ -8,9 +8,18 @@ async task catcher() {
         await throwTask()
         give "no error thrown"
     } catch e {
-        give e.message
+        // Return a dictionary with every detail about the caught object
+        give {
+            "type_of_e": typeOf(e),
+            "is_string": typeOf(e) == "string",
+            "is_instance": typeOf(e) == "instance",
+            "has_message_prop": typeOf(e) == "instance" ? hasattr(e, "message") : false,
+            "e_message": e.message,
+            "type_of_e_message": typeOf(e.message),
+            "e_stringified": str(e)
+        }
     }
 }
 
 result = await catcher()
-assert(result == "Task failed", "Actual error: " + result)
+assert(result == "Task failed", "MACOS_DEBUG: " + str(result))

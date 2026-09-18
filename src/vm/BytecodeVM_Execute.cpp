@@ -2441,35 +2441,48 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     RAISE_FAULT();
                                 }
                                 SYNC_IP();
-                                this->isYielded = true;
-                                this->stackTop = stackTop;
-                                
-                                std::shared_ptr<BytecodeVM> sharedVM = this->shared_from_this();
+                                if (this->isWorkerThread) {
+                                    {
+                                        GCSafeRegion safe;
+                                        fut->wait();
+                                    }
+                                    if (fut->isError()) {
+                                        throwException("Exception", fut->getError());
+                                        RAISE_FAULT();
+                                    } else {
+                                        *(stackTop - 1) = fut->get();
+                                    }
+                                } else {
+                                    this->isYielded = true;
+                                    this->stackTop = stackTop;
+                                    
+                                    std::shared_ptr<BytecodeVM> sharedVM = this->shared_from_this();
 
-                                fut->then([sharedVM, fut]() {
-                                    EventLoop::instance().pushTask([sharedVM, fut]() {
-                                        sharedVM->isYielded = false;
-                                        if (fut->isError()) {
-                                            if (!sharedVM->frames.empty()) {
-                                                sharedVM->frames.back().ip -= 1;
-                                            }
-                                        } else {
-                                            *(sharedVM->stackTop - 1) = fut->get();
-                                        }
-                                        sharedVM->run(0);
-                                        
-                                        if (!sharedVM->isYielded && sharedVM->taskFuture) {
-                                            if (sharedVM->isExceptionPending || !sharedVM->pendingException.isNil()) {
-                                                std::string errMsg = !sharedVM->pendingException.isNil() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
-                                                sharedVM->taskFuture->setError(errMsg);
+                                    fut->then([sharedVM, fut]() {
+                                        EventLoop::instance().pushTask([sharedVM, fut]() {
+                                            sharedVM->isYielded = false;
+                                            if (fut->isError()) {
+                                                if (!sharedVM->frames.empty()) {
+                                                    sharedVM->frames.back().ip -= 1;
+                                                }
                                             } else {
-                                                Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
-                                                sharedVM->taskFuture->set(result);
+                                                *(sharedVM->stackTop - 1) = fut->get();
                                             }
-                                        }
+                                            sharedVM->run(0);
+                                            
+                                            if (!sharedVM->isYielded && sharedVM->taskFuture) {
+                                                if (sharedVM->isExceptionPending || !sharedVM->pendingException.isNil()) {
+                                                    std::string errMsg = !sharedVM->pendingException.isNil() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
+                                                    sharedVM->taskFuture->setError(errMsg);
+                                                } else {
+                                                    Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
+                                                    sharedVM->taskFuture->set(result);
+                                                }
+                                            }
+                                        });
                                     });
-                                });
-                                return;
+                                    return;
+                                }
                             }
                         }
                     }

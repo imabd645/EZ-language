@@ -134,6 +134,7 @@ public:
 
     bool isYielded = false;
     bool isAsyncTask = false;
+    bool isWorkerThread = false;
     std::shared_ptr<EZFuture> taskFuture;
 
     // Fast local access via vector index instead of map lookup (Issue C)

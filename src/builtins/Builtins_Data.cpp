@@ -368,9 +368,15 @@ void registerDataBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("parse_json", Value::makeNativeFunction("parse_json", 1,
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-            if (!args[0].isString()) { interp.runtimeError("parse_json() expects string", 0, ""); return Value(); }
+            if (!args[0].isString()) { interp.throwException("TypeError", "parse_json() expects string"); return Value(); }
             MiniJson::Value root; MiniJson::Reader reader;
-            if (!reader.parse(args[0].asString(), root)) { interp.runtimeError("Failed to parse JSON", 0, ""); return Value(); }
+            // Was runtimeError(...) -- bare string, so catch (e) { e.message }
+            // failed (same bug class fixed elsewhere for RateLimitError,
+            // AssertionError, awaitAll/awaitAny). Now that the parser itself
+            // correctly rejects malformed input (see MiniJson.h) instead of
+            // silently returning garbage, this path is reachable for any
+            // ordinary malformed-JSON input, not just a rare edge case.
+            if (!reader.parse(args[0].asString(), root)) { interp.throwException("ValueError", "Failed to parse JSON"); return Value(); }
             
             std::function<Value(const MiniJson::Value&)> convert;
             convert = [&](const MiniJson::Value& mv) -> Value {
@@ -460,7 +466,15 @@ void registerDataBuiltins(RuntimeContext& interp) {
                     double d = v.asNumber();
                     MiniJson::Value numVal(MiniJson::NUMBER);
                     if (d == (int)d) numVal.stringVal = std::to_string((int)d);
-                    else numVal.stringVal = std::to_string(d);
+                    else {
+                        // Was std::to_string(d), which always pads to exactly
+                        // 6 decimal places (3.14 -> "3.140000" in the emitted
+                        // JSON) -- inconsistent with how the same number
+                        // prints via str()/out elsewhere. Match those instead.
+                        std::ostringstream oss;
+                        oss << d;
+                        numVal.stringVal = oss.str();
+                    }
                     return numVal;
                 }
                 else if (v.isBool()) {
@@ -468,7 +482,13 @@ void registerDataBuiltins(RuntimeContext& interp) {
                     boolVal.stringVal = v.asBool() ? "true" : "false";
                     return boolVal;
                 }
-                return MiniJson::Value("null");
+                // Was MiniJson::Value("null") -- that constructor overload
+                // builds a STRING-typed value holding the text "null", not
+                // MiniJson's ALL_NULL type, so to_json(nil) emitted the JSON
+                // string "null" (quoted) instead of the JSON literal null.
+                // MiniJson::Value() (no args) is the one that actually
+                // defaults to ALL_NULL.
+                return MiniJson::Value();
             };
             MiniJson::Value root = convert(args[0]);
             if (failed) {

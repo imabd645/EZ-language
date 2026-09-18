@@ -1,6 +1,7 @@
 #ifndef VALUEIMPL_H
 #define VALUEIMPL_H
 #include <limits>
+#include <sstream>
 
 // --- Value Method Implementations (at the end for type completion) ---
 
@@ -210,7 +211,15 @@ inline std::string Value::toString() const {
                 num == static_cast<long long>(num)) {
                 return std::to_string(static_cast<long long>(num));
             }
-            return std::to_string(num);
+            // Was std::to_string(num), which always pads to exactly 6 decimal
+            // places (3.14 -> "3.140000") -- inconsistent with `out expr`,
+            // which compiles to PRINT_STR and formats the same value via
+            // plain `std::cout << num` (that operator's default formatting,
+            // "3.14"). Match that here so str(x) and `out x` on the same
+            // number produce the same text.
+            std::ostringstream oss;
+            oss << num;
+            return oss.str();
         }
         case ValueType::STRING: return asString();
         case ValueType::SHORT_STRING: return asString();

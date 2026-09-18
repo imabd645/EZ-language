@@ -69,16 +69,33 @@ namespace MiniJson {
         
         bool parse(const std::string& str, Value& root) {
             size_t pos = 0;
+            failed_ = false;
             skipWhitespace(str, pos);
             if (pos >= str.length()) return false;
             
             if (str[pos] == '{') root = parseObject(str, pos);
             else if (str[pos] == '[') root = parseArray(str, pos);
             else return false;
-            return true;
+            // Trailing garbage after the top-level value ("{}x") is also not
+            // valid JSON.
+            skipWhitespace(str, pos);
+            if (pos < str.length()) failed_ = true;
+            return !failed_;
         }
         
     private:
+        // Set instead of aborting the parse, so the existing forward-progress
+        // guarantees below (see their own comments) are untouched -- parsing
+        // still always terminates on garbage input, it just no longer reports
+        // success for it. Before this flag existed, parseObject() called
+        // parseString() unconditionally for a key regardless of whether the
+        // current character was even a quote, and treated both ':' and ','
+        // as optional -- so `{invalid json` silently "parsed" by treating
+        // every unquoted bareword as a value under an empty-string key (each
+        // overwriting the last), producing {"": "json"} with no error at all.
+        // Only fully well-formed JSON reaches here with failed_ still false.
+        bool failed_ = false;
+
         void skipWhitespace(const std::string& str, size_t& pos) {
             while (pos < str.length() && isspace(str[pos])) pos++;
         }
@@ -96,19 +113,25 @@ namespace MiniJson {
                 size_t iterationStart = pos;
 
                 skipWhitespace(str, pos);
-                if (pos >= str.length()) break;
+                if (pos >= str.length()) { failed_ = true; break; }
                 if (str[pos] == '}') { pos++; break; }
 
+                if (str[pos] != '"') failed_ = true; // key must be a quoted string
                 std::string key = parseString(str, pos);
                 skipWhitespace(str, pos);
                 if (pos < str.length() && str[pos] == ':') pos++;
+                else failed_ = true; // ':' is required, not optional
                 skipWhitespace(str, pos);
 
                 Value val = parseValue(str, pos);
                 obj.properties[key] = val;
 
                 skipWhitespace(str, pos);
-                if (pos < str.length() && str[pos] == ',') pos++;
+                if (pos < str.length() && str[pos] == ',') {
+                    pos++;
+                } else if (pos < str.length() && str[pos] != '}') {
+                    failed_ = true; // neither ',' nor '}' -- e.g. a missing comma
+                }
 
                 if (pos == iterationStart) break;
             }
@@ -121,11 +144,15 @@ namespace MiniJson {
             while (pos < str.length()) {
                 size_t iterationStart = pos;   // see parseObject
                 skipWhitespace(str, pos);
-                if (pos >= str.length()) break;
+                if (pos >= str.length()) { failed_ = true; break; }
                 if (str[pos] == ']') { pos++; break; }
                 arr.items.push_back(parseValue(str, pos));
                 skipWhitespace(str, pos);
-                if (pos < str.length() && str[pos] == ',') pos++;
+                if (pos < str.length() && str[pos] == ',') {
+                    pos++;
+                } else if (pos < str.length() && str[pos] != ']') {
+                    failed_ = true; // neither ',' nor ']' -- e.g. a missing comma
+                }
                 if (pos == iterationStart) break;
             }
             return arr;

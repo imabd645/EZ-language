@@ -106,11 +106,11 @@ private:
         // last. `give` has to run each one's body before it returns, so it needs
         // to know which are pending -- see compileGive. Per-Compiler (rather
         // than global) because a `give` can never cross a function boundary.
-        struct ActiveFinally {
+        struct ActiveTry {
             StmtPtr body;     // the finally block to replay before returning
             int retvalSlot;   // hidden local that parks the return value meanwhile
         };
-        std::vector<ActiveFinally> activeFinallys;
+        std::vector<ActiveTry> ActiveTrys;
 
         size_t maxLocals;
         int compilerId;
@@ -279,7 +279,7 @@ private:
         size_t start;           // Bytecode offset of loop start
         std::vector<size_t> breaks;    // Jump offsets to patch
         std::vector<size_t> continues; // Loop offsets to patch
-        size_t finallyDepth;    // activeFinallys.size() when loop started
+        size_t tryDepth;    // ActiveTrys.size() when loop started
         int scopeDepth;         // scope depth when loop started
     };
     std::vector<LoopContext> loopStack;

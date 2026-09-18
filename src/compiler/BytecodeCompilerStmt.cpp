@@ -705,7 +705,7 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
     // away, so the finally body emitted below would never run.
     bool isTailCall = false;
     if (stmt.value && current && !current->isCached
-        && current->activeFinallys.empty()
+        && current->ActiveTrys.empty()
         && (!currentEnsuresClauses || currentEnsuresClauses->empty())) {
         if (auto* callPtr = std::get_if<CallExpr*>(&stmt.value->variant)) {
             const CallExpr& call = **callPtr;
@@ -809,15 +809,15 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         //
         // Dropping them is also the correct semantics: such a `give` should still
         // run the finallys OUTSIDE it, and those are exactly what remains.
-        auto pending = current->activeFinallys;
+        auto pending = current->ActiveTrys;
         for (size_t i = pending.size(); i-- > 0; ) {
-            current->activeFinallys.resize(i);
+            current->ActiveTrys.resize(i);
             emitStoreLocal(pending[i].retvalSlot);
             emitOp(OpCode::POP);
-            compileStmt(pending[i].body);
+            if (pending[i].body) compileStmt(pending[i].body);
             emitLoadLocal(pending[i].retvalSlot);
         }
-        current->activeFinallys = pending;
+        current->ActiveTrys = pending;
 
         emitReturn();
     }
@@ -1802,12 +1802,12 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         emitOp(OpCode::POP);
     }
 
-    // Register the finally for the try/catch bodies compiled below, so a `give`
-    // inside them replays it before returning. Deliberately NOT registered while
-    // the finally block itself is compiled further down -- a `give` inside a
-    // finally must not re-enter it.
+    // Register the try block in activeTrys so we can properly pop TRY_END
+    // if we 'escape', 'skip', or 'give' out of this block.
     if (hasFinally) {
-        current->activeFinallys.push_back(Compiler::ActiveFinally{stmt.finallyBlock, retvalSlot});
+        current->ActiveTrys.push_back(Compiler::ActiveTry{stmt.finallyBlock, retvalSlot});
+    } else {
+        current->ActiveTrys.push_back(Compiler::ActiveTry{nullptr, -1});
     }
 
     // Emit TRY_START with a placeholder jump offset to the catch handler.
@@ -1816,6 +1816,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     // Compile the try block
     compileStmt(stmt.tryBlock);
     emitOp(OpCode::TRY_END);
+    current->ActiveTrys.pop_back();
 
     // Jump over catch handlers to finally (or end)
     size_t afterCatch = emitJump(OpCode::JUMP);
@@ -1903,7 +1904,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     if (hasFinally) {
         // Out of scope from here on: this is the normal fall-through copy of the
         // finally, and a `give` inside it must not replay the block it is in.
-        current->activeFinallys.pop_back();
+        current->ActiveTrys.pop_back();
 
         compileStmt(stmt.finallyBlock);
         
@@ -2436,7 +2437,7 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
 void BytecodeCompiler::startLoop() {
     LoopContext loop;
     loop.start = currentChunk().code.size();
-    loop.finallyDepth = current->activeFinallys.size();
+    loop.tryDepth = current->ActiveTrys.size();
     loop.scopeDepth = current->scopeDepth;
     loopStack.push_back(loop);
 }
@@ -2450,18 +2451,18 @@ void BytecodeCompiler::emitBreak() {
 
     // Replay any finally blocks opened INSIDE the current loop before jumping
     // out of it.  Same inline-replay pattern as compileGive, but scoped: only
-    // finallys pushed after startLoop (finallyDepth) need replaying here --
+    // finallys pushed after startLoop (tryDepth) need replaying here --
     // finallys wrapping the whole loop will run on the normal fall-through
     // path.  Each replayed finally also needs a TRY_END to pop the VM's
     // tryStack entry that TRY_START pushed.
-    size_t depth = loopStack.back().finallyDepth;
-    auto pending = current->activeFinallys;
+    size_t depth = loopStack.back().tryDepth;
+    auto pending = current->ActiveTrys;
     for (size_t i = pending.size(); i-- > depth; ) {
-        current->activeFinallys.resize(i);
+        current->ActiveTrys.resize(i);
         emitOp(OpCode::TRY_END);
-        compileStmt(pending[i].body);
+        if (pending[i].body) compileStmt(pending[i].body);
     }
-    current->activeFinallys = pending;
+    current->ActiveTrys = pending;
 
     // Pop any locals created inside the loop that we are jumping out of.
     int targetDepth = loopStack.back().scopeDepth;
@@ -2485,14 +2486,14 @@ void BytecodeCompiler::emitContinue() {
     if (loopStack.empty()) { errorAt("'continue' outside of loop", currentLine); return; }
 
     // Same finally-replay as emitBreak -- see comment there.
-    size_t depth = loopStack.back().finallyDepth;
-    auto pending = current->activeFinallys;
+    size_t depth = loopStack.back().tryDepth;
+    auto pending = current->ActiveTrys;
     for (size_t i = pending.size(); i-- > depth; ) {
-        current->activeFinallys.resize(i);
+        current->ActiveTrys.resize(i);
         emitOp(OpCode::TRY_END);
-        compileStmt(pending[i].body);
+        if (pending[i].body) compileStmt(pending[i].body);
     }
-    current->activeFinallys = pending;
+    current->ActiveTrys = pending;
 
     // Pop any locals created inside the loop that we are jumping out of.
     int targetDepth = loopStack.back().scopeDepth;

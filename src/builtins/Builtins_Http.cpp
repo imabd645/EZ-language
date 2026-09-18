@@ -32,7 +32,7 @@ void registerHttpBuiltins(RuntimeContext& interp) {
             }
             
             Value headers = Value::makeDictionary();
-            auto hmap = headers.asDictionary().getMapCopy();
+            auto headersDict = headers.asDictionaryPtr();
             
             size_t pos = firstLBreak + 2;
             int contentLen = 0;
@@ -50,7 +50,7 @@ void registerHttpBuiltins(RuntimeContext& interp) {
                     val.erase(0, val.find_first_not_of(" \t"));
                     val.erase(val.find_last_not_of(" \t") + 1);
                     
-                    hmap[key] = Value(val);
+                    headersDict->set(key, Value(val));
                     if (key == "content-length") {
                         try {
                             contentLen = std::stoi(val);
@@ -61,12 +61,12 @@ void registerHttpBuiltins(RuntimeContext& interp) {
             }
             
             Value result = Value::makeDictionary();
-            auto rmap = result.asDictionary().getMapCopy();
-            rmap["method"] = Value(method);
-            rmap["fullPath"] = Value(path);
-            rmap["headers"] = headers;
-            rmap["headerEnd"] = Value(static_cast<double>(headerEnd));
-            rmap["contentLength"] = Value(static_cast<double>(contentLen));
+            auto resultDict = result.asDictionaryPtr();
+            resultDict->set("method", Value(method));
+            resultDict->set("fullPath", Value(path));
+            resultDict->set("headers", headers);
+            resultDict->set("headerEnd", Value(static_cast<double>(headerEnd)));
+            resultDict->set("contentLength", Value(static_cast<double>(contentLen)));
             
             return result;
         }));

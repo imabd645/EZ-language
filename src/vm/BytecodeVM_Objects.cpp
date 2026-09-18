@@ -75,6 +75,21 @@ Value BytecodeVM::eval(const std::string& code, const std::string& filename) {
 }
 
 std::string BytecodeVM::stringify(const Value& val, int line, const std::string& filename) {
+    // Was a direct val.toString() only -- unlike PRINT_STR (the opcode `out
+    // expr` compiles to), which already dispatches to a defined toString()
+    // method before falling back to the bare "<instance>" placeholder. That
+    // made `out obj` and `str(obj)` on the identical instance print two
+    // different things. Match PRINT_STR's dispatch here too.
+    if (val.isInstance()) {
+        auto inst = val.asInstance();
+        Value method = inst->getProperty("toString");
+        if (method.isCallable()) {
+            Value result = inst->hasProperty("toString")
+                ? callFunction(method, {})
+                : callFunction(method, {val});
+            return result.toString();
+        }
+    }
     return val.toString();
 }
 

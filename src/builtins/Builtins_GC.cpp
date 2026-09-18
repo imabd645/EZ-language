@@ -223,6 +223,22 @@ void registerGCBuiltins(RuntimeContext& interp) {
             }
             return Value();
         });
+    // Every builtin error class (TypeError, KeyError, RateLimitError, ...)
+    // inherits from Exception, so this one toString() covers all of them via
+    // normal method inheritance. Without it, `out e` / `str(e)` / `"x" + e`
+    // on a caught exception instance fell through to the generic C++-level
+    // instance fallback and printed the bare "<instance>" placeholder
+    // instead of anything about the actual error -- catch (e) { out e }
+    // never showed the message a person actually wants to see.
+    exceptionClass->methods["toString"] = Value::makeNativeFunction("toString", -1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.size() > 0 && args[0].isInstance()) {
+                auto inst = args[0].asInstance();
+                Value msg = inst->getProperty("message");
+                return Value(msg.isNil() ? std::string("Unknown Error") : msg.toString());
+            }
+            return Value(std::string("Unknown Error"));
+        });
     interp.defineGlobal("Exception", Value(exceptionClass));
 
     auto makeErrorClass = [&](const std::string& name, std::shared_ptr<EZClass> parent) {

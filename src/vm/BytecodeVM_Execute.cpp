@@ -3761,7 +3761,17 @@ void BytecodeVM::doAdd() {
         push(Value(cs));
         return;
     }
-    if (a.isString()  || b.isString())  { push(Value(a.toString()  + b.toString()));  return; }
+    if (a.isString()  || b.isString())  {
+        // Was a.toString() + b.toString() -- the raw C++ method, which
+        // never dispatches to a defined toString() method (see
+        // BytecodeVM::stringify(), which now does). "caught: " + e on an
+        // exception instance printed "caught: <instance>" even after
+        // stringify()/str() and PRINT_STR/out were fixed to show the
+        // actual message, since this concatenation path never went
+        // through either of them.
+        push(Value(stringify(a) + stringify(b)));
+        return;
+    }
     if (a.isArray()   && b.isArray()) {
         auto res = a.asArray().getElementsCopy();
         for (const Value& v : b.asArray().getElementsCopy()) res.push_back(v);

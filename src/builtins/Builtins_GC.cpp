@@ -440,6 +440,7 @@ void registerGCBuiltins(RuntimeContext& interp) {
                         // it already handled. Same choice the `async task`
                         // path makes.
                         threadVM->isAsyncTask = true;
+                        threadVM->isWorkerThread = true;
                         result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
 
                         // A yielded VM is resumed by the event loop, which

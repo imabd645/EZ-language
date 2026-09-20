@@ -1,4 +1,4 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 
 // ============================================================================
 // Raw memory: allocation and every fixed-width read/write.

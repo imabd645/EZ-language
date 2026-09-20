@@ -1,4 +1,4 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 
 // ============================================================================
 // FFI entry point. Keeps the name and signature declared in Builtins.h so

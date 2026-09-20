@@ -1,8 +1,8 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 
 // ============================================================================
 // FFI support: the os_alloc registry, its bounds policy, and the crash guard.
-// Declared in FFI_Internal.h because memory, struct and call code all rely on
+// Declared in FFIInternal.h because memory, struct and call code all rely on
 // them; everything else in the FFI layer keeps internal linkage.
 // ============================================================================
 

@@ -1,4 +1,4 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 
 // ============================================================================
 // Struct layout: size/alignment computation, packing EZ values into a buffer

@@ -1,6 +1,6 @@
 #include "runtime/objects/EZObjects.h"
 #include "builtins/Builtins.h"
-#include "builtins/FFI/FFI_Internal.h"
+#include "builtins/FFI/FFIInternal.h"
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
 #include <string>

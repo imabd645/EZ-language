@@ -119,11 +119,11 @@ set(SOURCES
     src/builtins/Builtins_Core.cpp
     src/builtins/Builtins_Data.cpp
     src/builtins/FFI/FFI.cpp
-    src/builtins/FFI/FFI_Support.cpp
-    src/builtins/FFI/FFI_Memory.cpp
-    src/builtins/FFI/FFI_Call.cpp
-    src/builtins/FFI/FFI_Callback.cpp
-    src/builtins/FFI/FFI_Struct.cpp
+    src/builtins/FFI/FFISupport.cpp
+    src/builtins/FFI/FFIMemory.cpp
+    src/builtins/FFI/FFICall.cpp
+    src/builtins/FFI/FFICallback.cpp
+    src/builtins/FFI/FFIStruct.cpp
     src/builtins/BuiltinsGC.cpp
     src/builtins/BuiltinsVM.cpp
     src/builtins/BuiltinsProcess.cpp
@@ -217,5 +217,6 @@ add_custom_command(TARGET ez POST_BUILD
         "$<TARGET_FILE_DIR:ez>/lib"
     COMMENT "Copying standard library (lib/) directory next to ez binary"
 )
+
 
 

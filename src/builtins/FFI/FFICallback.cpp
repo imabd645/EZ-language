@@ -1,4 +1,4 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 
 // ============================================================================
 // Native -> EZ callbacks. os_ffi_create_callback compiles an EZ function into a

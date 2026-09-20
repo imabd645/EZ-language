@@ -1,4 +1,4 @@
-#include "FFI_Internal.h"
+#include "FFIInternal.h"
 #include "runtime/SecurityPolicy.h"
 
 // ============================================================================

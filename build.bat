@@ -51,7 +51,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/testing/TestRunner.cpp ^
     src/builtins/Builtins.cpp ^
     src/builtins/Builtins_Buffer.cpp ^
-    src/builtins/Builtins_Concurrency.cpp ^
+    src/builtins/BuiltinsConcurrency.cpp ^
     src/builtins/Builtins_Console.cpp ^
     src/builtins/Builtins_Core.cpp ^
     src/builtins/Builtins_Data.cpp ^
@@ -61,7 +61,11 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/builtins/FFI/FFI_Call.cpp ^
     src/builtins/FFI/FFI_Callback.cpp ^
     src/builtins/FFI/FFI_Struct.cpp ^
-    src/builtins/Builtins_GC.cpp ^
+    src/builtins/BuiltinsGC.cpp ^
+    src/builtins/BuiltinsVM.cpp ^
+    src/builtins/BuiltinsProcess.cpp ^
+    src/builtins/BuiltinsExceptions.cpp ^
+    src/builtins/BuiltinsTime.cpp ^
     src/builtins/Builtins_Http.cpp ^
     src/builtins/Builtins_IO.cpp ^
     src/builtins/Builtins_Math.cpp ^
@@ -107,4 +111,5 @@ C:\msys64\mingw64\bin\g++.exe ^
     -Wl,--subsystem,console
 if %errorlevel% neq 0 exit /b %errorlevel%
 endlocal
+
 

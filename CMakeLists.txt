@@ -114,7 +114,7 @@ set(SOURCES
     src/testing/TestRunner.cpp
     src/builtins/Builtins.cpp
     src/builtins/Builtins_Buffer.cpp
-    src/builtins/Builtins_Concurrency.cpp
+    src/builtins/BuiltinsConcurrency.cpp
     src/builtins/Builtins_Console.cpp
     src/builtins/Builtins_Core.cpp
     src/builtins/Builtins_Data.cpp
@@ -124,7 +124,11 @@ set(SOURCES
     src/builtins/FFI/FFI_Call.cpp
     src/builtins/FFI/FFI_Callback.cpp
     src/builtins/FFI/FFI_Struct.cpp
-    src/builtins/Builtins_GC.cpp
+    src/builtins/BuiltinsGC.cpp
+    src/builtins/BuiltinsVM.cpp
+    src/builtins/BuiltinsProcess.cpp
+    src/builtins/BuiltinsExceptions.cpp
+    src/builtins/BuiltinsTime.cpp
     src/builtins/Builtins_Http.cpp
     src/builtins/Builtins_IO.cpp
     src/builtins/Builtins_Math.cpp
@@ -213,4 +217,5 @@ add_custom_command(TARGET ez POST_BUILD
         "$<TARGET_FILE_DIR:ez>/lib"
     COMMENT "Copying standard library (lib/) directory next to ez binary"
 )
+
 

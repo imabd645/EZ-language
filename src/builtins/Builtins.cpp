@@ -9,13 +9,19 @@ void registerBuiltins(RuntimeContext& interp) {
     registerStringBuiltins(interp);
     registerDataBuiltins(interp);
     registerCoreBuiltins(interp);
-    registerGCBuiltins(interp);
     registerConsoleBuiltins(interp);
     registerFFIBuiltins(interp);
     registerBufferBuiltins(interp);
-    registerConcurrencyBuiltins(interp);
     registerHttpBuiltins(interp);
     registerTimeDateBuiltins(interp);
     
+    // Modularized Builtins
+    registerGCBuiltins(interp);
+    registerVMBuiltins(interp);
+    registerProcessBuiltins(interp);
+    registerExceptionBuiltins(interp);
+    registerTimeBuiltins(interp);
+    registerConcurrencyBuiltins(interp);
+
     TestRunner::registerTestBuiltins(interp);
 }

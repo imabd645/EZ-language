@@ -1,3 +1,4 @@
+#include "vm/BytecodeVM.h"
 #include "runtime/objects/EZObjects.h"
 #include "gc/CycleCollector.h"
 #include "builtins/Builtins.h"
@@ -290,4 +291,213 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
         }));
 
     interp.defineGlobal("Channel", Value(channelClass));
+
+    interp.defineGlobal("spawn", Value::makeNativeFunction("spawn", -1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isCallable()) { interp.runtimeError("spawn() expects function", 0, ""); return Value(); }
+            
+            Value func = args[0];
+            bool isDaemon = false;
+            size_t endIdx = args.size();
+            
+            if (args.size() > 1) {
+                const Value& lastArg = args.back();
+                if (lastArg.isDictionary()) {
+                    auto dict = lastArg.asDictionaryPtr();
+                    if (dict->has("daemon")) {
+                        Value dVal = dict->get("daemon");
+                        if (dVal.isBool() && dVal.asBool()) {
+                            isDaemon = true;
+                            endIdx--; 
+                        }
+                    }
+                } else if (lastArg.isBool() && lastArg.asBool()) {
+                    isDaemon = true;
+                    endIdx--; 
+                }
+            }
+            
+            std::vector<Value> fnArgs(args.begin() + 1, args.begin() + endIdx);
+            auto globalEnv = interp.getGlobalEnv();
+
+            std::unordered_map<void*, Value> seen;
+
+            std::function<Value(const Value&)> closeUpvals = [&](const Value& v) -> Value {
+                if (v.isClosure()) {
+                    auto oldCl = v.asClosure();
+                    if (seen.count(oldCl.get())) return seen[oldCl.get()];
+
+                    auto newCl = std::make_shared<EZClosure>(oldCl->function);
+                    Value newClVal = Value::makeClosure(newCl);
+                    seen[oldCl.get()] = newClVal;
+
+                    for (auto& uv : oldCl->upvalues) {
+                        if (!uv) { newCl->upvalues.push_back(nullptr); continue; }
+                        auto newUv = std::make_shared<UpvalueObj>();
+                        Value* loc = uv->location.load();
+                        Value snap = (loc != nullptr) ? *loc : Value();
+                        newUv->closed = closeUpvals(snap);
+                        newUv->location.store(&newUv->closed);
+                        newUv->next = nullptr;
+                        newCl->upvalues.push_back(newUv);
+                    }
+                    return newClVal;
+                } else if (v.isBoundMethod()) {
+                    auto oldBm = v.asBoundMethod();
+                    if (seen.count(oldBm.get())) return seen[oldBm.get()];
+                    auto newBm = std::make_shared<EZBoundMethod>(
+                        closeUpvals(oldBm->receiver),
+                        closeUpvals(oldBm->method)
+                    );
+                    seen[oldBm.get()] = Value(newBm);
+                    return Value(newBm);
+                }
+                return v;
+            };
+
+            Value closedFunc = closeUpvals(func);
+            std::vector<Value> closedArgs;
+            for (auto& a : fnArgs) closedArgs.push_back(closeUpvals(a));
+
+            auto ezFut = std::make_shared<EZFuture>();
+
+            if (!isDaemon) {
+                EventLoop::instance().retain();
+            }
+            std::thread([ezFut, globalEnv, closedFunc, closedArgs, isDaemon]() {
+                bool   signalResult = false;
+                bool   failed       = false;
+                Value  result;
+                std::string errorText;
+
+                {
+                    struct MutatorScope {
+                        MutatorScope()  { CycleCollector::instance().beginMutatorThread(); }
+                        ~MutatorScope() { CycleCollector::instance().endMutatorThread(); }
+                    } mutatorScope;
+
+                    try {
+                        auto threadVM = std::make_shared<BytecodeVM>(globalEnv);
+                        threadVM->traceExecution = false;
+
+                        threadVM->taskFuture = ezFut;
+                        threadVM->isAsyncTask = true;
+                        threadVM->isWorkerThread = true;
+                        result = threadVM->callFunction(closedFunc, closedArgs, 0, "native");
+
+                        signalResult = !threadVM->isYielded;
+                    } catch(std::exception& e) {
+                        failed = true;
+                        errorText = e.what();
+                    }
+                }
+
+                if (failed) {
+                    ezFut->setError(errorText);
+                } else if (signalResult) {
+                    ezFut->set(result);
+                }
+
+                if (!isDaemon) {
+                    EventLoop::instance().release();
+                }
+            }).detach();
+
+            return Value::makeFuture(ezFut);
+        }));
+
+    auto awaitFn = [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+        if (!args[0].isFuture()) { interp.runtimeError("await() expects future", 0, ""); return Value(); }
+        auto fut = args[0].asFuture();
+        {
+            GCSafeRegion safe;
+            fut->wait();
+        }
+        if (fut->isError()) {
+            interp.throwException("Exception", fut->getError());
+            return Value();
+        }
+        return fut->get();
+    };
+    interp.defineGlobal("await", Value::makeNativeFunction("await", 1, awaitFn));
+    interp.defineGlobal("sync", Value::makeNativeFunction("sync", 1, awaitFn));
+
+    interp.defineGlobal("cancel", Value::makeNativeFunction("cancel", 1, 
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isFuture()) { interp.runtimeError("cancel() expects future", 0, ""); return Value(); }
+            args[0].asFuture()->cancel();
+            return Value();
+        }));
+
+    interp.defineGlobal("isDone", Value::makeNativeFunction("isDone", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (args.empty() || !args[0].isFuture()) {
+                interp.runtimeError("isDone() expects a future", 0, "");
+                return Value();
+            }
+            return Value(args[0].asFuture()->isReady());
+        }));
+
+    interp.defineGlobal("awaitAll", Value::makeNativeFunction("awaitAll", 1,
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) { interp.runtimeError("awaitAll() expects array of futures", 0, ""); return Value(); }
+            auto& arr = args[0].asArray();
+            std::vector<Value> results;
+            for (auto& v : arr.getElementsCopy()) {
+                if (!v.isFuture()) { interp.runtimeError("awaitAll() array must contain only futures", 0, ""); return Value(); }
+                auto fut = v.asFuture();
+                { GCSafeRegion safe; fut->wait(); }
+                if (fut->isError()) {
+                    interp.throwException("Exception", fut->getError());
+                    return Value();
+                }
+                results.push_back(fut->get());
+            }
+            return Value::makeArray(results);
+        }));
+
+    interp.defineGlobal("awaitAny", Value::makeNativeFunction("awaitAny", 1, 
+        [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
+            if (!args[0].isArray()) { interp.runtimeError("awaitAny() expects array of futures", 0, ""); return Value(); }
+            auto& arr = args[0].asArray();
+            if (arr.empty()) { interp.runtimeError("awaitAny() cannot accept empty array", 0, ""); return Value(); }
+
+            std::vector<Value> futures = arr.getElementsCopy();
+            for (auto& v : futures) {
+                if (!v.isFuture()) { interp.runtimeError("awaitAny() array must contain only futures", 0, ""); return Value(); }
+            }
+
+            auto mtx   = std::make_shared<std::mutex>();
+            auto cv    = std::make_shared<std::condition_variable>();
+            auto fired = std::make_shared<bool>(false);
+
+            for (auto& v : futures) {
+                v.asFuture()->then([mtx, cv, fired]() {
+                    {
+                        std::lock_guard<std::mutex> lk(*mtx);
+                        *fired = true;
+                    }
+                    cv->notify_all();
+                });
+            }
+            {
+                GCSafeRegion safe;
+                std::unique_lock<std::mutex> lk(*mtx);
+                cv->wait(lk, [&fired] { return *fired; });
+            }
+            for (auto& v : futures) {
+                if (v.asFuture()->isReady()) {
+                    auto fut = v.asFuture();
+                    if (fut->isError()) {
+                        interp.throwException("Exception", fut->getError());
+                        return Value();
+                    }
+                    return fut->get();
+                }
+            }
+
+            interp.runtimeError("awaitAny() failed to wait", 0, "");
+            return Value();
+        }));
 }
+

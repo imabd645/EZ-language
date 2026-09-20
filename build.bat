@@ -99,8 +99,8 @@ C:\msys64\mingw64\bin\g++.exe ^
     src/typechecker/TypeCheckerStmt.cpp ^
     src/utils/EzLibPath.cpp ^
     src/vm/BytecodeVM.cpp ^
-    src/vm/BytecodeVM_Execute.cpp ^
-    src/vm/BytecodeVM_Objects.cpp ^
+    src/vm/BytecodeVMExecute.cpp ^
+    src/vm/BytecodeVMObjects.cpp ^
     -static -static-libgcc -static-libstdc++ ^
     -DCURL_STATICLIB ^
     -lsqlite3 -lffi ^
@@ -111,6 +111,7 @@ C:\msys64\mingw64\bin\g++.exe ^
     -Wl,--subsystem,console
 if %errorlevel% neq 0 exit /b %errorlevel%
 endlocal
+
 
 
 

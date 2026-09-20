@@ -157,8 +157,8 @@ set(SOURCES
     src/typechecker/TypeCheckerStmt.cpp
     src/utils/EzLibPath.cpp
     src/vm/BytecodeVM.cpp
-    src/vm/BytecodeVM_Execute.cpp
-    src/vm/BytecodeVM_Objects.cpp
+    src/vm/BytecodeVMExecute.cpp
+    src/vm/BytecodeVMObjects.cpp
 )
 
 # Create the executable
@@ -217,6 +217,7 @@ add_custom_command(TARGET ez POST_BUILD
         "$<TARGET_FILE_DIR:ez>/lib"
     COMMENT "Copying standard library (lib/) directory next to ez binary"
 )
+
 
 
 

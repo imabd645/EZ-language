@@ -2464,6 +2464,18 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     RAISE_FAULT();
                                 }
                                 SYNC_IP();
+                                 if (this->isWorkerThread) {
+                                    {
+                                        GCSafeRegion safe;
+                                        fut->wait();
+                                    }
+                                    if (fut->isError()) {
+                                        throwException("Exception", fut->getError());
+                                        RAISE_FAULT();
+                                    } else {
+                                        *(stackTop - 1) = fut->get();
+                                    }
+                                } else {
                                 this->isYielded = true;
                                 this->stackTop = stackTop;
                                 
@@ -2493,7 +2505,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     });
                                 });
                                 return;
-                            }
+                            }}
                         }
                     }
                     DISPATCH();

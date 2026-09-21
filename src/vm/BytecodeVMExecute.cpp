@@ -916,18 +916,41 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
 
                                 if (klass->behaviors.hasCached && inst->getCacheStore()) {
+                                    // Was: unconditionally `cr.dirty = true;` for every entry,
+                                    // including entries for OTHER arguments of the very method
+                                    // that's doing this write. A @cached method that also does
+                                    // its own bookkeeping (`self.calls = self.calls + 1`) would
+                                    // invalidate its own sibling entries on every call --
+                                    // square(5) then square(6) then square(5) again recomputed
+                                    // every single time despite unique cache keys per argument,
+                                    // because computing square(6) wiped square(5)'s
+                                    // already-correct entry as a side effect of its own counter
+                                    // update, and vice versa forever. That's a strictly worse
+                                    // case of the same "no read-tracking" gap noted above: at
+                                    // least skip poisoning the CURRENTLY EXECUTING method's own
+                                    // other cache entries when a write happens from inside it --
+                                    // its own in-flight computation is about to freshly overwrite
+                                    // its own key regardless (via STORE_CACHED_RESULT right
+                                    // after), and this write can't invalidate a fact this exact
+                                    // method already knows for OTHER arguments any more than
+                                    // uninstrumented code could. Any write from OUTSIDE this
+                                    // method, or from a different method, still conservatively
+                                    // invalidates everything as before.
+                                    bool writeIsFromOwnCachedMethod =
+                                        frame->function->isMethod &&
+                                        frame->function->hasCached &&
+                                        frame->slots[0].isInstance() &&
+                                        frame->slots[0].asInstance() == inst;
+                                    const std::string& currentMethodName = frame->function->name;
                                     inst->modifyCacheStore([&](auto& cache) {
-                                        for (auto& [methodName, cr] : cache) {
-                                            // `cr.deps` is read here but never populated anywhere in
-                                            // the codebase, so this condition was always false and a
-                                            // @cached result was frozen for the life of the instance:
-                                            // a cart's total() kept reporting the price it was first
-                                            // called with, no matter how the price changed. Until
-                                            // reads are actually tracked, invalidate every cached
-                                            // result on the instance when any property changes --
-                                            // conservative (it can recompute more than strictly
-                                            // needed) but never stale, which is the right way round
-                                            // for a cache the caller cannot see.
+                                        for (auto& [cacheKey, cr] : cache) {
+                                            if (writeIsFromOwnCachedMethod &&
+                                                (cacheKey == currentMethodName ||
+                                                 (cacheKey.size() > currentMethodName.size() &&
+                                                  cacheKey.compare(0, currentMethodName.size(), currentMethodName) == 0 &&
+                                                  cacheKey[currentMethodName.size()] == '\x1f'))) {
+                                                continue;
+                                            }
                                             (void)propName;
                                             cr.dirty = true;
                                         }
@@ -2441,48 +2464,35 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     RAISE_FAULT();
                                 }
                                 SYNC_IP();
-                                if (this->isWorkerThread) {
-                                    {
-                                        GCSafeRegion safe;
-                                        fut->wait();
-                                    }
-                                    if (fut->isError()) {
-                                        throwException("Exception", fut->getError());
-                                        RAISE_FAULT();
-                                    } else {
-                                        *(stackTop - 1) = fut->get();
-                                    }
-                                } else {
-                                    this->isYielded = true;
-                                    this->stackTop = stackTop;
-                                    
-                                    std::shared_ptr<BytecodeVM> sharedVM = this->shared_from_this();
+                                this->isYielded = true;
+                                this->stackTop = stackTop;
+                                
+                                std::shared_ptr<BytecodeVM> sharedVM = this->shared_from_this();
 
-                                    fut->then([sharedVM, fut]() {
-                                        EventLoop::instance().pushTask([sharedVM, fut]() {
-                                            sharedVM->isYielded = false;
-                                            if (fut->isError()) {
-                                                if (!sharedVM->frames.empty()) {
-                                                    sharedVM->frames.back().ip -= 1;
-                                                }
+                                fut->then([sharedVM, fut]() {
+                                    EventLoop::instance().pushTask([sharedVM, fut]() {
+                                        sharedVM->isYielded = false;
+                                        if (fut->isError()) {
+                                            if (!sharedVM->frames.empty()) {
+                                                sharedVM->frames.back().ip -= 1;
+                                            }
+                                        } else {
+                                            *(sharedVM->stackTop - 1) = fut->get();
+                                        }
+                                        sharedVM->run(0);
+                                        
+                                        if (!sharedVM->isYielded && sharedVM->taskFuture) {
+                                            if (sharedVM->isExceptionPending || !sharedVM->pendingException.isNil()) {
+                                                std::string errMsg = !sharedVM->pendingException.isNil() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
+                                                sharedVM->taskFuture->setError(errMsg);
                                             } else {
-                                                *(sharedVM->stackTop - 1) = fut->get();
+                                                Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
+                                                sharedVM->taskFuture->set(result);
                                             }
-                                            sharedVM->run(0);
-                                            
-                                            if (!sharedVM->isYielded && sharedVM->taskFuture) {
-                                                if (sharedVM->isExceptionPending || !sharedVM->pendingException.isNil()) {
-                                                    std::string errMsg = !sharedVM->pendingException.isNil() ? sharedVM->pendingException.toString() : "Async task failed with an exception";
-                                                    sharedVM->taskFuture->setError(errMsg);
-                                                } else {
-                                                    Value result = (sharedVM->stackTop > sharedVM->stack.data()) ? *(sharedVM->stackTop - 1) : Value();
-                                                    sharedVM->taskFuture->set(result);
-                                                }
-                                            }
-                                        });
+                                        }
                                     });
-                                    return;
-                                }
+                                });
+                                return;
                             }
                         }
                     }

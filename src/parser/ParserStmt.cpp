@@ -142,19 +142,34 @@ StmtPtr Parser::statement() {
                     }
                 } else if (name == "ratelimit") {
                     if (callExpr->arguments.size() >= 2) {
-                        int count = 0;
-                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[0]->variant)) {
+                        // Both arguments must actually BE literals for this to be
+                        // the built-in @ratelimit -- per the docs, a count from a
+                        // variable should fall through to "not recognized as the
+                        // built-in decorator" (same as @persist with a variable
+                        // path). The old code checked only the argument *count*
+                        // here, then tried to extract a literal value and quietly
+                        // defaulted `count` to 0 (its initializer) whenever that
+                        // failed -- so `@ratelimit(n, "minute")` silently became
+                        // "allow 0 calls" instead of erroring, and a 0-capacity
+                        // window then produced a nonsensical *negative*
+                        // milliseconds-until-retry when the runtime computed how
+                        // long until the (nonexistent) oldest call in the window
+                        // expired. Require both literals up front instead.
+                        bool countIsLiteral = std::holds_alternative<LiteralExpr*>(callExpr->arguments[0]->variant) &&
+                            (std::holds_alternative<long long>(std::get<LiteralExpr*>(callExpr->arguments[0]->variant)->value) ||
+                             std::holds_alternative<double>(std::get<LiteralExpr*>(callExpr->arguments[0]->variant)->value));
+                        bool periodIsLiteral = std::holds_alternative<LiteralExpr*>(callExpr->arguments[1]->variant) &&
+                            std::holds_alternative<std::string>(std::get<LiteralExpr*>(callExpr->arguments[1]->variant)->value);
+                        if (countIsLiteral && periodIsLiteral) {
                             auto numExpr = std::get<LiteralExpr*>(callExpr->arguments[0]->variant);
-                            if (std::holds_alternative<long long>(numExpr->value)) count = (int)std::get<long long>(numExpr->value);
-                            else if (std::holds_alternative<double>(numExpr->value)) count = (int)std::get<double>(numExpr->value);
-                        }
-                        std::string perStr;
-                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[1]->variant)) {
+                            int count = std::holds_alternative<long long>(numExpr->value)
+                                ? (int)std::get<long long>(numExpr->value)
+                                : (int)std::get<double>(numExpr->value);
                             auto strExpr = std::get<LiteralExpr*>(callExpr->arguments[1]->variant);
-                            if (std::holds_alternative<std::string>(strExpr->value)) perStr = std::get<std::string>(strExpr->value);
+                            std::string perStr = std::get<std::string>(strExpr->value);
+                            rateLimitCfg = arena.allocate<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
+                            isBuiltin = true;
                         }
-                        rateLimitCfg = arena.allocate<RateLimitConfig>(RateLimitConfig{count, perStr, nullptr});
-                        isBuiltin = true;
                     }
                 }
             }

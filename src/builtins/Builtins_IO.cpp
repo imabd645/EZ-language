@@ -306,6 +306,17 @@ void registerIOBuiltins(RuntimeContext& interp) {
                 interp.throwException("ValueError", "readLine() called on a closed File", 0, "");
                 return Value();
             }
+            // Was missing entirely: fstream is opened with std::ios::out
+            // only for a write-mode File, so a read attempt just fails
+            // silently at the stream level (failbit set, no exception) --
+            // std::getline() then behaves exactly like a normal EOF, so
+            // readLine() returned nil ("no more lines") instead of erroring,
+            // indistinguishable from successfully reading an empty file.
+            std::string mode = instance->getProperty("_mode").toString();
+            if (mode == "w" || mode == "wb" || mode == "a" || mode == "ab") {
+                interp.throwException("ValueError", "readLine() called on a File opened in mode '" + mode + "' (not open for reading)", 0, "");
+                return Value();
+            }
             std::string line;
             if (std::getline(*fs, line)) {
                 return Value(line);
@@ -325,6 +336,15 @@ void registerIOBuiltins(RuntimeContext& interp) {
             }
             if (!args[1].isNumber()) {
                 interp.throwException("TypeError", "File.read() expects integer byte count", 0, "");
+                return Value();
+            }
+            // See readLine() above: a write-mode fstream fails reads
+            // silently (failbit, not an exception), so this returned an
+            // empty string -- indistinguishable from "the file has no more
+            // bytes" -- instead of reporting that the File isn't readable.
+            std::string mode = instance->getProperty("_mode").toString();
+            if (mode == "w" || mode == "wb" || mode == "a" || mode == "ab") {
+                interp.throwException("ValueError", "read() called on a File opened in mode '" + mode + "' (not open for reading)", 0, "");
                 return Value();
             }
             size_t n = static_cast<size_t>(args[1].asNumber());
@@ -347,6 +367,12 @@ void registerIOBuiltins(RuntimeContext& interp) {
                 interp.throwException("ValueError", "readAll() called on a closed File", 0, "");
                 return Value();
             }
+            // See readLine() above for why this check is needed.
+            std::string mode = instance->getProperty("_mode").toString();
+            if (mode == "w" || mode == "wb" || mode == "a" || mode == "ab") {
+                interp.throwException("ValueError", "readAll() called on a File opened in mode '" + mode + "' (not open for reading)", 0, "");
+                return Value();
+            }
             std::stringstream ss;
             ss << fs->rdbuf();
             return Value(ss.str());
@@ -365,6 +391,15 @@ void registerIOBuiltins(RuntimeContext& interp) {
                 interp.throwException("TypeError", "File.write() expects string data", 0, "");
                 return Value();
             }
+            // fstream opened with std::ios::in only (a read-mode File) sets
+            // failbit on a write attempt rather than throwing, and this
+            // never checked for it -- write() returned true (success) even
+            // though nothing was actually written.
+            std::string mode = instance->getProperty("_mode").toString();
+            if (mode == "r" || mode == "rb") {
+                interp.throwException("ValueError", "write() called on a File opened in mode '" + mode + "' (not open for writing)", 0, "");
+                return Value();
+            }
             *fs << args[1].asString();
             return Value(true);
         }));
@@ -380,6 +415,12 @@ void registerIOBuiltins(RuntimeContext& interp) {
             }
             if (!args[1].isString()) {
                 interp.throwException("TypeError", "File.writeLine() expects string data", 0, "");
+                return Value();
+            }
+            // See write() above for why this check is needed.
+            std::string mode = instance->getProperty("_mode").toString();
+            if (mode == "r" || mode == "rb") {
+                interp.throwException("ValueError", "writeLine() called on a File opened in mode '" + mode + "' (not open for writing)", 0, "");
                 return Value();
             }
             *fs << args[1].asString() << "\n";

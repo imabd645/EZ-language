@@ -400,6 +400,38 @@ void Lexer::scanString() {
                     }
                     break;
                 }
+                case 'u': {
+                    // Was entirely unhandled -- fell into the `default`
+                    // branch below, which keeps only the 'u' itself and
+                    // drops the backslash, so \u0041 silently became the
+                    // literal text "u0041" instead of "A" (or an error).
+                    // \x (above) was already supported; this closes the
+                    // same gap for \uXXXX, encoded as UTF-8 since EZ
+                    // strings are UTF-8 byte sequences.
+                    if (current + 4 > source.length()) {
+                        error("Incomplete unicode escape (expected 4 hex digits)");
+                        break;
+                    }
+                    std::string hex = source.substr(current, 4);
+                    current += 4;
+                    column += 4;
+                    try {
+                        unsigned long cp = std::stoul(hex, nullptr, 16);
+                        if (cp <= 0x7F) {
+                            value += static_cast<char>(cp);
+                        } else if (cp <= 0x7FF) {
+                            value += static_cast<char>(0xC0 | (cp >> 6));
+                            value += static_cast<char>(0x80 | (cp & 0x3F));
+                        } else {
+                            value += static_cast<char>(0xE0 | (cp >> 12));
+                            value += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+                            value += static_cast<char>(0x80 | (cp & 0x3F));
+                        }
+                    } catch (...) {
+                        error("Invalid unicode escape: \\u" + hex);
+                    }
+                    break;
+                }
                 default: value += escaped; break;
             }
         } else {

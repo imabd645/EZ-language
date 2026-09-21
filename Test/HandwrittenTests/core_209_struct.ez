@@ -1,0 +1,19 @@
+// Test structs and default values
+struct Point {
+    x: int
+    y: int
+    name: string
+}
+
+p = new Point()
+assert(p.x == 0, "Default for int is 0")
+assert(p.name == "", "Default for string is empty")
+
+p.x = 10
+p.y = 20
+assert(p.x == 10, "Mutated x")
+assert(p.y == 20, "Mutated y")
+
+p2 = new Point(5, 5, "origin")
+assert(p2.x == 5, "Positional args work")
+assert(p2.name == "origin", "Positional args work")

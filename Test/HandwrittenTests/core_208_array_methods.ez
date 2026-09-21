@@ -1,0 +1,22 @@
+// Test array loops and mutations
+arr = [1, 2, 3, 4, 5]
+
+// Map simulation
+mapped = []
+get x in arr { 
+    push(mapped, x * 2) 
+}
+assert(mapped[0] == 2, "mapped[0] == 2")
+assert(mapped[4] == 10, "mapped[4] == 10")
+assert(len(mapped) == 5, "mapped length == 5")
+
+// Filter simulation
+filtered = []
+get x in arr {
+    when x % 2 == 0 {
+        push(filtered, x)
+    }
+}
+assert(len(filtered) == 2, "filtered length == 2")
+assert(filtered[0] == 2, "filtered[0] == 2")
+assert(filtered[1] == 4, "filtered[1] == 4")

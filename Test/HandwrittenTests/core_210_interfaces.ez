@@ -1,0 +1,14 @@
+// Test interfaces and implementation
+interface Animal {
+    task speak()
+}
+
+model Dog implements Animal {
+    init() {}
+    task speak() {
+        give "woof"
+    }
+}
+
+d = new Dog()
+assert(d.speak() == "woof", "Interface method works")

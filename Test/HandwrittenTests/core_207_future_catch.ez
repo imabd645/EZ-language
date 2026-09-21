@@ -1,0 +1,17 @@
+// Test that await correctly unwraps and propagates errors
+async task throwTask() {
+    throw "Task failed"
+}
+
+async task catcher() {
+    try {
+        await throwTask()
+        give no
+    } catch e {
+        out "e.message: " + e.message
+        give e.message == "Task failed"
+    }
+}
+
+result = await catcher()
+assert(result == true, "await should propagate error from throwTask")

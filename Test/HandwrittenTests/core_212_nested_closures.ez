@@ -1,0 +1,15 @@
+// Test nested closures
+task outer(x) {
+    task middle(y) {
+        task inner(z) {
+            give x + y + z
+        }
+        give inner
+    }
+    give middle
+}
+
+f1 = outer(10)
+f2 = f1(20)
+res = f2(30)
+assert(res == 60, "Nested closures should capture all scopes")

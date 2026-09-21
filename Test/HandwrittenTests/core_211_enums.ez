@@ -1,0 +1,6 @@
+// Test enums and seeded values
+enum State { START, RUNNING = 10, STOPPED }
+
+assert(State.START == 0, "START is 0")
+assert(State.RUNNING == 10, "RUNNING is 10")
+assert(State.STOPPED == 11, "STOPPED is 11")

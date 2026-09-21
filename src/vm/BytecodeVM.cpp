@@ -565,7 +565,41 @@ void BytecodeVM::initBuiltins() {
         if (!inst->klass->behaviors.snapshot) { ctx.runtimeError("rollback() called on non-@snapshot model '" + inst->klass->name + "'"); return Value(); }
         if (!args[1].isDictionary()) { ctx.runtimeError("rollback() second argument must be a snapshot dict"); return Value(); }
         auto snap = args[1].asDictionaryPtr();
-        for (const auto& pair : snap->getMapCopy()) inst->setProperty(pair.first, pair.second);
+        auto klass = inst->klass;
+        // Restoring each property via a raw inst->setProperty() -- the way
+        // this used to work -- silently skips the same @audited/@cached
+        // bookkeeping the SET_PROPERTY opcode does for an ordinary
+        // `obj.field = x` assignment. That's not just a missing log line:
+        // for @cached, it left a *stale, wrong* result in place --
+        // Cart.total() kept reporting the pre-rollback price forever,
+        // silently, with no error. Property-level @persist and validation
+        // rules are deliberately NOT re-run here: replaying a value that
+        // was already valid when it was captured in the snapshot shouldn't
+        // need re-validating, and a snapshot's whole point is being an
+        // offline, in-memory copy rather than something that re-triggers
+        // side effects like a database write on restore.
+        for (const auto& pair : snap->getMapCopy()) {
+            Value oldValue;
+            if (klass->behaviors.audited || klass->behaviors.hasCached) {
+                oldValue = inst->getProperty(pair.first);
+            }
+            inst->setProperty(pair.first, pair.second);
+            if (klass->behaviors.audited) {
+                AuditEntry e;
+                e.field     = pair.first;
+                e.oldValue  = oldValue;
+                e.newValue  = pair.second;
+                e.via       = "rollback";
+                e.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::system_clock::now().time_since_epoch()).count();
+                inst->modifyAuditLog([&](auto& log) { log.push_back(std::move(e)); });
+            }
+            if (klass->behaviors.hasCached && inst->getCacheStore()) {
+                inst->modifyCacheStore([&](auto& cache) {
+                    for (auto& [methodName, cr] : cache) { (void)methodName; cr.dirty = true; }
+                });
+            }
+        }
         return Value();
     }));
 
@@ -1034,4 +1068,3 @@ std::vector<Value> BytecodeVM::getStackTraceFrames() const {
     }
     return result;
 }
-

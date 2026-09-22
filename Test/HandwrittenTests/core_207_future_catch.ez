@@ -6,12 +6,11 @@ async task throwTask() {
 async task catcher() {
     try {
         await throwTask()
-        give no
+        give "no error thrown"
     } catch e {
-        out "e.message: " + e.message
-        give e.message == "Task failed"
+        give e.message
     }
 }
 
 result = await catcher()
-assert(result == true, "await should propagate error from throwTask")
+assert(result == "Task failed", "Actual error: " + result)

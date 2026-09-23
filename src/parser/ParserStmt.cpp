@@ -1080,6 +1080,13 @@ StmtPtr Parser::modelStatement() {
         bool isStatic = false;
         if (match(TokenType::STATIC)) {
             isStatic = true;
+            // A newline right after a bare `static` (e.g. `static` and the
+            // member on the next line) used to fall straight into "expected
+            // a property name, 'task', 'init', ..." -- every OTHER modifier
+            // in this same sequence (visibility, decorators, async) already
+            // tolerates a trailing newline via skipNewlines(); static just
+            // never got the same treatment.
+            skipNewlines();
         }
         
         // Check for init (constructor)
@@ -1128,12 +1135,28 @@ StmtPtr Parser::modelStatement() {
                 isAsync = true;
             }
 
-            // Check for @cached on a method
+            // Collect decorators on a method: @cached is the one built-in
+            // that's meaningful per-method (the others -- @audited,
+            // @snapshot, @persist, @ratelimit -- are whole-instance
+            // behaviors and belong on the model itself, not one method of
+            // it). Anything else is a user-defined decorator; this used to
+            // be a single hardcoded check for the literal token "cached"
+            // with no fallback, so ANY other decorator -- including a
+            // perfectly ordinary custom `@logged`/`@timed` wrapper -- was a
+            // flat parse error the moment it appeared above a method, even
+            // though top-level tasks support arbitrary decorators via this
+            // exact same mechanism (see the loop in statement() above).
             bool methodCached = false;
-            if (check(TokenType::AT) && peekNext().type == TokenType::IDENTIFIER && peekNext().lexeme == "cached") {
+            std::vector<ExprPtr> methodUserDecorators;
+            while (check(TokenType::AT)) {
                 advance(); // consume @
-                advance(); // consume cached
-                methodCached = true;
+                ExprPtr decExpr = expression();
+                bool isBuiltin = false;
+                if (std::holds_alternative<IdentifierExpr*>(decExpr->variant)) {
+                    auto varExpr = std::get<IdentifierExpr*>(decExpr->variant);
+                    if (varExpr->name == "cached") { methodCached = true; isBuiltin = true; }
+                }
+                if (!isBuiltin) methodUserDecorators.push_back(decExpr);
                 skipNewlines();
             }
 
@@ -1287,6 +1310,7 @@ StmtPtr Parser::modelStatement() {
             member.body = body;
             member.requiresClauses = std::move(methodRequiresClauses);
             member.ensuresClauses  = std::move(methodEnsuresClauses);
+            member.userDecorators  = std::move(methodUserDecorators);
             members.push_back(member);
         } else {
             // Property declaration

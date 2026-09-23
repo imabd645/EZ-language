@@ -1564,7 +1564,22 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
             // contract silently compiled with no checks at all.
             methodTask.requiresClauses = member.requiresClauses;
             methodTask.ensuresClauses  = member.ensuresClauses;
+            // Apply any custom decorators the same way top-level tasks do
+            // (see compileTaskStmt's matching comment on ordering): load
+            // decorators outermost-first, emit the raw closure, then CALL
+            // each decorator with the previous result, ending with the
+            // outermost decorator's return value as what actually goes into
+            // the class's method table. Previously there was no way to get
+            // here at all -- the parser only recognized @cached on a method
+            // and rejected every other decorator outright.
+            for (const auto& dec : member.userDecorators) {
+                compileExpr(dec);
+            }
             emitClosure(methodTask, true); // Pushes closure
+            for (size_t i = 0; i < member.userDecorators.size(); ++i) {
+                emitOp(OpCode::CALL);
+                emitByte(1); // 1 argument
+            }
         } else {
             if (member.initializer) {
                 compileExpr(member.initializer);
@@ -2511,5 +2526,3 @@ void BytecodeCompiler::emitContinue() {
 
     emitLoop(loopStack.back().start);
 }
-
-

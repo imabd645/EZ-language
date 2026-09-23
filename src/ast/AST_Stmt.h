@@ -174,6 +174,14 @@ struct ModelMember {
     // task signature" -- it just never actually worked for methods.
     std::vector<std::pair<ExprPtr, std::string>> requiresClauses;
     std::vector<std::pair<ExprPtr, std::string>> ensuresClauses;
+    // Custom user-defined decorators on a method (e.g. a hand-written
+    // `@logged` above `task foo(...) { ... }` inside a model body). Only
+    // `@cached` used to be recognized here at all -- any other decorator,
+    // built-in or user-defined, hit a parse error the moment it appeared
+    // above a method, even though top-level tasks support arbitrary
+    // decorators via the exact same `userDecorators` mechanism (see
+    // TaskStmt's field of the same name).
+    std::vector<ExprPtr> userDecorators;
 };
 
 // Static variable declaration (persistent across task calls)

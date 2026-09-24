@@ -1,67 +1,17 @@
 // Test that await correctly unwraps and propagates errors
-// Simplified diagnostic for macOS failure
-
 async task throwTask() {
     throw "Task failed"
 }
 
-// Test 1: Does a simple async task return a value?
-async task simpleGive() {
-    give "hello"
-}
-
-r1 = await simpleGive()
-assert(r1 == "hello", "TEST1_SIMPLE_GIVE: " + str(r1))
-
-// Test 2: Does an async task with try/catch (no error) return?
-async task catchNoError() {
-    try {
-        give "from try"
-    } catch e {
-        give "from catch"
-    }
-}
-
-r2 = await catchNoError()
-assert(r2 == "from try", "TEST2_CATCH_NO_ERROR: " + str(r2))
-
-// Test 3: Does an async task catch a sync throw?
-async task catchSyncThrow() {
-    try {
-        throw "sync error"
-        give "unreachable"
-    } catch e {
-        give "caught sync"
-    }
-}
-
-r3 = await catchSyncThrow()
-assert(r3 == "caught sync", "TEST3_SYNC_THROW: " + str(r3))
-
-// Test 4: Does an async task catch an awaited async throw?
-async task catchAsyncThrow() {
-    try {
-        await throwTask()
-        give "unreachable"
-    } catch e {
-        give "caught async"
-    }
-}
-
-r4 = await catchAsyncThrow()
-assert(r4 == "caught async", "TEST4_ASYNC_THROW: " + str(r4))
-
-// Test 5: Full original test — catch async + return e.message
 async task catcher() {
     try {
         await throwTask()
-        give "no error"
+        give no
     } catch e {
-        give e.message
+        out "e.message: " + e.message
+        give e.message == "Task failed"
     }
 }
 
-r5 = await catcher()
-assert(r5 == "Task failed", "TEST5_E_MESSAGE: " + str(r5))
-
-out "ALL TESTS PASSED"
+result = await catcher()
+assert(result == true, "await should propagate error from throwTask")

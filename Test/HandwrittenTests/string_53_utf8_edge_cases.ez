@@ -1,0 +1,38 @@
+// string_53_utf8_edge_cases.ez
+// Tests deep edge cases like 4-byte emojis, empty strings, and out-of-bounds slicing/indexing
+
+out "Testing UTF-8 edge cases (Emojis, Out of bounds)..."
+
+// 1. 4-byte characters (Emojis)
+rocket = "🚀"
+assert(len(rocket) == 1, "4-byte emoji should be length 1")
+assert(rocket[0] == "🚀", "Emoji indexing")
+
+multiple = "Hello 🚀🌎!"
+assert(len(multiple) == 9, "Mixed emoji length")
+assert(multiple[6] == "🚀", "Extract first emoji")
+assert(multiple[7] == "🌎", "Extract second emoji")
+
+// 2. Empty strings
+empty = ""
+assert(len(empty) == 0, "Empty string length")
+assert(slice(empty, 0, 5) == "", "Slice empty string")
+
+// 3. Out of bounds slicing
+assert(slice("abc", 5, 10) == "", "Start out of bounds should return empty")
+assert(slice("abc", 1, 10) == "bc", "End out of bounds should clamp to length")
+assert(slice("abc", 2, 1) == "", "Start >= end should return empty")
+assert(slice("café", -10, 2) == "ca", "Negative start beyond length clamps to 0")
+
+// 4. Indexing out of bounds
+caught = false
+try {
+    val = "abc"[5]
+} catch e {
+    caught = true
+}
+assert(caught, "Out of bounds string index should throw")
+
+
+
+out "string_53 passed"

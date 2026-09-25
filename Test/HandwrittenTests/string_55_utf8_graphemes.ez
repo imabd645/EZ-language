@@ -1,0 +1,22 @@
+// string_55_utf8_graphemes.ez
+// Documents and tests the codepoint vs grapheme cluster behavior
+
+out "Testing codepoint vs grapheme cluster behavior..."
+
+// Combining diacritics: 'e' + combining acute accent (U+0301)
+// Visually looks like 'é', but is actually 2 codepoints.
+combining = "é" 
+assert(len(combining) == 2, "Combining diacritic is 2 codepoints")
+assert(combining[0] == "e", "Base character")
+
+// ZWJ Sequences: 👨‍👩‍👧 (Man + ZWJ + Woman + ZWJ + Girl)
+// Total codepoints: Man (1) + ZWJ (1) + Woman (1) + ZWJ (1) + Girl (1) = 5
+family = "👨‍👩‍👧"
+assert(len(family) == 5, "ZWJ sequence is multiple codepoints")
+
+// This test establishes the language contract that EZ strings are 
+// arrays of CODEPOINTS, not visual GRAPHEMES (which would require a huge ICU library).
+// Slicing them slices by codepoint.
+assert(slice(family, 0, 1) == "👨", "Slice extracts exact codepoint")
+
+out "string_55 passed"

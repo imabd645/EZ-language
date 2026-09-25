@@ -1,0 +1,34 @@
+// string_54_utf8_malformed.ez
+// Tests how the string engine gracefully degrades on invalid UTF-8 bytes mixed with valid text
+
+out "Testing malformed UTF-8 graceful degradation..."
+
+// In EZ, buf_to_str can create strings from raw bytes.
+// We'll create a string with an invalid continuation byte.
+b = buffer(3)
+b[0] = 97 // 'a'
+b[1] = 255 // 0xFF is an invalid UTF-8 lead byte
+b[2] = 98 // 'b'
+
+badStr = buf_to_str(b)
+
+// According to our lenient ez_utf8 logic:
+// 'a' (1 byte) -> valid
+// 255 (1 byte) -> invalid, consumed as 1 codepoint
+// 'b' (1 byte) -> valid
+assert(len(badStr) == 3, "Lenient decoding should treat invalid byte as 1 character")
+assert(badStr[0] == "a", "First char valid")
+assert(badStr[2] == "b", "Third char valid")
+
+// Slicing across invalid boundaries
+sub = slice(badStr, 1, 3)
+assert(len(sub) == 2, "Slice should preserve invalid byte and next character")
+assert(sub[1] == "b", "Second char of slice")
+
+// Make sure case mapping doesn't crash on invalid bytes
+upperBad = upper(badStr)
+assert(len(upperBad) == 3, "upper() shouldn't crash on malformed string")
+assert(upperBad[0] == "A", "Valid portions still get uppercased")
+assert(upperBad[2] == "B", "Valid portions still get uppercased")
+
+out "string_54 passed"

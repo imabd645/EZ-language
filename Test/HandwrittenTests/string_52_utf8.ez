@@ -1,0 +1,41 @@
+// string_52_utf8.ez
+// Tests for complete UTF-8 support in strings (len, slice, index, case mapping)
+
+out "Testing UTF-8 string semantics..."
+
+// 1. len() should return character count, not byte count
+s1 = "café"
+assert(len(s1) == 4, "len('café') should be 4 characters, not 5 bytes")
+
+s2 = "Здравствуйте" // 12 characters, Cyrillic (2 bytes each)
+assert(len(s2) == 12, "Cyrillic string length should be 12")
+
+s3 = "Hello 世界" // 5 ASCII + 1 space + 2 CJK (3 bytes each) -> 8 characters
+assert(len(s3) == 8, "Mixed ASCII/CJK string length should be 8")
+
+// 2. String indexing should return full characters
+assert(s1[0] == "c", "s1[0]")
+assert(s1[3] == "é", "s1[3] should be 'é'")
+
+assert(s2[0] == "З", "s2[0] should be 'З'")
+assert(s2[11] == "е", "s2[11] should be 'е'")
+
+assert(s3[6] == "世", "s3[6] should be '世'")
+assert(s3[7] == "界", "s3[7] should be '界'")
+
+// 3. slice() should operate on character boundaries
+assert(slice(s1, 0, 3) == "caf", "slice(café, 0, 3)")
+assert(slice(s1, 3, 4) == "é", "slice(café, 3, 4)")
+assert(slice(s1, 1, 4) == "afé", "slice(café, 1, 4)")
+assert(slice(s2, 0, 6) == "Здравс", "slice Cyrillic")
+assert(slice(s3, 6, 8) == "世界", "slice CJK")
+assert(slice(s1, -1, 4) == "é", "negative start index slice")
+
+// 4. upper() / lower() should handle basic Latin-1 / Cyrillic
+assert(upper("café") == "CAFÉ", "upper() with Latin-1")
+assert(lower("CAFÉ") == "café", "lower() with Latin-1")
+
+assert(toUpper("привет") == "ПРИВЕТ", "upper() Cyrillic")
+assert(toLower("ПРИВЕТ") == "привет", "lower() Cyrillic")
+
+out "All UTF-8 tests passed!"

@@ -11,26 +11,51 @@ extern std::string g_scriptName;
 
 void registerBuiltins(RuntimeContext& interp);
 
-void registerIOBuiltins(RuntimeContext& interp);
-void ezReapDeadFileStreams();
-void registerNetBuiltins(RuntimeContext& interp);
-void registerDBBuiltins(RuntimeContext& interp);
-void registerMathBuiltins(RuntimeContext& interp);
-void registerStringBuiltins(RuntimeContext& interp);
-void registerDataBuiltins(RuntimeContext& interp);
-void registerCoreBuiltins(RuntimeContext& interp);
-void registerConsoleBuiltins(RuntimeContext& interp);
-void registerFFIBuiltins(RuntimeContext& interp);
-void registerBufferBuiltins(RuntimeContext& interp);
-void registerHttpBuiltins(RuntimeContext& interp);
-void registerTimeDateBuiltins(RuntimeContext& interp);
+// data
+void registerArrayBuiltins(RuntimeContext& interp);
+void registerCSVBuiltins(RuntimeContext& interp);
+void registerDictBuiltins(RuntimeContext& interp);
+void registerFPBuiltins(RuntimeContext& interp);
+void registerJSONBuiltins(RuntimeContext& interp);
+void registerTypeBuiltins(RuntimeContext& interp);
 
-// Modularized builtins
-void registerGCBuiltins(RuntimeContext& interp);
-void registerVMBuiltins(RuntimeContext& interp);
-void registerProcessBuiltins(RuntimeContext& interp);
-void registerExceptionBuiltins(RuntimeContext& interp);
+// string
+void registerStringBuiltins(RuntimeContext& interp);
+void registerRegexBuiltins(RuntimeContext& interp);
+void registerEncodingBuiltins(RuntimeContext& interp);
+
+// io
+void registerIOBuiltins(RuntimeContext& interp);
+void registerFileBuiltins(RuntimeContext& interp);
+void registerConsoleBuiltins(RuntimeContext& interp);
+void ezReapDeadFileStreams();
+
+// net
+void registerNetBuiltins(RuntimeContext& interp);
+void registerHttpBuiltins(RuntimeContext& interp);
+
+// math
+void registerMathBuiltins(RuntimeContext& interp);
+
+// time
+void registerTimerBuiltins(RuntimeContext& interp);
+void registerDateTimeBuiltins(RuntimeContext& interp);
 void registerTimeBuiltins(RuntimeContext& interp);
+
+// core
+void registerCoreBuiltins(RuntimeContext& interp);
+void registerExceptionBuiltins(RuntimeContext& interp);
+void registerGCBuiltins(RuntimeContext& interp);
+void registerProcessBuiltins(RuntimeContext& interp);
+void registerVMBuiltins(RuntimeContext& interp);
 void registerConcurrencyBuiltins(RuntimeContext& interp);
+
+// buffer
+void registerBufferBuiltins(RuntimeContext& interp);
+
+// ffi
+void registerFFIBuiltins(RuntimeContext& interp);
+
+void registerDBBuiltins(RuntimeContext& interp);
 
 #endif // BUILTINS_H

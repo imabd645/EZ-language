@@ -113,28 +113,37 @@ set(SOURCES
     src/main.cpp
     src/testing/TestRunner.cpp
     src/builtins/Builtins.cpp
-    src/builtins/Builtins_Buffer.cpp
-    src/builtins/BuiltinsConcurrency.cpp
-    src/builtins/Builtins_Console.cpp
-    src/builtins/Builtins_Core.cpp
-    src/builtins/Builtins_Data.cpp
+    src/builtins/buffer/Buffer.cpp
+    src/builtins/core/Concurrency.cpp
+    src/builtins/io/Console.cpp
+    src/builtins/core/Core.cpp
+    src/builtins/data/Array.cpp
+    src/builtins/data/CSV.cpp
+    src/builtins/data/Dict.cpp
+    src/builtins/data/FP.cpp
+    src/builtins/data/JSON.cpp
+    src/builtins/data/Type.cpp
     src/builtins/FFI/FFI.cpp
     src/builtins/FFI/FFISupport.cpp
     src/builtins/FFI/FFIMemory.cpp
     src/builtins/FFI/FFICall.cpp
     src/builtins/FFI/FFICallback.cpp
     src/builtins/FFI/FFIStruct.cpp
-    src/builtins/BuiltinsGC.cpp
-    src/builtins/BuiltinsVM.cpp
-    src/builtins/BuiltinsProcess.cpp
-    src/builtins/BuiltinsExceptions.cpp
-    src/builtins/BuiltinsTime.cpp
-    src/builtins/Builtins_Http.cpp
-    src/builtins/Builtins_IO.cpp
-    src/builtins/Builtins_Math.cpp
-    src/builtins/Builtins_Net.cpp
-    src/builtins/Builtins_String.cpp
-    src/builtins/Builtins_TimeDate.cpp
+    src/builtins/core/GC.cpp
+    src/builtins/core/VM.cpp
+    src/builtins/core/Process.cpp
+    src/builtins/core/Exceptions.cpp
+    src/builtins/time/Time.cpp
+    src/builtins/net/Http.cpp
+    src/builtins/io/IO.cpp
+    src/builtins/io/File.cpp
+    src/builtins/math/Math.cpp
+    src/builtins/net/Net.cpp
+    src/builtins/string/String.cpp
+    src/builtins/string/Regex.cpp
+    src/builtins/string/Encoding.cpp
+    src/builtins/time/DateTime.cpp
+    src/builtins/time/Timer.cpp
     src/bytecode/Bytecode.cpp
     src/bytecode/serializer/BytecodeSerializer.cpp
     src/cli/CLI.cpp

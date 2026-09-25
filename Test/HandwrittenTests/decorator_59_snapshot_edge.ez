@@ -1,0 +1,34 @@
+// decorator_59_snapshot_edge.ez
+out "Testing @snapshot edge cases..."
+
+@snapshot
+model State {
+    init() {
+        self.a = 1
+    }
+}
+
+s = State()
+snap1 = snapshot(s)
+
+// 1. Snapshotting dynamic fields
+s.b = 2
+snap2 = snapshot(s)
+
+assert(snap1["b"] == nil, "snap1 has no b")
+assert(snap2["b"] == 2, "snap2 captured b")
+
+// 2. Rollback to snap1
+rollback(s, snap1)
+assert(s.a == 1, "Restored a")
+
+// We expect dynamic fields to persist if rollback uses a shallow dict merge.
+// Testing the actual contract of snapshot implementation.
+assert(s.b == 2, "Rollback does not delete newer dynamic fields (shallow merge)")
+
+// 3. Diffing disjoint snapshots
+diff = snapshot_diff(snap1, snap2)
+assert(diff["b"]["was"] == nil, "Diff recognizes field was created")
+assert(diff["b"]["now"] == 2, "Diff recognizes new value")
+
+out "decorator_59 passed"

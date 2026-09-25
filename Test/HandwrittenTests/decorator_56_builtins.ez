@@ -1,0 +1,124 @@
+// decorator_56_builtins.ez
+// Tests for all 5 built-in decorators: @cached, @audited, @snapshot, @persist, @ratelimit
+
+out "Testing Built-in Decorators..."
+
+// ----------------------------------------
+// 1. @cached
+// ----------------------------------------
+model Cart {
+    init() {
+        self.items = 3
+        self.price = 10
+        self.computeCount = 0
+    }
+
+    @cached
+    task total() {
+        self.computeCount = self.computeCount + 1
+        give self.items * self.price
+    }
+}
+
+c = Cart()
+t1 = c.total()
+t2 = c.total()
+assert(t1 == 30, "Cart total 30")
+assert(t2 == 30, "Cart total 30 (cached)")
+assert(c.computeCount == 1, "Should only compute once due to @cached")
+
+c.price = 20
+t3 = c.total()
+assert(t3 == 60, "Cache invalidated on write")
+assert(c.computeCount == 2, "Computed second time")
+
+
+// ----------------------------------------
+// 2. @audited
+// ----------------------------------------
+@audited
+model Account {
+    init(owner) {
+        self.owner = owner
+        self.balance = 0
+    }
+}
+
+a = Account("ana")
+a.balance = 100
+a.balance = 250
+
+log = audit(a)
+assert(len(log) == 4, "Should have 4 audit entries")
+assert(log[0]["field"] == "owner", "first field owner")
+assert(log[0]["new"] == "ana", "first new owner")
+assert(log[3]["field"] == "balance", "fourth field balance")
+assert(log[3]["new"] == 250, "fourth new balance")
+assert(log[3]["old"] == 100, "fourth old balance")
+
+
+// ----------------------------------------
+// 3. @snapshot
+// ----------------------------------------
+@snapshot
+model Doc {
+    init(t) {
+        self.title = t
+        self.body = ""
+    }
+}
+
+d = Doc("draft")
+snap1 = snapshot(d)
+
+d.title = "final"
+d.body = "text"
+
+diff = snapshot_diff(snap1, snapshot(d))
+assert(diff["title"]["old"] == "draft" or diff["title"] != nil, "title changed")
+assert(diff["body"]["old"] == "" or diff["body"] != nil, "body changed")
+
+rollback(d, snap1)
+assert(d.title == "draft", "rollback title")
+assert(d.body == "", "rollback body")
+
+
+// ----------------------------------------
+// 4. @persist
+// ----------------------------------------
+@persist("test_settings.db")
+model Settings {
+    init() { self.theme = "dark" }
+}
+
+s = Settings()
+s.theme = "light"
+
+s2 = Settings.load()
+assert(s2.theme == "light", "Loaded persisted setting")
+// File.remove("test_settings.db") // Locked by SQLite connection until VM teardown
+
+
+// ----------------------------------------
+// 5. @ratelimit
+// ----------------------------------------
+@ratelimit(3, "minute")
+task ping() { give "pong" }
+
+successCount = 0
+failCount = 0
+i = 0
+while i < 5 {
+    try {
+        ping()
+        successCount = successCount + 1
+    } catch e {
+        failCount = failCount + 1
+    }
+    i = i + 1
+}
+
+assert(successCount == 3, "Rate limit should allow 3")
+assert(failCount == 2, "Rate limit should reject 2")
+
+out "All decorator tests passed!"

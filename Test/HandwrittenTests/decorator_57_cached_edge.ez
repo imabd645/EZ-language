@@ -1,0 +1,37 @@
+// decorator_57_cached_edge.ez
+out "Testing @cached edge cases..."
+
+model MathBox {
+    init(x) {
+        self.x = x
+        self.y = 0
+        self.runs = 0
+    }
+    
+    @cached
+    task compute() {
+        self.runs = self.runs + 1
+        give self.x * 10
+    }
+}
+
+// 1. Instances have independent caches
+m1 = MathBox(5)
+m2 = MathBox(10)
+
+assert(m1.compute() == 50, "m1 compute")
+assert(m2.compute() == 100, "m2 compute")
+assert(m1.runs == 1, "m1 ran once")
+assert(m2.runs == 1, "m2 ran once")
+
+// 2. Conservative invalidation
+// Modifying `y` (which is never used in compute) still invalidates the cache for compute!
+m1.y = 99 
+assert(m1.compute() == 50, "m1 compute again")
+assert(m1.runs == 2, "m1 ran twice because ANY property write invalidates all caches on the instance")
+
+// m2 should remain unaffected
+assert(m2.compute() == 100, "m2 compute again")
+assert(m2.runs == 1, "m2 cache was not invalidated by m1's write")
+
+out "decorator_57 passed"

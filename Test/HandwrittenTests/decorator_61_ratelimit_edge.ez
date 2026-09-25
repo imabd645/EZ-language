@@ -1,0 +1,33 @@
+// decorator_61_ratelimit_edge.ez
+out "Testing @ratelimit edge cases..."
+
+@ratelimit(2, "minute")
+task api_a() { give "A" }
+
+@ratelimit(2, "minute")
+task api_b() { give "B" }
+
+// 1. Independent tracking
+api_a()
+api_a()
+
+caughtA = false
+try { api_a() } catch e { caughtA = true }
+assert(caughtA, "api_a is exhausted")
+
+// api_b should still have its full quota
+caughtB = false
+try {
+    api_b()
+    api_b()
+} catch e {
+    caughtB = true
+}
+assert(not caughtB, "api_b is unaffected by api_a's limit")
+
+// Exhaust B
+caughtB2 = false
+try { api_b() } catch e { caughtB2 = true }
+assert(caughtB2, "api_b is now exhausted too")
+
+out "decorator_61 passed"

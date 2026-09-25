@@ -1,0 +1,33 @@
+// decorator_60_persist_edge.ez
+out "Testing @persist edge cases..."
+
+@persist("edge_settings.db")
+model EdgeSettings {
+    init() {
+        self.counter = 0
+        self.data = []
+    }
+}
+
+es = EdgeSettings()
+es.counter = 10
+es.data = [1, 2, 3]
+
+es2 = EdgeSettings.load()
+assert(es2.counter == 10, "Integer persisted")
+assert(type(es2.data) == "string", "Complex types are persisted as strings")
+assert(es2.data == "[1, 2, 3]", "Array content persisted as string")
+
+// Dynamic property on persisted model
+es.newProp = "test"
+
+es3 = EdgeSettings.load()
+assert(es3.newProp == "test", "Dynamic properties are also persisted!")
+
+// Clean up references for Windows SQLite handles
+es = nil
+es2 = nil
+es3 = nil
+gc_collect()
+
+out "decorator_60 passed"

@@ -1,0 +1,34 @@
+// decorator_58_audited_edge.ez
+out "Testing @audited edge cases..."
+
+@audited
+model Ledger {
+    init() {
+        self.val = 0
+    }
+}
+
+l = Ledger()
+
+// 1. Duplicate writes
+l.val = 10
+l.val = 10 // Does it audit redundant sets?
+
+log = audit(l)
+assert(len(log) == 3, "init + 2 writes = 3 logs")
+assert(log[1]["new"] == 10, "First write")
+assert(log[2]["old"] == 10 and log[2]["new"] == 10, "Redundant write is still audited")
+
+// 2. Dynamic property addition
+l.dynamicField = "hello"
+log2 = audit(l)
+assert(len(log2) == 4, "Adding a new property audits it")
+assert(log2[3]["field"] == "dynamicField", "Dynamic field captured")
+assert(log2[3]["old"] == nil, "Old was nil")
+
+// 3. audit_clear()
+audit_clear(l)
+log3 = audit(l)
+assert(len(log3) == 0, "Audit log should be empty after clear")
+
+out "decorator_58 passed"

@@ -4016,6 +4016,10 @@ void BytecodeVM::doIndexGet() {
         
         push(Value(s.substr(byteOffset, n)));
     } else if (obj.isDictionary()) {
+        if (!idx.isString() && !idx.isNumber() && !idx.isBool()) {
+            throwException("TypeError", "Dictionary key must be a string, number, or bool, got " + idx.typeName());
+            return;
+        }
         // Single locked O(1) lookup. This used to copy the WHOLE map
         // (getMapCopy()) just to read one key, making every dict[key] O(n) --
         // with a string copy and an atomic refcount bump per copied entry.
@@ -4051,6 +4055,10 @@ void BytecodeVM::doIndexSet() {
         if (i >= (long long)arr.size()) arr.resize(i + 1);
         arr.set(i, val);
     } else if (obj.isDictionary()) {
+        if (!idx.isString() && !idx.isNumber() && !idx.isBool()) {
+            runtimeError("Dictionary key must be a string, number, or bool, got " + idx.typeName());
+            return;
+        }
         auto dictPtr = obj.asDictionaryPtr();
         dictPtr->set(idx.toString(), val);
     } else if (obj.isBuffer()) {

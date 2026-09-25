@@ -138,6 +138,19 @@ inline size_t charOffsetToByteOffset(const std::string& s, size_t charIndex) {
     return i;
 }
 
+// Convert a byte offset back to a character index
+inline size_t byteOffsetToCharOffset(const std::string& s, size_t byteIndex) {
+    size_t charCount = 0;
+    size_t i = 0;
+    while (i < s.size() && i < byteIndex) {
+        size_t n = seqLen((unsigned char)s[i]);
+        if (!validAt(s, i, n)) n = 1;
+        i += n;
+        charCount++;
+    }
+    return charCount;
+}
+
 inline uint32_t toUpperCP(uint32_t cp) {
     if (cp >= 'a' && cp <= 'z') return cp - 32;
     if (cp >= 0xE0 && cp <= 0xF6) return cp - 32;

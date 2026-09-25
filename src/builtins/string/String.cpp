@@ -18,14 +18,18 @@ void registerStringBuiltins(RuntimeContext& interp) {
                 if (!args[0].isString()) { interp.runtimeError("substr() expects string as first argument", 0, ""); return Value(); }
                 if (!args[1].isNumber() || !args[2].isNumber()) { interp.runtimeError("substr() expects numbers for start and length", 0, ""); return Value(); }
                 const std::string& str = args[0].asString();
-                int start = static_cast<int>(args[1].asNumber());
-                int len = static_cast<int>(args[2].asNumber());
+                int charStart = static_cast<int>(args[1].asNumber());
+                int charLen = static_cast<int>(args[2].asNumber());
                 
-                if (start < 0) start = 0;
-                if (start >= static_cast<int>(str.length())) return Value("");
-                if (len < 0) len = 0;
+                int totalChars = static_cast<int>(ez_utf8::lengthChars(str));
+                if (charStart < 0) charStart = 0;
+                if (charStart >= totalChars) return Value("");
+                if (charLen < 0) charLen = 0;
                 
-                return Value(str.substr(start, len));
+                size_t byteStart = ez_utf8::charOffsetToByteOffset(str, charStart);
+                size_t byteEnd = ez_utf8::charOffsetToByteOffset(str, charStart + charLen);
+                
+                return Value(str.substr(byteStart, byteEnd - byteStart));
             }));
 
     interp.defineGlobal("split", Value::makeNativeFunction("split", 2,
@@ -191,14 +195,18 @@ void registerStringBuiltins(RuntimeContext& interp) {
                 if (!args[1].isNumber()) { interp.runtimeError("substring() start must be number", 0, ""); return Value(); }
                 
                 std::string s = args[0].asString();
+                int totalChars = (int)ez_utf8::lengthChars(s);
                 int start = (int)args[1].asNumber();
-                int len = (args.size() == 3 && args[2].isNumber()) ? (int)args[2].asNumber() : (int)s.length() - start;
+                int len = (args.size() == 3 && args[2].isNumber()) ? (int)args[2].asNumber() : totalChars - start;
                 
                 if (start < 0) start = 0;
-                if (start > (int)s.length()) return Value("");
+                if (start > totalChars) return Value("");
                 if (len < 0) len = 0;
                 
-                return Value(s.substr(start, len));
+                size_t byteStart = ez_utf8::charOffsetToByteOffset(s, start);
+                size_t byteEnd = ez_utf8::charOffsetToByteOffset(s, start + len);
+                
+                return Value(s.substr(byteStart, byteEnd - byteStart));
             }));
 
 }

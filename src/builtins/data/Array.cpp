@@ -139,19 +139,21 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                 }
                 if (args[0].isString()) {
                     if (!args[1].isString()) { interp.runtimeError("indexOf() with string expects string to search for", 0, ""); return Value(); }
-                    size_t startPos = 0;
+                    size_t byteStart = 0;
                     if (args.size() == 3) {
                         if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
                         double val = args[2].asNumber();
-                        int len = static_cast<int>(args[0].asString().length());
+                        int len = static_cast<int>(ez_utf8::lengthChars(args[0].asString()));
                         int start = static_cast<int>(val);
                         if (start < 0) start = std::max(0, len + start);
-                        startPos = static_cast<size_t>(start);
+                        size_t charStart = static_cast<size_t>(start);
+                        byteStart = ez_utf8::charOffsetToByteOffset(args[0].asString(), charStart);
                     }
     
-                    size_t pos = args[0].asString().find(args[1].asString(), startPos);
+                    size_t pos = args[0].asString().find(args[1].asString(), byteStart);
                     if (pos == std::string::npos) return Value(-1.0);
-                    return Value(static_cast<double>(pos));
+                    size_t charPos = ez_utf8::byteOffsetToCharOffset(args[0].asString(), pos);
+                    return Value(static_cast<double>(charPos));
                 }
                 if (args[0].isArray()) {
                     const auto& arr = args[0].asArray();

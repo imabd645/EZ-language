@@ -70,7 +70,7 @@ s = "naïve café 日本"
 checkEq("len counts characters", len(s), 13)
 checkEq("split/join", join(split(s, " "), "|"), "naïve|café|日本")
 checkEq("replace", replace(s, "café", "tea"), "naïve tea 日本")
-checkEq("indexOf returns a byte offset", indexOf(s, "café"), 7)
+checkEq("indexOf returns a character offset", indexOf(s, "café"), 6)
 check("contains", contains(s, "日本"))
 checkEq("concat", "é" + "!", "é!")
 checkEq("trim", trim("  é  "), "é")

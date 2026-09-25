@@ -31,6 +31,10 @@ void registerDictBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("has_key", Value::makeNativeFunction("has_key", 2,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isDictionary()) { interp.runtimeError("has_key() expects dictionary as first argument", 0, ""); return Value(); }
+                if (!args[1].isString() && !args[1].isNumber() && !args[1].isBool()) {
+                    interp.runtimeError("Dictionary key must be a string, number, or bool", 0, "");
+                    return Value();
+                }
                 std::string key = args[1].toString();
                 auto dictPtr = args[0].asDictionaryPtr();
                 return Value(dictPtr->has(key));
@@ -39,6 +43,10 @@ void registerDictBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("dictRemove", Value::makeNativeFunction("dictRemove", 2,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isDictionary()) { interp.runtimeError("dictRemove() expects dictionary", 0, ""); return Value(); }
+                if (!args[1].isString() && !args[1].isNumber() && !args[1].isBool()) {
+                    interp.runtimeError("Dictionary key must be a string, number, or bool", 0, "");
+                    return Value();
+                }
                 std::string key = args[1].toString();
                 auto dictPtr = args[0].asDictionaryPtr();
                 dictPtr->erase(key);

@@ -137,6 +137,47 @@ inline size_t charOffsetToByteOffset(const std::string& s, size_t charIndex) {
     }
     return i;
 }
+
+inline uint32_t toUpperCP(uint32_t cp) {
+    if (cp >= 'a' && cp <= 'z') return cp - 32;
+    if (cp >= 0xE0 && cp <= 0xF6) return cp - 32;
+    if (cp >= 0xF8 && cp <= 0xFE) return cp - 32;
+    if (cp == 0xFF) return 0x0178;
+    if (cp >= 0x0430 && cp <= 0x044F) return cp - 32;
+    return cp;
+}
+
+inline uint32_t toLowerCP(uint32_t cp) {
+    if (cp >= 'A' && cp <= 'Z') return cp + 32;
+    if (cp >= 0xC0 && cp <= 0xD6) return cp + 32;
+    if (cp >= 0xD8 && cp <= 0xDE) return cp + 32;
+    if (cp == 0x0178) return 0xFF;
+    if (cp >= 0x0410 && cp <= 0x042F) return cp + 32;
+    return cp;
+}
+
+inline std::string upperChars(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        uint32_t cp = decode(s, i);
+        encode(toUpperCP(cp), out);
+    }
+    return out;
+}
+
+inline std::string lowerChars(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        uint32_t cp = decode(s, i);
+        encode(toLowerCP(cp), out);
+    }
+    return out;
+}
+
 } // namespace ez_utf8
 
 #endif // EZ_UTF8_H

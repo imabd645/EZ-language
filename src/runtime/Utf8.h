@@ -111,6 +111,32 @@ inline std::string reverseChars(const std::string& s) {
     return out;
 }
 
+
+// Get the number of Unicode characters in the string
+inline size_t lengthChars(const std::string& s) {
+    size_t count = 0;
+    size_t i = 0;
+    while (i < s.size()) {
+        size_t n = seqLen((unsigned char)s[i]);
+        if (!validAt(s, i, n)) n = 1;
+        i += n;
+        count++;
+    }
+    return count;
+}
+
+// Convert a character index to a byte offset
+inline size_t charOffsetToByteOffset(const std::string& s, size_t charIndex) {
+    size_t count = 0;
+    size_t i = 0;
+    while (i < s.size() && count < charIndex) {
+        size_t n = seqLen((unsigned char)s[i]);
+        if (!validAt(s, i, n)) n = 1;
+        i += n;
+        count++;
+    }
+    return i;
+}
 } // namespace ez_utf8
 
 #endif // EZ_UTF8_H

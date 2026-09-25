@@ -88,33 +88,25 @@ void registerStringBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("upper", Value::makeNativeFunction("upper", 1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString()) { interp.runtimeError("upper() expects string", 0, ""); return Value(); }
-                std::string s = args[0].asString();
-                std::transform(s.begin(), s.end(), s.begin(), ::toupper);
-                return Value(s);
+                return Value(ez_utf8::upperChars(args[0].asString()));
             }));
 
     interp.defineGlobal("toUpper", Value::makeNativeFunction("toUpper", 1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString()) { interp.runtimeError("toUpper() expects string", 0, ""); return Value(); }
-                std::string s = args[0].asString();
-                for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-                return Value(s);
+                return Value(ez_utf8::upperChars(args[0].asString()));
             }));
 
     interp.defineGlobal("lower", Value::makeNativeFunction("lower", 1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString()) { interp.runtimeError("lower() expects string", 0, ""); return Value(); }
-                std::string s = args[0].asString();
-                std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-                return Value(s);
+                return Value(ez_utf8::lowerChars(args[0].asString()));
             }));
 
     interp.defineGlobal("toLower", Value::makeNativeFunction("toLower", 1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString()) { interp.runtimeError("toLower() expects string", 0, ""); return Value(); }
-                std::string s = args[0].asString();
-                for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                return Value(s);
+                return Value(ez_utf8::lowerChars(args[0].asString()));
             }));
 
     interp.defineGlobal("trim", Value::makeNativeFunction("trim", 1,

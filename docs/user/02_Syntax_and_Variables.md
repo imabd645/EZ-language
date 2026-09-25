@@ -24,7 +24,7 @@ nothing = nil           // Nil (null)
 | :--- | :--- | :--- |
 | **Integer** | `42`, `-10`, `0xFF`, `0b1010` | 64-bit signed integer. |
 | **Number** | `3.14`, `-0.05`, `1e6` | 64-bit IEEE 754 floating-point. |
-| **String** | `"Hello"`, `'Single quoted'` | UTF-8 encoded text string. |
+| **String** | `"Hello"`, `'Single quoted'` | UTF-8 encoded text string. Indexed and sliced by UTF-8 characters, not bytes. |
 | **Boolean** | `true`, `false`, `yes`, `no` | Boolean truth values. |
 | **Nil** | `nil` | Represents the absence of a value. |
 

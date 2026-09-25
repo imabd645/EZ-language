@@ -3,6 +3,7 @@
 #include "sqlite3.h"
 #include "eventloop/EventLoop.h"
 #include "vm/BytecodeVM.h"
+#include "runtime/Utf8.h"
 #include "runtime/Value.h"
 #include "runtime/EZFuture.h"
 #include <iostream>
@@ -4003,8 +4004,17 @@ void BytecodeVM::doIndexGet() {
     } else if (obj.isString()) {
         const std::string& s = obj.asString();
         long long i = idx.asInteger();
-        if (!checkBounds(i, s.length(), "string")) return;
-        push(Value(std::string(1, s[i])));
+        size_t charLen = ez_utf8::lengthChars(s);
+        if (!checkBounds(i, charLen, "string")) return;
+        
+        // Find the byte offset of the character
+        size_t byteOffset = ez_utf8::charOffsetToByteOffset(s, i);
+        
+        // Find how many bytes this character uses
+        size_t n = ez_utf8::seqLen((unsigned char)s[byteOffset]);
+        if (!ez_utf8::validAt(s, byteOffset, n)) n = 1;
+        
+        push(Value(s.substr(byteOffset, n)));
     } else if (obj.isDictionary()) {
         // Single locked O(1) lookup. This used to copy the WHOLE map
         // (getMapCopy()) just to read one key, making every dict[key] O(n) --

@@ -13,7 +13,7 @@ void registerArrayBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("len", Value::makeNativeFunction("len", 1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (args[0].isNil()) return Value(0LL);
-                if (args[0].isString()) return Value(static_cast<long long>(args[0].asString().length()));
+                if (args[0].isString()) return Value(static_cast<long long>(ez_utf8::lengthChars(args[0].asString())));
                 if (args[0].isArray()) return Value(static_cast<long long>(args[0].asArray().size()));
                 if (args[0].isDictionary()) return Value(static_cast<long long>(args[0].asDictionary().size()));
                 if (args[0].isBuffer()) return Value(static_cast<long long>(args[0].asBuffer().size()));
@@ -69,13 +69,15 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                 
                 if (args[0].isString()) {
                     const std::string& s = args[0].asString();
-                    int len = static_cast<int>(s.length());
+                    int len = static_cast<int>(ez_utf8::lengthChars(s));
                     if (start < 0) start = std::max(0, len + start);
                     if (end < 0) end = std::max(0, len + end);
                     if (start >= len) return Value("");
                     if (end > len) end = len;
                     if (start >= end) return Value("");
-                    return Value(s.substr(start, end - start));
+                    size_t byteStart = ez_utf8::charOffsetToByteOffset(s, start);
+                    size_t byteEnd = ez_utf8::charOffsetToByteOffset(s, end);
+                    return Value(s.substr(byteStart, byteEnd - byteStart));
                 }
                 if (args[0].isArray()) {
                     const auto& arr = args[0].asArray();

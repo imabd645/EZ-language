@@ -8,9 +8,9 @@
 #   chr(233)         -> byte 233                  (not valid UTF-8 alone)
 #   ord("é")         -> 195                       (lead byte, not U+00E9)
 #
-# len/substr stay BYTE-oriented on purpose: substr takes offsets that indexOf
-# produces, and making one count characters while the other counts bytes would
-# leave them silently inconsistent.
+# len was historically byte-oriented, but has been upgraded to count characters
+# along with string indexing (s[0]) and slice().
+# substr and indexOf remain byte-oriented for lower-level buffer slicing.
 
 fails = 0
 
@@ -44,9 +44,9 @@ out "-- chr encodes, ord decodes --"
 checkEq("chr ascii", chr(101), "e")
 checkEq("chr 2-byte", chr(233), "é")
 checkEq("chr 3-byte", chr(26085), "日")
-checkEq("chr 2-byte is two bytes", len(chr(233)), 2)
-checkEq("chr 3-byte is three bytes", len(chr(26085)), 3)
-checkEq("chr 4-byte is four bytes", len(chr(128512)), 4)
+checkEq("chr 2-byte is 1 character", len(chr(233)), 1)
+checkEq("chr 3-byte is 1 character", len(chr(26085)), 1)
+checkEq("chr 4-byte is 1 character", len(chr(128512)), 1)
 
 checkEq("ord ascii", ord("e"), 101)
 checkEq("ord 2-byte", ord("é"), 233)
@@ -67,7 +67,7 @@ check("lone surrogate rejected", threw(| | { give chr(55296) }))
 
 out "-- byte-oriented operations are unchanged --"
 s = "naïve café 日本"
-checkEq("len counts bytes", len(s), 19)
+checkEq("len counts characters", len(s), 13)
 checkEq("split/join", join(split(s, " "), "|"), "naïve|café|日本")
 checkEq("replace", replace(s, "café", "tea"), "naïve tea 日本")
 checkEq("indexOf returns a byte offset", indexOf(s, "café"), 7)

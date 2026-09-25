@@ -1,0 +1,21 @@
+out "=== Testing Deep Edge Cases 5 (Math & Equality) ==="
+
+out "\n--- 1. Division by Zero ---"
+try { out "1 / 0 = " + str(1 / 0) } catch e { out "Blocked 1/0" }
+try { out "0 / 0 = " + str(0 / 0) } catch e { out "Blocked 0/0" }
+try { out "1 % 0 = " + str(1 % 0) } catch e { out "Blocked 1%0" }
+
+out "\n--- 2. Number limits ---"
+out "1e300 * 1e300 = " + str(1e300 * 1e300)
+
+out "\n--- 3. Type Equality ---"
+out "1 == '1': " + str(1 == "1")
+out "0 == false: " + str(0 == false)
+out "nil == false: " + str(nil == false)
+
+out "\n--- 4. Reference Equality ---"
+arr1 = [1, 2]
+arr2 = [1, 2]
+arr3 = arr1
+out "arr1 == arr2 (same content): " + str(arr1 == arr2)
+out "arr1 == arr3 (same reference): " + str(arr1 == arr3)

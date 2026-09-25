@@ -115,8 +115,7 @@ rather than silently reporting "no match". Flags combine in one string:
 | `dictRemove(dict, key)` | Delete a key |
 | `properties(instance)` | Array of an instance's property names |
 
-Arrays support 0-based indexing with negative indices (`arr[-1]` = last
-element) and slicing (`arr[1:3]`); dictionary keys are strings.
+Arrays support 0-based indexing (note: negative indexing is not supported, use `arr[len(arr)-1]` instead). Slicing is performed using the builtin `slice(arr, start, end)`. Dictionary keys are strings.
 
 ## JSON
 

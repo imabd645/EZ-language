@@ -1,0 +1,17 @@
+out "=== Testing Deep Edge Cases 7 (File I/O) ==="
+
+out "\n--- 1. Missing files ---"
+try {
+    text = readFile("does_not_exist_xyz123.txt")
+    out "BUG: Read missing file?"
+} catch e {
+    out "Caught missing file correctly: " + str(e)
+}
+
+out "\n--- 2. Directory as a file ---"
+try {
+    text = readFile("Test")
+    out "BUG: Read a directory as a text file! " + str(text)
+} catch e {
+    out "Caught reading directory: " + str(e)
+}

@@ -1,0 +1,33 @@
+out "=== Testing Deep Edge Cases 6 (JSON & Stringification) ==="
+
+out "\n--- 1. Stringifying Objects ---"
+task sampleTask() { give 1 }
+model SampleModel {}
+fut = spawn(|| { give 1 })
+
+out "Task: " + str(sampleTask)
+out "Class: " + str(SampleModel)
+out "Future: " + str(fut)
+
+out "\n--- 2. JSON Cyclic Structures ---"
+cyclicDict = {}
+cyclicDict["self"] = cyclicDict
+
+caughtCycle = false
+try {
+    jsonStr = to_json(cyclicDict)
+    out "BUG: Serialized a cyclic dictionary!"
+} catch e {
+    out "Caught JSON cycle safely: " + str(e)
+    caughtCycle = true
+}
+
+out "\n--- 3. JSON Unsupported Types ---"
+caughtUnsupported = false
+try {
+    jsonStr2 = to_json({ "func": sampleTask })
+    out ": Serialized a function to JSON!"
+} catch e {
+    out "Caught unsupported JSON type safely: " + str(e)
+    caughtUnsupported = true
+}

@@ -1,0 +1,30 @@
+out "=== Testing Deep Edge Cases 4 (Builtins & Types) ==="
+
+out "\n--- 1. Math functions with wrong types ---"
+caught = false
+try { floor([1, 2, 3]) } catch e { caught = true; out "Blocked floor(array)" }
+when not caught { out "BUG: floor allowed array!" }
+
+out "\n--- 2. Buffer overflow ---"
+b = buffer(2)
+try { b[3] = 255; out "BUG: Allowed buffer write out of bounds" } catch e { out "Blocked buffer overflow" }
+try { val = b[3]; out "BUG: Allowed buffer read out of bounds" } catch e { out "Blocked buffer overread" }
+
+out "\n--- 3. Function arity ---"
+task takesTwo(a, b) { give a + b }
+try { takesTwo(1) } catch e { out "Blocked too few args" }
+try { takesTwo(1, 2, 3) } catch e { out "Blocked too many args" }
+
+out "\n--- 4. Variadic native function edge cases ---"
+// print/out is usually variadic or implicit.
+// Let's try join() with non-strings
+try { join(["a", 1, "b"], "-") } catch e { out "Blocked joining with integers (or coerced them?): " + str(e) }
+
+out "\n--- 5. Mutating arrays while iterating ---"
+arr = [1, 2, 3]
+get x in arr {
+    push(arr, 4)
+    out "Iterated over: " + str(x)
+    when x == 2 { break } // prevent infinite loop if it evaluates dynamically
+}
+out "Final array length: " + str(len(arr))

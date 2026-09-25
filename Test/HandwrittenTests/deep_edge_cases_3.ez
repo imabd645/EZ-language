@@ -1,0 +1,47 @@
+out "=== Testing Deep Edge Cases 3 (Garbage Collector) ==="
+
+out "\n--- 1. Simple Cycle ---"
+a = {}
+b = {}
+a["b"] = b
+b["a"] = a
+
+a = nil
+b = nil
+gc_collect()
+out "Cycle 1 survived without crashing."
+
+out "\n--- 2. Array Cycle ---"
+arr = []
+push(arr, arr) // Self-referential array
+
+arr = nil
+gc_collect()
+out "Array Cycle survived without crashing."
+
+out "\n--- 3. Class Instance Cycle ---"
+model Node {
+    init(val) {
+        self.val = val
+        self.next = nil
+    }
+}
+n1 = Node(1)
+n2 = Node(2)
+n1.next = n2
+n2.next = n1
+
+n1 = nil
+n2 = nil
+gc_collect()
+out "Class Instance Cycle survived without crashing."
+
+out "\n--- 4. Uncaught exceptions inside Async ---"
+fut = spawn(|| {
+    throw "Hidden error in spawned thread!"
+})
+// If we don't await the future, does the program crash?
+out "Spawned thread with error..."
+stop(100) // Sleep slightly to let the thread execute
+gc_collect() // Can we collect a failed future?
+out "Done. If this prints, the uncaught async error was swallowed gracefully."

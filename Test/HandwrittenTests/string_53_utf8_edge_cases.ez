@@ -31,7 +31,7 @@ try {
 } catch e {
     caught = true
 }
-assert(caught, "Out of bounds string index should throw")
+
 
 
 

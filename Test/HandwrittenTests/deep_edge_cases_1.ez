@@ -1,0 +1,51 @@
+out "=== Testing Deep Edge Cases ==="
+
+out "\n--- 1. Exceptions: Return from Finally ---"
+task returnFromFinally() {
+    try {
+        throw "Initial Error"
+    } catch e {
+        give "Returned from catch"
+    } finally {
+        give "Returned from finally" // Should override the catch return!
+    }
+}
+out "Result: " + str(returnFromFinally())
+
+out "\n--- 2. Exceptions: Throwing raw types ---"
+try {
+    throw [1, 2, 3]
+} catch e {
+    out "Caught raw array throw! Type: " + type(e) + ", Value: " + str(e)
+}
+
+out "\n--- 3. Collections: Out of bounds insertion ---"
+arr = [1, 2, 3]
+caught = false
+try {
+    insert(arr, 10, "way out")
+} catch e {
+    out "Correctly blocked out of bounds insert."
+    caught = true
+}
+when not caught { out "BUG: Inserted out of bounds without error!" }
+
+out "\n--- 4. Dictionaries: Non-string keys ---"
+d = {}
+d[1] = "number one"
+d["1"] = "string one"
+d[nil] = "nil key"
+
+out "d[1] is: " + str(d[1])
+out "d['1'] is: " + str(d["1"])
+out "d[nil] is: " + str(d[nil])
+
+out "\n--- 5. Dictionaries: Array as key ---"
+caughtArrKey = false
+try {
+    d[arr] = "array key"
+} catch e {
+    out "Correctly blocked array as dict key. Error: " + str(e)
+    caughtArrKey = true
+}
+when not caughtArrKey { out "BUG: Allowed array as dictionary key!" }

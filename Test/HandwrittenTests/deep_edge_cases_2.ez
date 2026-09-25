@@ -1,0 +1,46 @@
+out "=== Testing Deep Edge Cases 2 ==="
+
+out "\n--- 1. OOP: Manual init call ---"
+model Counter {
+    init(start) {
+        self.count = start
+    }
+}
+c = Counter(5)
+out "Before manual init: " + str(c.count)
+c.init(100) // Manually calling init on an existing instance!
+out "After manual init: " + str(c.count)
+
+out "\n--- 2. OOP: Dynamic Method Injection ---"
+task hijack(obj) {
+    obj.count = -999
+}
+// Try to inject a method dynamically
+c.hijack = hijack
+try {
+    c.hijack()
+    out "Injected method executed. count: " + str(c.count)
+} catch e {
+    out "Blocked dynamic method injection: " + str(e)
+}
+
+out "\n--- 3. Scope: Variable Shadowing in loops ---"
+funcs = []
+i = 0
+while i < 3 {
+    local_val = i
+    push(funcs, || { give local_val })
+    i = i + 1
+}
+out "funcs[0](): " + str(funcs[0]())
+out "funcs[1](): " + str(funcs[1]())
+out "funcs[2](): " + str(funcs[2]())
+
+out "\n--- 4. Concurrency: Recursive Spawn ---"
+fut = spawn(|| {
+    give spawn(|| {
+        give "Deeply spawned!"
+    })
+})
+innerFut = await(fut)
+out "Result of inner spawn: " + await(innerFut)

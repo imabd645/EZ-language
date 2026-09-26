@@ -48,9 +48,9 @@ out factorial(5) // 120
 ```
 
 ### `repeat` Loop (Ranges)
-The upper bound is exclusive.
+The upper bound is inclusive.
 ```ez
-// Builds an array from 0 to 4
+// Builds an array from 0 to 5
 arr = []
 repeat i = 0 to 5 {
     arr[] = i

@@ -205,4 +205,4 @@ os_free(textPtr)
 - **String Out of Bounds**: Calling `substr` or `substring` with indices larger than the string length will result in an "out of bounds" fatal error. Always check `len()` first!
 - **Network Timeouts**: The `http_get` and `fetch` calls have an internal timeout (usually 30 seconds). If a server hangs, the call will eventually throw an exception indicating a network failure.
 - **FFI Memory Leaks**: Memory allocated via `os_alloc` completely bypasses the EZ Garbage Collector. If you fail to call `os_free()`, your script will leak memory indefinitely.
-- **Access Violation (0xC0000005)**: Using `os_read_byte`, `os_write_byte`, or passing bad pointers to `os_call` will trigger an OS-level Access Violation, terminating the VM instantly and bypassing all `try/catch` blocks.
+- **Access Violation (0xC0000005)**: Thanks to the SAFE_MEMORY_OP macro, using `os_read_byte`, `os_write_byte`, or passing bad pointers to `os_call` will trigger an OS-level Access Violation that is safely intercepted by the VM and converted into a catchable `FFI memory access violation` exception, preventing the interpreter from crashing!

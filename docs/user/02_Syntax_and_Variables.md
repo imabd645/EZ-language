@@ -83,4 +83,8 @@ inverted = ~0           // -1
 // Comparisons & Logic
 isValid = (age >= 18) and (isActive == true)
 isExcluded = not (age < 18)
+
+// Nil Coalescing & Optional Chaining
+username = dbUser ?? "Anonymous"        // Returns right if left is nil
+city = user?.address?.city ?? "Unknown" // Safely handles nil properties
 ```

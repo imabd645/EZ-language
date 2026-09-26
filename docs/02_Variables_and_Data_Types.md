@@ -90,6 +90,24 @@ when data == nil {
 }
 ```
 
+### Nil-Coalescing Operator (`??`)
+You can safely provide a default value when a variable is `nil` using the `??` operator. If the left side is `nil`, it evaluates and returns the right side.
+```ez
+username = nil
+displayName = username ?? "Anonymous User"
+out displayName // "Anonymous User"
+```
+
+### Optional Chaining (`?.`)
+When accessing deeply nested dictionaries or objects that might be `nil`, use `?.` to safely short-circuit instead of throwing a runtime error.
+```ez
+user = { "profile": nil }
+
+// Safely access name. If profile is nil, the expression evaluates to nil!
+name = user?.profile?.name ?? "Unknown"
+out name // "Unknown"
+```
+
 ## 4. Type Checking
 You can dynamically check the type of any variable using the built-in `typeOf()` function.
 ```ez

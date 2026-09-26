@@ -32,7 +32,29 @@ user1 = createUser("Alice")
 user2 = createUser("Bob", "Admin")
 ```
 
-## 3. Deep Closures and State Management
+## 3. Keyword Arguments
+When calling tasks, you can pass arguments by name rather than position. This is especially useful for tasks with many default parameters, allowing you to skip parameters you don't want to provide.
+```ez
+task configureWindow(width=800, height=600, title="App", fullscreen=false) {
+    out "Creating " + title + " at " + width + "x" + height
+}
+
+// Pass arguments completely out of order!
+configureWindow(title="My Game", fullscreen=true)
+```
+
+## 4. The Spread Operator (`...`)
+If you have an array of values, you can instantly "unpack" or "spread" them into a function call as separate arguments using the `...` operator.
+```ez
+task addThreeNumbers(a, b, c) {
+    give a + b + c
+}
+
+myNumbers = [10, 20, 30]
+out addThreeNumbers(...myNumbers) // 60
+```
+
+## 5. Deep Closures and State Management
 Tasks in EZ support closures. An inner task can capture variables from an outer task. The VM intelligently detects this and promotes the captured variable from the stack to the heap, ensuring it survives after the outer task finishes.
 
 ```ez

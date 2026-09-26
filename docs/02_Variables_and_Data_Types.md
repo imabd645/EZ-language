@@ -58,6 +58,10 @@ push(inventory, "Magic Scroll")
 
 // Modify existing items
 inventory[2] = 150
+
+// Use the Spread Operator (...) to merge arrays
+extraItems = ["Ring", "Amulet"]
+mergedInventory = [...inventory, "Gold", ...extraItems]
 ```
 Note: Negative indexing (`arr[-1]`) and bracket slicing (`arr[1:3]`) are not supported. Use `arr[len(arr)-1]` and `slice(arr, 1, 3)` instead.
 

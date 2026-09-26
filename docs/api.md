@@ -323,6 +323,23 @@ untrusted input.
 | `exit(code)` | Terminate the process immediately |
 | `clock()` | Milliseconds since the Unix epoch (wall-clock) |
 
+## VM Introspection & Engine Internals
+
+EZ provides powerful `__` prefixed low-level builtins for telemetry, debugging, and strict sandboxing.
+
+| Function | Description |
+|---|---|
+| `__engine_info()` | Dictionary containing OS, Arch, Engine Version, and Compiler. |
+| `__stack_trace()` | Array of objects representing the current execution call stack (`line`, `file`, `function`). |
+| `__process_pid()` | The OS Process ID of the running EZ Engine. |
+| `__process_cwd()` | Current working directory of the process. |
+| `__gc_stats()` | Dictionary showing `{enabled, tracked, cycles}` for the garbage collector. |
+| `__gc_is_enabled()` | Boolean indicating if cycle collection is currently active. |
+| `__vm_get_max_recursion_depth()` / `__vm_set_max_recursion_depth(n)` | Get/Set the maximum allowed call stack depth before aborting. |
+| `__vm_current_depth()` | Current stack depth (integer). |
+| `__vm_instruction_count()` / `__vm_reset_instruction_count()` | Count the exact number of bytecode instructions executed in this VM. |
+| `__vm_get_max_instructions()` / `__vm_set_max_instructions(n)` | Get/Set the absolute limit on instructions executed (used for strict sandboxing). |
+
 ## Native FFI (`os_*`)
 
 See [ffi-and-gui.md](ffi-and-gui.md) for the full FFI reference, including

@@ -55,7 +55,7 @@ throw Exception("Database connection failed")
 ```
 
 ## 4. Edge Cases & Pitfalls
-- **No `finally` Block**: EZ does not currently have a `finally` keyword. If you open a file or a network socket, you must remember to close it at the end of your `try` block AND inside your `catch` block to avoid leaks.
+- **The `finally` Block**: EZ *does* support `finally` blocks, which execute after `try` and `catch` blocks. However, there is a known semantic edge case: if you `throw` a new exception *inside* the `catch` block, the `finally` block is bypassed and does not execute!
 - **Uncaught Exceptions in Background Tasks**: Exceptions thrown inside a background thread (created via `spawn()`) will silently terminate that thread. The exception is **only** bubbled to the main thread when the main thread calls `await()` on that task's Future. If you never `await()` the Future, the error is lost entirely!
 - **Catch Variable Shadowing**: The variable declared in the `catch` clause (e.g. `catch e`) creates a new lexical scope. It will shadow any existing variable named `e` in the outer scope for the duration of the catch block.
 - **Throwing Nil**: `throw nil` is perfectly valid syntax, though generally discouraged as the `catch` block will just receive a `nil` payload with no context.

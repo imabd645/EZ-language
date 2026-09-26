@@ -115,6 +115,23 @@ Separators are flexible — commas, newlines, or both, and a trailing comma is
 allowed. Members are ordinary numbers, so they compare, do arithmetic, and sit
 in arrays and dictionaries like any other value.
 
+### Iterating Enums
+Because Enums are internally modeled as classes with static properties, they can be directly iterated over. You can iterate over just the values, or destructure the key and value:
+
+```ez
+enum Color { RED = 10, GREEN = 20, BLUE = 30 }
+
+// Iterate over just values
+get val in Color {
+    out val   // 10, 20, 30
+}
+
+// Iterate over keys and values
+get [name, val] in Color {
+    out name + " = " + str(val)  // RED = 10, etc.
+}
+```
+
 An enum desugars to a model whose members are all static, which is why access
 looks like a static member read. Two mistakes are rejected at parse time: a
 **duplicate member name** (it would silently shadow the earlier one) and an

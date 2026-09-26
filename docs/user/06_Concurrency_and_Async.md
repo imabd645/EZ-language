@@ -27,6 +27,14 @@ result = await(future)
 out "Result: " + str(result)
 ```
 
+### Daemon Threads
+By default, the program will stay alive until all spawned threads finish executing. If you want a background thread to automatically exit when the main thread exits, pass `{ "daemon": true }` or `true` as the final argument to `spawn()`:
+```ez
+spawn(backgroundHeartbeatTask, { "daemon": true })
+// or
+spawn(backgroundHeartbeatTask, true)
+```
+
 ---
 
 ## 2. ⏳ Asynchronous Futures (`await`)
@@ -76,4 +84,26 @@ counter = 0
 lock(m, lambda() {
     counter = counter + 1
 })
+```
+
+---
+
+## 4. 🛡️ Native Thread-Safe Data Structures
+
+One of EZ's most powerful concurrency features is **fine-grained object-level locking**. 
+
+You do **not** need a `mutex` to safely share `Arrays` or `Dictionaries` across multiple threads! All core composite operations (`push()`, `pop()`, reading/writing indexes) are automatically protected by highly optimized read-write locks (`std::shared_mutex` under the hood) per object.
+
+```ez
+sharedData = {}
+sharedArray = []
+
+// Spawn 100 threads that all safely mutate the SAME array simultaneously
+repeat i = 1 to 100 {
+    spawn(lambda() {
+        sharedData[str(i)] = i
+        push(sharedArray, i)
+    })
+}
+// This will never segfault or corrupt data in EZ!
 ```

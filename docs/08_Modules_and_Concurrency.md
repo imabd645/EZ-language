@@ -37,6 +37,15 @@ futureWork = spawn(heavyMathWork, 50)
 out "Work is running in the background..."
 ```
 
+### Daemon Threads
+By default, the main thread will wait for all background threads to complete before exiting. If you want a thread to be killed immediately when the main thread finishes, make it a **daemon thread** by passing `true` or `{"daemon": true}` as the final argument:
+
+```ez
+futureWork = spawn(heavyMathWork, 50, true)
+// or
+futureWork = spawn(heavyMathWork, 50, {"daemon": true})
+```
+
 ### `await` and `sync`
 Once a task is spawned, you wait for its result with `await`:
 

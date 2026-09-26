@@ -85,8 +85,8 @@ out squaredNumbers // [1, 4, 9, 16]
 ```
 
 ## 5. Edge Cases & Pitfalls
-- **Variable Shadowing**: If an inner task defines a variable with the same name as a variable in the outer scope, the inner variable shadows the outer one. Modifying the inner variable does not affect the outer scope.
-- **Recursive Calls & Stack Overflow**: EZ enforces a strict maximum recursion depth of 10,000 frames to prevent OS-level stack overflows. Exceeding this triggers a fatal VM crash.
+- **Recursive Calls & Stack Overflow**: EZ limits the recursion call stack to prevent OS-level stack overflows. Exceeding the call depth limit does *not* crash the host process; it safely aborts the script by throwing a clean traceback error.
+- **Loop Closure Binding (Boxed Upvalues)**: When creating closures inside loops (e.g. `repeat`), EZ dynamically boxes the captured loop variables *per-iteration*. This means closures capture the exact value the variable had during that iteration, rather than sharing the final mutated value.
 - **Omitting `give`**: If a task reaches the end of its block without a `give` statement, it implicitly returns `nil`.
 - **Default Argument Evaluation**: Default arguments are evaluated *at definition time*, not at call time. If you use a mutable object (like `[]` or `{}`) as a default argument, the *same* object reference will be used for every call!
   ```ez

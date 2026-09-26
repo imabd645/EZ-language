@@ -211,7 +211,7 @@ result.
 
 | Function | Description |
 |---|---|
-| `spawn(fn, ...args)` | Run `fn(...args)` on a new OS thread → `Future` |
+| `spawn(fn, ...args, isDaemon=false)` | Run `fn(...args)` on a new OS thread → `Future`. Pass `true` or `{"daemon": true}` at the end for a daemon thread. |
 | `await expr` / `sync expr` | Block until a `Future` resolves |
 | `awaitAll(futures)` | Block until every future resolves; results in input order |
 | `awaitAny(futures)` | Block until the first future settles |

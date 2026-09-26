@@ -1981,17 +1981,21 @@ fut = waitAsync(1000)
 
 ### spawn
 
-**Signature**: `spawn(fn: function, ...args: any) -> future`
+**Signature**: `spawn(fn: function, ...args: any, isDaemon=false) -> future`
 
 **Return**: Future for spawned thread
 
-**Tier**: Inferred
+**Tier**: Confirmed
 
 **Example**:
 ```ez
-fut = spawn(|| {
-    return "result"
-})
+// Normal thread (blocks exit)
+fut = spawn(|| { return "result" })
+
+// Daemon thread (dies with main thread)
+fut2 = spawn(|| { while true {} }, true) 
+// or
+fut3 = spawn(func, { "daemon": true })
 ```
 
 **Source**: `src/builtins/Builtins_GC.cpp`

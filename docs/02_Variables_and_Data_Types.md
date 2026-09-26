@@ -32,7 +32,7 @@ when isServerRunning {
 ```
 
 ### Strings
-Strings are UTF-8 encoded and immutable.
+Strings are UTF-8 encoded and immutable. Indexing, slicing, and length calculations are fully multibyte-aware (e.g. `len("café")` correctly returns 4, not 5 bytes).
 ```ez
 firstName = "John"
 lastName = "Doe"
@@ -52,15 +52,17 @@ inventory = ["Sword", "Shield", 100, true]
 // Access by index
 firstItem = inventory[0] // "Sword"
 
-// Append new items using the empty bracket syntax []
+// Append new items using the empty bracket syntax [] or push()
 inventory[] = "Health Potion"
+push(inventory, "Magic Scroll")
 
 // Modify existing items
 inventory[2] = 150
 ```
+Note: Negative indexing (`arr[-1]`) and bracket slicing (`arr[1:3]`) are not supported. Use `arr[len(arr)-1]` and `slice(arr, 1, 3)` instead.
 
 ### Dictionaries
-Key-value stores. Keys can be strings or integers.
+Key-value stores. Keys are always internally stored as strings. If you pass an Integer, Float, or Boolean as a key, it will be automatically coerced into a string. Passing mutable objects like Arrays or Dictionaries as keys will throw a `TypeError`.
 ```ez
 user = {
     "username": "admin",

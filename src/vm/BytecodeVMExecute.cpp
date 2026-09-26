@@ -2231,11 +2231,22 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 for (auto& [k, _] : dictPtr->getMapCopy()) ks.push_back(Value(k));
                             }
                             *stackTop++ = Value::makeArray({Value::makeArray(ks), Value(0LL)});
+                        } else if (v.isClass()) {
+                            std::vector<Value> vals;
+                            {
+                                auto klass = v.asClass();
+                                std::shared_lock<std::shared_mutex> lk(klass->class_mutex);
+                                for (auto& [k, val] : klass->staticMembers) {
+                                    if (k.length() >= 4 && k[0] == '_' && k[1] == '_' && k[k.length()-1] == '_' && k[k.length()-2] == '_') continue;
+                                    vals.push_back(val);
+                                }
+                            }
+                            *stackTop++ = Value::makeArray({Value::makeArray(vals), Value(0LL)});
                         } else {
                             SYNC_IP();
                             throwException("TypeError",
                                 "a " + v.typeName() + " value cannot be looped over"
-                                "\n  Hint: `get x in y` needs an array, dictionary, string or range.");
+                                "\n  Hint: `get x in y` needs an array, dictionary, string, range, or enum.");
                             RAISE_FAULT();
                         }
                     }
@@ -2253,10 +2264,21 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 }
                             }
                             *stackTop++ = Value::makeArray({Value::makeArray(items), Value(0LL)});
+                        } else if (v.isClass()) {
+                            std::vector<Value> items;
+                            {
+                                auto klass = v.asClass();
+                                std::shared_lock<std::shared_mutex> lk(klass->class_mutex);
+                                for (auto& [k, val] : klass->staticMembers) {
+                                    if (k.length() >= 4 && k[0] == '_' && k[1] == '_' && k[k.length()-1] == '_' && k[k.length()-2] == '_') continue;
+                                    items.push_back(Value::makeArray({Value(k), val}));
+                                }
+                            }
+                            *stackTop++ = Value::makeArray({Value::makeArray(items), Value(0LL)});
                         } else {
                             SYNC_IP();
                             throwException("TypeError",
-                                "expected a dictionary, got a " + v.typeName() + " value");
+                                "expected a dictionary or enum, got a " + v.typeName() + " value");
                             RAISE_FAULT();
                         }
                     }

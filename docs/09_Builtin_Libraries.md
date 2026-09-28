@@ -203,6 +203,7 @@ os_free(textPtr)
 ## 7. Edge Cases & Pitfalls
 - **Regex Invalid Syntax**: Passing an invalid regular expression string to `reMatch` or `reSearch` will cause a runtime exception to bubble up from the internal regex engine. Always wrap user-supplied regex strings in a `try/catch`.
 - **String Out of Bounds**: Calling `substr` or `substring` with indices larger than the string length will result in an "out of bounds" fatal error. Always check `len()` first!
-- **Network Timeouts**: The `http_get` and `fetch` calls have an internal timeout (usually 30 seconds). If a server hangs, the call will eventually throw an exception indicating a network failure.
+- **Network Failures & Timeouts**: `http_get` and `http_post` operate synchronously and will actively throw a catchable exception if the connection fails or times out. However, `fetch` (which is asynchronous) **does not throw**. If `fetch` fails, its Future will resolve to a dictionary containing an error key (e.g., `{"error": "Fetch failed: Could not connect to server"}`). Always check for this key when awaiting `fetch`.
 - **FFI Memory Leaks**: Memory allocated via `os_alloc` completely bypasses the EZ Garbage Collector. If you fail to call `os_free()`, your script will leak memory indefinitely.
 - **Access Violation (0xC0000005)**: Thanks to the SAFE_MEMORY_OP macro, using `os_read_byte`, `os_write_byte`, or passing bad pointers to `os_call` will trigger an OS-level Access Violation that is safely intercepted by the VM and converted into a catchable `FFI memory access violation` exception, preventing the interpreter from crashing!
+

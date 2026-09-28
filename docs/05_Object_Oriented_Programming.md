@@ -149,3 +149,22 @@ model, and you can write your own with the `decorator` keyword. See
 - **Hidden Inheritance Visibility**: Properties marked `hidden` in a parent model are completely inaccessible to the child model. The child cannot directly read or overwrite a parent's hidden properties.
 - **Accessing Methods as Closures**: You cannot currently detach a method from its object instance and pass it around safely. Calling `detatchedMethod = obj.myTask` followed by `detatchedMethod()` will crash because `self` is no longer bound correctly. Always wrap it: `task wrapper() { obj.myTask() }`.
 - **Property Initialization Order**: Class-level property declarations (e.g., `hidden count = 0`) are evaluated *before* the `init` block is run.
+
+## 5. Functors (Callable Objects)
+Models can implement the `__call__` task to allow instances to be invoked directly like functions.
+```ez
+model Multiplier {
+    init(factor) {
+        self.factor = factor
+    }
+
+    task __call__(value) {
+        give value * self.factor
+    }
+}
+
+double = new Multiplier(2)
+out double(10) // 20
+```
+*Note: If you attempt to invoke an instance that does not implement `__call__`, the VM will safely throw a `TypeError: instance is not a function`.*
+

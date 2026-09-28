@@ -130,5 +130,7 @@ out "All downloads finished."
 
 ## 3. Edge Cases & Pitfalls
 - **Global Variable Race Conditions**: Spawned threads share the same VM environment and global memory, so several threads mutating the *same* global array or dictionary at once will race. Keep background work to local scope, or guard shared state with the built-in `mutex()` / `lock(m, fn)` (a real `std::mutex` released even if the body throws), `Atomic(n)` for counters, or a `Channel` to hand values across instead of sharing them.
-- **Circular Imports**: If File A `use`s File B, and File B `use`s File A, the VM will enter an infinite import loop until it crashes via Stack Overflow. Carefully architect your dependency trees to avoid circular references.
+- **Circular Imports**: The compiler actively guards against infinite import loops. If File A `use`s File B, and File B `use`s File A, the VM will immediately halt and throw a `CircularImportError` during AST generation. Carefully architect your dependency trees to avoid circular references.
+- **Module Caching**: The `use` directive implements a global module cache. If multiple files import the same module (`use "math.ez"`), the target module is evaluated exactly **once**. Subsequent imports instantly return without re-evaluating the file.
 - **Multiple `await` Calls**: Calling `await` on the *same* `EZFuture` multiple times is perfectly safe. It will return the cached result immediately on the second call.
+

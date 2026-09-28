@@ -18,6 +18,32 @@
 // typo surfaces as an error rather than as "no match".
 static bool buildRegex(RuntimeContext& interp, const std::string& pattern,
                        const std::string& flags, std::regex& out) {
+    // Basic ReDoS protection: reject nested quantifiers (e.g. (a+)+, (a*)*)
+    std::vector<bool> groupHasQuantifier;
+    for (size_t i = 0; i < pattern.length(); ++i) {
+        if (pattern[i] == '\\') { i++; continue; }
+        if (pattern[i] == '(') {
+            groupHasQuantifier.push_back(false);
+        } else if (pattern[i] == ')') {
+            bool innerHasQuant = !groupHasQuantifier.empty() && groupHasQuantifier.back();
+            if (!groupHasQuantifier.empty()) groupHasQuantifier.pop_back();
+            
+            if (i + 1 < pattern.length() && (pattern[i+1] == '+' || pattern[i+1] == '*' || pattern[i+1] == '{')) {
+                if (innerHasQuant) {
+                    interp.throwException("RegexError", "Pattern rejected: nested quantifiers are not allowed (ReDoS protection)", 0, "");
+                    return false;
+                }
+                if (!groupHasQuantifier.empty()) {
+                    groupHasQuantifier.back() = true;
+                }
+            }
+        } else if (pattern[i] == '+' || pattern[i] == '*' || pattern[i] == '{') {
+            if (!groupHasQuantifier.empty()) {
+                groupHasQuantifier.back() = true;
+            }
+        }
+    }
+
     auto opts = std::regex_constants::ECMAScript;
     for (char f : flags) {
         switch (f) {
@@ -80,33 +106,25 @@ void registerRegexBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("reMatch", Value::makeNativeFunction("reMatch", 2,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reMatch() expects two strings (text, pattern)", 0, ""); return Value(); }
-                try {
-                    std::regex re(args[1].asString());
-                    return Value(std::regex_match(args[0].asString(), re));
-                } catch (const std::regex_error& e) {
-                    interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
-                    return Value(false);
-                }
+                std::regex re;
+                if (!buildRegex(interp, args[1].asString(), "", re)) return Value(false);
+                return Value(std::regex_match(args[0].asString(), re));
             }));
 
     interp.defineGlobal("reSearch", Value::makeNativeFunction("reSearch", 2,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
                 if (!args[0].isString() || !args[1].isString()) { interp.runtimeError("reSearch() expects two strings (text, pattern)", 0, ""); return Value(); }
-                try {
-                    std::string text = args[0].asString();
-                    std::regex re(args[1].asString());
-                    std::smatch matches;
-                    std::vector<Value> results;
-                    if (std::regex_search(text, matches, re)) {
-                        for (size_t i = 0; i < matches.size(); i++) {
-                            results.push_back(Value(matches[i].str()));
-                        }
+                std::string text = args[0].asString();
+                std::regex re;
+                if (!buildRegex(interp, args[1].asString(), "", re)) return Value::makeArray({});
+                std::smatch matches;
+                std::vector<Value> results;
+                if (std::regex_search(text, matches, re)) {
+                    for (size_t i = 0; i < matches.size(); i++) {
+                        results.push_back(Value(matches[i].str()));
                     }
-                    return Value::makeArray(results);
-                } catch (const std::regex_error& e) {
-                    interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
-                    return Value::makeArray({});
                 }
+                return Value::makeArray(results);
             }));
 
     interp.defineGlobal("reReplace", Value::makeNativeFunction("reReplace", 3,
@@ -114,14 +132,7 @@ void registerRegexBuiltins(RuntimeContext& interp) {
                 if (!args[0].isString() || !args[1].isString() || !args[2].isString()) { 
                     interp.runtimeError("reReplace() expects three strings (text, pattern, replacement)", 0, ""); return Value(); 
                 }
-                try {
-                    std::regex re(args[1].asString());
-                    std::string result = std::regex_replace(args[0].asString(), re, args[2].asString());
-                    return Value(result);
-                } catch (const std::regex_error& e) {
-                    interp.runtimeError(std::string("Regex Error: ") + e.what(), 0, "");
-                    return Value(args[0]);
-                }
+                std::regex re; if (!buildRegex(interp, args[1].asString(), "", re)) return Value(args[0]); std::string result = std::regex_replace(args[0].asString(), re, args[2].asString()); return Value(result);
             }));
 
     interp.defineGlobal("re_escape", Value::makeNativeFunction("re_escape", 1,
@@ -302,8 +313,26 @@ void registerRegexBuiltins(RuntimeContext& interp) {
                     interp.throwException("TypeError", "re_valid() expects a string pattern", 0, "");
                     return Value();
                 }
+                std::string pattern = args[0].asString();
+                
+                std::vector<bool> groupHasQuantifier;
+                for (size_t i = 0; i < pattern.length(); ++i) {
+                    if (pattern[i] == '\\') { i++; continue; }
+                    if (pattern[i] == '(') {
+                        groupHasQuantifier.push_back(false);
+                    } else if (pattern[i] == ')') {
+                        bool innerHasQuant = !groupHasQuantifier.empty() && groupHasQuantifier.back();
+                        if (!groupHasQuantifier.empty()) groupHasQuantifier.pop_back();
+                        if (i + 1 < pattern.length() && (pattern[i+1] == '+' || pattern[i+1] == '*' || pattern[i+1] == '{')) {
+                            if (innerHasQuant) return Value(false);
+                            if (!groupHasQuantifier.empty()) groupHasQuantifier.back() = true;
+                        }
+                    } else if (pattern[i] == '+' || pattern[i] == '*' || pattern[i] == '{') {
+                        if (!groupHasQuantifier.empty()) groupHasQuantifier.back() = true;
+                    }
+                }
                 try {
-                    std::regex re(args[0].asString());
+                    std::regex re(pattern);
                     (void)re;
                     return Value(true);
                 } catch (const std::regex_error&) {
@@ -312,3 +341,8 @@ void registerRegexBuiltins(RuntimeContext& interp) {
             }));
 
 }
+
+
+
+
+

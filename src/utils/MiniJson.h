@@ -73,8 +73,8 @@ namespace MiniJson {
             skipWhitespace(str, pos);
             if (pos >= str.length()) return false;
             
-            if (str[pos] == '{') root = parseObject(str, pos);
-            else if (str[pos] == '[') root = parseArray(str, pos);
+            if (str[pos] == '{') root = parseObject(str, pos, 0);
+            else if (str[pos] == '[') root = parseArray(str, pos, 0);
             else return false;
             // Trailing garbage after the top-level value ("{}x") is also not
             // valid JSON.
@@ -90,7 +90,7 @@ namespace MiniJson {
         // success for it. Before this flag existed, parseObject() called
         // parseString() unconditionally for a key regardless of whether the
         // current character was even a quote, and treated both ':' and ','
-        // as optional -- so `{invalid json` silently "parsed" by treating
+        // as optional -- so {invalid json silently "parsed" by treating
         // every unquoted bareword as a value under an empty-string key (each
         // overwriting the last), producing {"": "json"} with no error at all.
         // Only fully well-formed JSON reaches here with failed_ still false.
@@ -100,7 +100,8 @@ namespace MiniJson {
             while (pos < str.length() && isspace(str[pos])) pos++;
         }
         
-        Value parseObject(const std::string& str, size_t& pos) {
+        Value parseObject(const std::string& str, size_t& pos, int depth = 0) {
+            if (depth > 256) { failed_ = true; return Value(); }
             Value obj(OBJECT);
             pos++;
 
@@ -123,7 +124,7 @@ namespace MiniJson {
                 else failed_ = true; // ':' is required, not optional
                 skipWhitespace(str, pos);
 
-                Value val = parseValue(str, pos);
+                Value val = parseValue(str, pos, depth + 1);
                 obj.properties[key] = val;
 
                 skipWhitespace(str, pos);
@@ -138,7 +139,8 @@ namespace MiniJson {
             return obj;
         }
         
-        Value parseArray(const std::string& str, size_t& pos) {
+        Value parseArray(const std::string& str, size_t& pos, int depth = 0) {
+            if (depth > 256) { failed_ = true; return Value(); }
             Value arr(ARRAY);
             pos++;
             while (pos < str.length()) {
@@ -146,7 +148,7 @@ namespace MiniJson {
                 skipWhitespace(str, pos);
                 if (pos >= str.length()) { failed_ = true; break; }
                 if (str[pos] == ']') { pos++; break; }
-                arr.items.push_back(parseValue(str, pos));
+                arr.items.push_back(parseValue(str, pos, depth + 1));
                 skipWhitespace(str, pos);
                 if (pos < str.length() && str[pos] == ',') {
                     pos++;
@@ -158,12 +160,12 @@ namespace MiniJson {
             return arr;
         }
         
-        Value parseValue(const std::string& str, size_t& pos) {
+        Value parseValue(const std::string& str, size_t& pos, int depth = 0) {
             skipWhitespace(str, pos);
             if (pos >= str.length()) return Value();
             if (str[pos] == '"') return Value(parseString(str, pos));
-            if (str[pos] == '{') return parseObject(str, pos);
-            if (str[pos] == '[') return parseArray(str, pos);
+            if (str[pos] == '{') return parseObject(str, pos, depth);
+            if (str[pos] == '[') return parseArray(str, pos, depth);
 
             // Numbers, true, false and null.
             //
@@ -345,3 +347,4 @@ namespace MiniJson {
 }
 
 #endif // MINIJSON_H
+

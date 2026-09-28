@@ -102,20 +102,32 @@ inline std::shared_ptr<std::string> flattenConcatString(const Value::ConcatStrin
         if (val.index() == 5) { // CONCAT_STRING
             auto cs = std::get<Value::ConcatStringPtr>(val.m_data);
             if (cs->isFlattened) {
-                std::memcpy(dest + offset, cs->flattened->data(), cs->flattened->length());
-                offset += cs->flattened->length();
+                size_t n = cs->flattened->length();
+                // rootCs->length is trusted to size `result` up front (see the
+                // resize() above). If it's ever wrong -- e.g. a size_t overflow
+                // upstream in a node's `length` field -- writing the real,
+                // correctly-sized chunk here would run past the buffer and
+                // corrupt the heap instead of just producing garbage output.
+                // Fail loudly instead.
+                if (offset + n > result->size()) throw std::runtime_error("EZConcatString length invariant violated (flatten overrun)");
+                std::memcpy(dest + offset, cs->flattened->data(), n);
+                offset += n;
             } else {
                 stack.push_back(cs->right);
                 stack.push_back(cs->left);
             }
         } else if (val.index() == 3) { // STRING
             const auto& s = *std::get<Value::StringPtr>(val.m_data);
-            std::memcpy(dest + offset, s.data(), s.length());
-            offset += s.length();
+            size_t n = s.length();
+            if (offset + n > result->size()) throw std::runtime_error("EZConcatString length invariant violated (flatten overrun)");
+            std::memcpy(dest + offset, s.data(), n);
+            offset += n;
         } else if (val.index() == 4) { // SHORT_STRING
             const auto& ss = std::get<ShortString>(val.m_data);
-            std::memcpy(dest + offset, ss.data, ss.length);
-            offset += ss.length;
+            size_t n = ss.length;
+            if (offset + n > result->size()) throw std::runtime_error("EZConcatString length invariant violated (flatten overrun)");
+            std::memcpy(dest + offset, ss.data, n);
+            offset += n;
         }
     }
     

@@ -43,7 +43,7 @@ task configureWindow(width=800, height=600, title="App", fullscreen=false) {
 configureWindow(title="My Game", fullscreen=true)
 ```
 
-## 4. The Spread Operator (`...`)
+## 4. The Spread & Rest Operators (`...`)
 If you have an array of values, you can instantly "unpack" or "spread" them into a function call as separate arguments using the `...` operator.
 ```ez
 task addThreeNumbers(a, b, c) {
@@ -52,6 +52,17 @@ task addThreeNumbers(a, b, c) {
 
 myNumbers = [10, 20, 30]
 out addThreeNumbers(...myNumbers) // 60
+```
+
+Conversely, you can use the same `...` operator in a task's parameter list to "gather" an infinite number of arguments into a single Array. This is known as a Rest Parameter.
+```ez
+task sumAll(...numbers) {
+    total = 0
+    get n in numbers { total = total + n }
+    give total
+}
+
+out sumAll(1, 2, 3, 4, 5) // 15
 ```
 
 ## 5. Deep Closures and State Management

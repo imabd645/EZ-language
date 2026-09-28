@@ -3813,10 +3813,25 @@ void BytecodeVM::doAdd() {
     if (a.isInteger() && b.isInteger()) { push(Value(wrapAdd(a.asInteger(), b.asInteger()))); return; }
     if (a.isNumber()  && b.isNumber())  { push(Value(a.asFloat()   + b.asFloat()));   return; }
     if (a.isString() && b.isString()) {
+        // `s = s + s` in a loop doubles the length every iteration -- a left
+        // shift by one bit. A plain `la + lb` silently overflows size_t after
+        // ~64 doublings and wraps to a small, WRONG length (often 0), while
+        // the node itself is still built for O(1) cost either way (left/right
+        // just alias the previous Value, no bytes copied). flattenConcatString()
+        // later trusts that wrong length to size() its output buffer and then
+        // memcpy()s the real (much larger) contents into it -- an out-of-bounds
+        // write, which is what actually crashes, not the concatenation itself.
+        // Same class of bug doMultiply() already guards against for `str * N`.
+        size_t la = a.stringLength(), lb = b.stringLength();
+        static constexpr size_t kMaxStringBytes = 1ULL << 32; // 4 GiB, generous but finite
+        if (lb > kMaxStringBytes || la > kMaxStringBytes - lb) {
+            runtimeError("String concatenation result too large");
+            return;
+        }
         auto cs = std::make_shared<EZConcatString>();
         cs->left = a;
         cs->right = b;
-        cs->length = a.stringLength() + b.stringLength();
+        cs->length = la + lb;
         push(Value(cs));
         return;
     }

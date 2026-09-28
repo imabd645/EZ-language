@@ -47,6 +47,19 @@ task factorial(n) {
 out factorial(5) // 120
 ```
 
+### Loop Control (`escape` and `skip`)
+- Use **`escape`** to immediately break out of the nearest enclosing loop.
+- Use **`skip`** to immediately jump to the next iteration of the loop.
+```ez
+arr = []
+repeat i = 1 to 10 {
+    when i == 3 { skip }   // Skips the number 3
+    when i == 6 { escape } // Breaks the loop entirely at 6
+    arr[] = i
+}
+out arr // [1, 2, 4, 5]
+```
+
 ### `repeat` Loop (Ranges)
 The upper bound is inclusive.
 ```ez
@@ -111,3 +124,4 @@ get num in [1, 2, 3, 4, 5, 6] {
 - **Match without 'other'**: If a `match` statement fails to match any pattern and does not include an `other` clause, it silently completes without error.
 - **Modifying Iterables**: Never add or remove elements from an Array or Dictionary while inside a `get` loop iterating over it! This can cause iterator invalidation and crash the VM.
 - **Loop Variable Scope**: The loop variable in `get` and `repeat` statements is lexically scoped to the loop block. Attempting to access it outside the loop will result in an "undefined variable" error.
+

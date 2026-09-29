@@ -60,6 +60,11 @@ File.remove(path)            // false if already absent, so no guard needed
 File.delete(path)            // alias for remove
 ```
 
+**File System Edge Cases:**
+- Calling `File.size("missing")` on a non-existent file cleanly throws an OS exception instead of crashing or returning `-1`.
+- Calling `f.readLine()` on a massive file block (e.g. 10MB of text without newlines) correctly auto-scales the C++ buffer and reads the chunk without OOMing the process.
+- Due to the internal Levenshtein Distance spellchecker, if you accidentally mistype a native object property (e.g. `File.path`), the VM will helpfully suggest the closest property: `'File' has no property or method 'path'. Did you mean '_path'?`
+
 ## 2. System & Process
 ```ez
 clock()      // Float timestamp (e.g., 170000000.123)
@@ -84,6 +89,12 @@ out max(10, 20)  // 20
 out rand()         // Float between 0.0 and 1.0
 out randint(1, 10) // Integer between 1 and 10
 ```
+
+**Math Edge Cases:**
+- `modulo by zero` throws a runtime exception, protecting ALU faults.
+- Domain violations like `sqrt(-1)` will explicitly throw `sqrt() of negative number`.
+- Extreme arithmetic bounds like `pow(10, 1000)` safely evaluate to `inf` (Infinity).
+- Ambiguous logic like `inf - inf` strictly produces IEEE 754 `nan` (Not a Number). Furthermore, comparing `nan == nan` correctly evaluates to `false`.
 
 ## 4. String Manipulation
 Strings in EZ are immutable. All transformation functions return a new string.
@@ -153,6 +164,11 @@ An invalid pattern throws `RegexError` rather than quietly reporting "no match".
 A capture group that did not participate is `nil`, not `""`.
 
 Full reference: [BUILTINS.md](../BUILTINS.md#re_find).
+
+**String & Regex Edge Cases:**
+- Slicing out of bounds (e.g. `substr("abc", 5, 10)`) safely returns an empty string `""` instead of throwing a memory access violation.
+- Splitting by an empty delimiter (`split("hello", "")`) seamlessly explodes the string into an array of individual characters: `["h", "e", "l", "l", "o"]`.
+- `re_replace` uses standard C++ backreferences, so use `$1` and `$2` instead of `\1` and `\2`.
 
 ## 5. Networking (libcurl Integration)
 EZ provides a zero-setup networking library capable of handling SSL and complex HTTP requests.

@@ -119,7 +119,11 @@ out typeOf({a:1})     // "Dictionary"
 ```
 
 ## 5. Edge Cases & Pitfalls
-- **Type Coercion**: EZ strictly prevents implicit coercion between dissimilar types. Adding a String to an Integer `out "Age: " + 30` will stringify the integer, but performing math on mismatched types throws errors (e.g. `"5" * 5` is invalid).
+- **Type Coercion Flexibility**: EZ supports dynamic coercion for specific operators:
+  - Adding a string to an array or primitive (e.g., `[1, 2] + "hello"`) coerces the left side and concatenates it (`"[1, 2]hello"`).
+  - Multiplying a string by an integer (e.g., `"hello" * 3`) repeats the string (`"hellohellohello"`).
+  - Attempting truly ambiguous math operations (like `[1, 2] * 3` or `Dict + Dict`) will be statically rejected by the Typechecker.
+- **Bitwise Float Truncation**: When applying bitwise operators (`&`, `|`, `^`, `~`) to floats, EZ does not throw an error. Instead, it performs implicit C-style truncation to integers (e.g., `5.5 & 3.1` evaluates to `1`).
 - **Array Out of Bounds**: Accessing an array out of bounds (e.g., `arr[10]` when size is 2) will immediately throw a `fatal runtime exception` rather than returning `nil`, terminating the VM!
 - **Missing Dictionary Keys**: Accessing a key that does not exist in a dictionary returns `nil`. It does *not* throw an error.
   ```ez

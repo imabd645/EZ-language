@@ -23,6 +23,24 @@ car = new Vehicle("Toyota", "Corolla")
 car.accelerate(30)
 ```
 
+### Static vs. Dynamic Instantiation
+The `new` keyword operates strictly at compile-time and requires the literal identifier of the model. However, because EZ models are **first-class citizens**, you can assign them to variables and dynamically instantiate them by calling the variable as a function (similar to Python):
+
+```ez
+model MyModel {
+    init(val) { self.val = val }
+}
+
+// 1. Static Instantiation (Requires literal identifier)
+obj1 = new MyModel(42)
+
+// 2. Dynamic Instantiation (Assigned to variable)
+DynamicClass = MyModel
+obj2 = DynamicClass(100) // Call like a function without 'new'
+
+// obj3 = new DynamicClass(100) // ERROR: 'DynamicClass' is not a literal model identifier
+```
+
 ## 2. Encapsulation (`shown` vs `hidden`)
 Models can restrict access to their internal properties and tasks. 
 - `shown` (default): Publicly accessible from anywhere.

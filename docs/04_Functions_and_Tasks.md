@@ -65,7 +65,17 @@ task sumAll(...numbers) {
 out sumAll(1, 2, 3, 4, 5) // 15
 ```
 
-## 5. Deep Closures and State Management
+## 5. Multi-value Returns
+If you need to return multiple values, you can simply separate them with commas in the `give` statement. The parser automatically wraps them into a Tuple/Array, which can then be immediately destructured:
+```ez
+task getUserData() {
+    give "Admin", 42, true
+}
+
+(name, age, active) = getUserData()
+```
+
+## 6. Deep Closures and State Management
 Tasks in EZ support closures. An inner task can capture variables from an outer task. The VM intelligently detects this and promotes the captured variable from the stack to the heap, ensuring it survives after the outer task finishes.
 
 ```ez
@@ -104,7 +114,7 @@ Tasks can be passed as arguments to other tasks, allowing for functional program
 task mapArray(arr, transformTask) {
     result = []
     get item in arr {
-        result[] = transformTask(item)
+        push(result, transformTask(item))
     }
     give result
 }
@@ -117,17 +127,38 @@ squaredNumbers = mapArray(numbers, square)
 out squaredNumbers // [1, 4, 9, 16]
 ```
 
-## 5. Edge Cases & Pitfalls
+## 5. Design by Contract (`requires` / `ensures`)
+EZ provides native keywords for contract-oriented programming on tasks (and model methods).
+- `requires`: Defines a precondition that must be true before the task executes.
+- `ensures`: Defines a postcondition that must be true before the task returns (the return value is implicitly bound to the variable `result` in this scope).
+
+```ez
+task divide(a, b) -> number
+    requires b != 0, "Divisor must not be zero"
+    ensures result > 0, "Result must be positive"
+{
+    give a / b
+}
+```
+
+## 6. Built-in Testing Framework (`test`)
+EZ features a fully integrated parser-level testing framework utilizing the `test` block and the undocumented built-in `assert()`. Tests can be run securely without relying on an external testing library.
+```ez
+test "Math operations" {
+    assert(1 + 1 == 2, "Addition failed")
+    assert(divide(10, 2) == 5)
+}
+```
+
+## 7. Edge Cases & Pitfalls
 - **Recursive Calls & Stack Overflow**: EZ limits the recursion call stack to prevent OS-level stack overflows. Exceeding the call depth limit does *not* crash the host process; it safely aborts the script by throwing a clean traceback error.
 - **Loop Closure Binding (By-Reference Capturing)**: When creating closures inside loops (e.g. `repeat`), EZ dynamically captures the loop variable *by reference* (late binding). This means closures share the exact same variable. If you execute them later, they will all see the *final mutated value* of the loop variable, rather than the value it had during their specific iteration.
 - **Omitting `give`**: If a task reaches the end of its block without a `give` statement, it implicitly returns `nil`.
-- **Default Argument Evaluation**: Default arguments are evaluated *at definition time*, not at call time. If you use a mutable object (like `[]` or `{}`) as a default argument, the *same* object reference will be used for every call!
+- **Default Argument Evaluation**: Default arguments are evaluated at **call time**, not definition time. This means it is perfectly safe to use mutable objects like `[]` or `{}` as default arguments; a fresh instance will be created on every call.
   ```ez
-  // Bad practice:
+  // This is safe in EZ!
   task addToList(val, list = []) {
-      list[] = val
+      push(list, val)
       give list
   }
-  // Subsequent calls will append to the same persistent list!
   ```
-  *Best practice is to use `list = nil` and initialize it inside the task body.*

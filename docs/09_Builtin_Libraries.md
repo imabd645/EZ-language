@@ -170,7 +170,19 @@ Full reference: [BUILTINS.md](../BUILTINS.md#re_find).
 - Splitting by an empty delimiter (`split("hello", "")`) seamlessly explodes the string into an array of individual characters: `["h", "e", "l", "l", "o"]`.
 - `re_replace` uses standard C++ backreferences, so use `$1` and `$2` instead of `\1` and `\2`.
 
-## 5. Networking (libcurl Integration)
+## 5. Data Formats (JSON & CSV)
+EZ natively parses and stringifies JSON and CSV formats without external libraries.
+```ez
+// JSON
+data = parse_json('{"name": "EZ"}')
+jsonStr = to_json(data)
+
+// CSV
+rows = parse_csv("name,age\nJohn,30\nJane,25")
+csvStr = to_csv(rows)
+```
+
+## 6. Networking (libcurl Integration)
 EZ provides a zero-setup networking library capable of handling SSL and complex HTTP requests.
 ```ez
 // Synchronous GET

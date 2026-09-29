@@ -1,6 +1,15 @@
 # Variables and Data Types in Depth
 
 EZ is dynamically typed. You do not need to specify what type a variable is. The virtual machine determines the type at runtime and allows variables to change types freely.
+Statements can be separated by a newline or an optional semicolon (`;`).
+
+```ez
+// Single line C-style comment
+# Single line Hash comment
+/* Block comments
+   can span multiple lines */
+a = 1; b = 2; c = 3
+```
 
 ## 1. Primitives (Passed by Value)
 
@@ -32,7 +41,7 @@ when isServerRunning {
 ```
 
 ### Strings
-Strings are UTF-8 encoded and immutable. Indexing, slicing, and length calculations are fully multibyte-aware (e.g. `len("café")` correctly returns 4, not 5 bytes).
+Strings are UTF-8 encoded and immutable. Note that `len()` returns the **byte length**, not the codepoint count (e.g. `len("café")` returns `5` because `é` is 2 bytes in UTF-8).
 ```ez
 firstName = "John"
 lastName = "Doe"
@@ -41,6 +50,11 @@ fullName = firstName + " " + lastName
 // You can use escape characters
 out "Line 1\nLine 2\tTabbed"
 ```
+
+EZ also supports advanced string literals:
+- **Raw Strings (`r"..."`)**: Ignores escape sequences (ideal for file paths). `r"C:\Users\file.txt"`
+- **Template Strings**: Use backticks for interpolation: `` `Hello {firstName}, you are {age} years old` ``.
+- **Multiline Strings**: Use triple quotes `"""..."""` to safely span multiple lines.
 
 ## 2. Composites (Passed by Reference)
 
@@ -52,8 +66,8 @@ inventory = ["Sword", "Shield", 100, true]
 // Access by index
 firstItem = inventory[0] // "Sword"
 
-// Append new items using the empty bracket syntax [] or push()
-inventory[] = "Health Potion"
+// Append new items using push()
+push(inventory, "Health Potion")
 push(inventory, "Magic Scroll")
 
 // Modify existing items
@@ -78,7 +92,14 @@ user = {
 out "User Role: " + user["role"]
 
 // Modifying nested arrays inside dictionaries
-user["permissions"][] = "delete"
+push(user["permissions"], "delete")
+```
+
+### Tuples
+EZ supports lightweight, immutable tuples. They are created using parentheses and are highly useful for multi-variable destructuring.
+```ez
+t = (1, 2, "hello")
+(a, b, c) = someTaskReturningTuple()
 ```
 
 ## 3. The `nil` Keyword
@@ -111,11 +132,11 @@ out name // "Unknown"
 ## 4. Type Checking
 You can dynamically check the type of any variable using the built-in `typeOf()` function.
 ```ez
-out typeOf(123)       // "Integer"
-out typeOf(3.14)      // "Number"
-out typeOf("hello")   // "String"
-out typeOf([1,2])     // "Array"
-out typeOf({a:1})     // "Dictionary"
+out typeOf(123)       // "integer"
+out typeOf(3.14)      // "float"
+out typeOf("hello")   // "string"
+out typeOf([1,2])     // "array"
+out typeOf({a:1})     // "dictionary"
 ```
 
 ## 5. Edge Cases & Pitfalls

@@ -114,11 +114,11 @@ get num in [1, 2, 3, 4, 5, 6] {
 ```
 
 ## 5. Edge Cases & Pitfalls
-- **Truthy / Falsy Nuances**: In EZ, conditions are strictly evaluated. Only explicit `false` and `nil` evaluate to a boolean false in conditions. `0`, `""` (empty string), and `[]` (empty array) all evaluate to **true**.
+- **Truthy / Falsy Nuances**: In EZ, `false`, `nil`, `0`, and `""` (empty string) all evaluate to **false** in conditions. Everything else — including `[]` (empty array), `{}` (empty dictionary), and model instances — evaluates to **true**.
   ```ez
-  when 0 {
-      out "This WILL print because 0 is truthy!"
-  }
+  when 0 { out "won't print" } other { out "0 is falsy!" }
+  when "" { out "won't print" } other { out "empty string is falsy!" }
+  when [] { out "empty array IS truthy!" }
   ```
 - **Logical Operator Propagation**: The `and` and `or` operators do not cast their return values to strict booleans. They return the *actual underlying object* evaluated last.
   - `nil or 42` returns `42`.

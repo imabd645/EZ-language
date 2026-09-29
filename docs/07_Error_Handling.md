@@ -39,7 +39,7 @@ task processPayment(amount) {
 try {
     processPayment(-50)
 } catch err {
-    when typeOf(err) == "Dictionary" {
+    when typeOf(err) == "dictionary" {
         out "Error Code: " + err["code"]
         out "Details: " + err["message"]
     } other {

@@ -37,13 +37,16 @@ futureWork = spawn(heavyMathWork, 50)
 out "Work is running in the background..."
 ```
 
-### Daemon Threads
-By default, the main thread will wait for all background threads to complete before exiting. If you want a thread to be killed immediately when the main thread finishes, make it a **daemon thread** by passing `true` or `{"daemon": true}` as the final argument:
+### Daemon Threads (WARNING)
+**Do not** pass `true` or `{"daemon": true}` as a third argument to `spawn()`. Due to a known edge-case in the VM thread joiner, attempting to spawn a daemon thread will instantly and silently terminate the VM process with exit code 0. EZ strictly requires all spawned threads to be `await`ed or left to complete naturally before the main thread exits.
 
+### Inline `async` Blocks
+If you do not want to define a separate task to spawn, you can use an inline `async` block. The parser instantly evaluates this block as an asynchronous IIFE (Immediately Invoked Function Expression) and returns a Future.
 ```ez
-futureWork = spawn(heavyMathWork, 50, true)
-// or
-futureWork = spawn(heavyMathWork, 50, {"daemon": true})
+future = async {
+    wait(500)
+    give "Done!"
+}
 ```
 
 ### `await` and `sync`

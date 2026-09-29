@@ -134,7 +134,7 @@ allowed. Members are ordinary numbers, so they compare, do arithmetic, and sit
 in arrays and dictionaries like any other value.
 
 ### Iterating Enums
-Because Enums are internally modeled as classes with static properties, they can be directly iterated over. You can iterate over just the values, or destructure the key and value:
+Because Enums are internally modeled as classes with static properties, they can be directly iterated over. You can iterate over just the values, or destructure the key and value. **Note**: Because they are backed by the virtual machine's internal dictionary mapping, the iteration order is arbitrary and does *not* strictly follow definition order!
 
 ```ez
 enum Color { RED = 10, GREEN = 20, BLUE = 30 }
@@ -160,6 +160,17 @@ looks like a static member read. Two mistakes are rejected at parse time: a
 `@cached`, `@audited`, `@snapshot` and `@persist("f.db")` attach behaviour to a
 model, and you can write your own with the `decorator` keyword. See
 [Decorators](10_Decorators.md).
+
+Additionally, the **`@validate`** decorator can be applied directly to model properties to enforce rules automatically on assignment:
+```ez
+model User {
+    @validate("email", "Must be valid email")
+    email = ""
+    
+    @validate("min", 0, "Age must be non-negative")
+    age = 0
+}
+```
 
 ## 7. Edge Cases & Pitfalls
 - **Missing `super()` Call**: If a parent model has an `init` method, the child model's `init` **must** call `super()`. Failing to do so will result in an uninitialized instance and crash the VM.

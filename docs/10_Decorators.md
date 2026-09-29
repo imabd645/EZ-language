@@ -165,7 +165,8 @@ rollback(d, saved)                  # back to "draft"
 | `snapshot_diff(a, b)` | Differences between two snapshots |
 
 A snapshot is an ordinary dictionary, so it can be stored, compared, or written
-out as JSON. As with `audit`, calling these on an undecorated model is an error.
+out as JSON. As with `audit()`, calling these on an undecorated model is an error. 
+**Note:** Built-in decorator error functions (like calling `audit()` or `snapshot()` on an undecorated object) throw a **raw primitive string** instead of an `Exception` object. Attempting to catch this and read `e.message` will crash with a `TypeError`.
 
 ---
 
@@ -204,6 +205,8 @@ dbPath = "app.db"
 Because storage is keyed by property name in one shared table, a `@persist` model
 is best used for a **single instance** — application settings, a counter, a
 cursor. Two instances of the same persisted model write over each other.
+
+**Warning on File Locking**: `@persist` keeps the underlying SQLite connection open for the lifetime of the process. Attempting to manually delete or clean up the database file via `File.remove()` from within the same script will throw an `IOError` due to the active process lock.
 
 ---
 

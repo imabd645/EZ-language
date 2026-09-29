@@ -20,6 +20,11 @@ clear()   // Clear screen
 gotoxy(10, 5) // Move cursor to X:10, Y:5
 getch()   // Pause and wait for single keystroke
 
+// Advanced Window Manipulations
+console_title("EZ Interpreter") // Change terminal window title
+console_hide_cursor(true)       // Hide the blinking cursor
+size = console_size()           // Returns array: [width, height]
+
 // File I/O -- whole-file helpers
 writeFile("test.txt", "Hello File System!")
 content = readFile("test.txt")

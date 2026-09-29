@@ -12,6 +12,7 @@ a = 1; b = 2; c = 3
 ```
 
 ## 1. Primitives (Passed by Value)
+**Architecture Note:** For static type checking and generic type bounds, EZ unifies all numeric primitives under the single `number` type. However, the Virtual Machine natively maintains the distinction between 64-bit integers and 64-bit IEEE 754 floats to maximize performance and accurately apply specific operators (like bitwise truncation).
 
 ### Integers (`int`)
 Standard 64-bit signed integers. They can handle extremely large numbers.

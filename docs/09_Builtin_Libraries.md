@@ -233,7 +233,24 @@ os_free(titlePtr)
 os_free(textPtr)
 ```
 
-## 7. Edge Cases & Pitfalls
+## 7. The Standard Library Modules (`lib/`)
+While EZ provides hundreds of global built-in functions, the language also ships with a rich modular standard library written in EZ itself (located in the `lib/` directory or managed via the `ezlib` package manager). You can import these directly:
+
+```ez
+use "os"
+use "fs"
+use "sqlite"
+use "crypto"
+use "httpx"
+use "datetime"
+
+// Example: Using the built-in SQLite standard library module
+db = sqlite.connect("local.db")
+db.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+```
+These packages are automatically resolved by the VM's module loader, which searches the local directory, the `lib/` installation directory, and finally `C:/ezlib/`.
+
+## 8. Edge Cases & Pitfalls
 - **Regex Invalid Syntax**: Passing an invalid regular expression string to `reMatch` or `reSearch` will cause a runtime exception to bubble up from the internal regex engine. Always wrap user-supplied regex strings in a `try/catch`.
 - **String Out of Bounds**: Calling `substr` or `substring` with indices larger than the string length will result in an "out of bounds" fatal error. Always check `len()` first!
 - **Network Failures & Timeouts**: `http_get` and `http_post` operate synchronously and will actively throw a catchable exception if the connection fails or times out. However, `fetch` (which is asynchronous) **does not throw**. If `fetch` fails, its Future will resolve to a dictionary containing an error key (e.g., `{"error": "Fetch failed: Could not connect to server"}`). Always check for this key when awaiting `fetch`.

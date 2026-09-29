@@ -120,6 +120,10 @@ get num in [1, 2, 3, 4, 5, 6] {
       out "This WILL print because 0 is truthy!"
   }
   ```
+- **Logical Operator Propagation**: The `and` and `or` operators do not cast their return values to strict booleans. They return the *actual underlying object* evaluated last.
+  - `nil or 42` returns `42`.
+  - `[] and "hello"` returns `"hello"`.
+  This allows for elegant default-value assignments.
 - **Match Fallthrough**: The `match` statement does *not* fall through. Once an arm is matched and executed, the block automatically jumps to the end of the match statement. There is no need for a `break` keyword.
 - **Match without 'other'**: If a `match` statement fails to match any pattern and does not include an `other` clause, it silently completes without error.
 - **Modifying Iterables**: Never add or remove elements from an Array or Dictionary while inside a `get` loop iterating over it! This can cause iterator invalidation and crash the VM.

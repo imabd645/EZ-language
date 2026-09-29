@@ -119,7 +119,7 @@ out squaredNumbers // [1, 4, 9, 16]
 
 ## 5. Edge Cases & Pitfalls
 - **Recursive Calls & Stack Overflow**: EZ limits the recursion call stack to prevent OS-level stack overflows. Exceeding the call depth limit does *not* crash the host process; it safely aborts the script by throwing a clean traceback error.
-- **Loop Closure Binding (Boxed Upvalues)**: When creating closures inside loops (e.g. `repeat`), EZ dynamically boxes the captured loop variables *per-iteration*. This means closures capture the exact value the variable had during that iteration, rather than sharing the final mutated value.
+- **Loop Closure Binding (By-Reference Capturing)**: When creating closures inside loops (e.g. `repeat`), EZ dynamically captures the loop variable *by reference* (late binding). This means closures share the exact same variable. If you execute them later, they will all see the *final mutated value* of the loop variable, rather than the value it had during their specific iteration.
 - **Omitting `give`**: If a task reaches the end of its block without a `give` statement, it implicitly returns `nil`.
 - **Default Argument Evaluation**: Default arguments are evaluated *at definition time*, not at call time. If you use a mutable object (like `[]` or `{}`) as a default argument, the *same* object reference will be used for every call!
   ```ez

@@ -168,7 +168,10 @@ model, and you can write your own with the `decorator` keyword. See
 - **Accessing Methods as Closures**: You cannot currently detach a method from its object instance and pass it around safely. Calling `detatchedMethod = obj.myTask` followed by `detatchedMethod()` will crash because `self` is no longer bound correctly. Always wrap it: `task wrapper() { obj.myTask() }`.
 - **Property Initialization Order**: Class-level property declarations (e.g., `hidden count = 0`) are evaluated *before* the `init` block is run.
 
-## 5. Functors (Callable Objects)
+## 8. Magic Methods (`__call__` and `toString`)
+EZ provides special tasks you can define to hook into native language behaviors.
+
+### Callable Objects (`__call__`)
 Models can implement the `__call__` task to allow instances to be invoked directly like functions.
 ```ez
 model Multiplier {
@@ -185,4 +188,23 @@ double = new Multiplier(2)
 out double(10) // 20
 ```
 *Note: If you attempt to invoke an instance that does not implement `__call__`, the VM will safely throw a `TypeError: instance is not a function`.*
+
+### Custom Stringification (`toString`)
+By default, printing a model instance or calling `str(obj)` outputs `<instance>`. You can override this by implementing `toString()`:
+```ez
+model Point {
+    init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    task toString() {
+        give "(" + self.x + ", " + self.y + ")"
+    }
+}
+
+p = new Point(5, 10)
+out str(p) // "(5, 10)"
+```
+*Note: `toString()` supports cascading stringification! If your `toString` task returns an array or dictionary, the VM will automatically stringify the returned collection cleanly without crashing.*
 

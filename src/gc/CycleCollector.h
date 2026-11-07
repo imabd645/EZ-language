@@ -49,6 +49,14 @@ struct TrackedObject {
 // ─────────────────────────────────────────────────────────────────────────────
 class CycleCollector {
 public:
+    // Set (and never cleared) by the thread that is about to create the first
+    // additional EZ-running thread. Until then exactly one thread can touch
+    // objects, so per-object write locks on the property fast path are pure
+    // overhead. Set by the *spawning* thread BEFORE std::thread is constructed,
+    // so no second thread can exist while the flag is still false.
+    static inline std::atomic<bool> multiThreaded{false};
+    static void markMultiThreaded() { multiThreaded.store(true, std::memory_order_release); }
+
     static CycleCollector& instance() {
         static CycleCollector cc;
         return cc;

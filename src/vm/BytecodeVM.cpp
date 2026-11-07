@@ -198,8 +198,6 @@ Value BytecodeVM::execute(BytecodeFunctionPtr function,
         push(Value());
     }
 
-    frame.functionName = function->name;
-    frame.filename     = function->filename;
     frame.line         = 0;
     frame.localCount   = function->localCount;
     frames.push_back(frame);
@@ -304,7 +302,7 @@ void BytecodeVM::runtimeError(const std::string& message, int line, const std::s
         faultLine = frames.back().line;
     }
     if (faultFile.empty() && !frames.empty()) {
-        faultFile = frames.back().filename;
+        faultFile = frames.back().filename();
     }
 
     if (tryStack.empty() && !isAsyncTask) {
@@ -1012,8 +1010,8 @@ void BytecodeVM::printStackTrace() const {
             }
         }
         
-        std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
-        trace.push_back({fn, it->filename, currentLine, activeLocals});
+        std::string fn = it->functionName().empty() ? "<script>" : it->functionName();
+        trace.push_back({fn, it->filename(), currentLine, activeLocals});
     }
 
     if (trace.empty()) return;
@@ -1054,8 +1052,8 @@ std::vector<Value> BytecodeVM::getStackTraceFrames() const {
                 currentLine = (int)it->function->chunk.lines[offset];
             }
         }
-        std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
-        std::string file = it->filename.empty() ? "<unknown>" : it->filename;
+        std::string fn = it->functionName().empty() ? "<script>" : it->functionName();
+        std::string file = it->filename().empty() ? "<unknown>" : it->filename();
         
         Value frameDict = Value::makeDictionary();
         auto dict = frameDict.asDictionaryPtr();

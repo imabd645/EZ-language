@@ -185,7 +185,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         if (!allowed) { \
             SYNC_IP(); \
             runtimeError("Cannot access hidden member '" + (propName) + "' of model '" + (klass)->name + "'."); \
-            return; \
+            RAISE_FAULT(); \
         } \
     } \
 }
@@ -523,9 +523,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
-                        Value obj = *(--stackTop);
+                        // Move, don't copy: a copy of an object Value is an atomic refcount
+                        // bump, and asInstance() returned the pointer BY VALUE (a second
+                        // one). Borrow the pointer held inside `obj` instead.
+                        Value obj = std::move(*(--stackTop));
                         if (obj.isInstance()) {
-                            auto inst = obj.asInstance();
+                            const Value::InstancePtr& inst = std::get<Value::InstancePtr>(obj.m_data);
                             ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
 
                             // 1. Fast path for instance properties (Shape IC)
@@ -745,15 +748,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
-                        Value value = *(--stackTop);
-                        Value obj   = *(--stackTop);
+                        Value value = std::move(*(--stackTop));
+                        Value obj   = std::move(*(--stackTop));
                         // This op pops 2 and pushes 1, so the upper source slot
                         // (stackTop[1]) is left holding a stale copy that the
                         // following POP won't reach. Clear it so it doesn't keep
                         // the assigned object alive / defeat the GC.
                         stackTop[1] = Value();
                         if (obj.isInstance()) {
-                            auto inst = obj.asInstance();
+                            const Value::InstancePtr& inst = std::get<Value::InstancePtr>(obj.m_data);
                             // __setattr__ has to be consulted BEFORE the IC fast
                             // path: it exists so an object can observe what
                             // changed, which is worthless if a cached write can
@@ -810,8 +813,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         uint16_t nameIdx = READ_SHORT();
                         uint16_t icIdx = READ_SHORT();
                         const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
-                        Value value = *(--stackTop);
-                        Value obj   = *(--stackTop);
+                        Value value = std::move(*(--stackTop));
+                        Value obj   = std::move(*(--stackTop));
                         // Clear the stale upper source slot (pop-2/push-1); see
                         // STORE_PROPERTY.
                         stackTop[1] = Value();
@@ -830,8 +833,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
                             *stackTop++ = value;
                         } else {
-                            auto inst  = obj.asInstance();
-                            auto klass = inst->klass;
+                            const Value::InstancePtr& inst = std::get<Value::InstancePtr>(obj.m_data);
+                            const auto& klass = inst->klass;
 
                             // This is the opcode the compiler actually emits for
                             // `obj.prop = value`, so the hook must be here as
@@ -853,20 +856,30 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             }
 
                             if (!klass->behaviors.any()) {
-                                CHECK_VISIBILITY(klass, propName);
                                 ICCacheEntry& ic = frame->function->chunk.icEntries[icIdx];
-                                if (ic.shape && ic.shape == inst->shape) {
-                                    std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
-                                    inst->propertyValues[ic.offset] = value;
+                                // Hit: shape AND class match. The visibility check
+                                // depends only on (class, name, this site's function),
+                                // so it was already proven when the entry was filled.
+                                // (Shapes are rooted globally, so shape alone does not
+                                // identify the class.)
+                                if (ic.shape && ic.shape == inst->shape && ic.klass == klass.get()) {
+                                    if (__builtin_expect(CycleCollector::multiThreaded.load(std::memory_order_relaxed), 0)) {
+                                        std::unique_lock<std::shared_mutex> lk(inst->prop_mutex);
+                                        inst->propertyValues[ic.offset] = value;
+                                    } else {
+                                        inst->propertyValues[ic.offset] = value;
+                                    }
                                 } else {
+                                    CHECK_VISIBILITY(klass, propName);
                                     inst->setProperty(propName, value);
                                     size_t offset;
                                     if (inst->shape->getOffset(propName, offset)) {
                                         ic.shape = inst->shape;
+                                        ic.klass = klass.get();
                                         ic.offset = offset;
                                     }
                                 }
-                                *stackTop++ = value;
+                                *stackTop++ = std::move(value);
                             } else {
                                 if (klass->behaviors.validated) {
                                     for (const auto& v : klass->validators) {
@@ -2149,7 +2162,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         
                         SYNC_IP();
                         this->stackTop = stackTop;
-                        Value inst = instantiate(classVal.asClass(), args, frame->line, frame->functionName);
+                        Value inst = instantiate(classVal.asClass(), args, frame->line, frame->functionName());
                         LOAD_FRAME();
                         stackTop = this->stackTop;
                         *stackTop++ = inst;
@@ -2793,8 +2806,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                             currentLine = (int)it->function->chunk.lines[offset];
                                         }
                                     }
-                                    std::string fn = it->functionName.empty() ? "<script>" : it->functionName;
-                                    st += "  File \"" + (it->filename.empty() ? "<unknown>" : it->filename) +
+                                    std::string fn = it->functionName().empty() ? "<script>" : it->functionName();
+                                    st += "  File \"" + (it->filename().empty() ? "<unknown>" : it->filename()) +
                                           "\", line " + std::to_string(currentLine) +
                                           ", in " + fn + "\n";
                                 }
@@ -3337,7 +3350,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
         // Uncaught std exception Ã¢â‚¬â€  format like our runtime errors
         pendingException = Value(e.what());
         if (!isAsyncTask) {
-            std::string fname = frames.empty() ? "" : frames.back().filename;
+            std::string fname = frames.empty() ? "" : frames.back().filename();
             int ln = frames.empty() ? 0 : frames.back().line;
             std::cerr << "\nError: " << e.what() << std::endl;
             if (ln > 0) std::cerr << "  at line " << ln;
@@ -3725,30 +3738,30 @@ void BytecodeVM::pushCallFrame(BytecodeFunctionPtr bcFunc, uint8_t argCount, Clo
         return;
     }
 
+    BytecodeFunction* fn = bcFunc.get();
+
     // Push nil for any missing optional parameters
-    while (argCount < bcFunc->arity) {
+    while (argCount < fn->arity) {
         *stackTop++ = Value();
         argCount++;
     }
 
-    // --- Create Frame ---
-    CallFrame newFrame;
-    newFrame.function     = bcFunc;
-    newFrame.ip           = bcFunc->chunk.code.data();
-    newFrame.slots        = stackTop - argCount;
+    Value* slotsBase = stackTop - argCount;
     // Ensure all local slots are reserved (padding for locals beyond parameters)
-    while ((stackTop - newFrame.slots) < (long long)bcFunc->localCount) {
+    while ((stackTop - slotsBase) < (long long)fn->localCount) {
         *stackTop++ = Value();
     }
-    
+
     this->stackTop = stackTop; // Sync back to member!
 
-    newFrame.functionName = bcFunc->name;
-    newFrame.filename     = bcFunc->filename;  // propagate source file
-    newFrame.line         = 0;
-    newFrame.localCount   = bcFunc->localCount;
-    
-    frames.push_back(newFrame);
+    // --- Create Frame in place (no temporary, no copy) ---
+    frames.emplace_back();
+    CallFrame& newFrame = frames.back();
+    newFrame.function   = std::move(bcFunc);
+    newFrame.ip         = fn->chunk.code.data();
+    newFrame.slots      = slotsBase;
+    newFrame.line       = 0;
+    newFrame.localCount = fn->localCount;
     frameUpvalues.push_back(std::move(cs));
 }
 

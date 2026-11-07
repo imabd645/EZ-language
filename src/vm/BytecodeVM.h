@@ -149,8 +149,11 @@ private:
         const uint8_t* ip;    // instruction pointer into chunk.code
         Value*         slots; // base stack pointer (arg0 is slots[0])
         size_t         localCount;
-        std::string    functionName;
-        std::string    filename;   // Source file this frame belongs to
+        // Derived from `function` instead of stored: they were two std::string
+        // copies (one a heap-allocated path) made on every call, and always
+        // equal to the function's own name/filename.
+        const std::string& functionName() const { return function->name; }
+        const std::string& filename()     const { return function->filename; }
         int            line;
         // Has this invocation already called super()? The rule is one super()
         // per CONSTRUCTOR CALL, so it belongs on the frame. Tracking it on the

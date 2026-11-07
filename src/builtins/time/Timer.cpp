@@ -153,6 +153,7 @@ auto timerClass = std::make_shared<EZClass>("Timer");
 
             auto globalEnv = interp.getGlobalEnv();
 
+            CycleCollector::markMultiThreaded();
             std::thread([stateWeak, cb, ms, repeat, globalEnv]() {
                 // Long strings are not interned on this thread: interning is
                 // opt-in and only the main thread opts in. See Runtime.cpp.

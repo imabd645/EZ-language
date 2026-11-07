@@ -364,6 +364,7 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
             if (!isDaemon) {
                 EventLoop::instance().retain();
             }
+            CycleCollector::markMultiThreaded();
             std::thread([ezFut, globalEnv, closedFunc, closedArgs, isDaemon]() {
                 bool   signalResult = false;
                 bool   failed       = false;

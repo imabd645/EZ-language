@@ -1,0 +1,426 @@
+# `give` from inside a `finally` block.
+#
+# Semantics under test (same as Python / Java / JS):
+#   * a `give` in `finally` OVERRIDES whatever the try/catch was returning;
+#   * it also DISCARDS an exception that was in flight (try or catch threw);
+#   * a finally that does not `give` leaves the pending return/exception alone;
+#   * a conditional `give` that is not taken leaves them alone too;
+#   * an exception THROWN from finally replaces a pending return/exception;
+#   * none of this may leak a try-handler or a stale pending exception into
+#     code that runs afterwards.
+
+passes = 0
+fails = 0
+
+task check(name, actual, expected) {
+    when str(actual) == str(expected) {
+        passes = passes + 1
+        out "  [PASS] " + name
+    } other {
+        fails = fails + 1
+        out "  [FAIL] " + name + "  expected [" + str(expected) + "] got [" + str(actual) + "]"
+    }
+}
+
+# ---------------------------------------------------------------- 1. override
+out "=== give in finally overrides ==="
+
+task o_try() {
+    try { give "try" } finally { give "finally" }
+}
+check("finally give overrides try give", o_try(), "finally")
+
+task o_catch() {
+    try { throw "x" } catch e { give "catch" } finally { give "finally" }
+}
+check("finally give overrides catch give", o_catch(), "finally")
+
+task o_all_three() {
+    try { give "try" } catch e { give "catch" } finally { give "finally" }
+}
+check("try/catch/finally, no throw, finally wins", o_all_three(), "finally")
+
+task o_array() {
+    try { give [1, 2] } finally { give [9, 8, 7] }
+}
+check("finally can return a different type (array)", len(o_array()), 3)
+
+task o_nil() {
+    try { give 5 } finally { give }
+}
+check("bare give in finally returns nil", o_nil(), "nil")
+
+# ------------------------------------------------------------ 2. swallowing
+out "=== give in finally swallows exceptions ==="
+
+task s_try_nocatch() {
+    try { throw "boom" } finally { give "swallowed" }
+}
+check("try throws, no catch, finally gives", s_try_nocatch(), "swallowed")
+
+task s_catch_rethrow() {
+    try { throw "a" } catch e { throw "b" } finally { give "swallowed2" }
+}
+check("catch rethrows, finally gives", s_catch_rethrow(), "swallowed2")
+
+task deep() { throw "from deep" }
+task s_deep_callee() {
+    try { deep() } finally { give "swallowed3" }
+}
+check("exception from a callee is swallowed", s_deep_callee(), "swallowed3")
+
+caught = "none"
+try {
+    r = s_try_nocatch()
+    caught = "caller saw no exception"
+} catch e {
+    caught = "caller caught " + str(e)
+}
+check("caller's catch is NOT triggered", caught, "caller saw no exception")
+
+# -------------------------------------------- 3. finally without / with `when`
+out "=== finally that does not (always) give ==="
+
+task n_plain() {
+    try { give "kept" } finally { x = 1 }
+}
+check("finally without give keeps try's value", n_plain(), "kept")
+
+task n_value_captured() {
+    v = 1
+    try { give v } finally { v = 2 }
+}
+check("give value is captured before finally runs", n_value_captured(), 1)
+
+task n_cond(flag) {
+    try { give "original" } finally {
+        when flag { give "override" }
+    }
+}
+check("conditional give taken", n_cond(true), "override")
+check("conditional give not taken keeps original", n_cond(false), "original")
+
+task n_cond_exc(flag) {
+    try { throw "pending" } finally {
+        when flag { give "override" }
+    }
+}
+check("conditional give taken, exception swallowed", n_cond_exc(true), "override")
+swallowedWrongly = "propagated"
+try {
+    n_cond_exc(false)
+    swallowedWrongly = "swallowed"
+} catch e {
+    swallowedWrongly = "propagated:" + str(e)
+}
+check("conditional give NOT taken, exception still propagates", swallowedWrongly, "propagated:pending")
+
+cnt = 0
+task bump() {
+    cnt = cnt + 1
+    give cnt
+}
+task n_once() {
+    try { give bump() } finally { x = 0 }
+}
+n_once()
+check("give expression in try is evaluated exactly once", cnt, 1)
+
+# --------------------------------------------------- 4. exceptions in finally
+out "=== exception thrown from finally ==="
+
+task t_over_return() {
+    try { give "ret" } finally { throw "finally-threw" }
+}
+got = "none"
+try { t_over_return() } catch e { got = str(e) }
+check("throw in finally replaces pending return", got, "finally-threw")
+
+task t_over_exception() {
+    try { throw "first" } finally { throw "second" }
+}
+got = "none"
+try { t_over_exception() } catch e { got = str(e) }
+check("throw in finally replaces pending exception", got, "second")
+
+# ------------------------------------------------------------------ 5. nesting
+out "=== nested try/finally ==="
+
+log = []
+task nest_inner_gives() {
+    try {
+        try { give "in-try" } finally { push(log, "inner"); give "inner-give" }
+    } finally {
+        push(log, "outer")
+    }
+}
+check("inner finally give is the result", nest_inner_gives(), "inner-give")
+check("both finallys ran, inner first", join(log, ","), "inner,outer")
+
+task nest_outer_gives() {
+    try {
+        try { give "in-try" } finally { x = 1 }
+    } finally {
+        give "outer-give"
+    }
+}
+check("outer finally give overrides inner return", nest_outer_gives(), "outer-give")
+
+task nest_both_give() {
+    try {
+        try { give 1 } finally { give 2 }
+    } finally {
+        give 3
+    }
+}
+check("both finallys give: outermost wins", nest_both_give(), 3)
+
+task nest_exc_through() {
+    try {
+        try { throw "deep" } finally { x = 1 }
+    } finally {
+        give "outer-swallow"
+    }
+}
+check("outer finally swallows exception passing through inner", nest_exc_through(), "outer-swallow")
+
+task nest_in_catch() {
+    try {
+        throw "a"
+    } catch e {
+        try { give "inner-try" } finally { give "inner-fin" }
+    } finally {
+        x = 1
+    }
+}
+check("try/finally inside a catch block", nest_in_catch(), "inner-fin")
+
+# ------------------------------------------------------------------- 6. loops
+out "=== loops ==="
+
+task loop_give(n) {
+    repeat i = 0 to n {
+        try { when i == 2 { give "from-try" } } finally { when i == 2 { give "from-finally" } }
+    }
+    give "fell-through"
+}
+check("give in finally inside a loop", loop_give(5), "from-finally")
+
+task loop_escape() {
+    out_val = "none"
+    repeat i = 0 to 5 {
+        try { when i == 3 { escape } } finally { out_val = "i=" + str(i) }
+    }
+    give out_val
+}
+check("escape through finally runs it on the way out", loop_escape(), "i=3")
+
+task loop_skip_give() {
+    total = 0
+    repeat i = 0 to 4 {
+        try { skip } finally { total = total + 1 }
+    }
+    give total
+}
+check("skip through finally still works", loop_skip_give(), 5)
+
+task loop_many() {
+    acc = 0
+    repeat i = 0 to 999 {
+        r = o_try()
+        when r == "finally" { acc = acc + 1 }
+    }
+    give acc
+}
+check("1000 calls, finally give each time", loop_many(), 1000)
+
+# ----------------------------------------------------------------- 7. methods
+out "=== methods, closures, recursion, async ==="
+
+model Acct {
+    total = 0
+    task add(n) {
+        try {
+            self.total += n
+            give "try"
+        } finally {
+            give "total=" + str(self.total)
+        }
+    }
+    task fail() {
+        try { throw "bad" } finally { give "recovered" }
+    }
+}
+a = Acct()
+check("method: finally give sees mutated self", a.add(5), "total=5")
+check("method: finally give swallows exception", a.fail(), "recovered")
+check("method: state change from try persisted", a.total, 5)
+
+f = || {
+    try { give 1 } finally { give 2 }
+}
+check("lambda with finally give", f(), 2)
+
+task make() {
+    base = 100
+    give || {
+        try { give base } finally { give base + 1 }
+    }
+}
+check("closure captures variable used in finally give", make()(), 101)
+
+task rec(n) {
+    try {
+        when n == 0 { throw "bottom" }
+        give rec(n - 1)
+    } finally {
+        when n == 0 { give 0 }
+    }
+}
+check("recursion: bottom frame swallows, others return up", rec(50), 0)
+
+task async_work() {
+    try { throw "async-boom" } finally { give "async-ok" }
+}
+check("async: finally give inside spawned task", await(spawn(async_work)), "async-ok")
+
+# ------------------------------------------- 7b. handler bookkeeping
+out "=== catch body that throws still runs its finally ==="
+
+log2 = []
+task c_throw_nogive() {
+    try { throw "a" } catch e { throw "b" } finally { push(log2, "fin") }
+}
+got = "none"
+try { c_throw_nogive() } catch e { got = str(e) }
+check("catch throws: new exception propagates after finally", got, "b")
+check("catch throws: finally ran exactly once", join(log2, ","), "fin")
+
+model AppErr {
+    init(msg) { self.message = msg }
+}
+model OtherErr {
+    init(msg) { self.message = msg }
+}
+
+task typed_nomatch_swallow() {
+    try { throw new OtherErr("o") } catch AppErr e { give "wrong" } finally { give "fin-wins" }
+}
+check("typed catch, no match: finally give swallows", typed_nomatch_swallow(), "fin-wins")
+
+log3 = []
+task typed_nomatch_propagate() {
+    try { throw new OtherErr("o") } catch AppErr e { give "wrong" } finally { push(log3, "fin") }
+}
+got = "none"
+try { typed_nomatch_propagate() } catch OtherErr oe { got = oe.message }
+check("typed catch, no match: exception propagates after finally", got + "|" + join(log3, ","), "o|fin")
+
+task typed_match_throws() {
+    try { throw new AppErr("first") } catch AppErr e { throw new OtherErr("second") } finally { give "fin-wins2" }
+}
+check("typed catch matches then throws: finally give swallows", typed_match_throws(), "fin-wins2")
+
+out "=== escape / skip inside a catch body ==="
+
+log4 = []
+task esc_in_catch() {
+    try {
+        repeat i = 0 to 3 {
+            try { throw "x" } catch e { push(log4, "c" + str(i)); escape }
+        }
+        push(log4, "after")
+        throw "outer-thrown"
+    } catch e2 { push(log4, "outer:" + str(e2)) }
+}
+esc_in_catch()
+check("escape in catch leaves the enclosing handler intact", join(log4, ","), "c0,after,outer:outer-thrown")
+
+task skip_in_catch() {
+    n = 0
+    try {
+        repeat i = 0 to 3 {
+            try { throw "x" } catch e { n = n + 1; skip }
+        }
+        throw "outer-thrown"
+    } catch e2 { n = n + 100 }
+    give n
+}
+check("skip in catch leaves the enclosing handler intact", skip_in_catch(), 104)
+
+log5 = []
+task esc_in_catch_finally() {
+    try {
+        repeat i = 0 to 3 {
+            try { throw "x" } catch e { push(log5, "c" + str(i)); escape } finally { push(log5, "f" + str(i)) }
+        }
+        throw "outer-thrown"
+    } catch e2 { push(log5, "outer") }
+}
+esc_in_catch_finally()
+check("escape in catch runs finally, enclosing handler intact", join(log5, ","), "c0,f0,outer")
+
+out "=== a finally that throws is not caught by its own try ==="
+
+log6 = []
+task fin_throws_on_give() {
+    try { give 1 } catch e { push(log6, "own-catch") } finally { push(log6, "fin"); throw "from-finally" }
+}
+got = "none"
+try { fin_throws_on_give() } catch e { got = str(e) }
+check("give path: finally runs once, exception skips own catch", join(log6, ",") + "|" + got, "fin|from-finally")
+
+log7 = []
+task fin_throws_on_catch_give() {
+    try { throw "a" } catch e { give "catch-gave" } finally { push(log7, "fin"); throw "from-finally" }
+}
+got = "none"
+try { fin_throws_on_catch_give() } catch e { got = str(e) }
+check("catch-give path: finally throw propagates, runs once", join(log7, ",") + "|" + got, "fin|from-finally")
+
+log8 = []
+task nested_fin_throws() {
+    try {
+        try { give 1 } finally { push(log8, "inner"); throw "inner-threw" }
+    } catch e {
+        push(log8, "outer-catch:" + str(e))
+        give "recovered"
+    } finally {
+        push(log8, "outer-fin")
+    }
+}
+check("inner finally's throw is caught by the OUTER catch", nested_fin_throws(), "recovered")
+check("... and the order of events is right", join(log8, ","), "inner,outer-catch:inner-threw,outer-fin")
+
+# --------------------------------------------- 8. nothing leaks afterwards
+out "=== no leaked handler / stale pending exception ==="
+
+repeat i = 0 to 199 {
+    s_try_nocatch()
+    o_try()
+    n_cond(true)
+}
+
+x = 0
+try { x = 1 } finally { x = x + 1 }
+check("ordinary try/finally after many swallowed exceptions", x, 2)
+
+after = "unset"
+try {
+    throw "late"
+} catch e {
+    after = "caught " + str(e)
+}
+check("a later throw reaches the RIGHT handler", after, "caught late")
+
+task fresh() {
+    try { give "clean" } finally { x = 1 }
+}
+check("fresh call is unaffected", fresh(), "clean")
+
+# ------------------------------------------------------------------- summary
+out ""
+out "========================================"
+out " passed: " + str(passes)
+out " Fails: " + str(fails)
+out "========================================"

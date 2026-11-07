@@ -109,6 +109,14 @@ private:
         struct ActiveTry {
             StmtPtr body;     // the finally block to replay before returning
             int retvalSlot;   // hidden local that parks the return value meanwhile
+            // Is a VM TryBlock for THIS statement on the tryStack at the point
+            // currently being compiled? True in the try body, and in the catch
+            // handlers when a finally exists (they get their own protected
+            // region); false in catch handlers without a finally, because the VM
+            // already consumed the handler when it unwound into the catch.
+            // Leaving the region (give/escape/skip) must TRY_END exactly the live
+            // ones -- an extra TRY_END pops an enclosing statement's handler.
+            bool handlerLive = true;
         };
         std::vector<ActiveTry> ActiveTrys;
 

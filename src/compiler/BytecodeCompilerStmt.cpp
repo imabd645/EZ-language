@@ -812,6 +812,10 @@ void BytecodeCompiler::compileGive(const GiveStmt& stmt) {
         auto pending = current->ActiveTrys;
         for (size_t i = pending.size(); i-- > 0; ) {
             current->ActiveTrys.resize(i);
+            // Leave this try's protected region BEFORE running its finally, so an
+            // exception thrown by the finally is not caught by the same try's
+            // own catch (and the finally is not run a second time).
+            if (pending[i].handlerLive) emitOp(OpCode::TRY_END);
             if (pending[i].body) {
                 emitStoreLocal(pending[i].retvalSlot);
                 emitOp(OpCode::POP);
@@ -1826,6 +1830,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
     } else {
         current->ActiveTrys.push_back(Compiler::ActiveTry{nullptr, -1});
     }
+    const size_t myTry = current->ActiveTrys.size() - 1;
 
     // Emit TRY_START with a placeholder jump offset to the catch handler.
     size_t tryStart = emitJump(OpCode::TRY_START);
@@ -1839,8 +1844,23 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
 
     // Patch TRY_START to point here (the catch handler entry or finally for try-finally)
     patchJump(tryStart);
+    // The VM popped this statement's TryBlock when it unwound to here.
+    current->ActiveTrys[myTry].handlerLive = false;
 
     std::vector<size_t> successJumps;
+
+    // With a finally, the catch handlers need a protected region of their own:
+    // an exception thrown from a catch body must still run the finally (and a
+    // `give` in that finally may swallow it). Without one it skipped the finally
+    // and went straight to the enclosing handler. TRY_START here records the
+    // stack with the caught exception on top, which the failure handler below
+    // accounts for.
+    const bool protectCatch = hasCatch && hasFinally;
+    size_t catchRegion = 0;
+    if (protectCatch) {
+        catchRegion = emitJump(OpCode::TRY_START);
+        current->ActiveTrys[myTry].handlerLive = true;
+    }
 
     if (hasCatch) {
         // At this point, the exception is on the stack: [exc]
@@ -1867,6 +1887,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                 compileStmt(cb.body);
                 endScope();
                 
+                if (protectCatch) emitOp(OpCode::TRY_END); // leave the catch region
                 successJumps.push_back(emitJump(OpCode::JUMP)); // Jump to finally/end
                 
                 patchJump(nextCatch); // Point next catch check here
@@ -1883,6 +1904,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
                 compileStmt(cb.body);
                 endScope();
                 
+                if (protectCatch) emitOp(OpCode::TRY_END); // leave the catch region
                 successJumps.push_back(emitJump(OpCode::JUMP));
                 
                 break;
@@ -1893,6 +1915,7 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         if (hasFinally) {
             // Save exception as pending and jump to finally
             // The exception is still on the stack from the catch dispatch
+            emitOp(OpCode::TRY_END); // leave the catch region (protectCatch)
             emitStoreLocal(pendingSlot);
             emitOp(OpCode::POP);
             
@@ -1902,6 +1925,19 @@ void BytecodeCompiler::compileTry(const TryStmt& stmt) {
         } else {
             // Re-throw the exception which is still on the stack
             emitOp(OpCode::THROW);
+        }
+
+        if (protectCatch) {
+            // Failure handler for the catch region: a catch body threw. The VM
+            // reset the stack to the TRY_START mark (which still holds the
+            // exception that was being handled) and pushed the NEW one on top.
+            // The new exception becomes the pending one -- it replaces the old,
+            // as in Python/Java -- and we fall into the finally body below.
+            patchJump(catchRegion);
+            current->ActiveTrys[myTry].handlerLive = false;
+            emitStoreLocal(pendingSlot);
+            emitOp(OpCode::POP);   // new exception (now parked in pendingSlot)
+            emitOp(OpCode::POP);   // the exception the catch was handling
         }
     } else {
         // try-finally without catch: exception is on stack from TRY_START catch handler
@@ -2474,7 +2510,7 @@ void BytecodeCompiler::emitBreak() {
     auto pending = current->ActiveTrys;
     for (size_t i = pending.size(); i-- > depth; ) {
         current->ActiveTrys.resize(i);
-        emitOp(OpCode::TRY_END);
+        if (pending[i].handlerLive) emitOp(OpCode::TRY_END);
         if (pending[i].body) compileStmt(pending[i].body);
     }
     current->ActiveTrys = pending;
@@ -2505,7 +2541,7 @@ void BytecodeCompiler::emitContinue() {
     auto pending = current->ActiveTrys;
     for (size_t i = pending.size(); i-- > depth; ) {
         current->ActiveTrys.resize(i);
-        emitOp(OpCode::TRY_END);
+        if (pending[i].handlerLive) emitOp(OpCode::TRY_END);
         if (pending[i].body) compileStmt(pending[i].body);
     }
     current->ActiveTrys = pending;

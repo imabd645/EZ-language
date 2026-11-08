@@ -58,7 +58,7 @@ out "Math result: " + str(finalResult)
 ```
 
 `sync` is an **alias for `await`** — both names are registered to the same
-function in `Builtins_GC.cpp`, so they behave identically. There is no
+function in `core/GC.cpp`, so they behave identically. There is no
 "blocking" variant to choose between.
 
 ### Waiting on many futures

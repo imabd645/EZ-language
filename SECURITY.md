@@ -8,9 +8,8 @@ EZ does not yet have a formal LTS/multi-branch support policy. Security fixes ar
 
 | Version                        | Supported |
 | ------------------------------- | --------- |
-| 4.0 (latest release)            | ✅        |
-| `main` branch (unreleased)      | ✅        |
-| < 4.0                           | ❌ (best-effort only) |
+| 5.3.0 / `main` (current)         | ✅        |
+| < 5.3.0                          | ❌ (best-effort only) |
 | `ezlib` packages on the registry | ✅ (see scope below) |
 
 ## Reporting a Vulnerability

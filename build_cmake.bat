@@ -1,27 +1,33 @@
 @echo off
-REM Add MinGW to the PATH temporarily for this script
-set PATH=C:\msys64\mingw64\bin;%PATH%
+setlocal
 
-if not exist build mkdir build
-cd build
+set "ROOT=%~dp0"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+if "%EZ_ARCH%"=="" set "EZ_ARCH=x86-64-v2"
+if "%MSYS2_PREFIX%"=="" set "MSYS2_PREFIX=C:/msys64/mingw64"
 
-REM Configure CMake
-cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+where cmake >nul 2>nul
+if errorlevel 1 (
+    echo CMake was not found on PATH.
+    exit /b 1
+)
 
-if %errorlevel% neq 0 (
+if not exist "%ROOT%\build" mkdir "%ROOT%\build"
+
+cmake -S "%ROOT%" -B "%ROOT%\build" -G "MinGW Makefiles" ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DEZ_ARCH=%EZ_ARCH% ^
+    -DMSYS2_PREFIX="%MSYS2_PREFIX%"
+if errorlevel 1 (
     echo CMake configuration failed.
-    cd ..
     exit /b %errorlevel%
 )
 
-REM Build using all available CPU cores via CMake's unified build wrapper
-cmake --build . -j8
-
-if %errorlevel% neq 0 (
+cmake --build "%ROOT%\build" --parallel
+if errorlevel 1 (
     echo Build failed.
-    cd ..
     exit /b %errorlevel%
 )
 
-cd ..
-echo Build complete! You can run .\build\ez.exe
+echo Build complete: %ROOT%\build\ez.exe
+endlocal

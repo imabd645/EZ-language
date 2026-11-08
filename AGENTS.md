@@ -166,7 +166,7 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 - Nested closures must be recursively closed
 - Arrays, Dicts, Instances are shared directly (shared_ptr)
 
-**Implementation**: See `Builtins_GC.cpp::spawn()` for closure logic.
+**Implementation**: See `core/GC.cpp::spawn()` for closure logic.
 
 ### Global Environment Sharing
 
@@ -215,7 +215,7 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 **Mutex Deadlocks**: Always use RAII locking.
 - `lock(mutex, lambda)` ensures unlock even on exception
 - Don't manually lock/unlock in EZ code
-- See `Builtins_Concurrency.cpp::lock()`
+- See `core/Concurrency.cpp::lock()`
 
 ## Adding a New Native Builtin
 
@@ -224,14 +224,14 @@ SAFE_MEMORY_OP(interp, val = *(uint64_t*)(base + offset));
 **Goal**: Add a `reverseString()` builtin that reverses a string.
 
 **1. Choose the appropriate file:**
-- String operations → `Builtins_String.cpp`
-- Math operations → `Builtins_Math.cpp`
-- New subsystem → Create new `Builtins_Subsystem.cpp`
+- String operations → `string/String.cpp`
+- Math operations → `math/Math.cpp`
+- New subsystem → Create new `src/builtins/<subsystem>/Subsystem.cpp`
 
 **2. Add the registration in the appropriate register function:**
 
 ```cpp
-// In Builtins_String.cpp, inside registerStringBuiltins()
+// In string/String.cpp, inside registerStringBuiltins()
 
 interp.defineGlobal("reverseString", Value::makeNativeFunction("reverseString", 1,
     [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {

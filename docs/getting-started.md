@@ -73,7 +73,8 @@ on this build raises an "undefined variable/function" runtime error rather
 than a build failure, since GUI registration is compiled out.
 
 > Build script and flag details (including historical notes on why
-> `-flto`/`-fomit-frame-pointer` were dropped from the release flags to keep
+> `-flto`/`-fomit-frame-pointer` are intentionally disabled in the release
+> flags to keep
 > C++ exception unwinding reliable across the libuv event loop) are in
 > `BUILD.md` and the comments at the top of `CMakeLists.txt`; treat
 > `CMakeLists.txt` itself as the source of truth if the two disagree.

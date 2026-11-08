@@ -1,7 +1,7 @@
 # API Reference — Built-in Functions
 
 Everything on this page is a **native C++ function**, registered directly in
-`src/builtins/Builtins_*.cpp` (and `src/gui/*.cpp` for
+`src/builtins/**/*.cpp` (and `src/gui/*.cpp` for
 GUI, Windows-only), always available with no `use` statement required. For
 higher-level library functions (ORM, web framework, fluent GUI, crypto
 hashing, etc.), see [09_Builtin_Libraries.md](09_Builtin_Libraries.md) — those live

@@ -198,9 +198,9 @@ ez.exe Test/HandwrittenTests/arr_51_empty_array.ez
 ### Step-by-Step Guide
 
 **1. Choose the appropriate file:**
-- String operations → `Builtins_String.cpp`
-- Math operations → `Builtins_Math.cpp`
-- New subsystem → Create new `Builtins_Subsystem.cpp`
+- String operations → `string/String.cpp`
+- Math operations → `math/Math.cpp`
+- New subsystem → Create new `src/builtins/<subsystem>/Subsystem.cpp`
 
 **2. Add the registration:**
 ```cpp
@@ -324,7 +324,7 @@ interp.defineGlobal("MyClass", Value(myClass));
 result = functionName(arg1, arg2)
 ```
 
-**Source**: `src/builtins/Builtins_Subsystem.cpp`
+**Source**: `src/builtins/<subsystem>/Subsystem.cpp`
 ```
 
 ### ARCHITECTURE.md Guidelines
@@ -364,7 +364,7 @@ result = functionName(arg1, arg2)
 ```
 feat: add reverseString builtin
 
-Adds reverseString() function to Builtins_String.cpp.
+Adds reverseString() function to string/String.cpp.
 Reverses a string using std::reverse.
 ```
 

@@ -109,7 +109,7 @@ Behind that one command, EZ:
 3. Runs the optional type checker over the AST (a no-op here, since nothing
    is annotated).
 4. Compiles the AST to bytecode (`src/compiler/BytecodeCompiler.cpp`).
-5. Executes the bytecode on the stack VM (`src/vm/BytecodeVM_Execute.cpp`),
+5. Executes the bytecode on the stack VM (`src/vm/BytecodeVMExecute.cpp`),
    dispatching `out`, `+`, `==`, and the function call through native
    opcodes.
 

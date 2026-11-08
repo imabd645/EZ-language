@@ -16,6 +16,8 @@ Until then, minor versions may include breaking changes.
 ### Changed
 - Improved cross-platform support and error handling in `src/`
 - Enhanced database library symbol resolution
+- Unified `build.bat` and `build_cmake.bat` around the canonical CMake
+  configuration and documented the current deployment layout
 
 ### Fixed
 - SQLite FFI probe step no longer causes CI job failures on some environments

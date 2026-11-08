@@ -31,7 +31,7 @@
 panic("Fatal error occurred")
 ```
 
-**Source**: `src/builtins/Builtins_Core.cpp`
+**Source**: `src/builtins/core/Core.cpp`
 
 ### os / get_os
 
@@ -49,7 +49,7 @@ when current_platform == "windows" {
 }
 ```
 
-**Source**: `src/builtins/Builtins_Core.cpp`
+**Source**: `src/builtins/core/Core.cpp`
 
 ### system
 
@@ -64,7 +64,7 @@ when current_platform == "windows" {
 code = system("echo Hello from EZ")
 ```
 
-**Source**: `src/builtins/Builtins_Core.cpp`
+**Source**: `src/builtins/core/Core.cpp`
 
 ---
 
@@ -83,7 +83,7 @@ code = system("echo Hello from EZ")
 name = input("Enter your name: ")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### print
 
@@ -98,7 +98,7 @@ name = input("Enter your name: ")
 print("Hello", "World", 42)
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### argv
 
@@ -119,7 +119,7 @@ out len(argv)        # 2
 out argv[0]          # Ali
 ```
 
-**Source**: `src/builtins/Builtins_Core.cpp`
+**Source**: `src/builtins/core/Core.cpp`
 
 ### scriptName
 
@@ -127,7 +127,7 @@ out argv[0]          # Ali
 
 The path the script was invoked as — for usage messages.
 
-**Source**: `src/builtins/Builtins_Core.cpp`
+**Source**: `src/builtins/core/Core.cpp`
 
 ### write
 
@@ -150,7 +150,7 @@ repeat i = 0 to 100 {
 out ""              # end the line when finished
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### readFile
 
@@ -165,7 +165,7 @@ out ""              # end the line when finished
 content = readFile("test.txt")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### writeFile
 
@@ -180,7 +180,7 @@ content = readFile("test.txt")
 writeFile("output.txt", "Hello World")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### appendFile
 
@@ -195,7 +195,7 @@ writeFile("output.txt", "Hello World")
 appendFile("log.txt", "New entry\n")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### readLines
 
@@ -210,7 +210,7 @@ appendFile("log.txt", "New entry\n")
 lines = readLines("data.txt")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### writeLine
 
@@ -225,7 +225,7 @@ lines = readLines("data.txt")
 writeLine("log.txt", "Entry with newline")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### appendLine
 
@@ -240,7 +240,7 @@ writeLine("log.txt", "Entry with newline")
 appendLine("log.txt", "Another entry")
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ### File (class)
 
@@ -291,7 +291,7 @@ when File.exists("app.log") {
 }
 ```
 
-**Source**: `src/builtins/Builtins_IO.cpp`
+**Source**: `src/builtins/io/IO.cpp`
 
 ---
 
@@ -319,7 +319,7 @@ launch = DateTime(2026, 8, 7, 9, 30, 0)
 launch.hour()                     # 9
 ```
 
-**Source**: `src/builtins/Builtins_TimeDate.cpp`
+**Source**: `src/builtins/time/DateTime.cpp`
 
 ### Timer (class)
 
@@ -339,7 +339,7 @@ t.start()
 t.stop()
 ```
 
-**Source**: `src/builtins/Builtins_TimeDate.cpp`
+**Source**: `src/builtins/time/DateTime.cpp`
 
 ---
 
@@ -358,7 +358,7 @@ t.stop()
 result = floor(3.7)  // Returns 3
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### ceil
 
@@ -373,7 +373,7 @@ result = floor(3.7)  // Returns 3
 result = ceil(3.2)  // Returns 4
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### abs
 
@@ -388,7 +388,7 @@ result = ceil(3.2)  // Returns 4
 result = abs(-5)  // Returns 5
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### sqrt
 
@@ -403,7 +403,7 @@ result = abs(-5)  // Returns 5
 result = sqrt(16)  // Returns 4.0
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### pow
 
@@ -418,7 +418,7 @@ result = sqrt(16)  // Returns 4.0
 result = pow(2, 3)  // Returns 8.0
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### rand
 
@@ -433,7 +433,7 @@ result = pow(2, 3)  // Returns 8.0
 r = rand()  // Returns e.g. 0.723
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### randint
 
@@ -448,7 +448,7 @@ r = rand()  // Returns e.g. 0.723
 r = randint(1, 10)  // Returns e.g. 7
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### round
 
@@ -463,7 +463,7 @@ r = randint(1, 10)  // Returns e.g. 7
 result = round(3.7)  // Returns 4
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### min
 
@@ -478,7 +478,7 @@ result = round(3.7)  // Returns 4
 result = min(5, 3)  // Returns 3
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ### max
 
@@ -493,7 +493,7 @@ result = min(5, 3)  // Returns 3
 result = max(5, 3)  // Returns 5
 ```
 
-**Source**: `src/builtins/Builtins_Math.cpp`
+**Source**: `src/builtins/math/Math.cpp`
 
 ---
 
@@ -512,7 +512,7 @@ result = max(5, 3)  // Returns 5
 result = substr("hello", 1, 3)  // Returns "ell"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### split
 
@@ -527,7 +527,7 @@ result = substr("hello", 1, 3)  // Returns "ell"
 parts = split("a,b,c", ",")  // Returns ["a", "b", "c"]
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### join
 
@@ -542,7 +542,7 @@ parts = split("a,b,c", ",")  // Returns ["a", "b", "c"]
 result = join(["a", "b", "c"], ",")  // Returns "a,b,c"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### bytesToString
 
@@ -557,7 +557,7 @@ result = join(["a", "b", "c"], ",")  // Returns "a,b,c"
 str = bytesToString([72, 101, 108, 108, 111])  // Returns "Hello"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### upper
 
@@ -572,7 +572,7 @@ str = bytesToString([72, 101, 108, 108, 111])  // Returns "Hello"
 result = upper("hello")  // Returns "HELLO"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### toUpper
 
@@ -587,7 +587,7 @@ result = upper("hello")  // Returns "HELLO"
 result = toUpper("hello")  // Returns "HELLO"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### lower
 
@@ -602,7 +602,7 @@ result = toUpper("hello")  // Returns "HELLO"
 result = lower("HELLO")  // Returns "hello"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### toLower
 
@@ -617,7 +617,7 @@ result = lower("HELLO")  // Returns "hello"
 result = toLower("HELLO")  // Returns "hello"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### trim
 
@@ -632,7 +632,7 @@ result = toLower("HELLO")  // Returns "hello"
 result = trim("  hello  ")  // Returns "hello"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### replace
 
@@ -647,7 +647,7 @@ result = trim("  hello  ")  // Returns "hello"
 result = replace("hello world", "world", "EZ")  // Returns "hello EZ"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### startsWith
 
@@ -662,7 +662,7 @@ result = replace("hello world", "world", "EZ")  // Returns "hello EZ"
 result = startsWith("hello", "he")  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### endsWith
 
@@ -677,7 +677,7 @@ result = startsWith("hello", "he")  // Returns true
 result = endsWith("hello", "lo")  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### ord
 
@@ -692,7 +692,7 @@ result = endsWith("hello", "lo")  // Returns true
 result = ord("A")  // Returns 65
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### chr
 
@@ -707,7 +707,7 @@ result = ord("A")  // Returns 65
 result = chr(65)  // Returns "A"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### substring
 
@@ -723,7 +723,7 @@ result = substring("hello", 1, 3)  // Returns "ell"
 result2 = substring("hello", 1)    // Returns "ello"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### reMatch
 
@@ -738,7 +738,7 @@ result2 = substring("hello", 1)    // Returns "ello"
 result = reMatch("hello", "^h.*o$")  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### reSearch
 
@@ -753,7 +753,7 @@ result = reMatch("hello", "^h.*o$")  // Returns true
 matches = reSearch("hello123", "([a-z]+)([0-9]+)")
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### reReplace
 
@@ -768,7 +768,7 @@ matches = reSearch("hello123", "([a-z]+)([0-9]+)")
 result = reReplace("hello123", "[0-9]+", "X")  // Returns "helloX"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### hex_to_bytes
 
@@ -783,7 +783,7 @@ result = reReplace("hello123", "[0-9]+", "X")  // Returns "helloX"
 bytes = hex_to_bytes("48656C6C6F")  // Returns [72, 101, 108, 108, 111]
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### b64url_encode
 
@@ -798,7 +798,7 @@ bytes = hex_to_bytes("48656C6C6F")  // Returns [72, 101, 108, 108, 111]
 encoded = b64url_encode("hello")
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### b64url_decode
 
@@ -813,7 +813,7 @@ encoded = b64url_encode("hello")
 decoded = b64url_decode(encoded)
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_test
 
@@ -831,7 +831,7 @@ re_test("abc123", "[0-9]+")           # true
 re_test("HELLO", "hello", "i")        # true
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_full_match
 
@@ -847,7 +847,7 @@ re_full_match("123", "[0-9]+")        # true
 re_full_match("abc123", "[0-9]+")     # false
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_find
 
@@ -867,7 +867,7 @@ m["start"]        # 0
 m["groups"][0]    # "2026"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_find_all
 
@@ -886,7 +886,7 @@ len(ms)              # 2
 ms[1]["start"]       # 4
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_replace
 
@@ -904,7 +904,7 @@ re_replace("John Smith", "(\\w+) (\\w+)", "$2, $1")   # "Smith, John"
 re_replace("a1b2", "[0-9]", "#", "", 1)               # "a#b2"
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_split
 
@@ -920,7 +920,7 @@ re_split("a1b22c", "[0-9]+")          # ["a", "b", "c"]
 re_split("a1b1c", "[0-9]", "", 2)     # ["a", "b1c"]
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_escape
 
@@ -936,7 +936,7 @@ re_test("a.b", re_escape("a.b"))      # true
 re_test("axb", re_escape("a.b"))      # false
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ### re_valid
 
@@ -954,7 +954,7 @@ re_valid("^a+$")      # true
 re_valid("((")        # false
 ```
 
-**Source**: `src/builtins/Builtins_String.cpp`
+**Source**: `src/builtins/string/String.cpp`
 
 ---
 
@@ -975,7 +975,7 @@ out len("hello")  // Returns 5
 out len([1,2,3])  // Returns 3
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### push
 
@@ -990,7 +990,7 @@ out len([1,2,3])  // Returns 3
 arr = push([1,2], 3)  // Returns [1,2,3]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### pop
 
@@ -1005,7 +1005,7 @@ arr = push([1,2], 3)  // Returns [1,2,3]
 last = pop([1,2,3])  // Returns 3
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### str
 
@@ -1020,7 +1020,7 @@ last = pop([1,2,3])  // Returns 3
 s = str(42)  // Returns "42"
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### num
 
@@ -1035,7 +1035,7 @@ s = str(42)  // Returns "42"
 n = num("42")  // Returns 42.0
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### type
 
@@ -1050,7 +1050,7 @@ n = num("42")  // Returns 42.0
 t = type(42)  // Returns "integer"
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### typeOf
 
@@ -1065,7 +1065,7 @@ t = type(42)  // Returns "integer"
 t = typeOf(42)  // Returns "integer"
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### keys
 
@@ -1080,7 +1080,7 @@ t = typeOf(42)  // Returns "integer"
 out dict.keys()  // Returns array of keys
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### properties
 
@@ -1095,7 +1095,7 @@ out dict.keys()  // Returns array of keys
 props = properties(myInstance)
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### values
 
@@ -1110,7 +1110,7 @@ props = properties(myInstance)
 out dict.values()  // Returns array of values
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### has_key
 
@@ -1125,7 +1125,7 @@ out dict.values()  // Returns array of values
 exists = has_key(myDict, "name")
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### remove
 
@@ -1140,7 +1140,7 @@ exists = has_key(myDict, "name")
 removed = remove([1,2,3], 1)  // Returns 2
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### dictRemove
 
@@ -1155,7 +1155,7 @@ removed = remove([1,2,3], 1)  // Returns 2
 result = dictRemove(myDict, "oldKey")
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### insert
 
@@ -1170,7 +1170,7 @@ result = dictRemove(myDict, "oldKey")
 result = insert([1,3], 1, 2)  // Returns [1,2,3]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### slice
 
@@ -1185,7 +1185,7 @@ result = insert([1,3], 1, 2)  // Returns [1,2,3]
 result = slice("hello", 1, 4)  // Returns "ell"
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### range
 
@@ -1201,7 +1201,7 @@ r1 = range(5)    // Returns [0,1,2,3,4]
 r2 = range(1,5)  // Returns [1,2,3,4]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### map
 
@@ -1216,7 +1216,7 @@ r2 = range(1,5)  // Returns [1,2,3,4]
 result = map([1,2,3], || x * 2)  // Returns [2,4,6]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### filter
 
@@ -1231,7 +1231,7 @@ result = map([1,2,3], || x * 2)  // Returns [2,4,6]
 result = filter([1,2,3,4], || x > 2)  // Returns [3,4]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### reduce
 
@@ -1246,7 +1246,7 @@ result = filter([1,2,3,4], || x > 2)  // Returns [3,4]
 result = reduce([1,2,3], || acc, x acc + x, 0)  // Returns 6
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### forEach
 
@@ -1261,7 +1261,7 @@ result = reduce([1,2,3], || acc, x acc + x, 0)  // Returns 6
 forEach([1,2,3], || x out x)
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### find
 
@@ -1276,7 +1276,7 @@ forEach([1,2,3], || x out x)
 result = find([1,2,3,4], || x > 2)  // Returns 3
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### every
 
@@ -1291,7 +1291,7 @@ result = find([1,2,3,4], || x > 2)  // Returns 3
 result = every([2,4,6], || x % 2 == 0)  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### some
 
@@ -1306,7 +1306,7 @@ result = every([2,4,6], || x % 2 == 0)  // Returns true
 result = some([1,2,3], || x > 2)  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### contains
 
@@ -1321,7 +1321,7 @@ result = some([1,2,3], || x > 2)  // Returns true
 result = contains("hello", "ell")  // Returns true
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### indexOf
 
@@ -1336,7 +1336,7 @@ result = contains("hello", "ell")  // Returns true
 idx = indexOf("hello", "l")  // Returns 2
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### reverse
 
@@ -1351,7 +1351,7 @@ idx = indexOf("hello", "l")  // Returns 2
 result = reverse("hello")  // Returns "olleh"
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### sort
 
@@ -1366,7 +1366,7 @@ result = reverse("hello")  // Returns "olleh"
 result = sort([3,1,2])  // Returns [1,2,3]
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### parse_json
 
@@ -1381,7 +1381,7 @@ result = sort([3,1,2])  // Returns [1,2,3]
 data = parse_json('{"key": "value"}')
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### to_json
 
@@ -1396,7 +1396,7 @@ data = parse_json('{"key": "value"}')
 json = to_json({"text": s})
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### getattr
 
@@ -1411,7 +1411,7 @@ json = to_json({"text": s})
 value = getattr(myDict, "name")
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### setattr
 
@@ -1426,7 +1426,7 @@ value = getattr(myDict, "name")
 result = setattr(myDict, "name", "new value")
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ### hasattr
 
@@ -1441,7 +1441,7 @@ result = setattr(myDict, "name", "new value")
 exists = hasattr(myDict, "name")
 ```
 
-**Source**: `src/builtins/Builtins_Data.cpp`
+**Source**: `src/builtins/data/*.cpp`
 
 ---
 
@@ -1460,7 +1460,7 @@ exists = hasattr(myDict, "name")
 ptr = os_alloc(1024)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_free
 
@@ -1475,7 +1475,7 @@ ptr = os_alloc(1024)
 os_free(ptr)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_uint64
 
@@ -1490,7 +1490,7 @@ os_free(ptr)
 val = os_read_uint64(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_uint64
 
@@ -1505,7 +1505,7 @@ val = os_read_uint64(ptr, 0)
 os_write_uint64(ptr, 0, 42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_int64
 
@@ -1520,7 +1520,7 @@ os_write_uint64(ptr, 0, 42)
 val = os_read_int64(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_int64
 
@@ -1535,7 +1535,7 @@ val = os_read_int64(ptr, 0)
 os_write_int64(ptr, 0, -42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_uint32
 
@@ -1550,7 +1550,7 @@ os_write_int64(ptr, 0, -42)
 val = os_read_uint32(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_uint32
 
@@ -1565,7 +1565,7 @@ val = os_read_uint32(ptr, 0)
 os_write_uint32(ptr, 0, 42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_int32
 
@@ -1580,7 +1580,7 @@ os_write_uint32(ptr, 0, 42)
 val = os_read_int32(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_int32
 
@@ -1595,7 +1595,7 @@ val = os_read_int32(ptr, 0)
 os_write_int32(ptr, 0, -42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_uint16
 
@@ -1610,7 +1610,7 @@ os_write_int32(ptr, 0, -42)
 val = os_read_uint16(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_uint16
 
@@ -1625,7 +1625,7 @@ val = os_read_uint16(ptr, 0)
 os_write_uint16(ptr, 0, 42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_int16
 
@@ -1640,7 +1640,7 @@ os_write_uint16(ptr, 0, 42)
 val = os_read_int16(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_int16
 
@@ -1655,7 +1655,7 @@ val = os_read_int16(ptr, 0)
 os_write_int16(ptr, 0, -42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_float32
 
@@ -1670,7 +1670,7 @@ os_write_int16(ptr, 0, -42)
 val = os_read_float32(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_float32
 
@@ -1685,7 +1685,7 @@ val = os_read_float32(ptr, 0)
 os_write_float32(ptr, 0, 3.14)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_float64
 
@@ -1700,7 +1700,7 @@ os_write_float32(ptr, 0, 3.14)
 val = os_read_float64(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_float64
 
@@ -1715,7 +1715,7 @@ val = os_read_float64(ptr, 0)
 os_write_float64(ptr, 0, 3.14159)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_float
 
@@ -1730,7 +1730,7 @@ os_write_float64(ptr, 0, 3.14159)
 val = os_read_float(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_float
 
@@ -1745,7 +1745,7 @@ val = os_read_float(ptr, 0)
 os_write_float(ptr, 0, 3.14)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_double
 
@@ -1760,7 +1760,7 @@ os_write_float(ptr, 0, 3.14)
 val = os_read_double(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_double
 
@@ -1775,7 +1775,7 @@ val = os_read_double(ptr, 0)
 os_write_double(ptr, 0, 3.14159)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_byte
 
@@ -1790,7 +1790,7 @@ os_write_double(ptr, 0, 3.14159)
 val = os_read_byte(ptr, 0)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_byte
 
@@ -1805,7 +1805,7 @@ val = os_read_byte(ptr, 0)
 os_write_byte(ptr, 0, 42)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_read_string_ptr
 
@@ -1820,7 +1820,7 @@ os_write_byte(ptr, 0, 42)
 str = os_read_string_ptr(ptr)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_write_string
 
@@ -1835,7 +1835,7 @@ str = os_read_string_ptr(ptr)
 os_write_string(ptr, 0, "hello")
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_load_lib
 
@@ -1850,7 +1850,7 @@ os_write_string(ptr, 0, "hello")
 handle = os_load_lib("user32.dll")
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_get_func
 
@@ -1865,7 +1865,7 @@ handle = os_load_lib("user32.dll")
 func = os_get_func(handle, "MessageBoxA")
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_call
 
@@ -1880,7 +1880,7 @@ func = os_get_func(handle, "MessageBoxA")
 result = os_call(func, "int", arg1, arg2)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_call_sig
 
@@ -1895,7 +1895,7 @@ result = os_call(func, "int", arg1, arg2)
 result = os_call_sig(func, "int", ["int", "int"], arg1, arg2)
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ### os_get_proxy_wndproc
 
@@ -1910,7 +1910,7 @@ result = os_call_sig(func, "int", ["int", "int"], arg1, arg2)
 proc = os_get_proxy_wndproc()
 ```
 
-**Source**: `src/builtins/Builtins_FFI.cpp`
+**Source**: `src/builtins/FFI/FFI.cpp`
 
 ---
 
@@ -1929,7 +1929,7 @@ proc = os_get_proxy_wndproc()
 m = mutex()
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ### lock
 
@@ -1947,7 +1947,7 @@ result = lock(m, || {
 })
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ### wait
 
@@ -1962,7 +1962,7 @@ result = lock(m, || {
 wait(1000)  // Sleep for 1 second
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ### waitAsync
 
@@ -1977,7 +1977,7 @@ wait(1000)  // Sleep for 1 second
 fut = waitAsync(1000)
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ### spawn
 
@@ -1998,7 +1998,7 @@ fut2 = spawn(|| { while true {} }, true)
 fut3 = spawn(func, { "daemon": true })
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### await
 
@@ -2013,7 +2013,7 @@ fut3 = spawn(func, { "daemon": true })
 result = await(fut)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### sync
 
@@ -2028,7 +2028,7 @@ result = await(fut)
 result = sync(fut)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### cancel
 
@@ -2043,7 +2043,7 @@ result = sync(fut)
 cancel(fut)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### awaitAll
 
@@ -2058,7 +2058,7 @@ cancel(fut)
 results = awaitAll([fut1, fut2, fut3])
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### awaitAny
 
@@ -2075,7 +2075,7 @@ results = awaitAll([fut1, fut2, fut3])
 result = awaitAny([fut1, fut2, fut3])
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### isDone
 
@@ -2093,7 +2093,7 @@ f = spawn(work)
 when not isDone(f) { out "still running" }
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### Futures and errors
 
@@ -2131,7 +2131,7 @@ a.add(1)
 out a.get()  // Returns 1
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ### Channel Class
 
@@ -2162,7 +2162,7 @@ ch.receiveTimeout(100)        # nil after 100ms
 ch.close()
 ```
 
-**Source**: `src/builtins/Builtins_Concurrency.cpp`
+**Source**: `src/builtins/core/Concurrency.cpp`
 
 ---
 
@@ -2182,7 +2182,7 @@ buf = buffer(10)
 buf2 = buffer("hello")
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### buf_size
 
@@ -2197,7 +2197,7 @@ buf2 = buffer("hello")
 size = buf_size(buf)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### buf_fill
 
@@ -2212,7 +2212,7 @@ size = buf_size(buf)
 buf_fill(buf, 0)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### buf_copy
 
@@ -2227,7 +2227,7 @@ buf_fill(buf, 0)
 copied = buf_copy(src, dest, 2)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### buf_to_str
 
@@ -2242,7 +2242,7 @@ copied = buf_copy(src, dest, 2)
 str = buf_to_str(buf)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### os_buffer_from_ptr
 
@@ -2257,7 +2257,7 @@ str = buf_to_str(buf)
 buf = os_buffer_from_ptr(ptr, 1024)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ### os_buffer_addr
 
@@ -2272,7 +2272,7 @@ buf = os_buffer_from_ptr(ptr, 1024)
 addr = os_buffer_addr(buf)
 ```
 
-**Source**: `src/builtins/Builtins_Buffer.cpp`
+**Source**: `src/builtins/buffer/Buffer.cpp`
 
 ---
 
@@ -2291,7 +2291,7 @@ addr = os_buffer_addr(buf)
 gc_disable()
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### gc_enable
 
@@ -2306,7 +2306,7 @@ gc_disable()
 gc_enable()
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### gc_collect
 
@@ -2321,7 +2321,7 @@ gc_enable()
 gc_collect()
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### gc_set_thresholds
 
@@ -2336,7 +2336,7 @@ gc_collect()
 gc_set_thresholds(2000, 10000)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### exit
 
@@ -2351,7 +2351,7 @@ gc_set_thresholds(2000, 10000)
 exit(0)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### clock
 
@@ -2366,7 +2366,7 @@ exit(0)
 start = clock()
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### stop
 
@@ -2381,7 +2381,7 @@ start = clock()
 stop(1000)
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ### Exception Class
 
@@ -2396,7 +2396,7 @@ e = Exception()
 e.init("Something went wrong")
 ```
 
-**Source**: `src/builtins/Builtins_GC.cpp`
+**Source**: `src/builtins/core/GC.cpp`
 
 ---
 
@@ -2415,7 +2415,7 @@ e.init("Something went wrong")
 clear()
 ```
 
-**Source**: `src/builtins/Builtins_Console.cpp`
+**Source**: `src/builtins/io/Console.cpp`
 
 ### color
 
@@ -2430,7 +2430,7 @@ clear()
 color(14)  // Yellow
 ```
 
-**Source**: `src/builtins/Builtins_Console.cpp`
+**Source**: `src/builtins/io/Console.cpp`
 
 ### reset
 
@@ -2445,7 +2445,7 @@ color(14)  // Yellow
 reset()
 ```
 
-**Source**: `src/builtins/Builtins_Console.cpp`
+**Source**: `src/builtins/io/Console.cpp`
 
 ### gotoxy
 
@@ -2460,7 +2460,7 @@ reset()
 gotoxy(10, 5)
 ```
 
-**Source**: `src/builtins/Builtins_Console.cpp`
+**Source**: `src/builtins/io/Console.cpp`
 
 ### getch
 
@@ -2475,7 +2475,7 @@ gotoxy(10, 5)
 c = getch()
 ```
 
-**Source**: `src/builtins/Builtins_Console.cpp`
+**Source**: `src/builtins/io/Console.cpp`
 
 ---
 
@@ -2494,7 +2494,7 @@ c = getch()
 encoded = url_encode("hello world")
 ```
 
-**Source**: `src/builtins/Builtins_Net.cpp`
+**Source**: `src/builtins/net/Net.cpp`
 
 ### url_decode
 
@@ -2509,7 +2509,7 @@ encoded = url_encode("hello world")
 decoded = url_decode(encoded)
 ```
 
-**Source**: `src/builtins/Builtins_Net.cpp`
+**Source**: `src/builtins/net/Net.cpp`
 
 ### http_get
 
@@ -2524,7 +2524,7 @@ decoded = url_decode(encoded)
 response = http_get("https://example.com")
 ```
 
-**Source**: `src/builtins/Builtins_Net.cpp`
+**Source**: `src/builtins/net/Net.cpp`
 
 ### http_post
 
@@ -2539,7 +2539,7 @@ response = http_get("https://example.com")
 response = http_post("https://example.com", '{"key":"value"}')
 ```
 
-**Source**: `src/builtins/Builtins_Net.cpp`
+**Source**: `src/builtins/net/Net.cpp`
 
 ### fetch
 
@@ -2555,7 +2555,7 @@ fut = fetch("https://example.com")
 response = await(fut)
 ```
 
-**Source**: `src/builtins/Builtins_Net.cpp`
+**Source**: `src/builtins/net/Net.cpp`
 
 ---
 
@@ -2574,7 +2574,7 @@ response = await(fut)
 parsed = http_parse_request("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
 ```
 
-**Source**: `src/builtins/Builtins_Http.cpp`
+**Source**: `src/builtins/net/Http.cpp`
 
 ---
 

@@ -107,19 +107,25 @@ cd EZ-language
 
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles"
-cmake --build .
+cmake --build . --parallel
 ```
 
-This produces `ez.exe` and links against `sqlite3 curl ws2_32 pthread` (plus `dwmapi uxtheme` on Windows), per `CMakeLists.txt`.
+This produces `build\ez.exe` and copies the standard library to
+`build\lib\`. `CMakeLists.txt` is the canonical source and linker
+configuration for every platform.
 
-### Build directly with batch script (Windows)
+### Build with the Windows batch entry points
 
-We provide an automated build script out of the box.
+Both batch files invoke the same CMake configuration:
 
 ```bash
 build.bat
+build_cmake.bat
 ```
-This will automatically invoke the compiler, statically link all dependencies (like cURL and SQLite), and output a single `ez.exe` executable!
+
+The output is `build\ez.exe`. Set `MSYS2_PREFIX` when MinGW is installed in a
+non-default location. Set `EZ_ARCH=native` only for a local, undistributed
+build; the default release baseline is `x86-64-v2`.
 
 ### Add to PATH
 
@@ -944,7 +950,9 @@ use "collections"
 
 ## 🔧 Built-in Functions (C++ Runtime)
 
-Everything in this section is registered directly as a native function in the C++ source (`src/Builtins.cpp` and `src/runtime/Builtins_*.cpp`) and is always available, with no `use` statement required.
+Everything in this section is registered directly as a native function in the
+C++ source under `src/builtins/` and is always available, with no `use`
+statement required.
 
 ### Output, Input & Console
 
@@ -1484,7 +1492,12 @@ This is the FFI layer used internally by the GUI subsystem to talk to `user32.dl
 
 ## 🖥 GUI Framework
 
-The C++ runtime exposes roughly **70 raw `gui_*` native functions** (`src/GUIBuiltins.cpp`, ~1,200 lines) that wrap a Win32/GDI+ window, control, and drawing layer. These are the actual primitives available in this repository; a higher-level fluent OOP API (`gui.window(...).panel(...).button(...)`, as seen in example scripts via `use "lib/gui.ez"` or `use "ezgame"`) is an EZ-language wrapper that lives in the external `ezlib`/example scripts, not in this C++ source.
+The C++ runtime exposes roughly **70 raw `gui_*` native functions** under
+`src/gui/`, wrapping a Win32/GDI+ window, control, and drawing layer. These
+are the actual primitives available in this repository; a higher-level fluent
+OOP API (`gui.window(...).panel(...).button(...)`, as seen in example scripts
+via `use "lib/gui.ez"` or `use "ezgame"`) is an EZ-language wrapper that lives
+in the external `ezlib`/example scripts, not in this C++ source.
 
 
 
@@ -1590,7 +1603,10 @@ git push origin feature/your-feature
 - 4 spaces for indentation in C++ source
 - Descriptive variable names — no single-letter identifiers except loop counters
 - Comment any non-obvious logic
-- If adding a new builtin, register it in the appropriate `Builtins_*.cpp` file via `interp.defineGlobal(...)` and ensure the file is included in both `CMakeLists.txt` and any manual build commands
+- If adding a new builtin, register it in the appropriate file under
+  `src/builtins/` via `interp.defineGlobal(...)` and add any new `.cpp` file
+  to `CMakeLists.txt`. Batch files intentionally do not contain a second
+  source list.
 
 ---
 

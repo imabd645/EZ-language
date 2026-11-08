@@ -13,7 +13,7 @@ Source (.ez) → Lexer → Parser → AST → Bytecode Compiler → Bytecode →
 1. **Lexer** (`src/lexer/Lexer.cpp`): Tokenizes source code into tokens
 2. **Parser** (`src/parser/Parser.cpp`): Generates Abstract Syntax Tree (AST) from tokens
 3. **Bytecode Compiler** (`src/compiler/BytecodeCompiler.cpp`): Compiles AST to bytecode chunks
-4. **VM** (`src/vm/BytecodeVM_Execute.cpp`): Stack-based interpreter executing bytecode
+4. **VM** (`src/vm/BytecodeVMExecute.cpp`): Stack-based interpreter executing bytecode
 5. **Runtime** (`src/runtime/RuntimeContext.h`): Central interface for execution context, error handling, and global state
 
 ## Module Breakdown
@@ -27,12 +27,12 @@ Source (.ez) → Lexer → Parser → AST → Bytecode Compiler → Bytecode →
 - Exception handling with try/catch/finally blocks
 - Upvalue management for closures
 
-**BytecodeVM_Execute.cpp** - Execution loop
+**BytecodeVMExecute.cpp** - Execution loop
 - 70+ opcodes including: LOAD_CONST, CALL, RETURN, INDEX_GET, MAKE_ARRAY, etc.
 - Hot-path optimizations for arithmetic and comparisons
 - Thread-local string interning pool
 
-**BytecodeVM_Objects.cpp** - Object instantiation and method dispatch
+**BytecodeVMObjects.cpp** - Object instantiation and method dispatch
 - Class instantiation with inheritance
 - Method binding and super calls
 - Property access with visibility controls
@@ -150,41 +150,41 @@ carries just what genuinely crosses a file boundary.
 
 ### Builtin Subsystems
 
-**IO** (`src/builtins/Builtins_IO.cpp`): File I/O and console
+**IO** (`src/builtins/io/IO.cpp`, `src/builtins/io/File.cpp`): File I/O
 - `print()`, `input()`, `readFile()`, `writeFile()`, `readLines()`
 
-**Math** (`src/builtins/Builtins_Math.cpp`): Basic math functions
+**Math** (`src/builtins/math/Math.cpp`): Basic math functions
 - `floor()`, `ceil()`, `abs()`, `sqrt()`, `pow()`, `rand()`, `randint()`, `round()`, `min()`, `max()`
 
-**String** (`src/builtins/Builtins_String.cpp`): String manipulation
+**String** (`src/builtins/string/String.cpp`, `src/builtins/string/Regex.cpp`): String manipulation
 - `substr()`, `split()`, `join()`, `upper()`, `lower()`, `trim()`, `replace()`
 - Regex: `reMatch()`, `reSearch()`, `reReplace()`
 - Encoding: `hex_to_bytes()`, `b64url_encode()`, `b64url_decode()`
 
-**Data** (`src/builtins/Builtins_Data.cpp`): Collection operations
+**Data** (`src/builtins/data/Array.cpp`, `src/builtins/data/Dict.cpp`, `src/builtins/data/FP.cpp`, `src/builtins/data/JSON.cpp`): Collection operations
 - `len()`, `push()`, `pop()`, `keys()`, `values()`, `map()`, `filter()`, `reduce()`
 - JSON: `parse_json()`, `to_json()`
 
-**Concurrency** (`src/builtins/Builtins_Concurrency.cpp`):
+**Concurrency** (`src/builtins/core/Concurrency.cpp`):
 - `mutex()`, `lock()`, `wait()`, `waitAsync()`, `spawn()`, `await()`, `cancel()`
 - Classes: `Atomic`, `Channel`
 
-**Buffer** (`src/builtins/Builtins_Buffer.cpp`):
+**Buffer** (`src/builtins/buffer/Buffer.cpp`):
 - `buffer()`, `buf_size()`, `buf_fill()`, `buf_copy()`, `buf_to_str()`
 
-**GC** (`src/builtins/Builtins_GC.cpp`):
+**GC** (`src/builtins/core/GC.cpp`):
 - `gc_disable()`, `gc_enable()`, `gc_collect()`, `gc_set_thresholds()`, `exit()`, `clock()`
 
-**Console** (`src/builtins/Builtins_Console.cpp`): Windows console
+**Console** (`src/builtins/io/Console.cpp`): Windows console
 - `clear()`, `color()`, `reset()`, `gotoxy()`, `getch()`
 
-**Net** (`src/builtins/Builtins_Net.cpp`): HTTP via libcurl
+**Net** (`src/builtins/net/Net.cpp`): HTTP via libcurl
 - `url_encode()`, `url_decode()`, `http_get()`, `http_post()`, `fetch()`
 
-**HTTP** (`src/builtins/Builtins_Http.cpp`): HTTP parsing
+**HTTP** (`src/builtins/net/Http.cpp`): HTTP parsing
 - `http_parse_request()`
 
-**Core** (`src/builtins/Builtins_Core.cpp`):
+**Core** (`src/builtins/core/Core.cpp`):
 - `panic()`
 
 ## Object Model
@@ -227,28 +227,28 @@ The GUI framework is the only component of EZ that is currently Windows-only:
 ### Platform-Specific Code Locations
 
 - `src/builtins/FFI/`: Extensive `#ifdef _WIN32` and `#ifdef _MSC_VER`
-- `src/builtins/Builtins_Net.cpp`: Winsock2 includes
+- `src/builtins/net/Net.cpp`: Winsock2 and libcurl integration
 - `src/eventloop/EventLoop.h`: Windows macro undefs for libuv compatibility
 - `src/vm/BytecodeVM.cpp`: Windows console color support
 - `src/compiler/BytecodeCompilerStmt.cpp`: Platform-specific ezlib paths
 
 ## Build System
 
-### Primary Build: MinGW g++
+### Canonical Build: CMake
 
-**Command**: `build.bat`
-- Compiler: `C:\msys64\mingw64\bin\g++.exe`
-- Optimization: `-O3 -march=native -flto -funroll-loops -fomit-frame-pointer`
-- Static linking: `-static -static-libgcc -static-libstdc++`
-- Dependencies: libffi, libuv, curl, sqlite3, 25+ Windows DLLs
+**Commands**: `build.bat` or `build_cmake.bat`
 
-### Alternative Build: CMake
+Both batch files are compatibility entry points to the same CMake
+configuration. The source list and linker configuration live only in
+`CMakeLists.txt`.
 
-**Command**: `build_cmake.bat`
 - CMake 3.10+ required
 - C++17 standard
-- Same optimization flags as direct g++ build
-- Multi-core compilation via `-j8`
+- Release target baseline: `x86-64-v2`
+- Release optimization: `-O3 -funroll-loops -fasynchronous-unwind-tables`
+- Output: `build\ez.exe` and `build\lib\`
+- Override the compiler prefix with `MSYS2_PREFIX`
+- Use `EZ_ARCH=native` only for local, undistributed builds
 
 ### Dependencies
 
@@ -258,20 +258,19 @@ The GUI framework is the only component of EZ that is currently Windows-only:
 - libcurl - HTTP client
 - sqlite3 - Database (linked but usage unclear)
 
-**Windows DLLs** (25 in `dlls/` directory):
-- OpenSSL: libssl-3-x64.dll, libcrypto-3-x64.dll
-- libcurl and dependencies: libcurl-4.dll, libssh2.dll, libnghttp2.dll, etc.
-- Compression: libzstd.dll, zlib1.dll, libbz2-1.dll, brotli
-- Character encoding: libiconv-2.dll, libunistring-5.dll
-- Other: libgcc_s_seh-1.dll, libstdc++-6.dll, libwinpthread-1.dll
+The `dlls/` directory is retained for dynamically linked distributions and
+development environments. The current Windows release configuration statically
+links the C++ runtime and bundled third-party libraries where available.
 
 ## Known Constraints and Tradeoffs
 
 1. **GUI is Windows-Only**: No Unix/Linux support for native GUI features.
-2. **Static Linking**: Large executable size (~17MB ez.exe) due to static linking
+2. **Static Linking**: Large executable size due to static linking
 3. **No JIT**: Interpreted bytecode only, no JIT compilation
 4. **Single-Threaded VM**: Each VM instance must run on its owning thread; cross-thread calls marshal through EventLoop
-5. **Manual GC**: Cycle collection is automatic but can be disabled; no generational GC
+5. **Cycle collection**: Reference counting is supplemented by Bacon-Rajan
+   cycle detection; collection can be disabled and this is not a tracing
+   generational collector
 6. **SEH Overhead**: FFI crash protection adds runtime overhead on Windows
 7. **Ezlib Path**: Hardcoded paths for library location
 

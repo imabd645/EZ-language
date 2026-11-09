@@ -1,11 +1,13 @@
 use "Test/lib_a.ez" as a
 use "Test/lib_b.ez" as b
+use {publicValue, renamedValue as renamed} from "Test/lib_exports.ez"
 
 resA = a.foo()
 resB = b.foo()
 
 out "A: " + resA
 out "B: " + resB
+out "Selected: " + publicValue() + "/" + renamed()
 
 # EZ uses when/other -- there is no `if`/`else` keyword, so `if (...) {...}`
 # parsed as a call to an undefined function named `if` and failed with

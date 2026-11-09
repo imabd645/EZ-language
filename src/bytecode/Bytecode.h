@@ -308,6 +308,7 @@ struct Local {
     bool isConst;        // Const variable
     bool isStackResident; // True if it occupies a slot on the execution stack (needs POP)
     bool exported;       // Visible when module is imported via namespaced use
+    std::string exportName; // Optional public name used by explicit export lists
     
     // For debug tracking
     size_t startPC;

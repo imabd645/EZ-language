@@ -257,9 +257,11 @@ struct StructStmt {
 struct UseStmt {
     std::string path;
     std::string alias;
+    std::vector<std::pair<std::string, std::string>> imports;
     
-    UseStmt(const std::string& path, const std::string& alias = "") 
-        : path(path), alias(alias) {}
+    UseStmt(const std::string& path, const std::string& alias = "",
+            std::vector<std::pair<std::string, std::string>> imports = {})
+        : path(path), alias(alias), imports(std::move(imports)) {}
 };
 
 struct CatchBlock {
@@ -288,7 +290,11 @@ struct ThrowStmt {
 // Export statement  marks a declaration as publicly visible in namespaced module imports
 struct ExportStmt {
     StmtPtr inner;  // The wrapped task/variable/model declaration
+    std::vector<std::pair<std::string, std::string>> names;
+
     explicit ExportStmt(StmtPtr inner) : inner(std::move(inner)) {}
+    explicit ExportStmt(std::vector<std::pair<std::string, std::string>> names)
+        : inner(nullptr), names(std::move(names)) {}
 };
 
 // Helper functions to create expressions
@@ -471,8 +477,8 @@ inline StmtPtr makeStructStmt(ASTArena& arena, int line, int column, int length,
     return arena.allocate<Stmt>(line, column, length, file, arena.allocate<StructStmt>(name, std::move(fields), std::move(types), std::move(defaults)));
 }
 
-inline StmtPtr makeUseStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& path, const std::string& alias = "") {
-    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<UseStmt>(path, alias));
+inline StmtPtr makeUseStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& path, const std::string& alias = "", std::vector<std::pair<std::string, std::string>> imports = {}) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<UseStmt>(path, alias, std::move(imports)));
 }
 
 inline StmtPtr makeTryStmt(ASTArena& arena, int line, int column, int length, const std::string& file, StmtPtr tryBlk, std::vector<CatchBlock> catchBlocks, StmtPtr finallyBlk = nullptr) {
@@ -489,6 +495,10 @@ inline StmtPtr makeStaticStmt(ASTArena& arena, int line, int column, int length,
 
 inline StmtPtr makeExportStmt(ASTArena& arena, int line, int column, int length, const std::string& file, StmtPtr inner) {
     return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ExportStmt>(std::move(inner)));
+}
+
+inline StmtPtr makeExportListStmt(ASTArena& arena, int line, int column, int length, const std::string& file, std::vector<std::pair<std::string, std::string>> names) {
+    return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ExportStmt>(std::move(names)));
 }
 
 

@@ -892,6 +892,20 @@ void BytecodeCompiler::compileSkip(const SkipStmt& /*stmt*/) {
 }
 
 void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
+    if (!stmt.names.empty()) {
+        for (const auto& [sourceName, exportedName] : stmt.names) {
+            int slot = resolveLocal(sourceName);
+            if (slot == -1) {
+                errorAt("ExportError: cannot export unknown name '" + sourceName + "'", currentLine);
+                continue;
+            }
+            current->locals[slot].exported = true;
+            if (sourceName != exportedName) {
+                current->locals[slot].exportName = exportedName;
+            }
+        }
+        return;
+    }
     // If it's an export of an existing variable (e.g. `export alloc`),
     // find the local variable by name and mark it as exported.
     if (std::holds_alternative<ExpressionStmt*>(stmt.inner->variant)) {
@@ -1330,7 +1344,8 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 emitLoadLocal(slot);
                 
                 emitOp(OpCode::INTERCEPTED_STORE_PROPERTY);
-                size_t propIdx = identifierConstant(local.name);
+                const std::string& exportName = local.exportName.empty() ? local.name : local.exportName;
+                size_t propIdx = identifierConstant(exportName);
                 emitBytes(static_cast<uint8_t>((propIdx >> 8) & 0xFF),
                           static_cast<uint8_t>(propIdx & 0xFF));
                 size_t icIdx = current->function->chunk.icEntries.size();
@@ -1353,6 +1368,27 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         // Restore compiler to parent
         current = previous;
         currentFile = savedCurrentFile;
+
+        if (!stmt.imports.empty()) {
+            for (const auto& [requestedName, localName] : stmt.imports) {
+                bool found = false;
+                for (const auto& local : moduleCompiler->locals) {
+                    if (local.depth == 1 && !local.name.empty() &&
+                        (local.exportName.empty() ? local.name : local.exportName) == requestedName &&
+                        (isFileInclusion || local.exported)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    errorAt("ImportError: module '" + absolutePath +
+                            "' does not export '" + requestedName + "'",
+                            currentLine);
+                    return;
+                }
+                (void)localName;
+            }
+        }
 
         // Register the module function as a nested function of the parent compiler
         size_t nestedIdx = current->function->nestedFunctions.size();
@@ -1390,18 +1426,26 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         emitOp(OpCode::LOAD_GLOBAL);
         emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
 
-        if (alias == "*") {
+        if (alias == "*" || !stmt.imports.empty()) {
             // Unpack all exported locals into the current scope
             for (const auto& local : moduleCompiler->locals) {
                 if (local.depth == 1 && !local.name.empty()) {
                     if (!isFileInclusion && !local.exported) continue;
+                    std::string importedName = local.exportName.empty() ? local.name : local.exportName;
+                    std::string localName = importedName;
+                    if (!stmt.imports.empty()) {
+                        auto requested = std::find_if(stmt.imports.begin(), stmt.imports.end(),
+                            [&](const auto& item) { return item.first == importedName; });
+                        if (requested == stmt.imports.end()) continue;
+                        localName = requested->second;
+                    }
                     
                     // DUP dictionary
                     emitOp(OpCode::DUP);
                     
                     // LOAD_PROPERTY
                     emitOp(OpCode::LOAD_PROPERTY);
-                    size_t propIdx = identifierConstant(local.name);
+                    size_t propIdx = identifierConstant(importedName);
                     emitBytes(static_cast<uint8_t>((propIdx >> 8) & 0xFF),
                               static_cast<uint8_t>(propIdx & 0xFF));
                     size_t icIdx = current->function->chunk.icEntries.size();
@@ -1419,7 +1463,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     // slot also keeps last-import-wins, which is what a second
                     // binding of the same name did before.
                     if (current->scopeDepth > 0) {
-                        int existing = resolveLocal(local.name);
+                        int existing = resolveLocal(localName);
                         size_t slot;
                         if (existing != -1) {
                             // Already bound and already initialised. Not calling
@@ -1429,7 +1473,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                             // rather than the slot being written.
                             slot = static_cast<size_t>(existing);
                         } else {
-                            slot = addLocal(local.name);
+                            slot = addLocal(localName);
                             current->locals.back().isStackResident = false;
                             markInitialized();
                         }
@@ -1451,7 +1495,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                         emitStoreLocal(slot);
                         emitOp(OpCode::POP);
                     } else {
-                        uint16_t aliasSlot = globalSlotFor(local.name);
+                        uint16_t aliasSlot = globalSlotFor(localName);
                         emitOp(OpCode::STORE_GLOBAL_SLOT);
                         emitBytes(static_cast<uint8_t>((aliasSlot >> 8) & 0xFF),
                                   static_cast<uint8_t>(aliasSlot & 0xFF));
@@ -2021,6 +2065,7 @@ size_t BytecodeCompiler::addLocal(const std::string& name, bool isConst) {
     local.isCaptured = false;
     local.isConst = isConst;
     local.exported = false;  // Default: not exported, only visible inside module
+    local.exportName.clear();
     local.isStackResident = true; // Default to true (VarDecl, loop vars, params)
     
     local.startPC = currentChunk().code.size();

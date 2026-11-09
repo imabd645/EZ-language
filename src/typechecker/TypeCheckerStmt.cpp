@@ -105,9 +105,15 @@ void TypeChecker::checkStmt(const StmtPtr& stmt) {
             if (!arg->alias.empty()) {
                 declareVariable(arg->alias, TypeInfo("Any"));
             }
+            for (const auto& [sourceName, localName] : arg->imports) {
+                (void)sourceName;
+                declareVariable(localName, TypeInfo("Any"));
+            }
         }
         else if constexpr (std::is_same_v<T, ExportStmt*>) {
-            checkStmt(arg->inner); // Delegate to the inner declaration
+            if (arg->inner) {
+                checkStmt(arg->inner); // Delegate to the inner declaration
+            }
         }
     }, stmt->variant);
 }
@@ -370,4 +376,3 @@ void TypeChecker::checkStatic(const StaticStmt& stmt) {
     TypeInfo initType = checkExpr(stmt.initializer);
     declareVariable(stmt.name, initType);
 }
-

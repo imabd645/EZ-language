@@ -975,6 +975,23 @@ StmtPtr Parser::useStatement() {
     int line = previous().line;
     int column = previous().column;
     int length = previous().lexeme.length();
+    std::vector<std::pair<std::string, std::string>> imports;
+    if (match(TokenType::LBRACE)) {
+        do {
+            Token name = consume(TokenType::IDENTIFIER, "Expected exported name in import list");
+            std::string localName = name.lexeme;
+            if (peek().lexeme == "as") {
+                advance();
+                localName = consume(TokenType::IDENTIFIER, "Expected local alias after 'as'").lexeme;
+            }
+            imports.emplace_back(name.lexeme, localName);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACE, "Expected '}' after import list");
+        if (peek().lexeme != "from") {
+            throw ParseError("Expected 'from' after import list", peek().line);
+        }
+        advance();
+    }
     if (!match(TokenType::STRING)) {
         throw ParseError("Expected a string module path after 'use' (e.g. use \"module_name\"), got '" + peek().lexeme + "'", peek().line);
     }
@@ -994,12 +1011,29 @@ StmtPtr Parser::useStatement() {
         }
     }
     
-    return makeUseStmt(arena, line, column, length, pathToken.filename, path, alias);
+    return makeUseStmt(arena, line, column, length, pathToken.filename, path, alias, std::move(imports));
 }
 
 StmtPtr Parser::exportStatement() {
     Token tok = previous(); // the 'export' token
     skipNewlines();
+
+    if (match(TokenType::LBRACE)) {
+        std::vector<std::pair<std::string, std::string>> names;
+        do {
+            Token name = consume(TokenType::IDENTIFIER, "Expected identifier in export list");
+            std::string exportedName = name.lexeme;
+            if (peek().lexeme == "as") {
+                advance();
+                exportedName = consume(TokenType::IDENTIFIER, "Expected exported alias after 'as'").lexeme;
+            }
+            names.emplace_back(name.lexeme, exportedName);
+        } while (match(TokenType::COMMA));
+        consume(TokenType::RBRACE, "Expected '}' after export list");
+        return makeExportListStmt(arena, tok.line, tok.column,
+                                  (int)tok.lexeme.length(), tok.filename,
+                                  std::move(names));
+    }
     
     // Parse the inner declaration
     bool hadErrorBefore = hadError;

@@ -1,0 +1,9 @@
+export task publicValue() {
+    give "public"
+}
+
+task privateValue() {
+    give "private"
+}
+
+export {privateValue as renamedValue}

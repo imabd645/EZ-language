@@ -323,6 +323,9 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
             }
         } else if (std::holds_alternative<ExportStmt*>(stmt->variant)) {
             auto exportStmt = std::get<ExportStmt*>(stmt->variant);
+            if (!exportStmt->inner) {
+                continue;
+            }
             std::vector<StmtPtr> innerVec;
             innerVec.push_back(exportStmt->inner);
             // Recursively process the inner statement for declarations
@@ -431,4 +434,3 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
     currentEnv = nullptr;
     return !hadError;
 }
-

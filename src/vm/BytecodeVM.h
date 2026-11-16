@@ -101,14 +101,15 @@ public:
     }
     std::vector<Value> getStackTraceFrames() const override;
 
-    // Initialize global slot table from compiler output (Issue C optimization)
-    // Seeds globalSlots[] from CompileResult and pre-populates any
-    // built-ins already stored in globalEnv.
+    // Initialize the compiler-addressed global table from compiler output.
+    // Existing host globals (notably builtins) seed matching slots. After
+    // initialization, the slot array is authoritative for compiled global
+    // reads/writes; name-addressed runtime state remains in Environment's map.
     void initGlobalSlots(const std::vector<std::string>& slotNames);
 
-    // Grows globalEnv->globalSlots/globalSlotNames to fit newNames, seeding
-    // ONLY newly-added slots from a same-named globalEnv entry (e.g. a
-    // builtin). Slots that already have a name are left completely alone.
+    // Grows the compiler-addressed global table, seeding only newly-added
+    // slots from a same-named host global (e.g. a builtin). Existing slots
+    // are left alone so REPL/eval recompilation preserves script assignments.
     //
     // initGlobalSlots() re-seeds every slot whose name matches globalEnv on
     // every call, which is correct for a one-shot script (it's called once)

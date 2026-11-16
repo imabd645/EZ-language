@@ -50,6 +50,17 @@ The compiler tracks variable scopes lexically using a single-pass resolver:
 
 ---
 
+Compiled globals and name-addressed runtime globals are separate storage paths.
+`LOAD_GLOBAL_SLOT` / `STORE_GLOBAL_SLOT` use the shared slot array and are the
+authoritative values for compiled script globals after slot initialization.
+`LOAD_GLOBAL` / `STORE_GLOBAL` use the environment's name map; the compiler
+keeps this path for state that needs dynamic name lookup, including `static`
+variables and module-cache guards. Slot initialization copies matching host
+globals (such as builtins) into slots once; later slot writes do not mirror back
+to the name map. Code that needs name-based persistence must use the name
+opcodes. This split preserves the fast compiled path without treating the two
+stores as synchronized copies.
+
 ## 3. 🚀 Compiler Optimization Passes
 
 ### A. Compile-Time AST Constant Folding

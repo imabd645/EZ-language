@@ -21,3 +21,24 @@ out "Circle Area (r=2): " + str(MathUtil.circleArea(2))
 
 MathUtil.PI = 3.14
 out "Modified PI: " + str(MathUtil.PI)
+
+# Static values use the persistent name-addressed path and must retain their
+# value between calls, independently of compiler-addressed global slots.
+model Counter {
+    static count = 0
+
+    static task next() {
+        Counter.count = Counter.count + 1
+        give Counter.count
+    }
+}
+
+when Counter.next() != 1 {
+    out "FAIL: static state did not initialize once"
+    exit(1)
+}
+when Counter.next() != 2 {
+    out "FAIL: static state did not persist between calls"
+    exit(1)
+}
+out "Static state persists across calls"

@@ -20,11 +20,18 @@ public:
 class Environment : public std::enable_shared_from_this<Environment> {
 public:
     std::shared_ptr<Environment> parent;
+    // Name-addressed globals. This holds host-registered builtins and values
+    // that use LOAD_GLOBAL/STORE_GLOBAL (for example static variables and the
+    // module cache). It is not a mirror of globalSlots after compilation.
     std::unordered_map<std::string, Value> variables;
     mutable std::shared_mutex mutex;
     bool isStatic = false;
 
-    // Fast O(1) slot arrays shared across all VMs
+    // Compiler-addressed globals, shared across VMs for fast O(1) access.
+    // These are a separate address space from `variables`: initialization
+    // seeds slots from same-named host globals, but later slot writes do not
+    // update the name map. Bytecode that needs persistent name-based lookup
+    // must use LOAD_GLOBAL/STORE_GLOBAL instead of the slot opcodes.
     std::vector<Value> globalSlots;
     std::vector<std::string> globalSlotNames;
     mutable std::shared_mutex slotMutex;

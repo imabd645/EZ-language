@@ -85,7 +85,7 @@ if (-not $ez) {
 # ── Tests that are not standalone pass/fail tests ────────────────────────────
 # Modules imported by other tests, plus tests needing a GUI/server/human.
 $Excluded = @(
-    'lib_a.ez', 'lib_b.ez', 'error_module.ez',   # modules `use`d by test_modules.ez
+    'lib_a.ez', 'lib_b.ez', 'lib_exports.ez', 'error_module.ez', # modules `use`d by test_modules.ez
     'wide_locals_base.ez',                       # modules `use`d by
     'wide_locals_mid.ez',                        # test_wide_locals.ez
     'test_gui_native.ez',                        # opens a window

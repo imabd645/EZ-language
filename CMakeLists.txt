@@ -190,7 +190,9 @@ if(WIN32)
 
     # Dynamic Windows libraries (Windows only)
     target_link_libraries(ez PRIVATE
-        -Wl,-Bdynamic ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
+        # Newer static libuv builds use WaitOnAddress/WakeByAddressSingle.
+        # MinGW provides these through its Synchronization import library.
+        -Wl,-Bdynamic synchronization ws2_32 wldap32 bcrypt crypt32 secur32 iphlpapi userenv psapi dbghelp
         dwmapi uxtheme gdi32 user32 comdlg32 comctl32 ole32
     )
     

@@ -457,10 +457,13 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(LOAD_GLOBAL_SLOT) {
                     {
                         uint16_t slot = READ_SHORT();
-                        if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
-                            *stackTop++ = globalEnv->globalSlots[slot];
-                        } else {
-                            *stackTop++ = Value();
+                        {
+                            std::shared_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+                            if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
+                                *stackTop++ = globalEnv->globalSlots[slot];
+                            } else {
+                                *stackTop++ = Value();
+                            }
                         }
                     }
                     DISPATCH();
@@ -469,6 +472,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(STORE_GLOBAL_SLOT) {
                     {
                         uint16_t slot = READ_SHORT();
+                        std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
                         if (__builtin_expect(slot < globalEnv->globalSlots.size(), 1)) {
                             globalEnv->globalSlots[slot] = *(stackTop - 1);
                         }
@@ -3030,20 +3034,40 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(ADD_GLOBAL_LOCAL) {
                     uint16_t globalSlot = READ_SHORT();
                     uint8_t localSlot = READ_BYTE();
-                    if (__builtin_expect(globalSlot < globalEnv->globalSlots.size(), 1)) {
-                        Value& dst = globalEnv->globalSlots[globalSlot];
-                        const Value& src = frame->slots[localSlot];
-                        if (__builtin_expect(dst.isInteger() && src.isInteger(), 1)) {
-                            dst = Value(wrapAdd(dst.asInteger(), src.asInteger()));
-                        } else if (dst.isFloat() && src.isFloat()) {
-                            dst = Value(dst.asFloat() + src.asFloat());
-                        } else if (dst.isInteger() && src.isFloat()) {
-                            dst = Value((double)dst.asInteger() + src.asFloat());
-                        } else if (dst.isFloat() && src.isInteger()) {
-                            dst = Value(dst.asFloat() + (double)src.asInteger());
-                        } else if (dst.isString() && src.isString()) {
-                            dst = Value(dst.asString() + src.asString());
-                        } else if (dst.isInstance()) {
+                    const Value src = frame->slots[localSlot];
+                    Value dst;
+                    bool validSlot = false;
+                    bool primitiveHandled = false;
+                    {
+                        std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+                        if (__builtin_expect(globalSlot < globalEnv->globalSlots.size(), 1)) {
+                            validSlot = true;
+                            Value& slotValue = globalEnv->globalSlots[globalSlot];
+                            // Keep primitive read-modify-write operations atomic
+                            // across VMs. The fallback below can invoke EZ code,
+                            // so it must run after releasing the slot lock.
+                            if (__builtin_expect(slotValue.isInteger() && src.isInteger(), 1)) {
+                                slotValue = Value(wrapAdd(slotValue.asInteger(), src.asInteger()));
+                                primitiveHandled = true;
+                            } else if (slotValue.isFloat() && src.isFloat()) {
+                                slotValue = Value(slotValue.asFloat() + src.asFloat());
+                                primitiveHandled = true;
+                            } else if (slotValue.isInteger() && src.isFloat()) {
+                                slotValue = Value((double)slotValue.asInteger() + src.asFloat());
+                                primitiveHandled = true;
+                            } else if (slotValue.isFloat() && src.isInteger()) {
+                                slotValue = Value(slotValue.asFloat() + (double)src.asInteger());
+                                primitiveHandled = true;
+                            } else if (slotValue.isString() && src.isString()) {
+                                slotValue = Value(slotValue.asString() + src.asString());
+                                primitiveHandled = true;
+                            } else {
+                                dst = slotValue;
+                            }
+                        }
+                    }
+                    if (validSlot && !primitiveHandled) {
+                        if (dst.isInstance()) {
                             // Same gap as ADD_LOCAL_LOCAL, for the equally common
                             // case where the accumulator is a script-level (i.e.
                             // global-slot) variable rather than a function-local
@@ -3063,7 +3087,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 Value result = callFunction(bound, {src});
                                 LOAD_FRAME();
                                 stackTop = this->stackTop;
-                                globalEnv->globalSlots[globalSlot] = result;
+                                std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+                                if (globalSlot < globalEnv->globalSlots.size())
+                                    globalEnv->globalSlots[globalSlot] = result;
                             } else {
                                 *stackTop++ = dst;
                                 *stackTop++ = src;
@@ -3071,7 +3097,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 doAdd();
                                 if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
                                 LOAD_FRAME();
-                                globalEnv->globalSlots[globalSlot] = *(--stackTop);
+                                Value result = *(--stackTop);
+                                std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+                                if (globalSlot < globalEnv->globalSlots.size())
+                                    globalEnv->globalSlots[globalSlot] = result;
                             }
                         } else {
                             *stackTop++ = dst;
@@ -3080,7 +3109,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             doAdd();
                             if (__builtin_expect(!running, 0)) { RAISE_FAULT(); }
                             LOAD_FRAME();
-                            dst = *(--stackTop);
+                            Value result = *(--stackTop);
+                            std::unique_lock<std::shared_mutex> lock(globalEnv->slotMutex);
+                            if (globalSlot < globalEnv->globalSlots.size())
+                                globalEnv->globalSlots[globalSlot] = result;
                         }
                     }
                     DISPATCH();

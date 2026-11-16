@@ -6,4 +6,8 @@ task privateValue() {
     give "private"
 }
 
-export {privateValue as renamedValue}
+// Top-level tasks are exported at declaration time. Keep the implementation
+// private and publish a wrapper under the selected public name.
+export task renamedValue() {
+    give privateValue()
+}

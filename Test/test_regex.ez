@@ -30,7 +30,7 @@ describe("Regex Engine (Raw Strings)", || {
             reMatch("test", r"[")
         } catch e {
             out "  [INFO] Caught expected regex error: " + str(e)
-            assert(startsWith(str(e), "Regex Error"), "Should report Regex Error prefix")
+            assert(startsWith(str(e), "Invalid pattern"), "Should report the invalid pattern")
         }
     })
 

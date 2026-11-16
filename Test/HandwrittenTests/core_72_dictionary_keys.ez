@@ -9,25 +9,27 @@ d = {}
 // String keys
 d["normal"] = 1
 
-// Numeric keys (In EZ, they might be cast to string or fail)
+// EZ dictionaries accept string, numeric, and boolean keys.
 d[42] = "number key"
 d[3.14] = "float key"
-
-// Array keys (usually cast to string like '[1, 2]' or fail)
-d[[1, 2]] = "array key"
-
-// Dict as key
-d[{ "a": 1 }] = "dict key"
-
-// Nil and boolean keys
-d[nil] = "nil key"
 d[true] = "true key"
 d[false] = "false key"
 
 out "Dict size: " + str(len(d))
 out "Dict 42: " + str(d[42])
-out "Dict nil: " + str(d[nil])
 out "Dict true: " + str(d[true])
+out "Dict false: " + str(d[false])
+
+// Nil, arrays, and dictionaries are not valid keys.
+rejectedInvalidKeys = true
+try { d[nil] = "nil key"; rejectedInvalidKeys = false } catch e { }
+try { d[[1, 2]] = "array key"; rejectedInvalidKeys = false } catch e { }
+try { d[{ "a": 1 }] = "dict key"; rejectedInvalidKeys = false } catch e { }
+when not rejectedInvalidKeys {
+    out "FAIL: An invalid dictionary key was accepted"
+    exit(1)
+}
+out "Invalid key types rejected"
 
 // Test removing keys
 dictRemove(d, 42)

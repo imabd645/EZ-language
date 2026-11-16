@@ -10,7 +10,8 @@
 #
 # len was historically byte-oriented, but has been upgraded to count characters
 # along with string indexing (s[0]) and slice().
-# substr and indexOf remain byte-oriented for lower-level buffer slicing.
+# substr, len, indexing, and indexOf use character offsets. Operations such as
+# replace still search for complete byte sequences, which is safe for UTF-8.
 
 fails = 0
 
@@ -65,7 +66,7 @@ check("negative rejected", threw(| | { give chr(-1) }))
 check("above U+10FFFF rejected", threw(| | { give chr(1114112) }))
 check("lone surrogate rejected", threw(| | { give chr(55296) }))
 
-out "-- byte-oriented operations are unchanged --"
+out "-- UTF-8 string operations --"
 s = "naïve café 日本"
 checkEq("len counts characters", len(s), 13)
 checkEq("split/join", join(split(s, " "), "|"), "naïve|café|日本")
@@ -75,12 +76,14 @@ check("contains", contains(s, "日本"))
 checkEq("concat", "é" + "!", "é!")
 checkEq("trim", trim("  é  "), "é")
 
-out "-- malformed input degrades, never throws --"
-# substr can still cut a sequence in half (byte offsets); the result must be
-# handled rather than crash anything downstream.
-half = substr("café", 0, 4)
-check("reverse of a cut sequence returns", len(reverse(half)) == 4)
-check("ord of a stray continuation byte returns", ord(substr("café", 4, 1)) > 0)
+out "-- substring uses character offsets; malformed bytes remain safe --"
+checkEq("substr selects complete characters", substr("café", 0, 3), "caf")
+checkEq("substr selects a multibyte character", substr("café", 3, 1), "é")
+# FFI and byte conversion can still produce malformed UTF-8. The decoder treats
+# an invalid continuation byte as one byte-valued character rather than throwing.
+stray = bytesToString([169])
+checkEq("reverse of malformed byte returns", reverse(stray), stray)
+checkEq("ord of malformed byte returns its byte value", ord(stray), 169)
 
 out ""
 when fails == 0 {

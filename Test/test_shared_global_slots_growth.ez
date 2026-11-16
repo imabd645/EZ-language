@@ -1,0 +1,28 @@
+sharedSlotValue = 8
+
+task readSharedSlot() {
+    total = 0
+    repeat i = 1 to 50000 {
+        total = total + sharedSlotValue
+    }
+    give total
+}
+
+task growSharedSlots() {
+    repeat i = 1 to 100 {
+        eval("growth_slot_" + str(i) + " = " + str(i))
+    }
+    give true
+}
+
+reader = spawn(readSharedSlot)
+grower = spawn(growSharedSlots)
+readTotal = await(reader)
+await(grower)
+
+when readTotal != 400000 {
+    out "FAIL: shared global reads changed during slot growth"
+    exit(1)
+}
+
+out "PASS: shared global reads survive concurrent slot growth"

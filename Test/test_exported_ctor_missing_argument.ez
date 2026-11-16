@@ -1,0 +1,7 @@
+// EXPECT: compile-error
+export model RegressionCtorBase {
+    init(value) { self.value = value }
+}
+export model RegressionCtorChild extends RegressionCtorBase { }
+
+RegressionCtorChild()

@@ -1,0 +1,4 @@
+// EXPECT: compile-error
+export task regressionRequired(value) { give value }
+
+regressionRequired()

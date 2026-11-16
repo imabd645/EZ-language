@@ -1,0 +1,20 @@
+export model RegressionCtorBase {
+    init(value) { self.value = value }
+    task getValue() { give self.value }
+}
+
+export model RegressionCtorChild extends RegressionCtorBase { }
+export task regressionDefaulted(value, extra = 5) { give value + extra }
+
+child = RegressionCtorChild(37)
+when child.getValue() != 37 {
+    out "FAIL: exported child did not inherit the parent constructor"
+    exit(1)
+}
+
+when regressionDefaulted(8) != 13 {
+    out "FAIL: exported default argument was not applied"
+    exit(1)
+}
+
+out "PASS: exported constructor inheritance and default arguments"

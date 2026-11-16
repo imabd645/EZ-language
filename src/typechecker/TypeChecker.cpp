@@ -196,12 +196,17 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
     // Constructor calls use the nearest init declared in the model hierarchy.
     // Gather declarations first so a child can extend a parent written later.
     std::unordered_map<std::string, ModelStmt*> modelDeclarations;
-    for (const auto& stmt : statements) {
-        if (stmt && std::holds_alternative<ModelStmt*>(stmt->variant)) {
-            auto* model = std::get<ModelStmt*>(stmt->variant);
-            modelDeclarations[model->name] = model;
-        }
-    }
+    std::function<void(const StmtPtr&)> collectModelDeclarations =
+        [&](const StmtPtr& stmt) {
+            if (!stmt) return;
+            if (std::holds_alternative<ModelStmt*>(stmt->variant)) {
+                auto* model = std::get<ModelStmt*>(stmt->variant);
+                modelDeclarations[model->name] = model;
+            } else if (std::holds_alternative<ExportStmt*>(stmt->variant)) {
+                collectModelDeclarations(std::get<ExportStmt*>(stmt->variant)->inner);
+            }
+        };
+    for (const auto& stmt : statements) collectModelDeclarations(stmt);
     auto effectiveInit = [&](ModelStmt* model) {
         std::unordered_set<std::string> seen;
         while (model && !model->hasInit && !model->parentName.empty() &&
@@ -367,11 +372,30 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
                     declareFunction(task->name, sig);
                 } else if (std::holds_alternative<ModelStmt*>(innerStmt->variant)) {
                     auto model = std::get<ModelStmt*>(innerStmt->variant);
+                    ModelStmt* initModel = effectiveInit(model);
                     FunctionSignature sig;
-                    for (const auto& p : model->initParams) sig.paramNames.push_back(p);
-                    for (const auto& t : model->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    if (initModel) {
+                        for (const auto& p : initModel->initParams) sig.paramNames.push_back(p);
+                        for (const auto& t : initModel->initParamTypes) sig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    }
+                    size_t initMinArgs = 0;
+                    if (initModel) {
+                        for (const auto& dv : initModel->initDefaultValues) {
+                            if (!dv) initMinArgs++;
+                        }
+                    }
+                    sig.minArgs = initMinArgs;
                     sig.returnType = TypeInfo(model->name);
                     declareFunction(model->name, sig);
+
+                    FunctionSignature initSig;
+                    if (initModel) {
+                        for (const auto& p : initModel->initParams) initSig.paramNames.push_back(p);
+                        for (const auto& t : initModel->initParamTypes) initSig.paramTypes.push_back(TypeInfo::fromAST(t));
+                    }
+                    initSig.returnType = TypeInfo("Any");
+                    initSig.minArgs = initMinArgs;
+                    declareFunction(model->name + ".init", initSig);
                     
                     for (const auto& member : model->members) {
                         if (member.isMethod) {

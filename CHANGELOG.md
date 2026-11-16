@@ -8,6 +8,8 @@ Until then, minor versions may include breaking changes.
 
 ## [Unreleased]
 
+## [5.4.0] - 2026-11-16
+
 ### Added
 - `argv` and `scriptName` globals for command-line argument access
 - Enum support with auto-numbering, explicit values, and decorators
@@ -54,5 +56,7 @@ Pre-4.0 history predates this changelog and is not fully itemized here. Highligh
 
 For full commit-level detail on any version, see the [commit history](https://github.com/imabd645/EZ-language/commits/main).
 
-[Unreleased]: https://github.com/imabd645/EZ-language/compare/v4.0.0...main
+[Unreleased]: https://github.com/imabd645/EZ-language/compare/v5.4.0...main
+[5.4.0]: https://github.com/imabd645/EZ-language/compare/v5.3.0...v5.4.0
+[5.3.0]: https://github.com/imabd645/EZ-language/releases/tag/v5.3.0
 [4.0.0]: https://github.com/imabd645/EZ-language/releases/tag/v4.0.0

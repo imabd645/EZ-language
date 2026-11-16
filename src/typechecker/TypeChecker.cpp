@@ -369,6 +369,11 @@ bool TypeChecker::check(const std::vector<StmtPtr>& statements,
                     sig.returnType = TypeInfo::fromAST(task->returnType);
                     sig.isVariadic = task->isVariadic;
                     sig.isAsync = task->isAsync;
+                    size_t minArgs = 0;
+                    for (const auto& dv : task->defaultValues) {
+                        if (!dv) minArgs++;
+                    }
+                    sig.minArgs = minArgs;
                     declareFunction(task->name, sig);
                 } else if (std::holds_alternative<ModelStmt*>(innerStmt->variant)) {
                     auto model = std::get<ModelStmt*>(innerStmt->variant);

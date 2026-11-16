@@ -19,6 +19,7 @@
 #endif
 
 #include <mutex>
+#include <atomic>
 #include <memory>
 #include <functional>
 #include <string>
@@ -40,6 +41,7 @@ struct EZFuture {
     Value*   result;  // heap-allocated copy of the result
     bool     hasError;
     std::string errorMsg;
+    std::atomic<bool> cancellationRequested{false};
     std::vector<std::function<void()>> onReady;
 
     EZFuture()
@@ -69,11 +71,47 @@ struct EZFuture {
     void set(const Value& val);
 
     void setError(const std::string& msg);
-    bool isError() const { return hasError; }
-    std::string getError() const { return errorMsg; }
+    bool isError() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return hasError;
+    }
+    std::string getError() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return errorMsg;
+    }
 
-    // Cancel the future, making it throw "Cancelled"
-    void cancel() { setError("Cancelled"); }
+    // Mark the future cancelled and request that an attached VM unwind at its
+    // next instruction dispatch. The VM consumes the request exactly once so
+    // a language-level catch can handle cancellation and run its cleanup.
+    void cancel() {
+        std::vector<std::function<void()>> callbacks;
+        bool didCancel = false;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (!result && !hasError) {
+                cancellationRequested.store(true, std::memory_order_release);
+                hasError = true;
+                errorMsg = "Cancelled";
+#ifndef _WIN32
+                ready = true;
+#endif
+                callbacks = std::move(onReady);
+                onReady.clear();
+                didCancel = true;
+            }
+        }
+        if (!didCancel) return;
+#ifdef _WIN32
+        SetEvent(hEvent);
+#else
+        cv.notify_all();
+#endif
+        for (auto& cb : callbacks) if (cb) cb();
+    }
+
+    bool takeCancellationRequest() {
+        return cancellationRequested.exchange(false, std::memory_order_acq_rel);
+    }
 
     // Block until ready, then return the stored result.
     Value get();

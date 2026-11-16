@@ -426,6 +426,10 @@ void registerConcurrencyBuiltins(RuntimeContext& interp) {
     interp.defineGlobal("cancel", Value::makeNativeFunction("cancel", 1, 
         [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
             if (!args[0].isFuture()) { interp.runtimeError("cancel() expects future", 0, ""); return Value(); }
+            // VM-backed tasks observe this request at their next instruction
+            // dispatch and unwind through EZ catch/finally handlers. A native
+            // operation already in progress (for example wait()) must return
+            // before the VM can observe cancellation.
             args[0].asFuture()->cancel();
             return Value();
         }));

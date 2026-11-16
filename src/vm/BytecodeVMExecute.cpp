@@ -256,6 +256,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
             throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
             goto handle_vm_fault; \
         } \
+        if (__builtin_expect(taskFuture && taskFuture->takeCancellationRequest(), 0)) { \
+            throwException("Cancelled", "Task was cancelled", 0, ""); \
+            goto handle_vm_fault; \
+        } \
         if (__builtin_expect(!running, 0)) goto handle_vm_fault; \
         if (__builtin_expect(traceExecution, 0)) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \
         goto *dispatchTable[READ_BYTE()]; \
@@ -273,6 +277,10 @@ void BytecodeVM::run(size_t targetFrameCount) {
         if (maxInstructions > 0 && instructionCount >= maxInstructions) { \
             maxInstructions = 0; \
             throwException("SecurityError", "Instruction limit exceeded (CPU budget exhausted)", 0, ""); \
+            goto handle_vm_fault; \
+        } \
+        if (taskFuture && taskFuture->takeCancellationRequest()) { \
+            throwException("Cancelled", "Task was cancelled", 0, ""); \
             goto handle_vm_fault; \
         } \
         if (traceExecution) std::cerr << "[VM-TRACE] OP: " << (int)(*ip) << " at IP: " << (void*)ip << std::endl; \

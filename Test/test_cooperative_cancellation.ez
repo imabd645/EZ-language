@@ -1,0 +1,50 @@
+# cancel() must stop a running VM at a dispatch boundary and unwind through
+# finally before the worker continues executing EZ code.
+cancelTicks = 0
+cleanupDone = false
+
+task cancellationWorker() {
+    try {
+        while true {
+            cancelTicks = cancelTicks + 1
+        }
+    } finally {
+        cleanupDone = true
+    }
+}
+
+future = spawn(cancellationWorker)
+wait(10)
+when cancelTicks == 0 {
+    out "FAIL: worker did not start"
+    exit(1)
+}
+
+cancel(future)
+caughtCancellation = false
+try {
+    await(future)
+} catch e {
+    caughtCancellation = true
+}
+
+# cancel() marks the Future ready immediately; give the worker time to observe
+# the request and unwind so this also verifies execution has actually stopped.
+wait(20)
+when !caughtCancellation {
+    out "FAIL: await did not report cancellation"
+    exit(1)
+}
+when !cleanupDone {
+    out "FAIL: cancellation skipped finally cleanup"
+    exit(1)
+}
+
+ticksAfterCleanup = cancelTicks
+wait(20)
+when cancelTicks != ticksAfterCleanup {
+    out "FAIL: worker kept changing shared state after cancellation"
+    exit(1)
+}
+
+out "PASS: cancellation unwinds and stops worker execution"

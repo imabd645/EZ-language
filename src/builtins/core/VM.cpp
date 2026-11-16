@@ -1,5 +1,6 @@
 #include "runtime/RuntimeContext.h"
 #include "runtime/Value.h"
+#include "cli/Version.h"
 #include <string>
 #include <vector>
 
@@ -62,7 +63,7 @@ void registerVMBuiltins(RuntimeContext& interp) {
             Value dictVal = Value::makeDictionary();
             auto dict = dictVal.asDictionaryPtr();
             dict->modifyMap([&](auto& m) {
-                m["version"] = Value("5.3.0");
+                m["version"] = Value(EZ_VERSION_STRING);
                 m["engine"] = Value("EZ Bytecode VM");
                 #if defined(_WIN32) || defined(_WIN64)
                                 m["platform"] = Value("windows");

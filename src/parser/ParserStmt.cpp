@@ -1096,6 +1096,7 @@ StmtPtr Parser::modelStatement() {
     std::vector<TypeASTPtr> initParamTypes;
     std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
+    bool hasInit = false;
     std::vector<ModelMember> members;
     
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
@@ -1125,6 +1126,7 @@ StmtPtr Parser::modelStatement() {
         
         // Check for init (constructor)
         if (match(TokenType::INIT)) {
+            hasInit = true;
             if (isStatic) throw ParseError("Constructor cannot be static", previous().line);
             consume(TokenType::LPAREN, "Expected '(' after 'init'");
             
@@ -1449,7 +1451,7 @@ StmtPtr Parser::modelStatement() {
     
     // Use the peek().filename or current filename
     auto stmt = makeModelStmt(arena, line, column, length, nameToken.filename, name, parentName, interfaces, initParams, initParamTypes,
-                         initDefaultValues, initBody, members);
+                         initDefaultValues, initBody, members, hasInit);
     std::get<ModelStmt*>(stmt->variant)->typeParams = typeParams;
     return stmt;
 }

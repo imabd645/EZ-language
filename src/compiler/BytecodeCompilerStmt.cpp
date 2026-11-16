@@ -1557,9 +1557,9 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     int memberCount = 0;
     std::vector<std::pair<std::string, std::string>> propertyTypes;
     
-    // 2. Synthesize "init" method for the constructor
-    // Note: Always create 'init' so subclasses can safely call super.init()
-    if (true) {
+    // 2. Synthesize an init only when this model declares one or has no parent.
+    // A child without its own init inherits the parent's constructor method.
+    if (stmt.hasInit || stmt.parentName.empty()) {
         // Push name
         size_t initNameIdx = identifierConstant("init");
         emitOp(OpCode::LOAD_CONST);

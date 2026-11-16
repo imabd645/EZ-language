@@ -100,6 +100,14 @@ try { Derived() } catch (e) { caught2 = str(e) }
 check("throw from an inherited init is caught", caught2, "base boom")
 check("VM alive after inherited init throw", Fine(1).val(), 1)
 
+# A child without an init inherits both its parent's implementation and arity.
+model InitWithArgument {
+    init(value) { self.value = value }
+    task getValue() { give self.value }
+}
+model InheritsInit extends InitWithArgument { }
+check("inherited init accepts parent arguments", InheritsInit(7).getValue(), 7)
+
 # --- 4. throw out of a re-entrant builtin callback --------------------------
 # sort() calls back into EZ. A comparator that throws is the same re-entrancy
 # hole as a constructor, reached a different way.

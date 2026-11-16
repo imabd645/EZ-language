@@ -221,6 +221,7 @@ struct ModelStmt {
     std::vector<TypeASTPtr> initParamTypes;
     std::vector<ExprPtr> initDefaultValues;
     std::vector<StmtPtr> initBody;
+    bool hasInit = false;
     std::vector<ModelMember> members;
     // Decorator fields
     bool audited  = false;     // @audited
@@ -235,10 +236,11 @@ struct ModelStmt {
               std::vector<TypeASTPtr> initParamTypes,
               std::vector<ExprPtr> initDefaultValues,
               std::vector<StmtPtr> initBody,
-              std::vector<ModelMember> members)
+              std::vector<ModelMember> members,
+              bool hasInit = false)
         : line(line), name(name), parentName(parent), interfaces(std::move(interfaces)),
           initParams(std::move(initParams)), initParamTypes(std::move(initParamTypes)), initDefaultValues(std::move(initDefaultValues)),
-          initBody(std::move(initBody)), members(std::move(members)) {}
+          initBody(std::move(initBody)), members(std::move(members)), hasInit(hasInit) {}
 };
 
 // Struct definition (simplified class)
@@ -467,10 +469,11 @@ inline StmtPtr makeModelStmt(ASTArena& arena, int line, int column, int length, 
                              std::vector<TypeASTPtr> initParamTypes,
                              std::vector<ExprPtr> initDefaultValues,
                              std::vector<StmtPtr> initBody,
-                             std::vector<ModelMember> members) {
+                             std::vector<ModelMember> members,
+                             bool hasInit = false) {
     return arena.allocate<Stmt>(line, column, length, file, arena.allocate<ModelStmt>(
         line, name, parent, std::move(interfaces), std::move(initParams), std::move(initParamTypes),
-        std::move(initDefaultValues), std::move(initBody), std::move(members)));
+        std::move(initDefaultValues), std::move(initBody), std::move(members), hasInit));
 }
 
 inline StmtPtr makeStructStmt(ASTArena& arena, int line, int column, int length, const std::string& file, const std::string& name, std::vector<std::string> fields, std::vector<TypeASTPtr> types, std::vector<ExprPtr> defaults) {

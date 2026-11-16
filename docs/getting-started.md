@@ -161,9 +161,12 @@ Type 'exit' to quit
 Goodbye!
 ```
 
-The REPL is multi-line aware — it counts `{`/`}` and keeps prompting with
-`...` until braces balance, then compiles and runs the accumulated input,
-sharing global state across evaluations within the same session.
+The REPL is multi-line aware — it tracks braces, parentheses, and brackets and
+keeps prompting with `...` until the input is complete, then compiles and runs
+the accumulated input, sharing global state across evaluations within the same
+session. Delimiters inside quoted strings and comments do not affect
+continuation detection. Use `help` for interactive commands; both `exit` and
+`quit` leave the REPL.
 
 ### CLI reference
 

@@ -10,6 +10,7 @@ extern bool g_disableTypeCheck;
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #include "runtime/Value.h"
 #include "gc/CycleCollector.h"
 #include "eventloop/EventLoop.h"
@@ -25,6 +26,64 @@ extern bool g_disableTypeCheck;
 #include <windows.h>
 #endif
 #include <cstdint>
+
+namespace {
+
+struct ReplInputState {
+    std::vector<char> delimiters;
+    char quote = '\0';
+    bool escaped = false;
+    bool comment = false;
+
+    void consume(const std::string& line) {
+        comment = false;
+        for (size_t i = 0; i < line.size(); ++i) {
+            char c = line[i];
+            if (comment) continue;
+
+            if (quote != '\0') {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == quote) {
+                    quote = '\0';
+                }
+                continue;
+            }
+
+            if (c == '#') {
+                comment = true;
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '{' || c == '(' || c == '[') {
+                delimiters.push_back(c);
+            } else if (c == '}' || c == ')' || c == ']') {
+                char expected = c == '}' ? '{' : (c == ')' ? '(' : '[');
+                if (!delimiters.empty() && delimiters.back() == expected) {
+                    delimiters.pop_back();
+                } else {
+                    // Keep the mismatch visible to the lexer/parser instead
+                    // of suppressing execution indefinitely.
+                    delimiters.clear();
+                }
+            }
+        }
+    }
+
+    bool needsMoreInput() const {
+        return quote != '\0' || !delimiters.empty();
+    }
+
+    void reset() {
+        delimiters.clear();
+        quote = '\0';
+        escaped = false;
+        comment = false;
+    }
+};
+
+} // namespace
 
 
 
@@ -55,7 +114,7 @@ void runRepl(bool traceExecution) {
 
     std::string line;
     std::string multiline;
-    int openBraces = 0;
+    ReplInputState inputState;
     // Top-level REPL vars/functions compile to STORE_GLOBAL_SLOT, which never
     // touches globalEnv->variables (that map only holds pre-registered
     // builtins). Without also tracking each one's type here, the
@@ -68,29 +127,36 @@ void runRepl(bool traceExecution) {
     std::unordered_map<std::string, TypeInfo> replVarTypes;
     
     while (true) {
-        if (openBraces > 0) {
+        if (inputState.needsMoreInput()) {
             std::cout << "... ";
         } else {
             std::cout << ">>> ";
         }
+        std::cout << std::flush;
         
         if (!std::getline(std::cin, line)) {
             break;
         }
         
-        if (line == "exit" && openBraces == 0) {
+        if (!inputState.needsMoreInput() &&
+            (line == "exit" || line == "quit")) {
             break;
         }
-        
-        // Count braces for multiline input
-        for (char c : line) {
-            if (c == '{') openBraces++;
-            if (c == '}') openBraces--;
+
+        if (!inputState.needsMoreInput()) {
+            if (line == "help") {
+                std::cout << "REPL commands:\n"
+                          << "  help       Show this help\n"
+                          << "  quit       Exit the REPL\n"
+                          << "  exit       Exit the REPL\n";
+                continue;
+            }
         }
-        
+
+        inputState.consume(line);
         multiline += line + "\n";
-        
-        if (openBraces > 0) {
+
+        if (inputState.needsMoreInput()) {
             continue;
         }
         
@@ -172,9 +238,8 @@ void runRepl(bool traceExecution) {
         // reporting "Unterminated string" at the original line/column no
         // matter what valid code was typed afterward).
         multiline.clear();
-        openBraces = 0;
+        inputState.reset();
     }
     
     std::cout << "Goodbye!" << std::endl;
 }
-

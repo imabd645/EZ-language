@@ -1536,7 +1536,11 @@ Type 'exit' to quit
 Goodbye!
 ```
 
-The REPL supports multi-line input — it counts `{`/`}` and keeps prompting with `...` until braces balance, then runs the type checker and bytecode compiler/VM on the accumulated input, sharing global state across REPL evaluations within the same session.
+The REPL supports multi-line input — it tracks braces, parentheses, and
+brackets and keeps prompting with `...` until the input is complete. Delimiters
+inside quoted strings and comments are ignored. Use `help` for REPL commands;
+both `exit` and `quit` leave the session. Each completed input is type-checked,
+compiled, and executed while sharing global state across evaluations.
 
 CLI summary (`ez --help`):
 

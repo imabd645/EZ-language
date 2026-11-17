@@ -566,7 +566,20 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                 // fast path repeated the mistake.
                                 bool isField = inst->hasProperty(propName);
                                 Value val = inst->getProperty(propName);
+                                // A field declared with a nil default (`hidden head:Node=nil`)
+                                // is stored in the class member table as nil, and is not an
+                                // instance property until first assigned. getProperty()
+                                // returns nil for it, which is indistinguishable from "no
+                                // such member", so reading a declared-but-unassigned nil
+                                // field raised AttributeError. Check the class chain for the
+                                // declaration before treating nil as missing.
+                                bool declaredOnClass = false;
                                 if (val.isNil() && !isField) {
+                                    for (auto c = inst->klass; c; c = c->parent) {
+                                        if (c->hasMethod(propName)) { declaredOnClass = true; break; }
+                                    }
+                                }
+                                if (val.isNil() && !isField && !declaredOnClass) {
                                     // Last chance before failing: a __getattr__
                                     // on the class. Deliberately on the IC MISS
                                     // path -- a property that exists is served

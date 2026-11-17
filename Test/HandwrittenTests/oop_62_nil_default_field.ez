@@ -1,0 +1,33 @@
+// Regression: reading a field declared with a nil default before it is assigned
+// used to raise "AttributeError: 'X' has no property or method 'head'".
+struct Node
+{
+    value:Any
+    next:Node=nil
+}
+
+model Box
+{
+    hidden head:Node=nil
+
+    task IsEmpty()
+    {
+        give self.head == nil
+    }
+
+    task Put(v:Any)
+    {
+        self.head = new Node(v)
+    }
+
+    task Peek()
+    {
+        give self.head.value
+    }
+}
+
+b = Box()
+out b.IsEmpty()   // true
+b.Put(7)
+out b.IsEmpty()   // false
+out b.Peek()      // 7

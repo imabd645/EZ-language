@@ -1,4 +1,5 @@
 #include "bytecode/serializer/BytecodeSerializer.h"
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -37,6 +38,283 @@ namespace {
         in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(bytes));
         if (in.gcount() != static_cast<std::streamsize>(bytes))
             throw std::runtime_error(std::string("Corrupt bytecode: truncated ") + what);
+    }
+
+    [[noreturn]] void verificationError(const BytecodeFunction& func,
+                                        size_t offset,
+                                        const std::string& reason) {
+        throw std::runtime_error("Corrupt bytecode in function '" + func.name +
+                                 "' at offset " + std::to_string(offset) +
+                                 ": " + reason);
+    }
+
+    void verifyFunction(const std::shared_ptr<BytecodeFunction>& func,
+                        const std::vector<std::string>& globalSlotNames,
+                        int depth = 0,
+                        const BytecodeFunction* enclosing = nullptr) {
+        if (!func) throw std::runtime_error("Corrupt bytecode: null function");
+        if (depth > EZC_MAX_NEST_DEPTH)
+            throw std::runtime_error("Corrupt bytecode: nested-function recursion too deep");
+
+        const auto& code = func->chunk.code;
+        const auto& constants = func->chunk.constants;
+        if (code.empty()) verificationError(*func, 0, "empty instruction stream");
+        if (func->chunk.lines.size() != code.size())
+            verificationError(*func, 0, "line table size does not match code size");
+        if (func->localCount > EZC_MAX_COUNT || func->arity > EZC_MAX_COUNT)
+            verificationError(*func, 0, "implausible function frame size");
+        if (func->upvalueCount != func->upvalues.size())
+            verificationError(*func, 0, "upvalue count does not match upvalue table");
+        if (func->defaultParamCount > func->arity)
+            verificationError(*func, 0, "default parameter count exceeds function arity");
+        if (func->arity > func->localCount)
+            verificationError(*func, 0, "function arity exceeds local slot count");
+
+        for (const auto& c : constants) {
+            if (c.type == Constant::Type::ARRAY_CONST) {
+                const auto& indexes = std::get<std::vector<size_t>>(c.value);
+                for (size_t idx : indexes) {
+                    if (idx >= constants.size())
+                        verificationError(*func, 0, "array constant references an invalid constant index");
+                }
+            }
+        }
+        for (const auto& upvalue : func->upvalues) {
+            if (upvalue.type != Upvalue::Type::LOCAL && upvalue.type != Upvalue::Type::UPVALUE)
+                verificationError(*func, 0, "invalid upvalue kind");
+            if (!enclosing ||
+                (upvalue.type == Upvalue::Type::LOCAL && upvalue.index >= enclosing->localCount) ||
+                (upvalue.type == Upvalue::Type::UPVALUE && upvalue.index >= enclosing->upvalues.size()))
+                verificationError(*func, 0, "upvalue references an invalid enclosing slot");
+        }
+        for (const auto& local : func->localVars) {
+            if (local.slot >= func->localCount)
+                verificationError(*func, local.startPC, "local-variable metadata has an invalid slot");
+            const bool liveUntilReturn = local.endPC == UINT32_MAX;
+            if (local.startPC > code.size() ||
+                (!liveUntilReturn && (local.startPC > local.endPC || local.endPC > code.size())))
+                verificationError(*func, local.startPC, "local-variable metadata has an invalid code range");
+        }
+
+        auto requireConstant = [&](size_t idx, size_t at, bool requireString) {
+            if (idx >= constants.size())
+                verificationError(*func, at, "constant index is out of range");
+            if (requireString && constants[idx].type != Constant::Type::STRING)
+                verificationError(*func, at, "name operand does not reference a string constant");
+        };
+
+        std::vector<bool> boundaries(code.size() + 1, false);
+        std::vector<std::pair<size_t, size_t>> jumpTargets;
+        size_t requiredICEntries = 0;
+        size_t pc = 0;
+        while (pc < code.size()) {
+            const size_t instructionOffset = pc;
+            boundaries[pc] = true;
+            uint8_t rawOp = code[pc++];
+            if (rawOp > static_cast<uint8_t>(OpCode::END))
+                verificationError(*func, instructionOffset, "unknown opcode " + std::to_string(rawOp));
+            OpCode op = static_cast<OpCode>(rawOp);
+
+            auto need = [&](size_t count) {
+                if (count > code.size() - pc)
+                    verificationError(*func, instructionOffset, "truncated opcode operands");
+            };
+            auto read8 = [&]() -> uint8_t {
+                need(1);
+                return code[pc++];
+            };
+            auto read16 = [&]() -> uint16_t {
+                need(2);
+                uint16_t value = static_cast<uint16_t>((code[pc] << 8) | code[pc + 1]);
+                pc += 2;
+                return value;
+            };
+            auto read32 = [&]() -> uint32_t {
+                need(4);
+                uint32_t value = (static_cast<uint32_t>(code[pc]) << 24) |
+                                 (static_cast<uint32_t>(code[pc + 1]) << 16) |
+                                 (static_cast<uint32_t>(code[pc + 2]) << 8) |
+                                 static_cast<uint32_t>(code[pc + 3]);
+                pc += 4;
+                return value;
+            };
+            auto checkLocal = [&](size_t slot) {
+                if (slot >= func->localCount)
+                    verificationError(*func, instructionOffset, "local slot is out of range");
+            };
+            auto checkUpvalue = [&](size_t idx) {
+                if (idx >= func->upvalues.size())
+                    verificationError(*func, instructionOffset, "upvalue index is out of range");
+            };
+            auto checkGlobal = [&](size_t idx) {
+                if (idx >= globalSlotNames.size())
+                    verificationError(*func, instructionOffset, "global slot index is out of range");
+            };
+            auto checkIC = [&](size_t idx) {
+                requiredICEntries = std::max(requiredICEntries, idx + 1);
+            };
+            auto readName = [&]() { requireConstant(read16(), instructionOffset, true); };
+            auto readIC = [&]() { checkIC(read16()); };
+            auto readForwardJump = [&]() {
+                uint32_t distance = read32();
+                if (distance > code.size() - pc)
+                    verificationError(*func, instructionOffset, "forward jump leaves instruction stream");
+                jumpTargets.push_back({instructionOffset, pc + distance});
+            };
+            auto readBackwardJump = [&]() {
+                uint32_t distance = read32();
+                if (distance > pc)
+                    verificationError(*func, instructionOffset, "backward jump leaves instruction stream");
+                jumpTargets.push_back({instructionOffset, pc - distance});
+            };
+
+            switch (op) {
+                case OpCode::LOAD_CONST:
+                    requireConstant(read16(), instructionOffset, false);
+                    break;
+                case OpCode::LOAD_LOCAL:
+                case OpCode::STORE_LOCAL:
+                case OpCode::INC_LOCAL:
+                case OpCode::DEC_LOCAL:
+                case OpCode::CLOSE_UPVALUE:
+                    checkLocal(read8());
+                    break;
+                case OpCode::LOAD_LOCAL_W:
+                case OpCode::STORE_LOCAL_W:
+                    checkLocal(read16());
+                    break;
+                case OpCode::LOAD_UPVALUE:
+                case OpCode::STORE_UPVALUE:
+                    checkUpvalue(read8());
+                    break;
+                case OpCode::LOAD_GLOBAL:
+                case OpCode::STORE_GLOBAL:
+                case OpCode::HAS_GLOBAL:
+                case OpCode::GET_METHOD:
+                case OpCode::RATELIMIT_CHECK:
+                case OpCode::GET_CACHED_RESULT:
+                case OpCode::STORE_CACHED_RESULT:
+                    readName();
+                    break;
+                case OpCode::LOAD_PROPERTY:
+                case OpCode::STORE_PROPERTY:
+                case OpCode::INTERCEPTED_STORE_PROPERTY:
+                    readName();
+                    readIC();
+                    break;
+                case OpCode::INVOKE_METHOD:
+                    readName();
+                    readIC();
+                    read8(); // argument count
+                    break;
+                case OpCode::NEW_INSTANCE:
+                case OpCode::SUPER_CALL:
+                    readName();
+                    read8(); // argument count
+                    break;
+                case OpCode::JUMP:
+                case OpCode::JUMP_IF_FALSE:
+                case OpCode::JUMP_IF_TRUE:
+                case OpCode::JUMP_IF_NIL:
+                case OpCode::JUMP_IF_NOT_NIL:
+                case OpCode::ITER_NEXT:
+                case OpCode::TRY_START:
+                    readForwardJump();
+                    break;
+                case OpCode::LOOP:
+                    readBackwardJump();
+                    break;
+                case OpCode::LOOP_LESS_EQ_LOCAL:
+                case OpCode::LOOP_GREATER_EQ_LOCAL: {
+                    checkLocal(read8());
+                    checkLocal(read8());
+                    readForwardJump();
+                    break;
+                }
+                case OpCode::CALL:
+                case OpCode::TAIL_CALL:
+                case OpCode::CALL_KW:
+                case OpCode::MAKE_ARRAY:
+                case OpCode::BUILD_TUPLE:
+                case OpCode::MAKE_DICT:
+                    read8(); // count
+                    break;
+                case OpCode::CLOSURE: {
+                    uint16_t nestedIndex = read16();
+                    if (nestedIndex >= func->nestedFunctions.size() || !func->nestedFunctions[nestedIndex])
+                        verificationError(*func, instructionOffset, "closure references an invalid nested function");
+                    const auto& nested = func->nestedFunctions[nestedIndex];
+                    for (size_t i = 0; i < nested->upvalues.size(); ++i) {
+                        uint8_t isLocal = read8();
+                        uint16_t idx = read16();
+                        if (isLocal > 1)
+                            verificationError(*func, instructionOffset, "invalid closure capture descriptor");
+                        const auto& expected = nested->upvalues[i];
+                        bool expectedLocal = expected.type == Upvalue::Type::LOCAL;
+                        if ((isLocal != 0) != expectedLocal || idx != expected.index)
+                            verificationError(*func, instructionOffset, "closure capture disagrees with nested function metadata");
+                        if (isLocal) checkLocal(idx);
+                        else checkUpvalue(idx);
+                    }
+                    break;
+                }
+                case OpCode::MAKE_INTERFACE:
+                    readName();
+                    read8(); // method count
+                    break;
+                case OpCode::MAKE_CLASS:
+                    readName();
+                    read8(); // member count
+                    read8(); // interface count
+                    read8(); // validator count
+                    break;
+                case OpCode::LOAD_GLOBAL_SLOT:
+                case OpCode::STORE_GLOBAL_SLOT:
+                    checkGlobal(read16());
+                    break;
+                case OpCode::LINE:
+                    read16();
+                    break;
+                case OpCode::ADD_LOCAL_LOCAL:
+                case OpCode::SUB_LOCAL_LOCAL:
+                    checkLocal(read8());
+                    checkLocal(read8());
+                    break;
+                case OpCode::INC_LOCAL_BY:
+                    checkLocal(read8());
+                    read8(); // signed immediate
+                    break;
+                case OpCode::ADD_GLOBAL_LOCAL:
+                    checkGlobal(read16());
+                    checkLocal(read8());
+                    break;
+                default:
+                    // All remaining opcodes have no encoded operands.
+                    break;
+            }
+        }
+        boundaries[code.size()] = true;
+        for (const auto& target : jumpTargets) {
+            if (target.second >= code.size() || !boundaries[target.second])
+                verificationError(*func, target.first, "jump target is not an instruction boundary");
+        }
+        uint32_t previousCallSiteOffset = 0;
+        bool firstCallSite = true;
+        for (const auto& callSite : func->callSites) {
+            if (callSite.offset >= code.size() || !boundaries[callSite.offset])
+                verificationError(*func, callSite.offset, "call-site metadata is not on an instruction boundary");
+            if (!firstCallSite && callSite.offset < previousCallSiteOffset)
+                verificationError(*func, callSite.offset, "call-site metadata is not ordered");
+            previousCallSiteOffset = callSite.offset;
+            firstCallSite = false;
+        }
+
+        // Inline caches are runtime-only and intentionally absent from .ezc.
+        // Recreate empty entries to the highest verified index before execution.
+        func->chunk.icEntries.resize(requiredICEntries);
+
+        for (const auto& nested : func->nestedFunctions)
+            verifyFunction(nested, globalSlotNames, depth + 1, func.get());
     }
 }
 
@@ -85,7 +363,11 @@ std::shared_ptr<BytecodeFunction> BytecodeSerializer::deserialize(std::istream& 
         outGlobalSlotNames.push_back(readString(in));
     }
 
-    return readFunction(in, 0);
+    auto function = readFunction(in, 0);
+    if (in.peek() != std::char_traits<char>::eof())
+        throw std::runtime_error("Corrupt bytecode: trailing data after main function");
+    verifyFunction(function, outGlobalSlotNames);
+    return function;
 }
 
 void BytecodeSerializer::writeString(const std::string& str, std::ostream& out) {

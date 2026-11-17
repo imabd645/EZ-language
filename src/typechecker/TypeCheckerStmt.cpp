@@ -122,7 +122,7 @@ void TypeChecker::checkVarDecl(const VarDeclStmt& stmt) {
     TypeInfo declaredType = TypeInfo::fromAST(stmt.typeHint);
     if (stmt.initializer) {
         TypeInfo initType = checkExpr(stmt.initializer);
-        if (initType.baseType != "Any" && declaredType != initType) {
+        if (initType.baseType != "Any" && initType.baseType != "nil" && declaredType != initType) {
             error(stmt.initializer,
                   "Type mismatch in variable declaration.", "Expected " + declaredType.toString() + " but got " + initType.toString());
         }
@@ -259,6 +259,14 @@ void TypeChecker::checkModel(const ModelStmt& stmt) {
     std::string previousModel = currentModel;
     currentModel = stmt.name;
     beginScope();
+
+    // Model methods allow fields to be referenced directly by name (the VM
+    // resolves these against the current instance), so expose declared fields
+    // in the model scope while checking init and method bodies as well.
+    for (const auto& member : stmt.members) {
+        if (!member.isMethod)
+            declareVariable(member.name, TypeInfo::fromAST(member.typeHint));
+    }
     
     // Check init method
     beginScope();
@@ -286,7 +294,8 @@ void TypeChecker::checkModel(const ModelStmt& stmt) {
             if (member.initializer) {
                 TypeInfo initType = checkExpr(member.initializer);
                 TypeInfo declaredType = TypeInfo::fromAST(member.typeHint);
-                if (declaredType.baseType != "Any" && initType.baseType != "Any" && declaredType != initType) {
+                if (declaredType.baseType != "Any" && initType.baseType != "Any" &&
+                    initType.baseType != "nil" && declaredType != initType) {
                     error(member.initializer ? member.initializer : nullptr, "Type mismatch in property '" + member.name + "' initialization.", "Expected " + declaredType.toString() + " but got " + initType.toString());
                 }
             }
@@ -306,7 +315,8 @@ void TypeChecker::checkStruct(const StructStmt& stmt) {
         TypeInfo declaredType = TypeInfo::fromAST(stmt.types[i]);
         if (stmt.defaults[i]) {
             TypeInfo defaultType = checkExpr(stmt.defaults[i]);
-            if (declaredType.baseType != "Any" && defaultType.baseType != "Any" && declaredType != defaultType) {
+            if (declaredType.baseType != "Any" && defaultType.baseType != "Any" &&
+                defaultType.baseType != "nil" && declaredType != defaultType) {
                 error(stmt.defaults[i], "Type mismatch in struct field default value.", "Expected " + declaredType.toString() + " but got " + defaultType.toString());
             }
         }

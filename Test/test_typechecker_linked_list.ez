@@ -1,0 +1,45 @@
+# Regression: typed nullable fields and direct field references inside models.
+struct Node {
+    value: Any
+    next: Node = nil
+}
+
+model LinkedList {
+    hidden head: Node = nil
+
+    task IsEmpty() {
+        give head == nil
+    }
+
+    task InsertAtEnd(value: Any) {
+        when self.IsEmpty() {
+            node: Node = new Node(value)
+            head = node
+            give
+        }
+
+        node: Node = new Node(value)
+        curr: Node = head
+        while curr.next != nil {
+            curr = curr.next
+        }
+        curr.next = node
+    }
+
+    task PrintList() {
+        curr: Node = head
+        while curr != nil {
+            out curr.value
+            curr = curr.next
+        }
+    }
+}
+
+list = LinkedList()
+list.InsertAtEnd(10)
+list.InsertAtEnd(20)
+list.InsertAtEnd(30)
+list.InsertAtEnd(40)
+list.InsertAtEnd(50)
+list.PrintList()
+out "PASS: typed linked list fields typecheck and run"

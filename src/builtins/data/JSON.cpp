@@ -72,6 +72,7 @@ void registerJSONBuiltins(RuntimeContext& interp) {
                     const void* id = nullptr;
                     if (v.isDictionary())  id = (const void*)v.asDictionaryPtr().get();
                     else if (v.isArray())  id = (const void*)v.asArrayPtr().get();
+                    else if (v.isTuple())  id = (const void*)v.asTuplePtr().get();
     
                     if (id) {
                         for (const void* seen : path) {
@@ -104,6 +105,11 @@ void registerJSONBuiltins(RuntimeContext& interp) {
                     } else if (v.isArray()) {
                         MiniJson::Value mv(MiniJson::ARRAY);
                         for (const auto& item : v.asArray().getElementsCopy()) mv.append(convert(item));
+                        return mv;
+                    } else if (v.isTuple()) {
+                        MiniJson::Value mv(MiniJson::ARRAY);
+                        const auto& t = v.asTuple();
+                        for (size_t i = 0; i < t.size(); ++i) mv.append(convert(t[i]));
                         return mv;
                     } else if (v.isString()) return MiniJson::Value(v.asString());
                     else if (v.isNumber()) {

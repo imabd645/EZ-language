@@ -1,0 +1,873 @@
+# ===========================================================================
+# Deep Edge-Case Tests for the EZ Interpreter
+#
+# Targets the most subtle, bug-prone corners of the VM, compiler, runtime,
+# and standard library. Each section is self-contained and aims to expose
+# regressions in:
+#   - try/catch/finally interaction with give/escape/skip/throw
+#   - closure upvalue capture across scopes and mutation
+#   - operator overloading edge cases
+#   - inheritance chains and super dispatch
+#   - dictionary and array mutation during iteration
+#   - string edge cases (empty, interpolation, unicode)
+#   - integer/float promotion boundaries
+#   - recursive and deeply nested structures
+#   - the `in` operator with unusual operands
+#   - ternary short-circuit and nesting
+#   - rest/spread with zero and mixed args
+#   - enum edge cases
+#   - nil propagation through every operator
+#   - global slot growth across eval boundaries
+#   - finally blocks that themselves throw
+#   - catch blocks with typed matching and re-throw
+# ===========================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task threw(fn) {
+    try { fn() give false } catch e { give true }
+}
+
+task threwMsg(fn) {
+    try { fn() give nil } catch e { give str(e) }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 1: Finally blocks that throw — exception replacement
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 1. Finally that throws replaces the original exception ---"
+
+task finallyThrows() {
+    try {
+        throw "original"
+    } finally {
+        throw "from-finally"
+    }
+}
+
+msg = threwMsg(|| { finallyThrows() })
+check("finally throw replaces original", msg, "from-finally")
+
+# A finally that throws during a normal (non-exception) exit
+task finallyThrowsOnSuccess() {
+    try {
+        x = 42
+    } finally {
+        throw "surprise"
+    }
+    give "unreachable"
+}
+check("finally throw on success path", threw(|| { finallyThrowsOnSuccess() }), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 2: give from finally overrides give from try AND catch
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 2. give from finally overrides try and catch ---"
+
+task giveFromTryAndFinally() {
+    try { give "from-try" } finally { give "from-finally" }
+}
+check("finally give overrides try give", giveFromTryAndFinally(), "from-finally")
+
+task giveFromCatchAndFinally() {
+    try { throw "x" } catch e { give "from-catch" } finally { give "from-finally" }
+}
+check("finally give overrides catch give", giveFromCatchAndFinally(), "from-finally")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 3: Deeply nested try/finally with multiple gives
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 3. Triple-nested try/finally with gives ---"
+
+task tripleNested() {
+    try {
+        try {
+            try {
+                give "innermost"
+            } finally {
+                x = 1  # no override
+            }
+        } finally {
+            y = 2  # no override
+        }
+    } finally {
+        z = 3  # no override
+    }
+}
+check("triple nested give passes through", tripleNested(), "innermost")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 4: Closure captures loop variable by reference
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 4. Closure capture of loop variable ---"
+
+task makeClosures() {
+    closures = []
+    i = 0
+    while i < 5 {
+        val = i
+        push(closures, || { give val })
+        i = i + 1
+    }
+    give closures
+}
+
+cls = makeClosures()
+# Each closure should capture its own copy of val
+results = []
+get c in cls { push(results, c()) }
+check("closure captures loop copy", str(results), "[0, 1, 2, 3, 4]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 5: Closure mutation of shared upvalue
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 5. Two closures sharing one upvalue ---"
+
+task sharedUpvalue() {
+    count = 0
+    inc = || { count = count + 1 give count }
+    dec = || { count = count - 1 give count }
+    give [inc, dec]
+}
+
+pair = sharedUpvalue()
+inc = pair[0]
+dec = pair[1]
+check("inc 1", inc(), 1)
+check("inc 2", inc(), 2)
+check("inc 3", inc(), 3)
+check("dec to 2", dec(), 2)
+check("inc to 3", inc(), 3)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 6: Operator overloading with nil and type mismatches
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 6. Operator overloading edge cases ---"
+
+model Num {
+    init(v) { self.v = v }
+    task +(otr) { give Num(self.v + otr.v) }
+    task ==(otr) {
+        when typeOf(otr) != "instance" { give false }
+        give self.v == otr.v
+    }
+    task toString() { give "Num(" + str(self.v) + ")" }
+}
+
+a = Num(10)
+b = Num(10)
+c = Num(20)
+check("overloaded == true", a == b, true)
+check("overloaded == false", a == c, false)
+check("overloaded + result", str(a + c), "Num(30)")
+
+# Chaining: (a + b) + c
+check("chained overloaded +", str(a + b + c), "Num(40)")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 7: Super call chain (3 levels deep)
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 7. Three-level super call chain ---"
+
+model Base {
+    init(tag) { self.tag = tag }
+    task describe() { give "Base:" + self.tag }
+}
+model Mid extends Base {
+    init(tag) { super(tag + "-mid") }
+    task describe() { give super.describe() + "|Mid" }
+}
+model Leaf extends Mid {
+    init(tag) { super(tag + "-leaf") }
+    task describe() { give super.describe() + "|Leaf" }
+}
+
+leaf = Leaf("X")
+check("3-level super chain", leaf.describe(), "Base:X-leaf-mid|Mid|Leaf")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 8: Dictionary mutation and edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 8. Dictionary edge cases ---"
+
+# Empty dict operations
+d = {}
+check("empty dict len", len(d), 0)
+check("empty dict keys", str(keys(d)), "[]")
+check("has_key on empty", has_key(d, "x"), false)
+
+# Overwriting a key
+d["a"] = 1
+d["a"] = 2
+check("dict overwrite", d["a"], 2)
+check("dict len after overwrite", len(d), 1)
+
+# Key with special characters
+d["hello world"] = "spaces"
+d[""] = "empty-key"
+check("dict space key", d["hello world"], "spaces")
+check("dict empty key", d[""], "empty-key")
+
+# Numeric-looking string keys
+d["123"] = "numeric-string"
+check("dict numeric string key", d["123"], "numeric-string")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 9: Array boundary conditions
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 9. Array boundary conditions ---"
+
+# Empty array
+arr = []
+check("empty array len", len(arr), 0)
+check("empty array str", str(arr), "[]")
+
+# Negative indexing is not supported and must throw IndexError
+arr = [10, 20, 30]
+check("negative index -1 throws", threw(|| { x = arr[-1] }), true)
+check("negative index -3 throws", threw(|| { x = arr[-3] }), true)
+
+# Out of bounds should throw
+check("index out of bounds throws", threw(|| { x = arr[99] }), true)
+check("negative out of bounds throws", threw(|| { x = arr[-99] }), true)
+
+# Push/pop cycle
+arr2 = []
+push(arr2, "a")
+push(arr2, "b")
+push(arr2, "c")
+popped = pop(arr2)
+check("pop returns last", popped, "c")
+check("array after pop", str(arr2), "[\"a\", \"b\"]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 10: String edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 10. String edge cases ---"
+
+check("empty string len", len(""), 0)
+check("empty split", str(split("", ",")), "[\"\"]")
+check("string multiply-like concat", "ab" + "cd" + "ef", "abcdef")
+
+# String interpolation with expressions
+name = "EZ"
+check("interpolation basic", `{name}`, "EZ")
+check("interpolation expr", `{1 + 2}`, "3")
+check("interpolation nested str", `{str([1,2])}`, "[1, 2]")
+check("empty interpolation var", `{""}`, "")
+
+# Escape sequences
+check("newline escape", len("\n"), 1)
+check("tab escape", len("\t"), 1)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 11: Integer/float promotion edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 11. Integer/float boundary ---"
+
+check("int division promotes", 7 / 2, 3.5)
+check("integer mod", 10 % 3, 1)
+check("negative mod", -7 % 3, -1)
+check("float equality", 0.1 + 0.2 != 0.3, true)  # IEEE 754 artifact
+check("integer power", 2 ** 10, 1024)
+
+# Large integers
+big = 9007199254740992  # 2^53
+check("large int exists", big > 0, true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 12: `in` operator edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 12. 'in' operator edge cases ---"
+
+check("nil in array with nil", nil in [1, nil, 3], true)
+check("nil not in array without nil", not (nil in [1, 2, 3]), true)
+check("false in array", false in [true, false], true)
+check("0 in array", 0 in [0], true)
+check("empty string in string", "" in "hello", true)
+check("single char in string", "h" in "hello", true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 13: Ternary edge cases and deep nesting
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 13. Ternary nesting ---"
+
+check("ternary true", true ? "yes" : "no", "yes")
+check("ternary false", false ? "yes" : "no", "no")
+check("ternary nested", false ? "a" : true ? "b" : "c", "b")
+check("ternary triple", false ? "a" : false ? "b" : true ? "c" : "d", "c")
+
+# Ternary with side effects (only one branch should execute)
+sideEffectLog = ""
+task logAndReturn(msg, val) {
+    sideEffectLog = sideEffectLog + msg
+    give val
+}
+result = true ? logAndReturn("T", 1) : logAndReturn("F", 2)
+check("ternary side effect only true branch", sideEffectLog, "T")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 14: Rest/spread with zero args and edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 14. Rest/spread edge cases ---"
+
+task varargs(...items) { give items }
+
+check("rest with zero args", str(varargs()), "[]")
+check("rest with one arg", str(varargs(42)), "[42]")
+
+# Spread an empty array
+check("spread empty array", str(varargs(...[])), "[]")
+
+# Spread into a fixed+rest function
+task fixedAndRest(first, ...rest) {
+    give str(first) + ":" + str(rest)
+}
+check("fixed+rest normal", fixedAndRest(1, 2, 3), "1:[2, 3]")
+check("fixed+rest one arg", fixedAndRest(1), "1:[]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 15: Nil propagation through operations
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 15. Nil propagation ---"
+
+task opaqueNil() { give nil }
+check("nil is falsy", opaqueNil() ? "truthy" : "falsy", "falsy")
+check("nil == nil", nil == nil, true)
+check("nil != false", nil != false, true)
+check("nil != 0", nil != 0, true)
+check("nil != empty string", nil != "", true)
+check("nil str", str(nil), "nil")
+check("nil typeof", typeOf(nil), "nil")
+check("nil add throws", threw(|| { give opaqueNil() + 1 }), true)
+check("nil index throws", threw(|| { give opaqueNil()[0] }), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 16: Typed exceptions and re-throw
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 16. Typed exception matching ---"
+
+model AppError {
+    init(msg) { self.message = msg }
+}
+model DbError extends AppError {
+    init(msg) { super(msg) }
+}
+model NetError {
+    init(msg) { self.message = msg }
+}
+
+# Catch derived via parent type
+caught16 = ""
+try {
+    throw DbError("db down")
+} catch (AppError e) {
+    caught16 = e.message
+} catch e {
+    caught16 = "wrong-catch"
+}
+check("catch derived as parent", caught16, "db down")
+
+# Mismatch falls through to catch-all
+caught16b = ""
+try {
+    throw NetError("timeout")
+} catch (AppError e) {
+    caught16b = "wrong"
+} catch e {
+    caught16b = "catch-all"
+}
+check("mismatch falls to catch-all", caught16b, "catch-all")
+
+# No catch-all, exception propagates
+caught16c = ""
+try {
+    try {
+        throw NetError("oops")
+    } catch (AppError e) {
+        caught16c = "wrong"
+    }
+} catch e {
+    caught16c = "propagated"
+}
+check("unmatched exception propagates", caught16c, "propagated")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 17: Model with no init
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 17. Model with no init ---"
+
+model Empty {}
+e = Empty()
+check("empty model typeof", typeOf(e), "instance")
+e.x = 42
+check("dynamic property set", e.x, 42)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 18: Recursive task with deep call stack
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 18. Deep recursion ---"
+
+task fib(n) {
+    when n <= 1 { give n }
+    give fib(n - 1) + fib(n - 2)
+}
+check("fib(10)", fib(10), 55)
+check("fib(0)", fib(0), 0)
+check("fib(1)", fib(1), 1)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 19: Escape and skip inside get..in with complex bodies
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 19. Escape/skip in get..in loops ---"
+
+# escape from get..in
+log19 = ""
+get item in [1, 2, 3, 4, 5] {
+    when item == 3 { escape }
+    log19 = log19 + str(item) + " "
+}
+check("escape from get..in", log19, "1 2 ")
+
+# skip in get..in
+log19b = ""
+get item in [1, 2, 3, 4, 5] {
+    when item == 3 { skip }
+    log19b = log19b + str(item) + " "
+}
+check("skip in get..in", log19b, "1 2 4 5 ")
+
+# nested get..in with escape from inner only
+log19c = ""
+get outer in ["a", "b"] {
+    get inner in [1, 2, 3] {
+        when inner == 2 { escape }
+        log19c = log19c + outer + str(inner) + " "
+    }
+    log19c = log19c + "| "
+}
+check("nested get..in inner escape", log19c, "a1 | b1 | ")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 20: get..in over dict keys
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 20. Iterating dict keys ---"
+
+d20 = {"x": 1, "y": 2}
+collected = []
+get k in keys(d20) { push(collected, k) }
+# Keys may be in any order, but should contain both
+check("dict iteration has x", "x" in collected, true)
+check("dict iteration has y", "y" in collected, true)
+check("dict iteration count", len(collected), 2)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 21: Empty-body edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 21. Empty/minimal bodies ---"
+
+task doNothing() {}
+check("empty task returns nil", doNothing(), nil)
+
+# Empty while body
+counter21 = 0
+while counter21 < 0 {
+    counter21 = counter21 + 1
+}
+check("while false body never runs", counter21, 0)
+
+# Empty get..in body
+get x in [] { }
+check("get..in empty array runs fine", true, true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 22: Closures returned from model methods
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 22. Closure from model method ---"
+
+model Counter {
+    init(start) { self.n = start }
+    task makeInc() {
+        give || {
+            self.n = self.n + 1
+            give self.n
+        }
+    }
+}
+
+ctr = Counter(0)
+inc22 = ctr.makeInc()
+check("closure from method call 1", inc22(), 1)
+check("closure from method call 2", inc22(), 2)
+check("instance reflects mutation", ctr.n, 2)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 23: Throw non-string values
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 23. Throw non-string values ---"
+
+# Throw an integer
+caught23a = nil
+try { throw 42 } catch e { caught23a = e }
+check("throw integer", caught23a, 42)
+
+# Throw an array
+caught23b = nil
+try { throw [1, 2, 3] } catch e { caught23b = e }
+check("throw array", str(caught23b), "[1, 2, 3]")
+
+# Throw a dictionary
+caught23c = nil
+try { throw {"error": true} } catch e { caught23c = e }
+check("throw dict is caught", typeOf(caught23c), "dictionary")
+
+# Throw nil
+caught23d = "not-caught"
+try { throw nil } catch e { caught23d = e }
+check("throw nil", caught23d, nil)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 24: Boolean edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 24. Boolean edge cases ---"
+
+check("not true", not true, false)
+check("not false", not false, true)
+check("not nil", not nil, true)
+# NOTE: In EZ, arrays are truthy, so `not []` is false
+check("not empty array is false", not [], false)
+check("not non-empty array is false", not [1], false)
+check("and short circuit", false and (1/0), false)
+check("or short circuit", true or (1/0), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 24B: Unified Constant Folding & Runtime Truthiness
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 24B. Unified constant folding and runtime truthiness ---"
+# Compile-time constant folding:
+check("constant not 0 is folded to true", not 0, true)
+check("constant not empty-string is folded to true", not "", true)
+
+# Runtime VM:
+zero = 0
+emptyStr = ""
+check("runtime not 0 is true", not zero, true)
+check("runtime not empty-string is true", not emptyStr, true)
+
+# Branch convergence (both pruned/skipped):
+constZeroRan = false
+when 0 { constZeroRan = true }
+check("when 0 is pruned by compiler", constZeroRan, false)
+
+runtimeZeroRan = false
+when zero { runtimeZeroRan = true }
+check("when (runtime 0) is falsy and does not execute", runtimeZeroRan, false)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 24C: Unified String Multiplication with Negative Count
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 24C. String multiplication negative count consistency ---"
+# Both constant and runtime negative repeats throw RuntimeError:
+check("constant 'ab' * -1 throws", threw(|| { x = "ab" * -1 }), true)
+negOne = -1
+check("runtime 'ab' * negOne throws", threw(|| { x = "ab" * negOne }), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 25: Assign to array index
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 25. Array index assignment ---"
+
+arr25 = [1, 2, 3]
+arr25[0] = 99
+check("array assign index 0", arr25[0], 99)
+arr25[len(arr25) - 1] = 88
+check("array assign last index", arr25[2], 88)
+check("negative index assign throws", threw(|| { arr25[-1] = 77 }), true)
+check("array after assignments", str(arr25), "[99, 2, 88]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 26: Chained property access and method calls
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 26. Chained property access ---"
+
+model Node {
+    init(val, next) {
+        self.val = val
+        self.next = next
+    }
+    task sum() {
+        when self.next == nil { give self.val }
+        give self.val + self.next.sum()
+    }
+}
+
+chain = Node(1, Node(2, Node(3, nil)))
+check("chained property access", chain.next.next.val, 3)
+check("recursive method on chain", chain.sum(), 6)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 27: Multiple catch blocks with typed exceptions
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 27. Multiple typed catch blocks ---"
+
+model ErrA { init(m) { self.m = m } }
+model ErrB { init(m) { self.m = m } }
+model ErrC { init(m) { self.m = m } }
+
+task tryCatch27(which) {
+    try {
+        when which == "A" { throw ErrA("aaa") }
+        when which == "B" { throw ErrB("bbb") }
+        when which == "C" { throw ErrC("ccc") }
+    } catch (ErrA e) {
+        give "caught-A:" + e.m
+    } catch (ErrB e) {
+        give "caught-B:" + e.m
+    } catch (ErrC e) {
+        give "caught-C:" + e.m
+    } catch e {
+        give "catch-all"
+    }
+    give "no-throw"
+}
+
+check("multi-catch A", tryCatch27("A"), "caught-A:aaa")
+check("multi-catch B", tryCatch27("B"), "caught-B:bbb")
+check("multi-catch C", tryCatch27("C"), "caught-C:ccc")
+check("multi-catch no throw", tryCatch27("D"), "no-throw")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 28: Enum used in comparisons and collections
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 28. Enum edge cases ---"
+
+enum Prio { LOW, MEDIUM, HIGH, CRITICAL }
+
+check("enum auto 0", Prio.LOW, 0)
+check("enum auto 3", Prio.CRITICAL, 3)
+check("enum compare", Prio.HIGH > Prio.LOW, true)
+check("enum arithmetic", Prio.MEDIUM + 1, Prio.HIGH)
+
+# Enum in array
+prios = [Prio.HIGH, Prio.LOW]
+check("enum in array", prios[0], Prio.HIGH)
+
+# Enum in dict value
+task_pri = {"deploy": Prio.CRITICAL}
+check("enum in dict", task_pri["deploy"], Prio.CRITICAL)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 29: Keyword arguments edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 29. Keyword arguments ---"
+
+task kw(a, b, c) { give str(a) + str(b) + str(c) }
+check("all kwargs", kw(a="x", b="y", c="z"), "xyz")
+check("kwargs reversed order", kw(c="3", b="2", a="1"), "123")
+check("positional + kwargs", kw("A", c="C", b="B"), "ABC")
+
+# Default parameters with kwargs
+task kwWithDefault(x, y = 10, z = 20) { give x + y + z }
+check("default params no override", kwWithDefault(1), 31)
+check("default params partial override", kwWithDefault(1, z=100), 111)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 30: Stress — many try/catch in a loop
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 30. Many try/catch in a loop ---"
+
+errorCount = 0
+n = 0
+while n < 500 {
+    try {
+        when n % 7 == 0 { throw "err" }
+    } catch e {
+        errorCount = errorCount + 1
+    }
+    n = n + 1
+}
+# Numbers 0..499 divisible by 7: 0,7,14,...,497 → 72 values
+check("500 try/catch iterations", errorCount, 72)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 31: Array of closures that mutate shared state
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 31. Array of closures mutating shared state ---"
+
+task makeOps() {
+    state = []
+    adder = |v| { push(state, v) }
+    getter = || { give state }
+    give [adder, getter]
+}
+ops = makeOps()
+add = ops[0]
+getAll = ops[1]
+add("a")
+add("b")
+add("c")
+check("shared array via closures", str(getAll()), "[\"a\", \"b\", \"c\"]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 32: Self-referential instance
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 32. Self-referential instance ---"
+
+model SelfRef {
+    init() { self.me = self }
+    task whoami() { give "SelfRef" }
+}
+sr = SelfRef()
+check("self-ref property access", sr.me.me.me.whoami(), "SelfRef")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 33: map/filter/reduce functional builtins
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 33. Functional builtins ---"
+
+arr33 = [1, 2, 3, 4, 5]
+mapped = map(arr33, |x| { give x * 2 })
+check("map", str(mapped), "[2, 4, 6, 8, 10]")
+
+filtered = filter(arr33, |x| { give x > 3 })
+check("filter", str(filtered), "[4, 5]")
+
+summed = reduce(arr33, |acc, x| { give acc + x }, 0)
+check("reduce", summed, 15)
+
+# Edge: map on empty
+check("map empty", str(map([], |x| { give x })), "[]")
+check("filter empty", str(filter([], |x| { give true })), "[]")
+check("reduce empty with init", reduce([], |a, x| { give a + x }, 42), 42)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 34: JSON round-trip
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 34. JSON round-trip ---"
+
+obj = {"name": "EZ", "version": 5, "features": ["fast", "fun"]}
+json_str = to_json(obj)
+parsed = parse_json(json_str)
+check("json round-trip name", parsed["name"], "EZ")
+check("json round-trip version", parsed["version"], 5)
+check("json round-trip features", str(parsed["features"]), "[\"fast\", \"fun\"]")
+
+# Edge: nested empty (to_json formats with newline, but parse_json roundtrips properly)
+check("json empty dict roundtrip", str(parse_json(to_json({}))), "{}")
+check("json empty array roundtrip", str(parse_json(to_json([]))), "[]")
+check("json null", to_json(nil), "null")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 35: eval() edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 35. eval() edge cases ---"
+
+r35 = eval("1 + 2 + 3")
+check("eval arithmetic", r35, 6)
+
+# eval with string
+r35b = eval("\"hello\"")
+check("eval string", r35b, "hello")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 36: Bitwise operations
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 36. Bitwise operations ---"
+
+check("bitwise and", 0xFF & 0x0F, 15)
+check("bitwise or", 0xF0 | 0x0F, 255)
+check("bitwise xor", 0xFF ^ 0x0F, 240)
+check("shift left", 1 << 8, 256)
+check("shift right", 256 >> 4, 16)
+check("bitwise not 0", ~0, -1)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 37: while loop with complex exit conditions
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 37. While loop complex exits ---"
+
+# give from inside a while inside a task
+task firstOver(arr, threshold) {
+    i = 0
+    while i < len(arr) {
+        when arr[i] > threshold { give arr[i] }
+        i = i + 1
+    }
+    give nil
+}
+check("while early give", firstOver([1, 5, 3, 8, 2], 4), 5)
+check("while no match", firstOver([1, 2, 3], 10), nil)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 38: Recursive model with toString
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 38. Model toString ---"
+
+model Pair {
+    init(a, b) { self.a = a self.b = b }
+    task toString() { give "(" + str(self.a) + ", " + str(self.b) + ")" }
+}
+
+p = Pair(1, Pair(2, 3))
+check("nested model toString", str(p), "(1, (2, 3))")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 39: Tuple edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 39. Tuple edge cases ---"
+
+t = (1, 2, 3)
+check("tuple index", t[0], 1)
+check("tuple negative index throws", threw(|| { x = t[-1] }), true)
+# Discovered Bug: len(tuple) fails because Array.cpp omits isTuple() check
+# Tuple len(), iteration, and spread support
+check("tuple len", len(t), 3)
+check("tuple in operator", 2 in t, true)
+check("tuple not in", not (5 in t), true)
+
+# Tuples can be looped over with get..in
+tupleIterRes = []
+get x in t { push(tupleIterRes, x) }
+check("get..in over tuple", str(tupleIterRes), "[1, 2, 3]")
+
+# Tuples can be spread into arrays
+check("spread tuple into array", str([...t]), "[1, 2, 3]")
+
+# Tuple immutability — assignment throws
+check("tuple assign throws", threw(|| { t[0] = 99 }), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SECTION 40: Edge case — task that calls itself via a variable
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 40. Self-call via variable ---"
+
+factorial = nil
+factorial = |n| {
+    when n <= 1 { give 1 }
+    give n * factorial(n - 1)
+}
+check("lambda self-call factorial(5)", factorial(5), 120)
+check("lambda self-call factorial(0)", factorial(0), 1)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SUMMARY
+# ═══════════════════════════════════════════════════════════════════════════
+out ""
+out "============================================"
+out "  EDGE CASE RESULTS: " + str(passed) + " passed, " + str(failed) + " failed"
+out "============================================"
+when failed > 0 {
+    exit(1)
+}

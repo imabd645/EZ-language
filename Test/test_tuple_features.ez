@@ -1,0 +1,126 @@
+# ===========================================================================
+# Test suite for tuple operations: len(), get..in iteration, spread,
+# and fixes for truthiness and string repeat semantics
+# ===========================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        passed = passed + 1
+        out "  ok   " + label
+    } other {
+        out "  BAD  " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task threw(fn) {
+    try { fn() give false } catch e { give true }
+}
+
+out "=== 1. len() on tuples ==="
+t0 = ()
+check("len of empty tuple", len(t0), 0)
+
+t1 = (42,)
+check("len of 1-tuple", len(t1), 1)
+
+t3 = (10, 20, 30)
+check("len of 3-tuple", len(t3), 3)
+
+t_mixed = ("hello", 3.14, [1, 2], true)
+check("len of mixed tuple", len(t_mixed), 4)
+
+out "=== 2. get x in tuple iteration ==="
+t_items = ("apple", "banana", "cherry")
+collected = []
+get fruit in t_items {
+    push(collected, fruit)
+}
+check("iterated items match", str(collected), "[\"apple\", \"banana\", \"cherry\"]")
+
+# Iteration with escape and skip
+numbers = (1, 2, 3, 4, 5)
+withSkip = []
+get n in numbers {
+    when n == 3 { skip }
+    push(withSkip, n)
+}
+check("skip in tuple iteration", str(withSkip), "[1, 2, 4, 5]")
+
+withEscape = []
+get n in numbers {
+    when n == 4 { escape }
+    push(withEscape, n)
+}
+check("escape in tuple iteration", str(withEscape), "[1, 2, 3]")
+
+# Nested tuple iteration
+matrix = ((1, 2), (3, 4))
+flattened = []
+get row in matrix {
+    get cell in row {
+        push(flattened, cell)
+    }
+}
+check("nested tuple iteration", str(flattened), "[1, 2, 3, 4]")
+
+out "=== 3. Spreading tuples ==="
+# Spread into array
+t_ab = ("a", "b")
+arr = ["start", ...t_ab, "end"]
+check("spread tuple into array", str(arr), "[\"start\", \"a\", \"b\", \"end\"]")
+
+# Spread tuple into function call
+task addThree(a, b, c) {
+    give a + b + c
+}
+t_nums = (10, 20, 30)
+check("spread tuple into call", addThree(...t_nums), 60)
+
+out "=== 4. Fixed truthiness semantics ==="
+# 0, 0.0, and "" must be falsy in conditions and not operator
+zero = 0
+zeroFloat = 0.0
+emptyStr = ""
+
+check("dynamic 0 is falsy in condition", zero ? "truthy" : "falsy", "falsy")
+check("dynamic 0.0 is falsy in condition", zeroFloat ? "truthy" : "falsy", "falsy")
+check("dynamic empty string is falsy in condition", emptyStr ? "truthy" : "falsy", "falsy")
+
+check("not zero is true", not zero, true)
+check("not zeroFloat is true", not zeroFloat, true)
+check("not emptyStr is true", not emptyStr, true)
+
+# Non-zero and non-empty are truthy
+one = 1
+nonEmpty = "hello"
+check("dynamic 1 is truthy", one ? "truthy" : "falsy", "truthy")
+check("dynamic string is truthy", nonEmpty ? "truthy" : "falsy", "truthy")
+check("not 1 is false", not one, false)
+check("not nonEmpty is false", not nonEmpty, false)
+
+# Empty array and empty dict remain truthy as specified in docs
+check("empty array is truthy", [] ? "truthy" : "falsy", "truthy")
+check("empty dict is truthy", {} ? "truthy" : "falsy", "truthy")
+
+out "=== 5. String repetition with negative count ==="
+# Constant string repetition with negative count must throw RuntimeError
+check("constant repeat negative throws", threw(|| { x = "repeat" * -1 }), true)
+# Variable string repetition with negative count must also throw RuntimeError
+negCount = -5
+check("variable repeat negative throws", threw(|| { x = "repeat" * negCount }), true)
+# Repeat with 0 produces empty string
+check("repeat with 0 count", "repeat" * 0, "")
+
+out ""
+out "============================================"
+out "  TUPLE & BUGFIX RESULTS: " + str(passed) + " passed, " + str(failed) + " failed"
+out "============================================"
+when failed > 0 {
+    exit(1)
+}

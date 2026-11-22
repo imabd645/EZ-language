@@ -1,0 +1,230 @@
+# ===========================================================================
+# Subtle Edge-Case Test Suite for the EZ Interpreter
+#
+# Tests intricate behaviors:
+# 1. Upvalue survival when unwound by exception
+# 2. Array/dict mutation during iteration
+# 3. Cross-type equality comparisons
+# 4. Operator precedence & associativity (** exponentiation, unary minus)
+# 5. Multi-byte UTF-8 string semantics (len, substr, index)
+# 6. Re-entrant eval() scope interactions
+# 7. Mutual recursion between closures
+# 8. Spread positioning (start, middle, end)
+# ===========================================================================
+
+passed = 0
+failed = 0
+
+task check(label, actual, expected) {
+    when str(actual) == str(expected) {
+        passed = passed + 1
+    } other {
+        out "  FAIL: " + label
+        out "    expected: " + str(expected)
+        out "    got:      " + str(actual)
+        failed = failed + 1
+    }
+}
+
+task threw(fn) {
+    try { fn() give false } catch e { give true }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. Upvalue closed by exception unwinding
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 1. Upvalue closed by exception unwinding ---"
+
+escapedClosure = nil
+
+task createAndThrow() {
+    secret = "captured_before_throw"
+    escapedClosure = || { give secret }
+    throw "unwind_now"
+}
+
+try {
+    createAndThrow()
+} catch e {
+    # Exception caught; stack frame of createAndThrow is now gone
+}
+
+check("closure captures local even after exception unwinds frame", escapedClosure(), "captured_before_throw")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2. Cross-type equality comparisons
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 2. Cross-type equality comparisons ---"
+
+# Int vs Float equality (numeric promotion)
+check("0 == 0.0", 0 == 0.0, true)
+check("42 == 42.0", 42 == 42.0, true)
+check("42 != 42.5", 42 != 42.5, true)
+check("0.0 == 0", 0.0 == 0, true)
+
+# Incompatible types should compare false without throwing
+check("1 == '1'", 1 == "1", false)
+check("'1' == 1", "1" == 1, false)
+check("0 == false", 0 == false, false)
+check("1 == true", 1 == true, false)
+check("nil == false", nil == false, false)
+check("nil == 0", nil == 0, false)
+check("nil == ''", nil == "", false)
+check("[] == {}", [] == {}, false)
+check("[] == ''", [] == "", false)
+check("[] == false", [] == false, false)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. Exponentiation precedence & associativity
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 3. Exponentiation & arithmetic precedence ---"
+
+# 2 ** 3 ** 2: In math / Python / JS, ** is right-associative: 2 ** (3 ** 2) = 2 ** 9 = 512
+# Let's check how EZ evaluates 2 ** 3 ** 2
+powResult = 2 ** 3 ** 2
+check("2 ** 3 ** 2 right-associative (512)", powResult, 512)
+
+# Unary minus with power: -2 ** 2
+# In math and Python, -2 ** 2 is -(2**2) = -4
+# In ruby / bash it is (-2)**2 = 4
+negPow = -2 ** 2
+out "  Info: -2 ** 2 evaluates to " + str(negPow)
+
+# Left associativity of subtraction: 10 - 3 - 2 = (10 - 3) - 2 = 5
+check("10 - 3 - 2 left-associative", 10 - 3 - 2, 5)
+
+# Division associativity: 24 / 4 / 2 = (24 / 4) / 2 = 3
+check("24 / 4 / 2 left-associative", 24 / 4 / 2, 3)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. Multi-byte UTF-8 string semantics
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 4. Multi-byte UTF-8 strings ---"
+
+# Russian / Cyrillic: 6 characters, 12 bytes
+cyr = "Привет"
+check("len(Привет) returns character count (6)", len(cyr), 6)
+
+# Emoji: "😀" (1 character, 4 bytes)
+emojiStr = "Hello😀World"
+check("len with emoji (11 chars)", len(emojiStr), 11)
+
+# substr with UTF-8
+check("substr(Привет, 0, 3)", substr(cyr, 0, 3), "При")
+check("substr(Привет, 3, 3)", substr(cyr, 3, 3), "вет")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. Array mutation during iteration
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 5. Array mutation during iteration ---"
+
+# Does get..in iterate over a snapshot or live array?
+arr5 = [1, 2, 3]
+iterCount5 = 0
+get item in arr5 {
+    iterCount5 = iterCount5 + 1
+    when iterCount5 <= 3 {
+        push(arr5, 99)
+    }
+    when iterCount5 > 10 {
+        # Guard against infinite loop if it mutates live
+        escape
+    }
+}
+out "  Info: array mutation during get..in resulted in " + str(iterCount5) + " iterations"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Mutual recursion between closures
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 6. Mutual recursion between closures ---"
+
+isEven = nil
+isOdd = nil
+
+isEven = |n| {
+    when n == 0 { give true }
+    give isOdd(n - 1)
+}
+
+isOdd = |n| {
+    when n == 0 { give false }
+    give isEven(n - 1)
+}
+
+check("mutual recursion isEven(10)", isEven(10), true)
+check("mutual recursion isOdd(10)", isOdd(10), false)
+check("mutual recursion isEven(7)", isEven(7), false)
+check("mutual recursion isOdd(7)", isOdd(7), true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Spread in array literals
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 7. Spread positioning in arrays ---"
+
+mid = [2, 3]
+spreadArr = [1, ...mid, 4]
+check("spread in middle of array", str(spreadArr), "[1, 2, 3, 4]")
+
+spreadMulti = [...[1], ...[2], ...[3]]
+check("multiple spreads", str(spreadMulti), "[1, 2, 3]")
+
+# Spread with empty array in middle
+spreadEmpty = [1, ...[], 2]
+check("spread empty in middle", str(spreadEmpty), "[1, 2]")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Re-entrant eval() scope
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 8. Re-entrant eval() scope ---"
+
+# eval() inside a function
+task testEval() {
+    localVar = 100
+    r = eval("50 + 50")
+    give r + localVar
+}
+check("eval inside task", testEval(), 200)
+
+# Nested eval
+nestedEval = eval("eval(\"20 * 5\")")
+check("nested eval", nestedEval, 100)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Logical operators short-circuiting with side effects
+# ═══════════════════════════════════════════════════════════════════════════
+out "--- 9. Short-circuiting side-effects ---"
+
+effectLog = ""
+task side(label, retVal) {
+    effectLog = effectLog + label
+    give retVal
+}
+
+# AND short-circuits on first false
+effectLog = ""
+resAnd = side("A", false) and side("B", true)
+check("and short-circuits side effect", effectLog, "A")
+check("and result", resAnd, false)
+
+# OR short-circuits on first true
+effectLog = ""
+resOr = side("X", true) or side("Y", false)
+check("or short-circuits side effect", effectLog, "X")
+check("or result", resOr, true)
+
+# Chained short-circuit: false or false or true or never_reached
+effectLog = ""
+resChain = side("1", false) or side("2", false) or side("3", true) or side("4", true)
+check("chained or stops at first true", effectLog, "123")
+check("chained or result", resChain, true)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 10. Summary
+# ═══════════════════════════════════════════════════════════════════════════
+out ""
+out "============================================"
+out "  SUBTLE EDGE CASES: " + str(passed) + " passed, " + str(failed) + " failed"
+out "============================================"
+when failed > 0 {
+    exit(1)
+}

@@ -86,12 +86,15 @@ static bool regexArgs(RuntimeContext& interp, const std::vector<Value>& args,
 // the search started from, so positions are absolute in the original string.
 // An unmatched optional group is nil rather than "", which is the only way to
 // tell `(a)?` that matched empty from one that did not participate.
-static Value makeMatchValue(const std::smatch& m, size_t base) {
+static Value makeMatchValue(const std::string& fullText, const std::smatch& m, size_t base) {
     Value dict = Value::makeDictionary();
-    size_t start = base + static_cast<size_t>(m.position(0));
+    size_t byteStart = base + static_cast<size_t>(m.position(0));
+    size_t byteEnd = byteStart + static_cast<size_t>(m.length(0));
+    size_t charStart = ez_utf8::byteOffsetToCharOffset(fullText, byteStart);
+    size_t charEnd = ez_utf8::byteOffsetToCharOffset(fullText, byteEnd);
     dict.asDictionary().set("text", Value(m.str(0)));
-    dict.asDictionary().set("start", Value(static_cast<long long>(start)));
-    dict.asDictionary().set("end", Value(static_cast<long long>(start + m.length(0))));
+    dict.asDictionary().set("start", Value(static_cast<long long>(charStart)));
+    dict.asDictionary().set("end", Value(static_cast<long long>(charEnd)));
 
     std::vector<Value> groups;
     for (size_t i = 1; i < m.size(); ++i) {
@@ -158,20 +161,22 @@ void registerRegexBuiltins(RuntimeContext& interp) {
                 if (!regexArgs(interp, args, "re_find", text, pattern, flags, 2)) return Value();
                 if (args.size() >= 4 && args[3].isNumber()) start = static_cast<long long>(args[3].asNumber());
                 if (start < 0) start = 0;
-                if (start > static_cast<long long>(text.size())) return Value();
+                size_t charTotal = ez_utf8::lengthChars(text);
+                if (start > static_cast<long long>(charTotal)) return Value();
+                size_t byteStart = ez_utf8::charOffsetToByteOffset(text, static_cast<size_t>(start));
     
                 std::regex re;
                 if (!buildRegex(interp, pattern, flags, re)) return Value();
     
                 std::smatch m;
-                std::string::const_iterator begin = text.cbegin() + static_cast<size_t>(start);
+                std::string::const_iterator begin = text.cbegin() + byteStart;
                 // match_prev_avail lets ^ and \b see the character before `start`,
                 // so resuming a scan mid-string behaves like scanning the whole one.
                 auto mflags = std::regex_constants::match_default;
-                if (start > 0) mflags |= std::regex_constants::match_prev_avail;
+                if (byteStart > 0) mflags |= std::regex_constants::match_prev_avail;
                 if (!std::regex_search(begin, text.cend(), m, re, mflags)) return Value();
     
-                return makeMatchValue(m, static_cast<size_t>(start));
+                return makeMatchValue(text, m, byteStart);
             }));
 
     interp.defineGlobal("re_find_all", Value::makeNativeFunction("re_find_all", -1,
@@ -192,14 +197,26 @@ void registerRegexBuiltins(RuntimeContext& interp) {
                     if (offset > 0) mflags |= std::regex_constants::match_prev_avail;
                     if (!std::regex_search(text.cbegin() + offset, text.cend(), m, re, mflags)) break;
     
-                    out.push_back(makeMatchValue(m, offset));
+                    out.push_back(makeMatchValue(text, m, offset));
                     if (limit > 0 && static_cast<long long>(out.size()) >= limit) break;
     
                     size_t matchStart = offset + static_cast<size_t>(m.position(0));
                     size_t matchEnd = matchStart + static_cast<size_t>(m.length(0));
                     // A zero-width match (e.g. `a*` against "bbb") would otherwise
                     // match forever at the same spot.
-                    offset = (matchEnd == matchStart) ? matchEnd + 1 : matchEnd;
+                    if (matchEnd == matchStart) {
+                        size_t nextOffset = matchEnd;
+                        if (nextOffset < text.size()) {
+                            size_t n = ez_utf8::seqLen((unsigned char)text[nextOffset]);
+                            if (n == 0 || !ez_utf8::validAt(text, nextOffset, n)) n = 1;
+                            nextOffset += n;
+                        } else {
+                            nextOffset += 1;
+                        }
+                        offset = nextOffset;
+                    } else {
+                        offset = matchEnd;
+                    }
                 }
                 return Value::makeArray(out);
             }));

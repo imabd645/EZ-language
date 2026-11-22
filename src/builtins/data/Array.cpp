@@ -17,7 +17,8 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                 if (args[0].isArray()) return Value(static_cast<long long>(args[0].asArray().size()));
                 if (args[0].isDictionary()) return Value(static_cast<long long>(args[0].asDictionary().size()));
                 if (args[0].isBuffer()) return Value(static_cast<long long>(args[0].asBuffer().size()));
-                interp.runtimeError("len() expects string or array", 0, ""); return Value();
+                if (args[0].isTuple()) return Value(static_cast<long long>(args[0].asTuple().size()));
+                interp.runtimeError("len() expects string, array, dictionary, buffer, or tuple", 0, ""); return Value();
              }));
 
     interp.defineGlobal("push", Value::makeNativeFunction("push", 2,

@@ -962,7 +962,7 @@ re_valid("((")        # false
 
 ### len
 
-**Signature**: `len(value: string|array|dict|buffer|nil) -> integer`
+**Signature**: `len(value: string|array|dict|buffer|tuple|nil) -> integer`
 
 **Return**: Length of collection
 

@@ -3,6 +3,15 @@
 #include "runtime/RuntimeContext.h"
 #include <cmath>
 #include <cstdlib>
+#include <random>
+
+static std::mt19937_64& ezGetRNG() {
+    thread_local std::mt19937_64 rng([]() {
+        std::random_device rd;
+        return (static_cast<uint64_t>(rd()) << 32) ^ rd();
+    }());
+    return rng;
+}
 
 void registerMathBuiltins(RuntimeContext& interp) {
     // floor(x)
@@ -60,7 +69,8 @@ void registerMathBuiltins(RuntimeContext& interp) {
     // rand() - random number 0-1
     interp.defineGlobal("rand", Value::makeNativeFunction("rand", 0,
         [](RuntimeContext& interp, const std::vector<Value>&) -> Value {
-            return Value(static_cast<double>(std::rand()) / RAND_MAX);
+            std::uniform_real_distribution<double> dist(0.0, 1.0);
+            return Value(dist(ezGetRNG()));
         }));
 
     // randint(min, max) - random integer in range
@@ -72,7 +82,8 @@ void registerMathBuiltins(RuntimeContext& interp) {
             long long min = args[0].asInteger();
             long long max = args[1].asInteger();
             if (max < min) return Value(min);
-            return Value(min + (std::rand() % (max - min + 1)));
+            std::uniform_int_distribution<long long> dist(min, max);
+            return Value(dist(ezGetRNG()));
         }));
     
     // round(x)

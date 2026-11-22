@@ -97,11 +97,38 @@ inline std::string readFileText(const std::string& path) {
     return ss.str();
 }
 
+/**
+ * Atomically write `text` to `path`.
+ *
+ * We write to a sibling temp file first, then rename it over the target.
+ * This guarantees that readers always see either the old file or the new
+ * file -- never a half-written intermediate state.  If the write fails, the
+ * original file is left untouched.
+ */
 inline bool writeFileText(const std::string& path, const std::string& text) {
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-    f << text;
-    return f.good();
+    std::string tmp = path + ".tmp~";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) return false;
+        f << text;
+        if (!f.good()) {
+            std::error_code ec;
+            fs::remove(tmp, ec);
+            return false;
+        }
+    } // flush + close before rename
+
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec) {
+        // rename failed (e.g. cross-device on some systems) -- fall back to
+        // copy + remove, still better than truncate-then-write.
+        std::error_code ec2;
+        fs::copy_file(tmp, path, fs::copy_options::overwrite_existing, ec2);
+        fs::remove(tmp, ec);
+        return !ec2;
+    }
+    return true;
 }
 
 // ── Configuration ───────────────────────────────────────────────────────────

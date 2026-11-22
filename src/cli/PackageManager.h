@@ -402,6 +402,28 @@ private:
     }
 
     /**
+     * Validate that a registry-supplied identifier (package name, version,
+     * installDir) contains only safe characters before it is embedded in a
+     * shell command.  Allowed: letters, digits, hyphen, dot, underscore, and
+     * forward-slash (for scoped installDirs like "scope/pkg").  Everything
+     * else – including quotes, semicolons, backticks, dollar signs, etc. –
+     * is rejected to prevent shell-injection via tar argument strings.
+     */
+    static bool isSafeShellToken(const std::string& s) {
+        if (s.empty() || s.size() > 256) return false;
+        for (unsigned char c : s) {
+            if (!isalnum(c) && c != '-' && c != '_' && c != '.' && c != '/') {
+                return false;
+            }
+        }
+        // Disallow path-traversal sequences
+        if (s.find("..") != std::string::npos) return false;
+        // Must not start or end with slash
+        if (s.front() == '/' || s.back() == '/') return false;
+        return true;
+    }
+
+    /**
      * Where installed packages live: <exe_dir>/lib/
      *
      * This is the SAME directory the compiler resolves `use "name"` from
@@ -614,6 +636,22 @@ private:
             p.tarball    = item.get("tarball", "").asString();
             p.shasum     = item.get("shasum", "").asString();
             p.direct     = item.get("direct", "false").asString() == "true";
+
+            // Reject any registry-supplied identifier that contains characters
+            // unsafe for shell use; prevents injection via tar argument strings.
+            if (!isSafeShellToken(p.name)) {
+                std::cerr << "Registry returned an unsafe package name: '" << p.name << "'" << std::endl;
+                return false;
+            }
+            if (!isSafeShellToken(p.version)) {
+                std::cerr << "Registry returned an unsafe version for '" << p.name << "': '" << p.version << "'" << std::endl;
+                return false;
+            }
+            if (!isSafeShellToken(p.installDir)) {
+                std::cerr << "Registry returned an unsafe installDir for '" << p.name << "': '" << p.installDir << "'" << std::endl;
+                return false;
+            }
+
             plan.push_back(p);
         }
         return true;
@@ -729,14 +767,12 @@ private:
      *
      * --strip-components=1 is deliberately NOT used: the archive is created by
      * `ez publish` with its files at the root, so stripping would discard them.
+     *
+     * stderr is intentionally NOT suppressed: if tar fails (corrupt archive,
+     * disk full, permissions) the user needs to see the actual error message.
      */
     bool extractTarball(const std::string& archive, const std::string& outDir) {
         std::string cmd = "tar -xzf \"" + archive + "\" -C \"" + outDir + "\"";
-#ifdef _WIN32
-        cmd += " 2>nul";
-#else
-        cmd += " 2>/dev/null";
-#endif
         return std::system(cmd.c_str()) == 0;
     }
 
@@ -747,15 +783,11 @@ private:
 
         // Excludes keep the archive to source: no VCS metadata, no installed
         // dependencies (they are resolved fresh), no local caches.
+        // stderr is not suppressed so pack errors are visible to the publisher.
         std::string cmd = "tar -czf \"" + outPath + "\""
                           " --exclude=.git --exclude=node_modules --exclude=lib"
                           " --exclude=ez.lock --exclude=data --exclude=\"*.tgz\""
                           " -C \"" + fs::absolute(root).string() + "\" .";
-#ifdef _WIN32
-        cmd += " 2>nul";
-#else
-        cmd += " 2>/dev/null";
-#endif
         if (std::system(cmd.c_str()) != 0 || !fs::exists(outPath)) {
             std::cerr << "Could not create the package archive (is `tar` available?)." << std::endl;
             return false;

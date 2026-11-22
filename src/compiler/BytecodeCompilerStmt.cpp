@@ -2436,7 +2436,8 @@ bool BytecodeCompiler::isConstant(const ExprPtr& expr, Constant& out) {
                     return true;
                 } else if (bin->op == TokenType::STAR && left.type == Constant::Type::STRING && right.type == Constant::Type::INT) {
                     long long count = std::get<long long>(right.value);
-                    if (count <= 0) { out = Constant(std::string("")); return true; }
+                    if (count < 0) return false;
+                    if (count == 0) { out = Constant(std::string("")); return true; }
                     if (count <= 50000) {
                         const std::string& s = std::get<std::string>(left.value);
                         std::string res;

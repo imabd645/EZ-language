@@ -36,6 +36,10 @@
 void findDependencies(const std::string& filePath, std::set<std::string>& visited,
                       std::vector<std::pair<std::string, std::string>>& filesToPack,
                       const std::string& baseDir);
+void bundleDirectoryPackage(const std::string& dirPath,
+                            std::set<std::string>& visited,
+                            std::vector<std::pair<std::string, std::string>>& filesToPack,
+                            const std::string& baseDir);
 
 /**
  * Shared helper: scan `source` (the text of `fileDir`-based file) for `use`

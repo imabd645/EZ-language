@@ -90,7 +90,19 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                     if (start >= end) return Value::makeArray({});
                     auto copy = arr.getElementsCopy(); return Value::makeArray(std::vector<Value>(copy.begin() + start, copy.begin() + end));
                 }
-                interp.runtimeError("slice() expects string or array", 0, ""); return Value();
+                if (args[0].isTuple()) {
+                    const auto& t = args[0].asTuple();
+                    int len = static_cast<int>(t.size());
+                    if (start < 0) start = std::max(0, len + start);
+                    if (end < 0) end = std::max(0, len + end);
+                    if (start >= len || start >= end) return Value::makeTuple({});
+                    if (end > len) end = len;
+                    std::vector<Value> sliced;
+                    sliced.reserve(end - start);
+                    for (int i = start; i < end; ++i) sliced.push_back(t[i]);
+                    return Value::makeTuple(sliced);
+                }
+                interp.runtimeError("slice() expects string, array, or tuple", 0, ""); return Value();
              }));
 
     interp.defineGlobal("range", Value::makeNativeFunction("range", -1,
@@ -130,7 +142,14 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                     auto dictPtr = args[0].asDictionaryPtr();
                     return Value(dictPtr->has(key));
                 }
-                interp.runtimeError("contains() expects string, array, or dictionary", 0, ""); return Value();
+                if (args[0].isTuple()) {
+                    const auto& t = args[0].asTuple();
+                    for (size_t i = 0; i < t.size(); ++i) {
+                        if (t[i].equals(args[1])) return Value(true);
+                    }
+                    return Value(false);
+                }
+                interp.runtimeError("contains() expects string, array, tuple, or dictionary", 0, ""); return Value();
              }));
 
     interp.defineGlobal("indexOf", Value::makeNativeFunction("indexOf", -1,
@@ -172,7 +191,23 @@ void registerArrayBuiltins(RuntimeContext& interp) {
                     }
                     return Value(-1.0);
                 }
-                interp.runtimeError("indexOf() expects string or array", 0, ""); return Value();
+                if (args[0].isTuple()) {
+                    const auto& t = args[0].asTuple();
+                    size_t startPos = 0;
+                    if (args.size() == 3) {
+                        if (!args[2].isNumber()) { interp.runtimeError("indexOf() start position must be a number", 0, ""); return Value(); }
+                        double val = args[2].asNumber();
+                        int len = static_cast<int>(t.size());
+                        int start = static_cast<int>(val);
+                        if (start < 0) start = std::max(0, len + start);
+                        startPos = static_cast<size_t>(start);
+                    }
+                    for (size_t i = startPos; i < t.size(); i++) {
+                        if (t[i].equals(args[1])) return Value(static_cast<double>(i));
+                    }
+                    return Value(-1.0);
+                }
+                interp.runtimeError("indexOf() expects string, array, or tuple", 0, ""); return Value();
              }));
 
     interp.defineGlobal("reverse", Value::makeNativeFunction("reverse", 1,

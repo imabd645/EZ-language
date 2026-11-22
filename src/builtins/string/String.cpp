@@ -63,14 +63,22 @@ void registerStringBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("join", Value::makeNativeFunction("join", 2,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-                if (!args[0].isArray()) { interp.runtimeError("join() expects array as first argument", 0, ""); return Value(); }
+                if (!args[0].isArray() && !args[0].isTuple()) { interp.runtimeError("join() expects array or tuple as first argument", 0, ""); return Value(); }
                 if (!args[1].isString()) { interp.runtimeError("join() expects string as delimiter", 0, ""); return Value(); }
-                const auto& arr = args[0].asArray();
                 const std::string& delim = args[1].asString();
                 std::string result;
-                for (size_t i = 0; i < arr.size(); i++) {
-                    if (i > 0) result += delim;
-                    result += arr[i].toString();
+                if (args[0].isArray()) {
+                    const auto& arr = args[0].asArray();
+                    for (size_t i = 0; i < arr.size(); i++) {
+                        if (i > 0) result += delim;
+                        result += arr[i].toString();
+                    }
+                } else {
+                    const auto& t = args[0].asTuple();
+                    for (size_t i = 0; i < t.size(); i++) {
+                        if (i > 0) result += delim;
+                        result += t[i].toString();
+                    }
                 }
                 return Value(result);
             }));

@@ -176,15 +176,28 @@ public:
         if (versions.size() > 10) std::cout << ", ... (" << versions.size() << " total)";
         std::cout << std::endl;
 
+        // Find the entry for the latest version to display its dependencies and
+        // permissions.  We match against the "latest" field reported by the
+        // registry rather than blindly using versions[0], which could be the
+        // oldest entry if the registry returns versions in ascending order.
         if (!versions.empty()) {
-            const auto& deps = versions[0]["dependencies"];
+            std::string latestVer = p.get("latest", "").asString();
+            size_t latestIdx = 0; // fallback: first entry
+            for (size_t i = 0; i < versions.size(); ++i) {
+                if (versions[i].get("version", "").asString() == latestVer) {
+                    latestIdx = i;
+                    break;
+                }
+            }
+            const auto& latestEntry = versions[latestIdx];
+            const auto& deps = latestEntry["dependencies"];
             if (!deps.getMemberNames().empty()) {
-                std::cout << "\n  dependencies of " << versions[0].get("version", "").asString() << ":\n";
+                std::cout << "\n  dependencies of " << latestEntry.get("version", "").asString() << ":\n";
                 for (const auto& key : deps.getMemberNames()) {
                     std::cout << "    " << pad(key, 20) << deps[key].asString() << "\n";
                 }
             }
-            const auto& perms = versions[0]["permissions"];
+            const auto& perms = latestEntry["permissions"];
             if (!perms.items.empty()) {
                 std::cout << "\n  declared permissions:\n";
                 for (const auto& item : perms.items) {

@@ -91,6 +91,9 @@ void registerMathBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) {
                  interp.runtimeError("min() expects two numbers", 0, ""); return Value();
              }
+            if (args[0].isInteger() && args[1].isInteger()) {
+                return Value(std::min(args[0].asInteger(), args[1].asInteger()));
+            }
             return Value(std::min(args[0].asNumber(), args[1].asNumber()));
         }));
     
@@ -100,6 +103,9 @@ void registerMathBuiltins(RuntimeContext& interp) {
             if (!args[0].isNumber() || !args[1].isNumber()) {
                  interp.runtimeError("max() expects two numbers", 0, ""); return Value();
              }
+            if (args[0].isInteger() && args[1].isInteger()) {
+                return Value(std::max(args[0].asInteger(), args[1].asInteger()));
+            }
             return Value(std::max(args[0].asNumber(), args[1].asNumber()));
         }));
 }

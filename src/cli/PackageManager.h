@@ -465,6 +465,14 @@ private:
      * Rewrite only the dependencies block, leaving the rest of package.ez as
      * the author wrote it -- comments and key order included. Re-serialising
      * the whole document would quietly reformat a file the user maintains.
+     *
+     * Finding the "dependencies" key: we scan for the first occurrence that
+     * appears at JSON value-key position, i.e. NOT inside a string.  To avoid
+     * false matches like `"description": "has a dependencies field"` we track
+     * whether we are currently inside a quoted string when searching.
+     *
+     * Finding the matching closing brace: same guard -- brace characters inside
+     * string values must not affect the depth counter.
      */
     bool writeManifestDependencies(const std::map<std::string, std::string>& deps) {
         std::string text = ezreg::readFileText(manifestPath());
@@ -481,9 +489,40 @@ private:
             return ezreg::writeFileText(manifestPath(), "{\n  " + block + "\n}\n");
         }
 
-        size_t start = text.find("\"dependencies\"");
+        // Helper: find the byte offset of needle in `text` while skipping
+        // characters that are inside JSON strings (handles \" escapes).
+        auto findOutsideStrings = [&](const std::string& needle, size_t from) -> size_t {
+            bool inStr = false;
+            for (size_t i = from; i < text.size(); ++i) {
+                if (inStr) {
+                    if (text[i] == '\\') { ++i; continue; } // skip escaped char
+                    if (text[i] == '"')  inStr = false;
+                } else {
+                    if (text[i] == '"') { inStr = true; continue; }
+                    if (i + needle.size() <= text.size() &&
+                        text.compare(i, needle.size(), needle) == 0)
+                        return i;
+                }
+            }
+            return std::string::npos;
+        };
+
+        // Locate the "dependencies" key outside any string value.
+        size_t start = findOutsideStrings("\"dependencies\"", 0);
         if (start == std::string::npos) {
-            size_t lastBrace = text.rfind('}');
+            // No existing block: insert before the final closing brace.
+            // Find the last } that is outside strings.
+            size_t lastBrace = std::string::npos;
+            bool inStr = false;
+            for (size_t i = 0; i < text.size(); ++i) {
+                if (inStr) {
+                    if (text[i] == '\\') { ++i; continue; }
+                    if (text[i] == '"')  inStr = false;
+                } else {
+                    if (text[i] == '"') { inStr = true; continue; }
+                    if (text[i] == '}')  lastBrace = i;
+                }
+            }
             if (lastBrace == std::string::npos) return false;
             size_t before = text.find_last_not_of(" \t\r\n", lastBrace - 1);
             std::string sep = (before != std::string::npos && text[before] == '{') ? "\n  " : ",\n  ";
@@ -491,13 +530,35 @@ private:
             return ezreg::writeFileText(manifestPath(), text);
         }
 
-        size_t open = text.find('{', start);
+        // Find the opening brace of the block (outside strings, after the key).
+        size_t open = std::string::npos;
+        {
+            bool inStr = false;
+            for (size_t i = start + 14 /*len of "dependencies"*/; i < text.size(); ++i) {
+                if (inStr) {
+                    if (text[i] == '\\') { ++i; continue; }
+                    if (text[i] == '"')  inStr = false;
+                } else {
+                    if (text[i] == '"') { inStr = true; continue; }
+                    if (text[i] == '{') { open = i; break; }
+                }
+            }
+        }
         if (open == std::string::npos) return false;
+
+        // Walk forward tracking depth, skipping string contents.
         int depth = 0;
         size_t close = open;
+        bool inStr = false;
         for (size_t i = open; i < text.size(); ++i) {
-            if (text[i] == '{') depth++;
-            else if (text[i] == '}') { depth--; if (depth == 0) { close = i; break; } }
+            if (inStr) {
+                if (text[i] == '\\') { ++i; continue; }
+                if (text[i] == '"')  inStr = false;
+            } else {
+                if (text[i] == '"') { inStr = true; continue; }
+                if (text[i] == '{') { depth++; }
+                else if (text[i] == '}') { depth--; if (depth == 0) { close = i; break; } }
+            }
         }
         text.replace(start, close - start + 1, block);
         return ezreg::writeFileText(manifestPath(), text);

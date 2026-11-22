@@ -1,0 +1,19 @@
+// test_range_step.ez
+out "=== range step tests ==="
+
+// 1. range(5) -> [0,1,2,3,4]
+assert(range(5) == [0,1,2,3,4])
+
+// 2. range(1,5) -> [1,2,3,4]
+assert(range(1,5) == [1,2,3,4])
+
+// 3. range(5,0,-1) -> [5,4,3,2,1]
+assert(range(5,0,-1) == [5,4,3,2,1])
+
+// 4. range(0,10,3) -> [0,3,6,9]
+assert(range(0,10,3) == [0,3,6,9])
+
+// Verify element type is int
+get  v in range(3) { assert(typeOf(v) == "int") }
+
+out "=== range step tests passed ==="

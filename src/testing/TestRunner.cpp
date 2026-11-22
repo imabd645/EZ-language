@@ -1,5 +1,6 @@
 #include "TestRunner.h"
 #include "runtime/RuntimeContext.h"
+#include "runtime/objects/EZObjects.h"
 #include "runtime/Value.h"
 #include <iostream>
 #include <string>

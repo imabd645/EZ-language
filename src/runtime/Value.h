@@ -299,6 +299,11 @@ struct Value {
     bool isTruthy() const {
         if (isNil()) return false;
         if (isBool()) return asBool();
+        if (isInteger()) return asIntegerUnsafe() != 0;
+        if (isFloat()) return asFloatUnsafe() != 0.0;
+        if (index() == 3) return !std::get<StringPtr>(m_data)->empty();
+        if (index() == 4) return std::get<ShortString>(m_data).length != 0;
+        if (index() == 5) return stringLength() != 0;
         return true;
     }
     

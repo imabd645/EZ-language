@@ -117,6 +117,47 @@ check("variable repeat negative throws", threw(|| { x = "repeat" * negCount }), 
 # Repeat with 0 produces empty string
 check("repeat with 0 count", "repeat" * 0, "")
 
+out "=== 6. to_json() with tuples ==="
+check("to_json empty tuple", to_json(()), "[]")
+check("to_json flat tuple", to_json((1, 2, "test")), "[1,2,\"test\"]")
+check("to_json nested tuple", to_json(((1, 2), (3, 4))), "[[1,2],[3,4]]")
+check("to_json tuple with dict", to_json(({"a": 1}, (true, false))), "[{\"a\":1},[true,false]]")
+
+out "=== 7. Tuple builtins: slice, contains, indexOf, join ==="
+t_data = ("alpha", "beta", "gamma", "delta")
+check("slice tuple", str(slice(t_data, 1, 2)), "(\"beta\", \"gamma\")")
+check("slice empty tuple", str(slice((), 0, 1)), "()")
+check("contains found in tuple", contains(t_data, "gamma"), true)
+check("contains not found in tuple", contains(t_data, "omega"), false)
+check("indexOf found in tuple", indexOf(t_data, "beta"), 1)
+check("indexOf not found in tuple", indexOf(t_data, "omega"), -1)
+check("join tuple with hyphen", join(t_data, "-"), "alpha-beta-gamma-delta")
+check("join empty tuple", join((), ","), "")
+
+out "=== 8. min() and max() integer precision ==="
+minInt = min(100, 200)
+check("min returns lower int", minInt, 100)
+check("min retains int type", typeOf(minInt), "int")
+maxInt = max(100, 200)
+check("max returns higher int", maxInt, 200)
+check("max retains int type", typeOf(maxInt), "int")
+big1 = 5000000000
+big2 = 9000000000
+check("min 64-bit int", min(big1, big2), big1)
+check("max 64-bit int", max(big1, big2), big2)
+
+out "=== 9. randint() large range ==="
+r_val = randint(40000, 50000)
+check("randint exceeds 32767 limit", r_val >= 40000 and r_val <= 50000, true)
+
+out "=== 10. re_find and re_find_all Unicode character offsets ==="
+ru_text = "Привет мир"
+m_ru = re_find(ru_text, "мир")
+check("re_find Unicode start offset", m_ru["start"], 7)
+check("re_find Unicode end offset", m_ru["end"], 10)
+check("re_find matches substr", substr(ru_text, m_ru["start"], m_ru["end"] - m_ru["start"]), "мир")
+check("re_find matches indexOf", m_ru["start"] == indexOf(ru_text, "мир"), true)
+
 out ""
 out "============================================"
 out "  TUPLE & BUGFIX RESULTS: " + str(passed) + " passed, " + str(failed) + " failed"

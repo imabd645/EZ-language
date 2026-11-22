@@ -97,7 +97,13 @@ public:
         readManifestDependencies(deps);
         bool listed = deps.erase(name) > 0;
 
-        fs::path dir = installBase() / name;
+        // Use the installDir recorded in ez.lock rather than the bare package
+        // name: some registries install scoped packages into a subdirectory
+        // that differs from the name (e.g. "myorg-foo" -> "myorg/foo").
+        std::string idir = lockInstallDir(name);
+        if (idir.empty()) idir = name; // fallback for packages not in lock
+
+        fs::path dir = installBase() / idir;
         std::error_code ec;
         bool removed = fs::exists(dir) && fs::remove_all(dir, ec) > 0;
 
@@ -515,9 +521,12 @@ private:
         for (const auto& key : pkgs.getMemberNames()) {
             if (key == name) continue;
             out += (first ? "\n" : ",\n");
+            std::string idir = pkgs[key].get("installDir", "").asString();
+            if (idir.empty()) idir = key;
             out += "    \"" + ezreg::jsonEscape(key) + "\": {\n"
-                   "      \"version\": \"" + ezreg::jsonEscape(pkgs[key].get("version", "").asString()) + "\",\n"
-                   "      \"sha256\": \"" + ezreg::jsonEscape(pkgs[key].get("sha256", "").asString()) + "\",\n"
+                   "      \"version\": \""    + ezreg::jsonEscape(pkgs[key].get("version", "").asString())  + "\",\n"
+                   "      \"sha256\": \""     + ezreg::jsonEscape(pkgs[key].get("sha256",  "").asString())  + "\",\n"
+                   "      \"installDir\": \"" + ezreg::jsonEscape(idir)                                     + "\",\n"
                    "      \"direct\": " +
                    (pkgs[key].get("direct", "false").asString() == "true" ? "true" : "false") + "\n    }";
             first = false;
@@ -534,6 +543,17 @@ private:
         return locked.count(name) > 0;
     }
 
+    /** Return the installDir recorded for a package in ez.lock, or "" if not found. */
+    std::string lockInstallDir(const std::string& name) {
+        bool ok = false;
+        MiniJson::Value lock = ezreg::parseJson(ezreg::readFileText(lockPath()), ok);
+        if (!ok || !lock.properties.count("packages")) return "";
+        MiniJson::Value pkgs = lock["packages"];
+        if (!pkgs.properties.count(name)) return "";
+        std::string idir = pkgs[name].get("installDir", "").asString();
+        return idir.empty() ? name : idir; // back-compat with old locks
+    }
+
     void readLock(std::map<std::string, std::string>& out) {
         bool ok = false;
         MiniJson::Value lock = ezreg::parseJson(ezreg::readFileText(lockPath()), ok);
@@ -548,6 +568,7 @@ private:
     struct LockEntry {
         std::string version;
         std::string sha256;
+        std::string installDir; // may differ from package name (scoped installs)
         bool        direct = false;
     };
 
@@ -569,17 +590,20 @@ private:
             MiniJson::Value pkgs = lock["packages"];
             for (const auto& key : pkgs.getMemberNames()) {
                 LockEntry e;
-                e.version = pkgs[key].get("version", "").asString();
-                e.sha256  = pkgs[key].get("sha256", "").asString();
-                e.direct  = pkgs[key].get("direct", "false").asString() == "true";
+                e.version    = pkgs[key].get("version", "").asString();
+                e.sha256     = pkgs[key].get("sha256", "").asString();
+                e.installDir = pkgs[key].get("installDir", "").asString();
+                if (e.installDir.empty()) e.installDir = key; // back-compat with old locks
+                e.direct     = pkgs[key].get("direct", "false").asString() == "true";
                 entries[key] = e;
             }
         }
 
         for (const auto& p : plan) {
             LockEntry e;
-            e.version = p.version;
-            e.sha256  = p.shasum;
+            e.version    = p.version;
+            e.sha256     = p.shasum;
+            e.installDir = p.installDir;
             // A package already recorded as directly wanted stays direct even
             // if it turns up again only as someone else's dependency.
             auto prev = entries.find(p.name);
@@ -592,12 +616,12 @@ private:
         for (const auto& [name, e] : entries) {
             out += (first ? "\n" : ",\n");
             out += "    \"" + ezreg::jsonEscape(name) + "\": {\n"
-                   "      \"version\": \"" + ezreg::jsonEscape(e.version) + "\",\n"
-                   "      \"sha256\": \"" + ezreg::jsonEscape(e.sha256) + "\",\n"
-                   "      \"direct\": " + (e.direct ? "true" : "false") + "\n    }";
+                   "      \"version\": \""    + ezreg::jsonEscape(e.version)    + "\",\n"
+                   "      \"sha256\": \""     + ezreg::jsonEscape(e.sha256)     + "\",\n"
+                   "      \"installDir\": \"" + ezreg::jsonEscape(e.installDir) + "\",\n"
+                   "      \"direct\": "       + (e.direct ? "true" : "false")   + "\n    }";
             first = false;
-        }
-        out += first ? "}\n}\n" : "\n  }\n}\n";
+        }        out += first ? "}\n}\n" : "\n  }\n}\n";
         std::error_code lec;
         fs::create_directories(installBase(), lec);
         ezreg::writeFileText(lockPath(), out);

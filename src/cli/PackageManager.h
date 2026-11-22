@@ -251,8 +251,14 @@ public:
         bool ok = false;
         MiniJson::Value body = ezreg::parseJson(r.body, ok);
         std::string token = ok ? body.get("token", "").asString() : "";
-        if (!token.empty()) ezreg::storeToken(registry, token, username);
-        std::cout << "Account created; logged in as " << username << std::endl;
+        if (!token.empty()) {
+            ezreg::storeToken(registry, token, username);
+            std::cout << "Account created; logged in as " << username << std::endl;
+        } else {
+            // Some registries require email verification before issuing a token.
+            std::cout << "Account created for " << username
+                      << ". Check your email to verify, then run: ez login" << std::endl;
+        }
         return true;
     }
 

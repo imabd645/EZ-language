@@ -2129,6 +2129,15 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                     e.push_back(Value(std::string(1, c)));
                                 }
                             });
+                        } else if (arr.isArray() && iter.isTuple()) {
+                            auto& dst = arr.asArray();
+                            const auto& t = iter.asTuple();
+                            dst.modifyElements([&](auto& e) {
+                                e.reserve(e.size() + t.size());
+                                for (size_t i = 0; i < t.size(); ++i) {
+                                    e.push_back(t[i]);
+                                }
+                            });
                         } else {
                             SYNC_IP();
                             runtimeError("Cannot spread non-iterable value");
@@ -2142,19 +2151,28 @@ void BytecodeVM::run(size_t targetFrameCount) {
                     {
                         Value argsArray = *(--stackTop);
                         Value callee = *(stackTop - 1);
-                        if (!argsArray.isArray()) {
+                        if (!argsArray.isArray() && !argsArray.isTuple()) {
                             SYNC_IP();
-                            runtimeError("CALL_SPREAD requires an array of arguments");
+                            runtimeError("CALL_SPREAD requires an array or tuple of arguments");
                             RAISE_FAULT();
                         }
-                        auto& args = argsArray.asArray();
-                        int argc = args.size();
+                        std::vector<Value> argsCopy;
+                        if (argsArray.isArray()) {
+                            argsCopy = argsArray.asArray().getElementsCopy();
+                        } else {
+                            const auto& t = argsArray.asTuple();
+                            argsCopy.reserve(t.size());
+                            for (size_t i = 0; i < t.size(); ++i) {
+                                argsCopy.push_back(t[i]);
+                            }
+                        }
+                        int argc = static_cast<int>(argsCopy.size());
                         
                         // Recalculate callee after popping argsArray
                         callee = *(stackTop - 1);
                         
                         // Push all arguments to the stack
-                        for (const Value& arg : args.getElementsCopy()) {
+                        for (const Value& arg : argsCopy) {
                             *stackTop++ = arg;
                         }
                         
@@ -2260,7 +2278,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                 CASE_CODE(GET_ITER) {
                     {
                         Value v = *(--stackTop);
-                        if (v.isArray() || v.isString()) {
+                        if (v.isArray() || v.isString() || v.isTuple()) {
                             *stackTop++ = Value::makeArray({v, Value(0LL)});
                         } else if (v.isDictionary()) {
                             std::vector<Value> ks;
@@ -2284,7 +2302,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             SYNC_IP();
                             throwException("TypeError",
                                 "a " + v.typeName() + " value cannot be looped over"
-                                "\n  Hint: `get x in y` needs an array, dictionary, string, range, or enum.");
+                                "\n  Hint: `get x in y` needs an array, tuple, dictionary, string, range, or enum.");
                             RAISE_FAULT();
                         }
                     }
@@ -2335,6 +2353,9 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (dataVal.isArray()) {
                             const auto& data = dataVal.asArray();
                             if (idx < (long long)data.size()) { hasNext = true; nextVal = data[idx]; }
+                        } else if (dataVal.isTuple()) {
+                            const auto& data = dataVal.asTuple();
+                            if (idx < (long long)data.size()) { hasNext = true; nextVal = data[idx]; }
                         } else if (dataVal.isString()) {
                             const auto& data = dataVal.asString();
                             if (idx < (long long)data.size()) { hasNext = true; nextVal = Value(std::string(1, data[idx])); }
@@ -2358,6 +2379,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         bool hasNext = false;
                         if (dataVal.isArray()) {
                             hasNext = idx < (long long)dataVal.asArray().size();
+                        } else if (dataVal.isTuple()) {
+                            hasNext = idx < (long long)dataVal.asTuple().size();
                         } else if (dataVal.isString()) {
                             hasNext = idx < (long long)dataVal.asString().size();
                         }

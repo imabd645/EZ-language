@@ -1354,7 +1354,12 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             long long bl = b.asInteger();
                             if (bl == 0) { SYNC_IP(); throwException("ZeroDivisionError", "division by zero"); RAISE_FAULT(); }
                             
-                            if (al % bl == 0) {
+                            if (al == std::numeric_limits<long long>::min() && bl == -1) {
+                                double res = static_cast<double>(al) / static_cast<double>(bl);
+                                stackTop -= 2;
+                                *stackTop = Value(res);
+                                stackTop++;
+                            } else if (al % bl == 0) {
                                 long long res = al / bl;
                                 stackTop -= 2;
                                 *stackTop = Value(res);
@@ -1401,7 +1406,8 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         if (a.isInteger() && b.isInteger()) {
                             long long bl = b.asInteger();
                             if (bl == 0) { SYNC_IP(); throwException("ZeroDivisionError", "modulo by zero"); RAISE_FAULT(); }
-                            long long res = a.asInteger() % bl;
+                            long long res = (a.asInteger() == std::numeric_limits<long long>::min() && bl == -1)
+                                            ? 0LL : (a.asInteger() % bl);
                             stackTop -= 2;
                             *stackTop = Value(res);
                             stackTop++;
@@ -3983,6 +3989,10 @@ void BytecodeVM::doDivide() {
     if (a.isInteger() && b.isInteger()) {
         long long ai = a.asInteger();
         long long bi = b.asInteger();
+        if (ai == std::numeric_limits<long long>::min() && bi == -1) {
+            push(Value(static_cast<double>(ai) / static_cast<double>(bi)));
+            return;
+        }
         if (ai % bi == 0) {
             push(Value(ai / bi));
         } else {
@@ -3998,6 +4008,10 @@ void BytecodeVM::doModulo() {
     Value b = pop(), a = pop();
     if (a.isInteger() && b.isInteger()) {
         if (b.asInteger() == 0) { throwException("ZeroDivisionError", "modulo by zero"); return; }
+        if (a.asInteger() == std::numeric_limits<long long>::min() && b.asInteger() == -1) {
+            push(Value(0LL));
+            return;
+        }
         push(Value(a.asInteger() % b.asInteger()));
         return;
     }

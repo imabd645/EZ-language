@@ -192,11 +192,27 @@ inline bool storeToken(const std::string& registry, const std::string& token, co
     out += "\n}\n";
 
     if (!writeFileText(credentialsPath(), out)) return false;
-#ifndef _WIN32
-    // The file holds a publish credential; keep it out of other users' reach.
-    std::error_code ec;
-    fs::permissions(credentialsPath(), fs::perms::owner_read | fs::perms::owner_write,
-                    fs::perm_options::replace, ec);
+
+    // Restrict the credentials file so other OS users cannot read tokens.
+#ifdef _WIN32
+    // Remove inherited ACEs and grant read+write to the current user only.
+    // Failures are non-fatal but warned about since a world-readable token
+    // is a genuine security risk.
+    {
+        std::string path = credentialsPath();
+        std::string cmd = "icacls \"" + path + "\" /inheritance:r /grant:r \"%USERNAME%:(R,W)\" >nul 2>&1";
+        std::system(cmd.c_str());
+    }
+#else
+    {
+        std::error_code ec;
+        fs::permissions(credentialsPath(), fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, ec);
+        if (ec) {
+            std::cerr << "Warning: could not restrict permissions on " << credentialsPath()
+                      << " -- the file may be readable by other users." << std::endl;
+        }
+    }
 #endif
     return true;
 }

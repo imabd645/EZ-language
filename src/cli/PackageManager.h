@@ -701,7 +701,8 @@ private:
                    "      \"installDir\": \"" + ezreg::jsonEscape(e.installDir) + "\",\n"
                    "      \"direct\": "       + (e.direct ? "true" : "false")   + "\n    }";
             first = false;
-        }        out += first ? "}\n}\n" : "\n  }\n}\n";
+        }
+        out += first ? "}\n}\n" : "\n  }\n}\n";
         std::error_code lec;
         fs::create_directories(installBase(), lec);
         ezreg::writeFileText(lockPath(), out);

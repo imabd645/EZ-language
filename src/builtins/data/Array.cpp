@@ -107,19 +107,31 @@ void registerArrayBuiltins(RuntimeContext& interp) {
 
     interp.defineGlobal("range", Value::makeNativeFunction("range", -1,
             [](RuntimeContext& interp, const std::vector<Value>& args) -> Value {
-                if (args.empty() || args.size() > 2) { interp.runtimeError("range() expects 1 or 2 arguments", 0, ""); return Value(); }
-                int start = 0, end = 0;
+                if (args.empty() || args.size() > 3) { interp.runtimeError("range() expects 1 to 3 arguments", 0, ""); return Value(); }
+                long long start = 0, end = 0, step = 1;
                 if (args.size() == 1) {
                     if (!args[0].isNumber()) { interp.runtimeError("range() expects number", 0, ""); return Value(); }
-                    end = static_cast<int>(args[0].asNumber());
-                } else {
+                    end = static_cast<long long>(args[0].asNumber());
+                } else if (args.size() == 2) {
                     if (!args[0].isNumber() || !args[1].isNumber()) { interp.runtimeError("range() expects numbers", 0, ""); return Value(); }
-                    start = static_cast<int>(args[0].asNumber());
-                    end = static_cast<int>(args[1].asNumber());
+                    start = static_cast<long long>(args[0].asNumber());
+                    end = static_cast<long long>(args[1].asNumber());
+                } else {
+                    if (!args[0].isNumber() || !args[1].isNumber() || !args[2].isNumber()) { interp.runtimeError("range() expects numbers", 0, ""); return Value(); }
+                    start = static_cast<long long>(args[0].asNumber());
+                    end = static_cast<long long>(args[1].asNumber());
+                    step = static_cast<long long>(args[2].asNumber());
+                    if (step == 0) { interp.runtimeError("range() step cannot be zero", 0, ""); return Value(); }
                 }
                 std::vector<Value> result;
-                for (int i = start; i < end; i++) {
-                    result.push_back(Value(static_cast<double>(i)));
+                if (step > 0) {
+                    for (long long i = start; i < end; i += step) {
+                        result.push_back(Value(i));
+                    }
+                } else {
+                    for (long long i = start; i > end; i += step) {
+                        result.push_back(Value(i));
+                    }
                 }
                 return Value::makeArray(result);
             }));

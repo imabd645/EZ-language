@@ -887,11 +887,36 @@ private:
 
         // Excludes keep the archive to source: no VCS metadata, no installed
         // dependencies (they are resolved fresh), no local caches.
+        // We do NOT exclude a bare "lib" directory here because a package
+        // author may legitimately have a "lib/" subdirectory as part of their
+        // source tree. Instead we only exclude the global ezlib install path
+        // by computing its name relative to the project root (if it falls
+        // inside it at all).
         // stderr is not suppressed so pack errors are visible to the publisher.
-        std::string cmd = "tar -czf \"" + outPath + "\""
-                          " --exclude=.git --exclude=node_modules --exclude=lib"
-                          " --exclude=ez.lock --exclude=data --exclude=\"*.tgz\""
-                          " -C \"" + fs::absolute(root).string() + "\" .";
+        std::string excludes = " --exclude=.git --exclude=node_modules"
+                               " --exclude=ez.lock --exclude=data --exclude=\"*.tgz\"";
+
+        // If the global ezlib directory lives inside the project root, exclude it
+        // by its basename to avoid bundling installed dependencies.
+        fs::path absRoot = fs::absolute(root, ec);
+        fs::path absLib  = fs::path(ezLibBaseNoSlash());
+        std::error_code relEc;
+        // Check whether absLib is a subdirectory of absRoot
+        auto rootStr = absRoot.string();
+        auto libStr  = absLib.string();
+        if (libStr.size() > rootStr.size() &&
+            libStr.substr(0, rootStr.size()) == rootStr) {
+            // e.g. absLib = /project/lib  -> exclude "./lib"
+            std::string relLib = libStr.substr(rootStr.size());
+            // Strip leading separator
+            if (!relLib.empty() && (relLib[0] == '/' || relLib[0] == '\\'))
+                relLib = relLib.substr(1);
+            if (!relLib.empty())
+                excludes += " --exclude=\"" + relLib + "\"";
+        }
+
+        std::string cmd = "tar -czf \"" + outPath + "\"" + excludes +
+                          " -C \"" + absRoot.string() + "\" .";
         if (std::system(cmd.c_str()) != 0 || !fs::exists(outPath)) {
             std::cerr << "Could not create the package archive (is `tar` available?)." << std::endl;
             return false;

@@ -118,18 +118,30 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
             // LOAD self (handles closure capture if needed)
             emitLoadSelf();
             
-            // LOAD parent class via slot if known, else fall back to string LOAD_GLOBAL
-            auto parentIt = globalSlots.find(current->currentParentClass);
-            if (parentIt != globalSlots.end()) {
-                uint16_t slot = parentIt->second;
-                emitOp(OpCode::LOAD_GLOBAL_SLOT);
-                emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
-                          static_cast<uint8_t>(slot & 0xFF));
+            // LOAD parent class via local/upvalue first (for module scope),
+            // else global slot if known, else fall back to string LOAD_GLOBAL.
+            int parentLocal = resolveLocal(current->currentParentClass);
+            if (parentLocal != -1) {
+                emitLoadLocal(parentLocal);
             } else {
-                size_t parentIdx = identifierConstant(current->currentParentClass);
-                emitOp(OpCode::LOAD_GLOBAL);
-                emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
-                          static_cast<uint8_t>(parentIdx & 0xFF));
+                int parentUpval = resolveUpvalue(current->currentParentClass);
+                if (parentUpval != -1) {
+                    emitOp(OpCode::LOAD_UPVALUE);
+                    emitByte(static_cast<uint8_t>(parentUpval));
+                } else {
+                    auto parentIt = globalSlots.find(current->currentParentClass);
+                    if (parentIt != globalSlots.end()) {
+                        uint16_t slot = parentIt->second;
+                        emitOp(OpCode::LOAD_GLOBAL_SLOT);
+                        emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                                  static_cast<uint8_t>(slot & 0xFF));
+                    } else {
+                        size_t parentIdx = identifierConstant(current->currentParentClass);
+                        emitOp(OpCode::LOAD_GLOBAL);
+                        emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
+                                  static_cast<uint8_t>(parentIdx & 0xFF));
+                    }
+                }
             }
             
             emitOp(OpCode::SUPER);

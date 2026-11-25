@@ -197,6 +197,24 @@ void BytecodeCompiler::predeclareLocalTasks(const std::vector<StmtPtr>& statemen
                 markInitialized();
             }
         }
+        // Pre-declare model names so forward/self references inside method
+        // bodies resolve correctly in block scope too.
+        if (std::holds_alternative<ModelStmt*>(s->variant)) {
+            const std::string& name = std::get<ModelStmt*>(s->variant)->name;
+            if (!name.empty() && resolveLocal(name) == -1) {
+                addLocal(name);
+                current->locals.back().isStackResident = false;
+                markInitialized();
+            }
+        }
+        if (std::holds_alternative<InterfaceStmt*>(s->variant)) {
+            const std::string& name = std::get<InterfaceStmt*>(s->variant)->name;
+            if (!name.empty() && resolveLocal(name) == -1) {
+                addLocal(name);
+                current->locals.back().isStackResident = false;
+                markInitialized();
+            }
+        }
     }
 }
 
@@ -1313,6 +1331,27 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 markInitialized();
             }
         }
+        // Pre-declare model names so that forward/self references inside
+        // method bodies resolve as upvalues into the module frame, not as
+        // dangling LOAD_GLOBAL_SLOT reads.  Without this, `use "pkg" as p`
+        // fails whenever a model's static method references a sibling model
+        // because the aliased import never populates globals.
+        if (std::holds_alternative<ModelStmt*>(target->variant)) {
+            const std::string& mname = std::get<ModelStmt*>(target->variant)->name;
+            if (!mname.empty() && resolveLocal(mname) == -1) {
+                addLocal(mname);
+                markInitialized();
+            }
+        }
+        // Same for interfaces -- they can appear in `implements` clauses of
+        // models compiled earlier in the file.
+        if (std::holds_alternative<InterfaceStmt*>(target->variant)) {
+            const std::string& iname = std::get<InterfaceStmt*>(target->variant)->name;
+            if (!iname.empty() && resolveLocal(iname) == -1) {
+                addLocal(iname);
+                markInitialized();
+            }
+        }
     }
 
     // Compile module body
@@ -1540,17 +1579,31 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     if (stmt.parentName.empty()) {
         emitOp(OpCode::LOAD_NIL);
     } else {
-        auto parentIt = globalSlots.find(stmt.parentName);
-        if (parentIt != globalSlots.end()) {
-            uint16_t slot = parentIt->second;
-            emitOp(OpCode::LOAD_GLOBAL_SLOT);
-            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
-                      static_cast<uint8_t>(slot & 0xFF));
+        // Try local/upvalue resolution first (works in module scope where
+        // parent models are pre-declared as locals).
+        int parentLocal = resolveLocal(stmt.parentName);
+        if (parentLocal != -1) {
+            emitLoadLocal(parentLocal);
         } else {
-            size_t parentIdx = identifierConstant(stmt.parentName);
-            emitOp(OpCode::LOAD_GLOBAL);
-            emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
-                      static_cast<uint8_t>(parentIdx & 0xFF));
+            int parentUpval = resolveUpvalue(stmt.parentName);
+            if (parentUpval != -1) {
+                emitOp(OpCode::LOAD_UPVALUE);
+                emitByte(static_cast<uint8_t>(parentUpval));
+            } else {
+                // Fall back to global resolution for top-level scripts
+                auto parentIt = globalSlots.find(stmt.parentName);
+                if (parentIt != globalSlots.end()) {
+                    uint16_t slot = parentIt->second;
+                    emitOp(OpCode::LOAD_GLOBAL_SLOT);
+                    emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                              static_cast<uint8_t>(slot & 0xFF));
+                } else {
+                    size_t parentIdx = identifierConstant(stmt.parentName);
+                    emitOp(OpCode::LOAD_GLOBAL);
+                    emitBytes(static_cast<uint8_t>((parentIdx >> 8) & 0xFF),
+                              static_cast<uint8_t>(parentIdx & 0xFF));
+                }
+            }
         }
     }
     
@@ -1694,17 +1747,29 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
 
     // 5. Push interfaces onto stack
     for (const auto& interfaceName : stmt.interfaces) {
-        auto ifIt = globalSlots.find(interfaceName);
-        if (ifIt != globalSlots.end()) {
-            uint16_t slot = ifIt->second;
-            emitOp(OpCode::LOAD_GLOBAL_SLOT);
-            emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
-                      static_cast<uint8_t>(slot & 0xFF));
+        // Try local/upvalue first (module scope pre-declares interfaces)
+        int ifLocal = resolveLocal(interfaceName);
+        if (ifLocal != -1) {
+            emitLoadLocal(ifLocal);
         } else {
-            size_t idx = identifierConstant(interfaceName);
-            emitOp(OpCode::LOAD_GLOBAL);
-            emitBytes(static_cast<uint8_t>((idx >> 8) & 0xFF),
-                      static_cast<uint8_t>(idx & 0xFF));
+            int ifUpval = resolveUpvalue(interfaceName);
+            if (ifUpval != -1) {
+                emitOp(OpCode::LOAD_UPVALUE);
+                emitByte(static_cast<uint8_t>(ifUpval));
+            } else {
+                auto ifIt = globalSlots.find(interfaceName);
+                if (ifIt != globalSlots.end()) {
+                    uint16_t slot = ifIt->second;
+                    emitOp(OpCode::LOAD_GLOBAL_SLOT);
+                    emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
+                              static_cast<uint8_t>(slot & 0xFF));
+                } else {
+                    size_t idx = identifierConstant(interfaceName);
+                    emitOp(OpCode::LOAD_GLOBAL);
+                    emitBytes(static_cast<uint8_t>((idx >> 8) & 0xFF),
+                              static_cast<uint8_t>(idx & 0xFF));
+                }
+            }
         }
     }
 
@@ -1759,8 +1824,18 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     
     // 6. Store class in variable (global by default, local if in a module)
     if (current->scopeDepth > 0) {
-        size_t slot = addLocal(stmt.name);
-        markInitialized();
+        // Check if the slot was already pre-declared (by the module-level
+        // pre-declaration loop or predeclareLocalTasks).  If so, reuse it
+        // instead of creating a duplicate local.  This mirrors the pattern
+        // used in compileTask() for pre-reserved locals.
+        int existingLocal = resolveLocal(stmt.name);
+        size_t slot;
+        if (existingLocal != -1) {
+            slot = static_cast<size_t>(existingLocal);
+        } else {
+            slot = addLocal(stmt.name);
+            markInitialized();
+        }
         emitStoreLocal(slot);
         // Do NOT emit POP! The local variable MUST remain on the stack.
     } else {
@@ -1792,12 +1867,25 @@ void BytecodeCompiler::compileInterface(const InterfaceStmt& stmt) {
               static_cast<uint8_t>(nameIdx & 0xFF));
     emitByte(static_cast<uint8_t>(stmt.methods.size()));
     
-    // Store in global
-    uint16_t ifSlot = globalSlotFor(stmt.name);
-    emitOp(OpCode::STORE_GLOBAL_SLOT);
-    emitBytes(static_cast<uint8_t>((ifSlot >> 8) & 0xFF),
-              static_cast<uint8_t>(ifSlot & 0xFF));
-    emitOp(OpCode::POP);
+    // Store in global or reuse pre-declared local in module scope
+    if (current->scopeDepth > 0) {
+        int existingLocal = resolveLocal(stmt.name);
+        size_t slot;
+        if (existingLocal != -1) {
+            slot = static_cast<size_t>(existingLocal);
+        } else {
+            slot = addLocal(stmt.name);
+            markInitialized();
+        }
+        emitStoreLocal(slot);
+        // Do NOT emit POP! The local variable MUST remain on the stack.
+    } else {
+        uint16_t ifSlot = globalSlotFor(stmt.name);
+        emitOp(OpCode::STORE_GLOBAL_SLOT);
+        emitBytes(static_cast<uint8_t>((ifSlot >> 8) & 0xFF),
+                  static_cast<uint8_t>(ifSlot & 0xFF));
+        emitOp(OpCode::POP);
+    }
 }
 
 void BytecodeCompiler::compileStatic(const StaticStmt& stmt) {

@@ -1,0 +1,37 @@
+// Test module-scope forward and self references under aliased and unaliased `use`
+
+task assert_eq(actual, expected, label) {
+    when (actual != expected) {
+        throw "FAIL: " + label + " (expected '" + str(expected) + "', got '" + str(actual) + "')"
+    }
+}
+
+use "Test/fixtures/selfref/main.ez" as s
+
+assert_eq(s.A.ping(), "pong", "aliased self-ref static method")
+assert_eq(s.A.callB(), "hello from B", "aliased forward-ref model static method")
+assert_eq(s.A.callTop(), "from top", "aliased forward-ref top-level task")
+assert_eq(s.B.callA(), "pong", "aliased backward-ref model static method")
+
+c = s.Child()
+assert_eq(c.speak(), "parent:child", "aliased forward-ref parent model")
+assert_eq(c.speakSuper(), "parent:super", "aliased super call in module")
+
+svc = s.Service()
+assert_eq(svc.hello("EZ"), "hi EZ", "aliased forward-ref interface")
+
+// Also test unaliased import
+use "Test/fixtures/selfref/main.ez"
+
+assert_eq(A.ping(), "pong", "unaliased self-ref static method")
+assert_eq(A.callB(), "hello from B", "unaliased forward-ref model static method")
+assert_eq(A.callTop(), "from top", "unaliased forward-ref top-level task")
+assert_eq(B.callA(), "pong", "unaliased backward-ref model static method")
+
+c2 = Child()
+assert_eq(c2.speak(), "parent:child", "unaliased forward-ref parent model")
+
+svc2 = Service()
+assert_eq(svc2.hello("EZ"), "hi EZ", "unaliased forward-ref interface")
+
+out "PASS: all module self/forward reference tests passed"

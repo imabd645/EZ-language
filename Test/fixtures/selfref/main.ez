@@ -1,0 +1,57 @@
+export model A {
+    static task pong() {
+        give "pong"
+    }
+
+    static task ping() {
+        give A.pong()
+    }
+
+    static task callB() {
+        give B.greet()
+    }
+
+    static task callTop() {
+        give top()
+    }
+}
+
+export model B {
+    static task greet() {
+        give "hello from B"
+    }
+
+    static task callA() {
+        give A.ping()
+    }
+}
+
+export task top() {
+    give "from top"
+}
+
+export model Parent {
+    task baseVal() {
+        give "parent"
+    }
+}
+
+export model Child extends Parent {
+    task speak() {
+        give self.baseVal() + ":child"
+    }
+
+    task speakSuper() {
+        give super.baseVal() + ":super"
+    }
+}
+
+export interface Greeter {
+    task hello(name)
+}
+
+export model Service implements Greeter {
+    task hello(name) {
+        give "hi " + name
+    }
+}

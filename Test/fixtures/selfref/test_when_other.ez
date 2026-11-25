@@ -1,0 +1,12 @@
+when false {
+} other {
+    candidates = []
+    when false {
+        candidates = [1]
+    } other {
+        candidates = [2, 3]
+    }
+    get cand in candidates {
+        out cand
+    }
+}

@@ -199,7 +199,7 @@ void BytecodeCompiler::predeclareLocalTasks(const std::vector<StmtPtr>& statemen
             const std::string& name = std::get<TaskStmt*>(s->variant)->name;
             if (!name.empty() && resolveLocal(name) == -1) {
                 addLocal(name);
-                current->locals.back().isStackResident = false;
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -209,7 +209,7 @@ void BytecodeCompiler::predeclareLocalTasks(const std::vector<StmtPtr>& statemen
             const std::string& name = std::get<ModelStmt*>(s->variant)->name;
             if (!name.empty() && resolveLocal(name) == -1) {
                 addLocal(name);
-                current->locals.back().isStackResident = false;
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -217,7 +217,7 @@ void BytecodeCompiler::predeclareLocalTasks(const std::vector<StmtPtr>& statemen
             const std::string& name = std::get<InterfaceStmt*>(s->variant)->name;
             if (!name.empty() && resolveLocal(name) == -1) {
                 addLocal(name);
-                current->locals.back().isStackResident = false;
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -676,7 +676,7 @@ void BytecodeCompiler::compileTask(const TaskStmt& stmt) {
     bool reservedNewLocal = false;
     if (existingLocal == -1 && current->scopeDepth > 0) {
         reservedSlot = addLocal(stmt.name);
-        current->locals.back().isStackResident = false;
+        emitOp(OpCode::LOAD_NIL);
         markInitialized();
         reservedNewLocal = true;
     }
@@ -1336,6 +1336,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             const std::string& tname = std::get<TaskStmt*>(target->variant)->name;
             if (!tname.empty() && resolveLocal(tname) == -1) {
                 addLocal(tname);
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -1348,6 +1349,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             const std::string& mname = std::get<ModelStmt*>(target->variant)->name;
             if (!mname.empty() && resolveLocal(mname) == -1) {
                 addLocal(mname);
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -1357,6 +1359,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             const std::string& iname = std::get<InterfaceStmt*>(target->variant)->name;
             if (!iname.empty() && resolveLocal(iname) == -1) {
                 addLocal(iname);
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -1366,6 +1369,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             const std::string& vname = std::get<VarDeclStmt*>(target->variant)->name;
             if (!vname.empty() && resolveLocal(vname) == -1) {
                 addLocal(vname);
+                emitOp(OpCode::LOAD_NIL);
                 markInitialized();
             }
         }
@@ -1376,6 +1380,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                 if (!assign->object && !assign->index && !assign->name.empty() &&
                     resolveLocal(assign->name) == -1) {
                     addLocal(assign->name);
+                    emitOp(OpCode::LOAD_NIL);
                     markInitialized();
                 }
             }
@@ -1494,6 +1499,18 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
         emitBytes(static_cast<uint8_t>((flagIdx >> 8) & 0xFF), static_cast<uint8_t>(flagIdx & 0xFF));
 
         if (alias == "*" || !stmt.imports.empty()) {
+            // In local/module scope, bind the module dictionary into a
+            // stack-resident local so new imported locals can stay on the
+            // stack above it without POP at the end of the loop popping the
+            // last imported value instead of the dictionary.
+            size_t dictSlot = 0;
+            bool hasDictLocal = (current->scopeDepth > 0);
+            if (hasDictLocal) {
+                dictSlot = addLocal("");
+                markInitialized();
+                emitStoreLocal(dictSlot);
+            }
+
             // Unpack all exported locals into the current scope
             for (const auto& local : moduleCompiler->locals) {
                 if (local.depth == 1 && !local.name.empty()) {
@@ -1507,8 +1524,12 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                         localName = requested->second;
                     }
                     
-                    // DUP dictionary
-                    emitOp(OpCode::DUP);
+                    if (hasDictLocal) {
+                        emitLoadLocal(dictSlot);
+                    } else {
+                        // DUP dictionary
+                        emitOp(OpCode::DUP);
+                    }
                     
                     // LOAD_PROPERTY
                     emitOp(OpCode::LOAD_PROPERTY);
@@ -1532,6 +1553,7 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     if (current->scopeDepth > 0) {
                         int existing = resolveLocal(localName);
                         size_t slot;
+                        bool createdNew = false;
                         if (existing != -1) {
                             // Already bound and already initialised. Not calling
                             // markInitialized() here is deliberate: it marks
@@ -1541,8 +1563,8 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                             slot = static_cast<size_t>(existing);
                         } else {
                             slot = addLocal(localName);
-                            current->locals.back().isStackResident = false;
                             markInitialized();
+                            createdNew = true;
                         }
                         // Carry the export flag across the boundary.
                         //
@@ -1560,7 +1582,9 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                         // still stay private.
                         current->locals[slot].exported = local.exported;
                         emitStoreLocal(slot);
-                        emitOp(OpCode::POP);
+                        if (!createdNew) {
+                            emitOp(OpCode::POP);
+                        }
                     } else {
                         uint16_t aliasSlot = globalSlotFor(localName);
                         emitOp(OpCode::STORE_GLOBAL_SLOT);
@@ -1570,15 +1594,22 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
                     }
                 }
             }
-            emitOp(OpCode::POP); // Pop the dictionary itself
+            if (!hasDictLocal) {
+                emitOp(OpCode::POP); // Pop the dictionary itself
+            }
         } else {
             // Store into the requested alias
             if (current->scopeDepth > 0) {
-                size_t slot = addLocal(alias);
-                current->locals.back().isStackResident = false;
-                markInitialized();
-                emitStoreLocal(slot);
-                emitOp(OpCode::POP);
+                int existing = resolveLocal(alias);
+                if (existing != -1) {
+                    emitStoreLocal(static_cast<size_t>(existing));
+                    emitOp(OpCode::POP);
+                } else {
+                    size_t slot = addLocal(alias);
+                    markInitialized();
+                    emitStoreLocal(slot);
+                    // Keep the alias on the stack as a stack-resident local (no POP)
+                }
             } else {
                 uint16_t aliasSlot = globalSlotFor(alias);
                 emitOp(OpCode::STORE_GLOBAL_SLOT);

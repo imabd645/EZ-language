@@ -607,10 +607,13 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
                 emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),
                           static_cast<uint8_t>(slot & 0xFF));
             } else if (current->scopeDepth > 0) {
-                // Create a new local if we're in a function or module scope
+                // Create a new stack-resident local if we're in a function or
+                // module scope. DUP keeps one copy in the local's stack slot
+                // and leaves the other on top for ExpressionStmt's POP (or an
+                // enclosing expression) so POP never clears the local slot.
                 local = addLocal(expr.name);
-                current->locals.back().isStackResident = false; // Assignment creation doesn't stay on stack
                 markInitialized();
+                emitOp(OpCode::DUP);
                 emitStoreLocal(local);
             } else {
                 // Default to global — allocate a slot
@@ -629,10 +632,10 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
     // 1. Evaluate RHS: Stack: [..., RHS_val]
     compileExpr(expr.value);
     
-    // 2. Store in a temporary local variable: Stack: [..., RHS_val]
+    // 2. Store in a temporary local variable: Stack: [..., RHS_val, RHS_val]
     size_t tempVar = addLocal("<destructure-val>");
-    current->locals.back().isStackResident = false;
     markInitialized();
+    emitOp(OpCode::DUP);
     emitStoreLocal(tempVar);
     
     // 3. For each target target_i at index i:
@@ -654,6 +657,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
             emitOp(OpCode::INDEX_GET);
             
             // Store to target variable
+            bool createdLocal = false;
             std::string name = std::get<IdentifierExpr*>(target->variant)->name;
             std::string mangled = resolveStatic(name);
             if (!mangled.empty()) {
@@ -678,9 +682,9 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
                                   static_cast<uint8_t>(slot & 0xFF));
                     } else if (current->scopeDepth > 0) {
                         local = addLocal(name);
-                        current->locals.back().isStackResident = false;
                         markInitialized();
                         emitStoreLocal(local);
+                        createdLocal = true;
                     } else {
                         uint16_t slot = globalSlotFor(name);
                         emitOp(OpCode::STORE_GLOBAL_SLOT);
@@ -689,8 +693,10 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
                     }
                 }
             }
-            // Pop the stored value
-            emitOp(OpCode::POP);
+            // Pop the stored value unless it stays as a new stack-resident local
+            if (!createdLocal) {
+                emitOp(OpCode::POP);
+            }
             
         } else if (std::holds_alternative<IndexExpr*>(target->variant)) {
             // Target is an index expression: obj[index]

@@ -310,7 +310,9 @@ void PermissionScanner::scanExpression(ExprPtr expr, const std::string& currentF
 
             if (!funcName.empty()) {
                 // 1. FFI functions
-                if (funcName == "os_load_lib" || funcName == "os_find_func" || funcName == "os_call") {
+                if (funcName == "os_load_lib" || funcName == "os_find_func" || funcName == "os_get_func" ||
+                    funcName == "os_call" || funcName == "os_call_sig" || funcName == "os_call_sig_arr" ||
+                    funcName == "os_ffi_create_callback" || funcName == "os_alloc") {
                     PermissionFinding f;
                     f.type = "FFI";
                     f.operation = funcName;

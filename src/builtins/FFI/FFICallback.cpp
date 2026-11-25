@@ -34,8 +34,19 @@ static void ffi_callback_dispatcher(ffi_cif* cif, void* ret, void** args, void* 
         if (type == "int" || type == "ptr" || type == "i64" || type == "u64") {
             long long val = *(long long*)args[i];
             ezArgs.push_back(Value(val));
-        } else if (type == "i32" || type == "u32") {
+        } else if (type == "i8") {
+            ezArgs.push_back(Value((long long)*(int8_t*)args[i]));
+        } else if (type == "u8") {
+            ezArgs.push_back(Value((long long)*(uint8_t*)args[i]));
+        } else if (type == "i16") {
+            ezArgs.push_back(Value((long long)*(int16_t*)args[i]));
+        } else if (type == "u16") {
+            ezArgs.push_back(Value((long long)*(uint16_t*)args[i]));
+        } else if (type == "i32") {
             long long val = *(int32_t*)args[i];
+            ezArgs.push_back(Value(val));
+        } else if (type == "u32") {
+            long long val = *(uint32_t*)args[i];
             ezArgs.push_back(Value(val));
         } else if (type == "float" || type == "f32") {
             double val = *(float*)args[i];
@@ -69,14 +80,30 @@ static void ffi_callback_dispatcher(ffi_cif* cif, void* ret, void** args, void* 
 
     if (cb->retType == "int" || cb->retType == "ptr" || cb->retType == "i64" || cb->retType == "u64") {
         *(long long*)ret = result.isNumber() ? (long long)result.asNumber() : 0;
-    } else if (cb->retType == "i32" || cb->retType == "u32") {
-        *(int32_t*)ret = result.isNumber() ? (int32_t)result.asNumber() : 0;
+    } else if (cb->retType == "i8") {
+        *(ffi_sarg*)ret = result.isNumber() ? (int8_t)result.asNumber() : 0;
+    } else if (cb->retType == "u8") {
+        *(ffi_arg*)ret = result.isNumber() ? (uint8_t)result.asNumber() : 0;
+    } else if (cb->retType == "i16") {
+        *(ffi_sarg*)ret = result.isNumber() ? (int16_t)result.asNumber() : 0;
+    } else if (cb->retType == "u16") {
+        *(ffi_arg*)ret = result.isNumber() ? (uint16_t)result.asNumber() : 0;
+    } else if (cb->retType == "i32") {
+        *(ffi_sarg*)ret = result.isNumber() ? (int32_t)result.asNumber() : 0;
+    } else if (cb->retType == "u32") {
+        *(ffi_arg*)ret = result.isNumber() ? (uint32_t)result.asNumber() : 0;
     } else if (cb->retType == "float" || cb->retType == "f32") {
         *(float*)ret = result.isNumber() ? (float)result.asFloat() : 0.0f;
     } else if (cb->retType == "double" || cb->retType == "f64") {
         *(double*)ret = result.isNumber() ? result.asFloat() : 0.0;
     } else if (cb->retType == "string") {
-        *(const char**)ret = nullptr;
+        if (result.isNil()) {
+            *(const char**)ret = nullptr;
+        } else {
+            thread_local std::string tl_callbackRetStr;
+            tl_callbackRetStr = result.toString();
+            *(const char**)ret = tl_callbackRetStr.c_str();
+        }
     } else if (cb->retType == "void") {
         // do nothing
     } else {
@@ -123,7 +150,12 @@ void registerFFICallback(RuntimeContext& interp) {
 
             for(auto t : sigTypes) {
                 if (t == "int" || t == "ptr" || t == "i64" || t == "u64") cb->argTypes.push_back(&ffi_type_sint64);
-                else if (t == "i32" || t == "u32") cb->argTypes.push_back(&ffi_type_sint32);
+                else if (t == "i8") cb->argTypes.push_back(&ffi_type_sint8);
+                else if (t == "u8") cb->argTypes.push_back(&ffi_type_uint8);
+                else if (t == "i16") cb->argTypes.push_back(&ffi_type_sint16);
+                else if (t == "u16") cb->argTypes.push_back(&ffi_type_uint16);
+                else if (t == "i32") cb->argTypes.push_back(&ffi_type_sint32);
+                else if (t == "u32") cb->argTypes.push_back(&ffi_type_uint32);
                 else if (t == "float" || t == "f32") cb->argTypes.push_back(&ffi_type_float);
                 else if (t == "double" || t == "f64") cb->argTypes.push_back(&ffi_type_double);
                 else if (t == "string") cb->argTypes.push_back(&ffi_type_pointer);
@@ -132,7 +164,12 @@ void registerFFICallback(RuntimeContext& interp) {
 
             ffi_type* ffiRetType = &ffi_type_void;
             if (retType == "int" || retType == "ptr" || retType == "i64" || retType == "u64") ffiRetType = &ffi_type_sint64;
-            else if (retType == "i32" || retType == "u32") ffiRetType = &ffi_type_sint32;
+            else if (retType == "i8") ffiRetType = &ffi_type_sint8;
+            else if (retType == "u8") ffiRetType = &ffi_type_uint8;
+            else if (retType == "i16") ffiRetType = &ffi_type_sint16;
+            else if (retType == "u16") ffiRetType = &ffi_type_uint16;
+            else if (retType == "i32") ffiRetType = &ffi_type_sint32;
+            else if (retType == "u32") ffiRetType = &ffi_type_uint32;
             else if (retType == "float" || retType == "f32") ffiRetType = &ffi_type_float;
             else if (retType == "double" || retType == "f64") ffiRetType = &ffi_type_double;
             else if (retType == "string") ffiRetType = &ffi_type_pointer;

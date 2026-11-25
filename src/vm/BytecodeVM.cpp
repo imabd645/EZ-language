@@ -787,7 +787,13 @@ Value BytecodeVM::callFunction(const Value& callee,
     Value* oldStackData = stack.data();
     size_t framesBefore = frames.size();
     bool savedRunning = running;
+    // Save and clear isYielded: if this VM is currently suspended on an outer
+    // `await` and an FFI callback (or event-loop handler) invokes callFunction(),
+    // leaving isYielded=true would make line 844 falsely think the callback
+    // yielded and discard its return value.
+    bool savedIsYielded = isYielded;
     running = true;
+    isYielded = false;
 
     struct OptionalCxxDepthGuard {
         size_t* depth;
@@ -830,6 +836,7 @@ Value BytecodeVM::callFunction(const Value& callee,
         stackTop = stack.data() + stackBefore;
         frames.resize(framesBefore);
         running = savedRunning;
+        isYielded = savedIsYielded;
     };
 
     Value result;

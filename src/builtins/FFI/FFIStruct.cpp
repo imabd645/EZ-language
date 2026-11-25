@@ -26,17 +26,26 @@ static bool parseStructType(const std::string& type, size_t& size, size_t& align
     return false;
 }
 
-static StructLayout computeStructLayout(const std::vector<Value>& layoutArray) {
+static StructLayout computeStructLayout(RuntimeContext& interp, const char* fnName,
+                                        const std::vector<Value>& layoutArray, bool& ok) {
     StructLayout layout;
     layout.totalSize = 0;
     layout.maxAlign = 1;
+    ok = true;
 
     for (const auto& val : layoutArray) {
-        if (!val.isString()) continue;
+        if (!val.isString()) {
+            interp.runtimeError(std::string(fnName) + ": layout elements must be type name strings", 0, "");
+            ok = false;
+            return layout;
+        }
         std::string type = val.asString();
         size_t size = 0, align = 0;
         if (!parseStructType(type, size, align)) {
-            size = 1; align = 1; // Fallback
+            interp.runtimeError(std::string(fnName) + ": invalid struct field type '" + type +
+                                "' (valid: i8, u8, i16, u16, i32, u32, f32, i64, u64, f64, ptr)", 0, "");
+            ok = false;
+            return layout;
         }
 
         if (align > layout.maxAlign) layout.maxAlign = align;
@@ -67,7 +76,9 @@ void registerFFIStruct(RuntimeContext& interp) {
                 return Value();
             }
             auto layoutArray = args[0].asArray().getElementsCopy();
-            StructLayout layout = computeStructLayout(layoutArray);
+            bool ok = false;
+            StructLayout layout = computeStructLayout(interp, "os_struct_alloc", layoutArray, ok);
+            if (!ok) return Value();
             return Value(std::make_shared<EZBuffer>(layout.totalSize));
         }));
 
@@ -80,7 +91,9 @@ void registerFFIStruct(RuntimeContext& interp) {
             }
             auto layoutArray = args[0].asArray().getElementsCopy();
             auto valuesArray = args[1].asArray().getElementsCopy();
-            StructLayout layout = computeStructLayout(layoutArray);
+            bool ok = false;
+            StructLayout layout = computeStructLayout(interp, "os_struct_pack", layoutArray, ok);
+            if (!ok) return Value();
             
             Value bufVal;
             if (args.size() >= 3 && args[2].isBuffer()) {
@@ -125,7 +138,9 @@ void registerFFIStruct(RuntimeContext& interp) {
                 return Value();
             }
             auto layoutArray = args[0].asArray().getElementsCopy();
-            StructLayout layout = computeStructLayout(layoutArray);
+            bool ok = false;
+            StructLayout layout = computeStructLayout(interp, "os_struct_unpack", layoutArray, ok);
+            if (!ok) return Value();
             
             uint8_t* base = nullptr;
             if (args[1].isBuffer()) {

@@ -25,7 +25,7 @@ os_free_lib(user32)
 
 ## 2. Calling Functions (`os_call` & `os_call_sig`)
 
-The FFI supports automatically inferring C types from EZ types, but you must specify the **Return Type** as a string (e.g., `"int"`, `"void"`, `"ptr"`, `"str"`, `"float"`).
+The FFI supports automatically inferring C types from EZ types, but you must specify the **Return Type** as a string (e.g., `"int"`, `"void"`, `"ptr"`, `"string"`, `"float"`).
 
 ### Basic Inference (`os_call`)
 ```ez
@@ -38,7 +38,7 @@ If automatic inference gets it wrong (e.g., you need to pass an integer as a 64-
 
 ```ez
 // Signature: os_call_sig(funcPtr, returnType, [argTypes...], ...args)
-result = os_call_sig(msgBox, "int", ["ptr", "str", "str", "int"], 0, "Hello", "Title", 0)
+result = os_call_sig(msgBox, "int", ["ptr", "string", "string", "int"], 0, "Hello", "Title", 0)
 ```
 
 ---
@@ -79,26 +79,26 @@ EZ provides a complete suite of typed memory access functions.
 
 ### String Access
 *   `os_read_string_ptr(ptr)`: Reads a null-terminated UTF-8 string starting at `ptr`.
-*   `os_read_string_ptr_n(ptr, length)`: Reads exactly `length` bytes.
+*   `os_read_string_ptr_n(ptr, length)`: Reads up to `length` bytes (stops at NUL).
 *   `os_write_string(ptr, offset, "text")`: Writes string bytes (plus null terminator).
 
 ---
 
 ## 5. C Structs
 
-Working with raw offsets is tedious. EZ provides a struct packer/unpacker that uses format strings (similar to Python's `struct` module).
+Working with raw offsets is tedious. EZ provides a struct packer/unpacker using arrays of field type names (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `f32`, `i64`, `u64`, `f64`, `ptr`) following standard C alignment and padding rules.
 
 ```ez
 // Pack values into a byte buffer
-// "i" = 32-bit int, "f" = 32-bit float, "q" = 64-bit int
-buffer = os_struct_pack("i f q", 42, 3.14, 9000000)
+layout = ["i32", "f32", "i64"]
+buffer = os_struct_pack(layout, [42, 3.14, 9000000])
 
 // Unpack bytes back into an array
-values = os_struct_unpack("i f q", buffer)
+values = os_struct_unpack(layout, buffer)
 out values[0] // 42
 ```
 
-Use `os_struct_alloc("i f q")` to automatically allocate enough raw memory on the heap for that exact struct layout.
+Use `os_struct_alloc(layout)` to allocate a zeroed byte `Buffer` sized for that exact struct layout.
 
 ---
 
@@ -112,8 +112,8 @@ task myCallback(hwnd, msg, wparam, lparam) {
     give 0
 }
 
-// Wrap the task. (3rd arg is number of parameters expected by the C ABI)
-c_ptr = os_ffi_create_callback(myCallback, "int", 4)
+// Wrap the task: os_ffi_create_callback(sigArray, returnType, fn)
+c_ptr = os_ffi_create_callback(["ptr", "u32", "ptr", "ptr"], "int", myCallback)
 
 // Pass c_ptr to C libraries...
 

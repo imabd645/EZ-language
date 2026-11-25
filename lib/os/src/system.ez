@@ -26,11 +26,11 @@ export model OSSystem {
         }
         // Linux / POSIX uptime parsing
         try {
-            when exists("/proc/uptime") {
+            when File.exists("/proc/uptime") {
                 content = readFile("/proc/uptime")
                 parts = split(trim(content), " ")
                 when len(parts) > 0 {
-                    give double(parts[0])
+                    give num(parts[0])
                 }
             }
         } catch e {}
@@ -63,7 +63,7 @@ export model OSSystem {
 
         // Linux /proc/meminfo parsing
         try {
-            when exists("/proc/meminfo") {
+            when File.exists("/proc/meminfo") {
                 content = readFile("/proc/meminfo")
                 lines = split(content, "\n")
                 totalKb = 0
@@ -71,11 +71,11 @@ export model OSSystem {
                 get line in lines {
                     when startsWith(line, "MemTotal:") {
                         parts = split(trim(substr(line, 9, len(line) - 9)), " ")
-                        totalKb = int(parts[0])
+                        totalKb = num(parts[0])
                     } other when startsWith(line, "MemAvailable:") or startsWith(line, "MemFree:") {
                         when availKb == 0 {
                             parts = split(trim(substr(line, 13, len(line) - 13)), " ")
-                            availKb = int(parts[0])
+                            availKb = num(parts[0])
                         }
                     }
                 }
@@ -84,7 +84,7 @@ export model OSSystem {
                 usedBytes = totalBytes - availBytes
                 loadPct = 0
                 when totalBytes > 0 {
-                    loadPct = int((usedBytes * 100) / totalBytes)
+                    loadPct = floor((usedBytes * 100) / totalBytes)
                 }
                 give {
                     "total": totalBytes,
@@ -275,7 +275,7 @@ export model OSSystem {
         }
         // Linux /proc/self/exe
         try {
-            when exists("/proc/self/exe") {
+            when File.exists("/proc/self/exe") {
                 give "/proc/self/exe"
             }
         } catch e {}

@@ -9,6 +9,7 @@
 namespace fs = std::filesystem;
 #include "lexer/Lexer.h"
 #include "parser/Parser.h"
+#include "utils/StringHelpers.h"
 
 std::unordered_map<std::string, std::string> BytecodeCompiler::virtualFileSystem;
 std::unordered_set<std::string> BytecodeCompiler::builtinNames;
@@ -51,6 +52,40 @@ void BytecodeCompiler::setGlobalSlot(const std::string& name, uint16_t slot) {
     if (slot >= nextGlobalSlot) {
         nextGlobalSlot = slot + 1;
     }
+}
+
+bool BytecodeCompiler::inModuleScope() const {
+    for (const Compiler* c = current; c != nullptr; c = c->enclosing) {
+        if (c->isHarvesting) return true;
+    }
+    return false;
+}
+
+std::string BytecodeCompiler::suggestIdentifier(const std::string& name) const {
+    if (name.empty()) return "";
+    size_t limit = name.size() <= 4 ? 1 : 2;
+    size_t bestDist = limit + 1;
+    std::string bestName;
+
+    auto consider = [&](const std::string& candidate) {
+        if (candidate.empty() || candidate == name) return;
+        size_t d = EZ::Utils::nameDistance(name, candidate, limit);
+        if (d < bestDist) {
+            bestDist = d;
+            bestName = candidate;
+        }
+    };
+
+    for (const Compiler* c = current; c != nullptr; c = c->enclosing) {
+        for (const auto& local : c->locals) {
+            consider(local.name);
+        }
+    }
+    for (const auto& b : builtinNames) {
+        consider(b);
+    }
+
+    return bestName;
 }
 
 CompileResult BytecodeCompiler::compile(const std::vector<StmtPtr>& statements) {

@@ -152,6 +152,17 @@ void BytecodeCompiler::compileIdentifier(const IdentifierExpr& expr) {
         }
     }
 
+    if (inModuleScope() && !builtinNames.empty() &&
+        builtinNames.find(expr.name) == builtinNames.end()) {
+        std::string msg = "NameError: undefined name '" + expr.name + "'";
+        std::string suggestion = suggestIdentifier(expr.name);
+        if (!suggestion.empty()) {
+            msg += "\n  Did you mean '" + suggestion + "'?";
+        }
+        errorAt(msg, currentLine);
+        return;
+    }
+
     // Emit fast slot-based global load for all known globals
     uint16_t slot = globalSlotFor(expr.name);
     emitOp(OpCode::LOAD_GLOBAL_SLOT);
@@ -579,7 +590,7 @@ void BytecodeCompiler::compileAssign(const AssignExpr& expr) {
             if (upvalue != -1) {
                 emitBytes(static_cast<uint8_t>(OpCode::STORE_UPVALUE),
                           static_cast<uint8_t>(upvalue));
-            } else if (globalSlots.count(expr.name) > 0 && !current->isHarvesting) {
+            } else if (globalSlots.count(expr.name) > 0 && !inModuleScope()) {
                 // Known global — use fast slot path.
                 //
                 // This branch is reached even inside a function, because the
@@ -660,7 +671,7 @@ void BytecodeCompiler::compileDestructureAssign(const DestructureAssignExpr& exp
                     if (upvalue != -1) {
                         emitBytes(static_cast<uint8_t>(OpCode::STORE_UPVALUE),
                                   static_cast<uint8_t>(upvalue));
-                    } else if (globalSlots.count(name) > 0 && !current->isHarvesting) {
+                    } else if (globalSlots.count(name) > 0 && !inModuleScope()) {
                         uint16_t slot = globalSlots[name];
                         emitOp(OpCode::STORE_GLOBAL_SLOT);
                         emitBytes(static_cast<uint8_t>((slot >> 8) & 0xFF),

@@ -82,7 +82,7 @@ export model CryptoFFI {
                         CryptoFFI.fSHA1       = os_get_func(CryptoFFI.hLibCrypto, "SHA1")
                         CryptoFFI.fMD5        = os_get_func(CryptoFFI.hLibCrypto, "MD5")
                         CryptoFFI.fRAND_bytes = os_get_func(CryptoFFI.hLibCrypto, "RAND_bytes")
-                        break
+                        escape
                     }
                 } catch e {}
             }

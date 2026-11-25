@@ -246,6 +246,8 @@ private:
     int addUpvalue(size_t index, Upvalue::Type type);
     std::string resolveStatic(const std::string& name);
     void markInitialized();
+    bool inModuleScope() const;
+    std::string suggestIdentifier(const std::string& name) const;
     
     // === Code Emission ===
     Chunk& currentChunk() { return current->function->chunk; }

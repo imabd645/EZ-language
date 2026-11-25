@@ -43,7 +43,7 @@ export model SecureRandom {
         }
 
         // 3. Fallback PRNG (xorshift128+ entropy mix)
-        t = now()
+        t = floor(clock())
         s0 = (t * 1103515245 + 12345) & 0x7FFFFFFF
         s1 = ((t >> 16) * 1664525 + 1013904223) & 0x7FFFFFFF
         repeat i = 0 to count - 1 {

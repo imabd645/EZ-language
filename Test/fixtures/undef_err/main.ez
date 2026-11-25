@@ -1,0 +1,9 @@
+export model Greeter {
+    static task greet() {
+        give "hi"
+    }
+}
+
+export task run() {
+    give Greetr.greet()
+}

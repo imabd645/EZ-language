@@ -119,7 +119,7 @@ bool BytecodeCompiler::compileCompoundAssignFast(const AssignExpr& expr) {
                 if (localDst == -1) {
                     uint16_t gSlot = 0;
                     bool isGlobal = false;
-                    if (globalSlots.count(expr.name) > 0 && !current->isHarvesting) {
+                    if (globalSlots.count(expr.name) > 0 && !inModuleScope()) {
                         gSlot = globalSlots[expr.name];
                         isGlobal = true;
                     } else if (current->scopeDepth == 0) {
@@ -174,8 +174,14 @@ void BytecodeCompiler::compileVarDecl(const VarDeclStmt& stmt) {
                   static_cast<uint8_t>(slot & 0xFF));
         emitOp(OpCode::POP);
     } else {
-        size_t localIdx = addLocal(stmt.name);
-        markInitialized();
+        int existingLocal = resolveLocal(stmt.name);
+        size_t localIdx;
+        if (existingLocal != -1) {
+            localIdx = static_cast<size_t>(existingLocal);
+        } else {
+            localIdx = addLocal(stmt.name);
+            markInitialized();
+        }
         emitStoreLocal(localIdx);
         // Local variables stay on stack (no POP)
     }
@@ -952,6 +958,8 @@ void BytecodeCompiler::compileExport(const ExportStmt& stmt) {
         declName = std::get<TaskStmt*>(stmt.inner->variant)->name;
     } else if (std::holds_alternative<ModelStmt*>(stmt.inner->variant)) {
         declName = std::get<ModelStmt*>(stmt.inner->variant)->name;
+    } else if (std::holds_alternative<InterfaceStmt*>(stmt.inner->variant)) {
+        declName = std::get<InterfaceStmt*>(stmt.inner->variant)->name;
     } else if (std::holds_alternative<VarDeclStmt*>(stmt.inner->variant)) {
         declName = std::get<VarDeclStmt*>(stmt.inner->variant)->name;
     } else if (std::holds_alternative<ExpressionStmt*>(stmt.inner->variant)) {
@@ -1350,6 +1358,26 @@ void BytecodeCompiler::compileUse(const UseStmt& stmt) {
             if (!iname.empty() && resolveLocal(iname) == -1) {
                 addLocal(iname);
                 markInitialized();
+            }
+        }
+        // Pre-declare top-level variables/constants so functions declared earlier
+        // in the module can capture them as upvalues (e.g. lookup tables).
+        if (std::holds_alternative<VarDeclStmt*>(target->variant)) {
+            const std::string& vname = std::get<VarDeclStmt*>(target->variant)->name;
+            if (!vname.empty() && resolveLocal(vname) == -1) {
+                addLocal(vname);
+                markInitialized();
+            }
+        }
+        if (std::holds_alternative<ExpressionStmt*>(target->variant)) {
+            const auto& es = std::get<ExpressionStmt*>(target->variant);
+            if (es->expr && std::holds_alternative<AssignExpr*>(es->expr->variant)) {
+                const auto& assign = std::get<AssignExpr*>(es->expr->variant);
+                if (!assign->object && !assign->index && !assign->name.empty() &&
+                    resolveLocal(assign->name) == -1) {
+                    addLocal(assign->name);
+                    markInitialized();
+                }
             }
         }
     }

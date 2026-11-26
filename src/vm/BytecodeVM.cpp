@@ -16,7 +16,6 @@
 #include "eventloop/EventLoop.h"
 #include "runtime/EZFuture.h"
 #include <thread>
-#include <sqlite3.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -90,11 +89,6 @@ BytecodeVM::~BytecodeVM() {
 }
 
 Environment::~Environment() {
-    for (auto& pair : persistDBConnections) {
-        if (pair.second) {
-            sqlite3_close(static_cast<sqlite3*>(pair.second));
-        }
-    }
 }
 
 void BytecodeVM::initGlobalSlots(const std::vector<std::string>& slotNames) {
@@ -427,57 +421,6 @@ void BytecodeVM::throwException(const std::string& className, const std::string&
     // Fallback if the class isn't defined
     runtimeError(message, line, filename);
 }
-
-Value BytecodeVM::makeLoadFunction(std::shared_ptr<EZClass> klass) {
-    auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
-        auto inst = std::make_shared<EZInstance>(klass);
-        CycleCollector::instance().track(inst, ValueType::INSTANCE);
-        sqlite3* db = nullptr;
-        {
-            std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
-            auto it = globalEnv->persistDBConnections.find(klass->persistPath);
-            if (it != globalEnv->persistDBConnections.end()) {
-                db = static_cast<sqlite3*>(it->second);
-            } else {
-                if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                    const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                    sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                    globalEnv->persistDBConnections[klass->persistPath] = db;
-                } else {
-                    db = nullptr;
-                }
-            }
-        }
-        if (db) {
-            sqlite3_stmt* stmt;
-            if (sqlite3_prepare_v2(db, "SELECT prop, val FROM EZ_Persist;", -1, &stmt, nullptr) == SQLITE_OK) {
-                while (sqlite3_step(stmt) == SQLITE_ROW) {
-                    const char* p = (const char*)sqlite3_column_text(stmt, 0);
-                    const char* v = (const char*)sqlite3_column_text(stmt, 1);
-                    std::string valStr(v);
-                    Value parsedVal;
-                    if (valStr == "true") parsedVal = Value(true);
-                    else if (valStr == "false") parsedVal = Value(false);
-                    else if (valStr == "nil") parsedVal = Value();
-                    else {
-                        char* end;
-                        double d = std::strtod(valStr.c_str(), &end);
-                        if (!valStr.empty() && end == valStr.c_str() + valStr.length()) {
-                            parsedVal = Value(d);
-                        } else {
-                            parsedVal = Value(valStr);
-                        }
-                    }
-                    inst->setProperty(p, parsedVal);
-                }
-                sqlite3_finalize(stmt);
-            }
-        }
-        return Value(inst);
-    };
-    return Value(std::make_shared<NativeFunction>("load", 0, loadFn));
-}
-
 
 void BytecodeVM::initBuiltins() {
     registerBuiltins(*this);

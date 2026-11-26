@@ -35,8 +35,7 @@ struct EZClass {
     bool hasSetattrHook = false;
 
     // ── Decorator metadata ────────────────────────────────────────────────────
-    BehaviorFlags behaviors = {false,false,false,false,false};
-    std::string persistPath;
+    BehaviorFlags behaviors = {false,false,false,false};
     std::vector<FieldValidator> validators;
     std::unordered_set<std::string> cachedMethods;
 

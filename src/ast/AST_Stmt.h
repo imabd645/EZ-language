@@ -226,7 +226,6 @@ struct ModelStmt {
     // Decorator fields
     bool audited  = false;     // @audited
     bool snapshot = false;     // @snapshot
-    std::string persistPath;   // @persist("file")  empty = not persistent
     std::vector<ExprPtr> userDecorators; // Custom user-defined decorators
     std::vector<std::string> typeParams;
         

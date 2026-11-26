@@ -43,10 +43,9 @@ struct NativeFunction {
 struct BehaviorFlags {
     bool audited    : 1;
     bool snapshot   : 1;
-    bool persistent : 1;
     bool validated  : 1;
     bool hasCached  : 1;
-    bool any() const { return audited || snapshot || persistent || validated || hasCached; }
+    bool any() const { return audited || snapshot || validated || hasCached; }
 };
 
 // Per-field validator (lives on EZClass)

@@ -1,5 +1,5 @@
 // decorator_56_builtins.ez
-// Tests for all 5 built-in decorators: @cached, @audited, @snapshot, @persist, @ratelimit
+// Tests for built-in decorators: @cached, @audited, @snapshot, @ratelimit
 
 out "Testing Built-in Decorators..."
 
@@ -84,23 +84,7 @@ assert(d.body == "", "rollback body")
 
 
 // ----------------------------------------
-// 4. @persist
-// ----------------------------------------
-@persist("test_settings.db")
-model Settings {
-    init() { self.theme = "dark" }
-}
-
-s = Settings()
-s.theme = "light"
-
-s2 = Settings.load()
-assert(s2.theme == "light", "Loaded persisted setting")
-// File.remove("test_settings.db") // Locked by SQLite connection until VM teardown
-
-
-// ----------------------------------------
-// 5. @ratelimit
+// 4. @ratelimit
 // ----------------------------------------
 @ratelimit(3, "minute")
 task ping() { give "pong" }

@@ -90,10 +90,6 @@ if(APPLE)
         include_directories("/opt/homebrew/opt/curl/include")
         link_directories("/opt/homebrew/opt/curl/lib")
     endif()
-    if(EXISTS "/opt/homebrew/opt/sqlite/include")
-        include_directories("/opt/homebrew/opt/sqlite/include")
-        link_directories("/opt/homebrew/opt/sqlite/lib")
-    endif()
     # Keg-only packages (Homebrew on Intel)
     if(EXISTS "/usr/local/opt/libffi/include")
         include_directories("/usr/local/opt/libffi/include")
@@ -102,10 +98,6 @@ if(APPLE)
     if(EXISTS "/usr/local/opt/curl/include")
         include_directories("/usr/local/opt/curl/include")
         link_directories("/usr/local/opt/curl/lib")
-    endif()
-    if(EXISTS "/usr/local/opt/sqlite/include")
-        include_directories("/usr/local/opt/sqlite/include")
-        link_directories("/usr/local/opt/sqlite/lib")
     endif()
 endif()
 # Gather all source files explicitly
@@ -181,7 +173,7 @@ if(WIN32)
     link_directories(C:/msys64/mingw64/lib)
 
     # Basic libraries
-    target_link_libraries(ez PRIVATE sqlite3 ffi uv)
+    target_link_libraries(ez PRIVATE ffi uv)
 
     # Static libraries (curl and dependencies)
     target_link_libraries(ez PRIVATE
@@ -218,7 +210,7 @@ if(WIN32)
         -Wl,-Bstatic stdc++ winpthread
     )
 else()
-    target_link_libraries(ez PRIVATE sqlite3 ffi uv curl ssl crypto dl pthread)
+    target_link_libraries(ez PRIVATE ffi uv curl ssl crypto dl pthread)
 endif()
 
 # Copy standard library (lib/) directory next to the built interpreter executable

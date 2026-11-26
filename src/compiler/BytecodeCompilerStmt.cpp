@@ -1837,11 +1837,6 @@ void BytecodeCompiler::compileModel(const ModelStmt& stmt) {
     emitOp(stmt.audited ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
     // Push snapshot flag
     emitOp(stmt.snapshot ? OpCode::LOAD_TRUE : OpCode::LOAD_FALSE);
-    // Push persist path (empty = not persistent)
-    size_t persistIdx = identifierConstant(stmt.persistPath);
-    emitOp(OpCode::LOAD_CONST);
-    emitBytes(static_cast<uint8_t>((persistIdx >> 8) & 0xFF),
-              static_cast<uint8_t>(persistIdx & 0xFF));
     // Push validator metadata (field, rule, param, message) for each @validate rule
     int validatorCount = 0;
     for (const auto& member : stmt.members) {

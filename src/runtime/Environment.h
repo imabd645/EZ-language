@@ -38,7 +38,6 @@ public:
 
     // Shared Caches for the entire process (across all async VMs)
     std::unordered_map<void*, std::shared_ptr<struct BytecodeFunction>> compiledFunctionCache; // Key is EZFunction*
-    std::unordered_map<std::string, void*> persistDBConnections;
     std::unordered_map<std::string, std::deque<long long>> rateLimiterRegistry;
     mutable std::shared_mutex registryMutex;
 

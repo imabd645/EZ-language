@@ -1,6 +1,5 @@
 #include "runtime/objects/EZObjects.h"
 #include "gc/CycleCollector.h"
-#include "sqlite3.h"
 #include "eventloop/EventLoop.h"
 #include "vm/BytecodeVM.h"
 #include "runtime/Utf8.h"
@@ -644,82 +643,31 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         } else if (obj.isClass()) {
                             auto klass = obj.asClass();
                             CHECK_VISIBILITY(klass, propName);
-                            if (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty()) {
-                                auto loadFn = [klass, this](RuntimeContext&, const std::vector<Value>&) -> Value {
-                                    auto inst = std::make_shared<EZInstance>(klass);
-                                    CycleCollector::instance().track(inst, ValueType::INSTANCE);
-                                    sqlite3* db = nullptr;
-                                    {
-                                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
-                                        auto it = globalEnv->persistDBConnections.find(klass->persistPath);
-                                        if (it != globalEnv->persistDBConnections.end()) {
-                                            db = static_cast<sqlite3*>(it->second);
-                                        } else {
-                                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                                globalEnv->persistDBConnections[klass->persistPath] = db;
-                                            } else {
-                                                db = nullptr;
-                                            }
-                                        }
-                                    }
-                                    if (db) {
-                                        sqlite3_stmt* stmt;
-                                        if (sqlite3_prepare_v2(db, "SELECT prop, val FROM EZ_Persist;", -1, &stmt, nullptr) == SQLITE_OK) {
-                                            while (sqlite3_step(stmt) == SQLITE_ROW) {
-                                                const char* p = (const char*)sqlite3_column_text(stmt, 0);
-                                                const char* v = (const char*)sqlite3_column_text(stmt, 1);
-                                                std::string valStr(v);
-                                                Value parsedVal;
-                                                if (valStr == "true") parsedVal = Value(true);
-                                                else if (valStr == "false") parsedVal = Value(false);
-                                                else if (valStr == "nil") parsedVal = Value();
-                                                else {
-                                                    char* end;
-                                                    double d = std::strtod(valStr.c_str(), &end);
-                                                    // If the entire string was parsed as a number and it's not empty
-                                                    if (!valStr.empty() && end == valStr.c_str() + valStr.length()) {
-                                                        parsedVal = Value(d);
-                                                    } else {
-                                                        parsedVal = Value(valStr);
-                                                    }
-                                                }
-                                                inst->setProperty(p, parsedVal);
-                                            }
-                                            sqlite3_finalize(stmt);
-                                        }
-                                    }
-                                    return Value(inst);
-                                };
-                                *stackTop++ = Value(std::make_shared<NativeFunction>("load", 0, loadFn));
-                            } else {
-                                if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
-                                else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
-                                else if (propName == "name") *stackTop++ = Value(klass->name);
-                                else {
-                                    // A STATIC __getattr__(cls, name) gets the
-                                    // last word, so a class can answer for names
-                                    // it never declared -- e.g. exposing a column
-                                    // handle as Model.column for query building,
-                                    // which otherwise needs an instance.
-                                    Value hook = findGetattrHook(obj, propName);
-                                    if (hook.isCallable()) {
-                                        // Static: no self to bind, so the class
-                                        // is passed explicitly as the first
-                                        // argument. Layout is [callee, cls, name].
-                                        *stackTop++ = hook;
-                                        *stackTop++ = obj;
-                                        *stackTop++ = Value(propName);
-                                        SYNC_IP();
-                                        if (!dispatchCall(stackTop[-3], 2)) return;
-                                        LOAD_FRAME();
-                                        DISPATCH();
-                                    }
+                            if (klass->staticMembers.count(propName)) *stackTop++ = klass->staticMembers[propName];
+                            else if (klass->methods.count(propName)) *stackTop++ = klass->methods[propName];
+                            else if (propName == "name") *stackTop++ = Value(klass->name);
+                            else {
+                                // A STATIC __getattr__(cls, name) gets the
+                                // last word, so a class can answer for names
+                                // it never declared -- e.g. exposing a column
+                                // handle as Model.column for query building,
+                                // which otherwise needs an instance.
+                                Value hook = findGetattrHook(obj, propName);
+                                if (hook.isCallable()) {
+                                    // Static: no self to bind, so the class
+                                    // is passed explicitly as the first
+                                    // argument. Layout is [callee, cls, name].
+                                    *stackTop++ = hook;
+                                    *stackTop++ = obj;
+                                    *stackTop++ = Value(propName);
                                     SYNC_IP();
-                                    runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");
-                                    RAISE_FAULT();
+                                    if (!dispatchCall(stackTop[-3], 2)) return;
+                                    LOAD_FRAME();
+                                    DISPATCH();
                                 }
+                                SYNC_IP();
+                                runtimeError("Static property or method '" + propName + "' does not exist on class '" + klass->name + "'");
+                                RAISE_FAULT();
                             }
                         } else if (obj.isSuper()) {
                             auto super = obj.asSuper();
@@ -994,37 +942,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                                             cr.dirty = true;
                                         }
                                     });
-                                }
-
-                                if (klass->behaviors.persistent && !klass->persistPath.empty()) {
-                                    sqlite3* db = nullptr;
-                                    {
-                                        std::unique_lock<std::shared_mutex> lk(globalEnv->registryMutex);
-                                        auto it = globalEnv->persistDBConnections.find(klass->persistPath);
-                                        if (it != globalEnv->persistDBConnections.end()) {
-                                            db = static_cast<sqlite3*>(it->second);
-                                        } else {
-                                            if (sqlite3_open(klass->persistPath.c_str(), &db) == SQLITE_OK) {
-                                                const char* create_sql = "CREATE TABLE IF NOT EXISTS EZ_Persist (prop TEXT PRIMARY KEY, val TEXT);";
-                                                sqlite3_exec(db, create_sql, nullptr, nullptr, nullptr);
-                                                globalEnv->persistDBConnections[klass->persistPath] = db;
-                                            } else {
-                                                db = nullptr;
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (db) {
-                                        std::string valStr = value.toString();
-                                        std::string sql = "INSERT OR REPLACE INTO EZ_Persist (prop, val) VALUES (?, ?);";
-                                        sqlite3_stmt* stmt;
-                                        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
-                                            sqlite3_bind_text(stmt, 1, propName.c_str(), -1, SQLITE_TRANSIENT);
-                                            sqlite3_bind_text(stmt, 2, valStr.c_str(), -1, SQLITE_TRANSIENT);
-                                            sqlite3_step(stmt);
-                                            sqlite3_finalize(stmt);
-                                        }
-                                    }
                                 }
 
                                 *stackTop++ = value;
@@ -2641,10 +2558,6 @@ void BytecodeVM::run(size_t targetFrameCount) {
                         }
                         if (validatorCount > 0) klass->behaviors.validated = true;
                         
-                        // Pop persist path
-                        klass->persistPath = (*(--stackTop)).toString();
-                        klass->behaviors.persistent = !klass->persistPath.empty();
-                        
                         // Pop snapshot flag
                         klass->behaviors.snapshot = (*(--stackTop)).asBool();
                         
@@ -3302,16 +3215,7 @@ void BytecodeVM::run(size_t targetFrameCount) {
                             const std::string& propName = std::get<std::string>(frame->function->chunk.getConstant(nameIdx).value);
                             CHECK_VISIBILITY(klass, propName);
                             // Same special case the generic GET_PROPERTY handler
-                            // already has via makeLoadFunction() -- without it,
-                            // `Cls.load()` written as one call expression hits
-                            // this fused property-get+call path instead and
-                            // never sees `.load`'s synthetic meaning for an
-                            // @persist-decorated class, throwing "has no static
-                            // method 'load'" even though `f = Cls.load; f()`
-                            // (going through the generic path) works fine.
-                            Value member = (propName == "load" && klass->behaviors.persistent && !klass->persistPath.empty())
-                                ? makeLoadFunction(klass)
-                                : klass->getStaticMember(propName);
+                            Value member = klass->getStaticMember(propName);
                             if (!member.isCallable()) {
                                 SYNC_IP();
                                 throwException("AttributeError", "Class '" + klass->name + "' has no static method '" + propName + "'");

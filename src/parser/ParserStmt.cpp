@@ -107,9 +107,8 @@ StmtPtr Parser::statement() {
     if (match(TokenType::STATIC)) return staticStatement();
     
     // ── Collect decorator tokens ──────────────────────────────────────────────
-    // Decorators like @audited, @cached, @persist etc. precede model/task
+    // Decorators like @audited, @cached etc. precede model/task
     std::vector<ExprPtr> userDecorators;
-    std::string persistPath;
     RateLimitConfig* rateLimitCfg = nullptr;
     bool isCached = false;
     bool isAudited = false;
@@ -130,17 +129,7 @@ StmtPtr Parser::statement() {
             if (std::holds_alternative<IdentifierExpr*>(callExpr->callee->variant)) {
                 auto varExpr = std::get<IdentifierExpr*>(callExpr->callee->variant);
                 std::string name = varExpr->name;
-                if (name == "persist") {
-                    if (callExpr->arguments.size() == 1) {
-                        if (std::holds_alternative<LiteralExpr*>(callExpr->arguments[0]->variant)) {
-                            auto strExpr = std::get<LiteralExpr*>(callExpr->arguments[0]->variant);
-                            if (std::holds_alternative<std::string>(strExpr->value)) {
-                                persistPath = std::get<std::string>(strExpr->value);
-                                isBuiltin = true;
-                            }
-                        }
-                    }
-                } else if (name == "ratelimit") {
+                if (name == "ratelimit") {
                     if (callExpr->arguments.size() >= 2) {
                         // Both arguments must actually BE literals for this to be
                         // the built-in @ratelimit -- per the docs, a count from a
@@ -206,10 +195,9 @@ StmtPtr Parser::statement() {
         model.userDecorators = userDecorators;
         if (isAudited) model.audited = true;
         if (isSnapshot) model.snapshot = true;
-        if (!persistPath.empty()) model.persistPath = persistPath;
         return modelNode;
     }
-    if (isCached || isAudited || isSnapshot || !persistPath.empty() || rateLimitCfg != nullptr || !userDecorators.empty()) {
+    if (isCached || isAudited || isSnapshot || rateLimitCfg != nullptr || !userDecorators.empty()) {
         throw ParseError("Decorators can only be applied to 'model' or 'task' declarations", peek().line);
     }
 
